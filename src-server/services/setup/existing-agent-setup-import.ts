@@ -5,7 +5,7 @@
  * module, and SkillService remains the only writer for Skill packages.
  */
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat } from 'node:fs/promises';
+import { lstat, opendir } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import {
   basename,
@@ -52,6 +52,12 @@ const MAX_RECEIPTS = 64;
 const SOURCE_ID = 'codex-prompts';
 const STORE_SCHEMA_VERSION = 1;
 const SOURCE_ADAPTER_VERSION = 2;
+/**
+ * C0/C1 controls and the bidirectional formatting marks. A file name holding
+ * one can make its row read as a different name, so it is not offered.
+ */
+const DECEPTIVE_NAME_CHARACTERS =
+  /[\p{Cc}\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
 
 type SetupImportErrorCode =
   | 'INVALID_SOURCE'
@@ -61,7 +67,8 @@ type SetupImportErrorCode =
   | 'INVALID_APPLY'
   | 'STORE_UNAVAILABLE'
   | 'RECEIPT_NOT_FOUND'
-  | 'RECEIPT_CONFLICT';
+  | 'RECEIPT_CONFLICT'
+  | 'TOO_MANY_FILES';
 
 export class SetupImportError extends Error {
   constructor(readonly code: SetupImportErrorCode) {
@@ -480,20 +487,43 @@ export class ExistingAgentSetupImportModule {
     } = {},
   ) {}
 
-  /** A deliberately content-free capability projection. */
+  /**
+   * A deliberately content-free capability projection. It applies the same
+   * location checks the preview applies (no symlinked Codex home or prompts
+   * folder anywhere on the path), so the import is offered only where a
+   * preview can read the folder. A folder with too many entries is still
+   * offered: the preview refuses it with its own reason, which the person
+   * can act on.
+   */
   async sources() {
-    const prompts = this.promptsDir();
     try {
-      const stat = await lstat(prompts);
-      return [
-        {
-          id: SOURCE_ID,
-          available: stat.isDirectory() && !stat.isSymbolicLink(),
-        },
-      ];
+      await this.assertSafeDirectory(this.codexHome(), false);
+      await this.assertSafeDirectory(this.promptsDir(), true);
+      await bindGuardedDirectories(this.codexHome());
+      await bindGuardedDirectories(this.promptsDir());
+      return [{ id: SOURCE_ID, available: true }];
     } catch {
       return [{ id: SOURCE_ID, available: false }];
     }
+  }
+
+  /** Refuses at limit + 1 entries, before the bound enumeration runs. */
+  private async assertEnumerable(directory: string) {
+    let count = 0;
+    let tooMany = false;
+    try {
+      const dir = await opendir(directory);
+      for await (const _entry of dir) {
+        count += 1;
+        if (count > MAX_ENUMERATION_ENTRIES) {
+          tooMany = true;
+          break;
+        }
+      }
+    } catch {
+      throw new SetupImportError('SOURCE_UNAVAILABLE');
+    }
+    if (tooMany) throw new SetupImportError('TOO_MANY_FILES');
   }
 
   async preview(sourceId: string): Promise<SetupImportPreview> {
@@ -513,6 +543,7 @@ export class ExistingAgentSetupImportModule {
     // and fails instead of enumerating a replacement pathname.
     await revalidateGuardedDirectories(root, rootChain);
     await revalidateGuardedDirectories(prompts, promptsChain);
+    await this.assertEnumerable(prompts);
     await this.testHooks.beforePromptExpectedIdentityForTest?.();
     let listed: Awaited<ReturnType<typeof enumerateBoundDirectory>>;
     try {
@@ -533,6 +564,10 @@ export class ExistingAgentSetupImportModule {
       throw new SetupImportError('SOURCE_UNAVAILABLE');
     }
     for (const entry of listed) {
+      if (DECEPTIVE_NAME_CHARACTERS.test(entry.name)) {
+        this.exclude(excluded, 'unsafe-name');
+        continue;
+      }
       if (extname(entry.name).toLowerCase() !== '.md') {
         this.exclude(excluded, 'not-markdown');
         continue;

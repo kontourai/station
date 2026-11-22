@@ -1,4 +1,12 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from 'node:fs';
 import { mkdtemp, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +15,7 @@ import {
   deleteSkillPackageAt,
   saveSkillConfigIn,
 } from '../../domain/config-loader-storage.js';
+import { parseImportedSkillMarkdown } from '../../services/agents/skill-metadata.js';
 import { ExistingAgentSetupImportModule } from '../../services/setup/existing-agent-setup-import.js';
 import { createSetupImportRoutes } from '../setup-imports.js';
 
@@ -85,9 +94,25 @@ async function realImportApp() {
     expect(response.status, JSON.stringify(json)).toBeLessThan(300);
     return json.data;
   };
+  const request = (path: string, init?: RequestInit) => app.request(path, init);
   const skillExists = (name: string) =>
     existsSync(join(project, 'skills', name, 'SKILL.md'));
-  return { codex, project, service, post, skillExists };
+  /** The imported skill as Station reads it back from its own SKILL.md. */
+  const importedSkill = (name: string) =>
+    parseImportedSkillMarkdown(
+      'SKILL.md',
+      readFileSync(join(project, 'skills', name, 'SKILL.md'), 'utf8'),
+    );
+  return {
+    root,
+    codex,
+    project,
+    service,
+    post,
+    request,
+    skillExists,
+    importedSkill,
+  };
 }
 
 describe('setup import routes', () => {
@@ -240,5 +265,113 @@ describe('setup import routes', () => {
       expect(service.hasSkill(name), name).toBe(false);
       expect(skillExists(name), name).toBe(false);
     }
+  });
+
+  test('Codex prompt front matter becomes the description, never part of the body', async () => {
+    const { codex, post, importedSkill } = await realImportApp();
+    const prompts = join(codex, 'prompts');
+    const files: Record<string, string> = {
+      'described.md':
+        '---\ndescription: Review a pull request\n---\nReview $1 for tests.\n',
+      'hinted.md':
+        '---\ndescription: Explain a file\nargument-hint: [FILE=<path>]\n---\nExplain $FILE plainly.\n',
+      'named.md': '---\nname: other-name\n---\nDraft notes for $ARGUMENTS.\n',
+      'complete.md':
+        '---\nname: complete\ndescription: Fully described\n---\nUse $NAME.\n',
+      'bare.md': 'No front matter here.\n',
+    };
+    for (const [file, text] of Object.entries(files))
+      writeFileSync(join(prompts, file), text);
+
+    const preview = await post('/previews', { sourceId: 'codex-prompts' });
+    expect(
+      preview.entries
+        .map((entry: { skillName: string }) => entry.skillName)
+        .sort(),
+    ).toEqual(['bare', 'complete', 'described', 'hinted', 'named']);
+    const review = await post(`/previews/${preview.id}/targets`, {
+      items: preview.entries.map(
+        (entry: { id: string; skillName: string }) => ({
+          id: entry.id,
+          action: 'import',
+          targetName: entry.skillName,
+        }),
+      ),
+    });
+    await post(`/previews/${preview.id}/apply`, {
+      witnessId: review.witness.id,
+    });
+
+    const expected: Record<string, { description?: string; body: string }> = {
+      described: {
+        description: 'Review a pull request',
+        body: 'Review $1 for tests.',
+      },
+      hinted: { description: 'Explain a file', body: 'Explain $FILE plainly.' },
+      named: { body: 'Draft notes for $ARGUMENTS.' },
+      complete: { description: 'Fully described', body: 'Use $NAME.' },
+      bare: { body: 'No front matter here.' },
+    };
+    for (const [name, want] of Object.entries(expected)) {
+      const skill = importedSkill(name);
+      expect(skill.body, name).toBe(want.body);
+      expect(skill.body.includes('---'), name).toBe(false);
+      if (want.description)
+        expect(skill.description, name).toBe(want.description);
+    }
+  });
+
+  test('a symlinked Codex home is not offered, so no entry leads to a refusal', async () => {
+    const { root, codex, request } = await realImportApp();
+    const real = join(root, 'dotfiles-codex');
+    renameSync(codex, real);
+    writeFileSync(join(real, 'prompts', 'review.md'), 'Review.');
+    symlinkSync(real, codex);
+
+    const sources = (await (await request('/sources')).json()) as {
+      data: unknown;
+    };
+    expect(sources.data).toEqual([{ id: 'codex-prompts', available: false }]);
+  });
+
+  test('a prompts folder past the entry limit is refused with its own reason', async () => {
+    const { codex, request, post } = await realImportApp();
+    const prompts = join(codex, 'prompts');
+    for (let index = 0; index < 128; index += 1)
+      writeFileSync(join(prompts, `p${index}.md`), `Prompt ${index}.`);
+    // At the limit the folder still previews.
+    const atLimit = await post('/previews', { sourceId: 'codex-prompts' });
+    expect(atLimit.excluded['count-limit']).toBe(128 - 32);
+
+    writeFileSync(join(prompts, 'one-more.md'), 'One more.');
+    const sources = (await (await request('/sources')).json()) as {
+      data: unknown;
+    };
+    expect(sources.data).toEqual([{ id: 'codex-prompts', available: true }]);
+    const refused = await request('/previews', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ sourceId: 'codex-prompts' }),
+    });
+    expect(refused.status).toBe(422);
+    expect(await refused.json()).toEqual({
+      success: false,
+      error: 'The Codex prompts folder has too many files to import.',
+      code: 'TOO_MANY_FILES',
+    });
+  });
+
+  test('a file name with control or direction characters is not offered', async () => {
+    const { codex, post } = await realImportApp();
+    const prompts = join(codex, 'prompts');
+    writeFileSync(join(prompts, 'ctl\u0007name.md'), 'Bell.');
+    writeFileSync(join(prompts, 'evil\u202Edm.txt.md'), 'Reversed.');
+    writeFileSync(join(prompts, 'plain.md'), 'Plain.');
+
+    const preview = await post('/previews', { sourceId: 'codex-prompts' });
+    expect(
+      preview.entries.map((entry: { name: string }) => entry.name),
+    ).toEqual(['plain.md']);
+    expect(preview.excluded['unsafe-name']).toBe(2);
   });
 });
