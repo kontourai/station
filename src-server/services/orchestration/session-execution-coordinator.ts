@@ -1,4 +1,10 @@
-import { FOREGROUND_MESSAGE_INDETERMINATE_CODE } from '@kontourai/station-contracts/orchestration';
+import type { SessionTurnBoundaryRecord } from '@kontourai/monument/session-boundary';
+import {
+  FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+  TURN_START_BUSY_CODE,
+  TURN_START_HELD_CODE,
+  TURN_START_HELD_UNTIL_RESTART_CODE,
+} from '@kontourai/station-contracts/orchestration';
 import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
@@ -28,13 +34,74 @@ export class SessionTurnStartIndeterminateError extends Error {
   readonly code = FOREGROUND_MESSAGE_INDETERMINATE_CODE;
   readonly outcome = 'indeterminate' as const;
 
-  constructor() {
+  /** `cause`: the failure that left the start unconfirmed, for the log only. */
+  constructor(cause?: unknown) {
     super(
       'The provider turn may have started. Inspect the session; do not retry.',
+      cause === undefined ? undefined : { cause },
     );
     this.name = 'SessionTurnStartIndeterminateError';
   }
 }
+
+/**
+ * The refusal of a turn start while an earlier start on the same Session,
+ * made by this Station process, is held: it may have reached the engine and
+ * Station cannot tell, so it will not start another turn beside it. Nothing
+ * was sent. What clears it depends on whether the Session's adapter can
+ * observe its engine process ending (`engineEnded`).
+ */
+export class SessionTurnStartHeldError extends Error {
+  readonly code:
+    | typeof TURN_START_HELD_CODE
+    | typeof TURN_START_HELD_UNTIL_RESTART_CODE;
+
+  constructor(threadId: string, engineObservable: boolean) {
+    super(
+      `Session already has a turn start in progress: ${threadId}. An earlier message on this Session may have reached its engine and Station cannot tell, so it will not start another turn beside it; nothing was sent. ${
+        engineObservable
+          ? 'If that turn is running, wait for it to finish. Once Station has seen the engine process end, the next message records that turn as interrupted and goes ahead.'
+          : 'This engine does not report its process ending, so the start stays held until that turn reports its end. To send now, restart Station (quit and reopen the app, or restart the Station service): the restart records that turn as interrupted.'
+      }`,
+    );
+    this.code = engineObservable
+      ? TURN_START_HELD_CODE
+      : TURN_START_HELD_UNTIL_RESTART_CODE;
+    this.name = 'SessionTurnStartHeldError';
+  }
+}
+
+/**
+ * The refusal of a turn start while another start on the Session (a message
+ * from another request or Station process, or the start of the Session's
+ * engine) has not finished. Nothing was sent.
+ */
+export class SessionTurnStartBusyError extends Error {
+  readonly code = TURN_START_BUSY_CODE;
+
+  constructor(threadId: string) {
+    super(
+      `Session already has a turn start in progress: ${threadId}. Another start on this Session (a message, or the start of its engine) has not finished, so nothing was sent. Send again once it has; a start that never finishes is settled when Station restarts.`,
+    );
+    this.name = 'SessionTurnStartBusyError';
+  }
+}
+
+/**
+ * Settles turn starts the boundary authority lists as held
+ * (`heldTurnStarts`) once their Session's engine is shown to be gone.
+ * `settled`: any row was settled; a row it cannot settle stays held.
+ * `engineObservable`: the Session's adapter can report its engine ending,
+ * so a later message may settle what is still held.
+ */
+export type HeldTurnStartSettler = (
+  threadId: string,
+  held: readonly SessionTurnBoundaryRecord[],
+) => Promise<{ settled: boolean; engineObservable: boolean }>;
+
+type CoordinatorLogger = {
+  warn(message: string, meta?: Record<string, unknown>): void;
+};
 
 /**
  * A lifecycle transition the boundary refused because a turn owns the Session
@@ -67,6 +134,10 @@ export class SessionExecutionCoordinator {
   constructor(
     private readonly boundaries: SessionTurnBoundaryAuthority = createInMemorySessionTurnBoundaryAuthority(),
     private readonly workspaces = new WorkspaceExecutionBarrier(),
+    private readonly heldStarts?: {
+      settle: HeldTurnStartSettler;
+      logger: CoordinatorLogger;
+    },
   ) {}
 
   async runTurnStart<T>(
@@ -126,19 +197,45 @@ export class SessionExecutionCoordinator {
           'Session lifecycle coordination is temporarily unavailable.',
         );
       }
-      const claimed =
+      const claim = () =>
         preparedIntent && this.boundaries.reserve
           ? this.boundaries.reserve(threadId, new Date().toISOString())
           : this.boundaries.claim(threadId, new Date().toISOString());
-      if (claimed.kind !== 'owner') {
-        throw new Error(
-          claimed.kind === 'busy'
-            ? `Session already has a turn start in progress: ${threadId}`
-            : 'Session turn coordination is temporarily unavailable.',
-        );
+      let claimed = claim();
+      // A start this process left held blocks the claim until something
+      // settles it. Settled here only when the settler shows its engine is
+      // gone; otherwise it stays held and this start is refused.
+      let engineObservable = false;
+      if (claimed.kind === 'busy') {
+        const settlement = await this.settleHeldStarts(threadId);
+        engineObservable = settlement.engineObservable;
+        if (settlement.settled) claimed = claim();
       }
+      if (claimed.kind === 'busy')
+        throw this.heldStartRows(threadId) > 0
+          ? new SessionTurnStartHeldError(threadId, engineObservable)
+          : new SessionTurnStartBusyError(threadId);
+      if (claimed.kind !== 'owner')
+        throw new Error(
+          'Session turn coordination is temporarily unavailable.',
+        );
       owned = claimed;
-      return await operation(owned.claim);
+      try {
+        return await operation(owned.claim);
+      } catch (error) {
+        if (error instanceof SessionTurnStartIndeterminateError)
+          this.heldStarts?.logger.warn(
+            'Turn start claim held: the turn may have reached the engine, so later turn starts on this Session are refused until it settles',
+            {
+              threadId,
+              reason:
+                error.cause instanceof Error
+                  ? error.cause.message
+                  : 'the start could not be confirmed',
+            },
+          );
+        throw error;
+      }
     } finally {
       // A pre-invocation/dedup path leaves the opaque claim prepared. The
       // one-way capability makes this a no-op once invocation or terminal
@@ -146,6 +243,34 @@ export class SessionExecutionCoordinator {
       owned?.claim.notInvoked();
       this.releaseTurnStart(threadId);
     }
+  }
+
+  /**
+   * Runs under this thread's turn-start lock, so no other start on the
+   * thread is between its claim and its outcome while the rows are read.
+   */
+  private async settleHeldStarts(
+    threadId: string,
+  ): Promise<{ settled: boolean; engineObservable: boolean }> {
+    const none = { settled: false, engineObservable: false };
+    if (!this.heldStarts) return none;
+    const held = this.boundaries.heldTurnStarts?.(threadId);
+    if (held?.kind !== 'available' || held.records.length === 0) return none;
+    try {
+      return await this.heldStarts.settle(threadId, held.records);
+    } catch (error) {
+      this.heldStarts.logger.warn('Held turn start could not be settled', {
+        threadId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return none;
+    }
+  }
+
+  /** This process's held starts on the thread; unreadable reads as none. */
+  private heldStartRows(threadId: string): number {
+    const held = this.boundaries.heldTurnStarts?.(threadId);
+    return held?.kind === 'available' ? held.records.length : 0;
   }
 
   runWorkspaceExclusive<T>(

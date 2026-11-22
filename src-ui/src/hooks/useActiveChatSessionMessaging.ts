@@ -1,5 +1,11 @@
 import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/execution-target';
-import type { InterruptTurnResult } from '@kontourai/station-contracts/orchestration';
+import {
+  CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE,
+  type InterruptTurnResult,
+  TURN_START_BUSY_CODE,
+  TURN_START_HELD_CODE,
+  TURN_START_HELD_UNTIL_RESTART_CODE,
+} from '@kontourai/station-contracts/orchestration';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
@@ -1916,6 +1922,16 @@ export function useSendMessage(
         const terminalSession = foregroundIndeterminate
           ? false
           : (translated as ChatErrorTranslation).terminalSession;
+        // Refused because an earlier start on this Session blocks it: nothing
+        // was sent and nothing failed (that turn may still be running). The
+        // chat is not marked failed, and there is no blind Retry; the notice
+        // says what clears it, and the text is back in the composer.
+        const turnStartBlocked =
+          !foregroundIndeterminate &&
+          (err.code === TURN_START_HELD_CODE ||
+            err.code === TURN_START_HELD_UNTIL_RESTART_CODE ||
+            err.code === TURN_START_BUSY_CODE ||
+            err.code === CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE);
         const dispatchClaim = options?.dispatch;
         if (dispatchClaim) {
           // Once the foreground call has begun, neither an abort, a network
@@ -1945,7 +1961,10 @@ export function useSendMessage(
           // non-error and let the persisted server lifecycle name it. The
           // refusal itself is carried by the ephemeral notice below, which
           // already suppresses Retry for exactly this case.
-          status: foregroundIndeterminate || terminalSession ? 'idle' : 'error',
+          status:
+            foregroundIndeterminate || terminalSession || turnStartBlocked
+              ? 'idle'
+              : 'error',
           error: userFacingErrorMessage(err),
           abortController: undefined,
           ...(foregroundIndeterminate
@@ -2007,10 +2026,16 @@ export function useSendMessage(
           }${
             // Said only when the rollback put the draft back: a user who
             // typed during the send keeps what they typed instead.
-            err.code === SESSION_START_INDETERMINATE_CODE &&
-            'input' in rollbackComposer
+            (
+              err.code === SESSION_START_INDETERMINATE_CODE || turnStartBlocked
+            ) && 'input' in rollbackComposer
               ? ' Your message is back in the composer.'
-              : ''
+              : // An outbox send: its row was kept above (`indeterminate`)
+                // and the composer was not touched, so the message waits in
+                // the pending list.
+                turnStartBlocked && dispatchClaim
+                ? ' Your message is kept in the pending list.'
+                : ''
           }`,
           ...(terminalSession ? { terminalSession: true } : {}),
           // A workspace refusal is permanent for this conversation. Other
@@ -2031,6 +2056,7 @@ export function useSendMessage(
                 }
               : terminalSession ||
                   foregroundIndeterminate ||
+                  turnStartBlocked ||
                   dispatchClaim ||
                   err.code === SESSION_START_INDETERMINATE_CODE ||
                   // #3290: refused again until the configuration or mode

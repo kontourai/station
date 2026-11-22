@@ -689,6 +689,25 @@ export interface ProviderAdapterShape {
    */
   hasSession(threadId: string): Promise<boolean>;
   /**
+   * True only when this adapter has itself observed that no engine process
+   * can still run a turn for the thread: none is bound in this process, or
+   * the bound one's own exit was seen. False whenever it cannot tell. A held
+   * turn start (one that may have reached the engine) is settled at runtime
+   * only on `true`; absent, such a start stays held until the next boot's
+   * interrupted-turn recovery. Never answer from durable state or a status
+   * label: a wrong `true` lets a second turn start beside a running one.
+   */
+  engineEnded?(threadId: string): boolean;
+  /**
+   * Positive declaration that `sendTurn` refuses every turn on a Session
+   * whose status is `error` (a failed stream or turn), so a binding in
+   * `error` takes no more turns. Absent: an engine may stay alive after a
+   * failed turn and keep accepting turns, so `error` is not an ended
+   * binding. Distinct from {@link engineEnded}, which reports an observed
+   * process exit, not whether a failed binding still accepts turns.
+   */
+  readonly refusesTurnsAfterFailure?: true;
+  /**
    * Whether the live engine for the thread still runs work past its turn
    * that dies with its process: background tasks, subagents, and commands
    * it has not reported an end for. An idle park never stops such an

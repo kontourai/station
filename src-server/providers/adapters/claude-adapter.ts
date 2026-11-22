@@ -830,6 +830,8 @@ type ClaudeSessionRecord = {
   streamEnded?: boolean;
   /** Set once a failure for this engine's death was published. */
   engineFailurePublished?: boolean;
+  /** Set once the observed exit of this engine ended the session. */
+  engineExitFinalized?: boolean;
   /** The newest turn this adapter dispatched, kept after it ends. */
   lastDispatchedTurnId?: string;
   /** Stops observing the engine process's exit. */
@@ -1802,6 +1804,8 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   }
   readonly provider = 'claude' as const;
   readonly adoptionLifecycle = 'reported' as const;
+  /** `sendTurn` refuses a Session in `error` as `session_gone`. */
+  readonly refusesTurnsAfterFailure = true as const;
   private readonly continuity: ProviderContinuityCapabilities = {
     resume: 'same-session',
     fork: 'none',
@@ -3161,9 +3165,25 @@ export class ClaudeAdapter implements ProviderAdapterShape {
   ): Promise<ProviderTurnStartResult> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
     const record = this.requireSession(input.threadId);
-    if (record.session.status === 'error' || record.session.status === 'dead') {
-      throw new ProviderTurnEndedError();
-    }
+    // Refused before anything reaches the engine: its stream has ended, so
+    // this turn cannot start. A refusal releases the turn-start claim; any
+    // other error would hold it as a turn that may have started.
+    // Also refused once the engine's exit is observed, before the Session's
+    // end is published (it waits for the workload outcome): a prompt queued
+    // there would be accepted into a process that is gone.
+    if (
+      record.engineExit !== undefined ||
+      record.engineProcess?.exited() === true
+    )
+      throw new SendTurnRefusedError(
+        "This Claude Session's engine has exited and Station is closing the Session, so nothing was sent. Send again in a moment: the conversation then continues in a new Session.",
+        'session_gone',
+      );
+    if (record.session.status === 'error' || record.session.status === 'dead')
+      throw new SendTurnRefusedError(
+        'This Claude Session has stopped and takes no more turns. Continue its conversation by the conversation id to start a new Session.',
+        'session_gone',
+      );
     // #2494: no turn runs before a confined start's posture is observed.
     if (record.confinementPending)
       throw new SendTurnRefusedError(
@@ -4212,6 +4232,22 @@ export class ClaudeAdapter implements ProviderAdapterShape {
 
   async hasSession(threadId: string): Promise<boolean> {
     return this.sessions.has(threadId);
+  }
+
+  /**
+   * A record leaves `sessions` only after its engine's exit was observed or
+   * its stop awaited the process's termination (an abandoned confined start
+   * leaves first, but `sendTurn` refuses until confinement is observed, so
+   * no turn reached it); a record that stays (a
+   * failed stream keeps it, `status: 'error'`) answers from the process's
+   * own observed exit. An engine this adapter did not spawn cannot be seen,
+   * so it answers false. "No record" speaks only for this instance: a
+   * replacement adapter has no record of the engines its predecessor owned,
+   * so a caller asks the instance the thread is bound to.
+   */
+  engineEnded(threadId: string): boolean {
+    const record = this.sessions.get(threadId);
+    return record === undefined || record.engineProcess?.exited() === true;
   }
 
   /**
@@ -5804,20 +5840,31 @@ export class ClaudeAdapter implements ProviderAdapterShape {
    * conversation to the memory-exhaustion continuation; anything else reads
    * as the engine stopping unexpectedly. Before this, the session silently
    * stayed `ready` with no failure, exit or interrupted work recorded.
+   *
+   * A stream that failed first (its failure is already published, the
+   * record kept with `status: 'error'`) still ends here once the exit is
+   * observed: the session is closed and `session.exited` published, so the
+   * conversation's next message goes to a new Session instead of this dead
+   * record, which refuses every turn. Its failure is not published twice,
+   * and it is not re-read as a memory kill: that hands the conversation to
+   * an unattended continuation, which only a failure reported as one may.
    */
   private async finalizeUnexpectedEngineExit(
     record: ClaudeSessionRecord,
   ): Promise<void> {
     const exit = record.engineExit;
-    if (!exit || record.stopping || record.engineFailurePublished) return;
+    if (!exit || record.stopping || record.engineExitFinalized) return;
+    record.engineExitFinalized = true;
+    const failureAlreadyPublished = record.engineFailurePublished === true;
     record.engineFailurePublished = true;
     const threadId = record.session.threadId;
-    const outcome = exit.workloadOutcome
-      ? await raceWithSignal(
-          exit.workloadOutcome,
-          AbortSignal.timeout(CLAUDE_ENGINE_EXIT_OUTCOME_WAIT_MS),
-        ).catch(() => undefined)
-      : undefined;
+    const outcome =
+      exit.workloadOutcome && !failureAlreadyPublished
+        ? await raceWithSignal(
+            exit.workloadOutcome,
+            AbortSignal.timeout(CLAUDE_ENGINE_EXIT_OUTCOME_WAIT_MS),
+          ).catch(() => undefined)
+        : undefined;
     if (record.stopping || this.sessions.get(threadId) !== record) return;
     const memoryExhausted = childWorkloadMemoryExhausted(outcome, exit.signal);
     const turnId = record.activeTurnId ?? record.lastDispatchedTurnId;
@@ -5828,27 +5875,28 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       record.engineStderrTail?.(),
     );
     const createdAt = new Date().toISOString();
-    this.publish({
-      eventId: crypto.randomUUID(),
-      provider: this.provider,
-      threadId,
-      createdAt,
-      ...(turnId ? { turnId } : {}),
-      method: 'runtime.error',
-      ...providerFailure('engine_crashed'),
-      severity: 'error',
-      message:
-        memoryExhausted && outcome
-          ? claudeMemoryExhaustedMessage(outcome)
-          : `Claude stopped unexpectedly: ${detail}`,
-      code: memoryExhausted
-        ? ENGINE_MEMORY_EXHAUSTED_CODE
-        : 'claude-engine-exited',
-      details: {
-        ...(exit.signal ? { exitSignal: exit.signal } : {}),
-        ...(outcome ? { workload: outcome } : {}),
-      },
-    } satisfies ProviderRuntimeErrorEvent);
+    if (!failureAlreadyPublished)
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt,
+        ...(turnId ? { turnId } : {}),
+        method: 'runtime.error',
+        ...providerFailure('engine_crashed'),
+        severity: 'error',
+        message:
+          memoryExhausted && outcome
+            ? claudeMemoryExhaustedMessage(outcome)
+            : `Claude stopped unexpectedly: ${detail}`,
+        code: memoryExhausted
+          ? ENGINE_MEMORY_EXHAUSTED_CODE
+          : 'claude-engine-exited',
+        details: {
+          ...(exit.signal ? { exitSignal: exit.signal } : {}),
+          ...(outcome ? { workload: outcome } : {}),
+        },
+      } satisfies ProviderRuntimeErrorEvent);
     record.session.status = 'closed';
     this.sessions.delete(threadId);
     this.publish({
@@ -5944,7 +5992,33 @@ export class ClaudeAdapter implements ProviderAdapterShape {
       record.session.status = 'error';
       record.engineFailurePublished = true;
       record.promptQueue.close();
+      // #4266: the stream failed but `claude` may still run. This record
+      // takes no more turns, and a successor would resume the same native
+      // conversation in a second engine beside it, so the engine is stopped
+      // now; its observed exit then ends the Session (`session.exited`).
+      if (!record.stopping && record.engineProcess?.exited() === false)
+        void this.stopEngineAfterStreamFailure(record);
     }
+  }
+
+  /**
+   * Bounded: `terminate` signals, waits, then forces. If the exit is still
+   * not observed, `engineEnded` keeps answering false, so orchestration
+   * keeps the conversation from starting a second engine for it.
+   */
+  private async stopEngineAfterStreamFailure(
+    record: ClaudeSessionRecord,
+  ): Promise<void> {
+    try {
+      await record.engineProcess?.terminate();
+    } catch {
+      // Reported below by the exit that did not happen.
+    }
+    if (record.stopping || record.engineProcess?.exited() !== false) return;
+    (this.options.logger ?? console).warn?.(
+      'Claude engine process did not exit after its stream failed; the conversation will not start a new engine beside it',
+      { threadId: record.session.threadId },
+    );
   }
 
   private mapMessage(record: ClaudeSessionRecord, message: SDKMessage): void {

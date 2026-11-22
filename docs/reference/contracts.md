@@ -1152,6 +1152,7 @@ non-retryable.
 | `conversation_handoff_idempotency_conflict` | `conflict` | `false` |
 | `conversation_handoff_predecessor_busy` | `busy` | `true` |
 | `conversation_handoff_session_changed` | `conflict` | `false` |
+| `conversation_predecessor_engine_live` | `busy` | `true` |
 | `conversation-context-unavailable` | `conflict` | `false` |
 | `engine-credential-profile-unsupported` | `input_unsupported` | `false` |
 | `engine-decision-not-sent` | `warning` | `false` |
@@ -1205,6 +1206,9 @@ non-retryable.
 | `SESSION_START_INDETERMINATE` | `indeterminate` | `false` |
 | `session-reattach-conflict` | `conflict` | `false` |
 | `transcript-line-skipped` | `warning` | `false` |
+| `turn_start_busy` | `busy` | `true` |
+| `turn_start_held` | `busy` | `true` |
+| `turn_start_held_until_restart` | `conflict` | `false` |
 | `workload-command-oom-killed` | `warning` | `false` |
 | `workload-memory-pressure` | `warning` | `false` |
 | `workload-memory-pressure-cleared` | `warning` | `false` |
@@ -1574,6 +1578,20 @@ next poll of the wait for a retry already waiting. Another Station process
 sharing the store cannot see that the attempt gave up, so there the retry is
 treated as for a held key. When the client's
 automatic re-sends run out, the message stays queued with a reason and Retry.
+A send with a new key to a Session whose earlier turn start blocks it is
+refused, and nothing is sent (codes in `@kontourai/station-contracts/orchestration`;
+the failure-kind table above gives each one's kind: `busy` and retryable, except
+`turn_start_held_until_restart`, which is `conflict`). `turn_start_held`: an
+earlier start by this Station process may have reached the engine; the next
+send settles it once the Session's engine is observed to have ended.
+`turn_start_held_until_restart`: the same, on an engine that does not report
+its process ending, so it stays held until that turn reports its end; to
+send now, restart Station. `turn_start_busy`: another start on the Session (another
+request or Station process, or the engine's own start) has not finished.
+`conversation_predecessor_engine_live` (`CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE`):
+a continuation was refused because the conversation's current Session failed
+while its engine process still runs, and a successor would resume the same
+native conversation beside it; it clears once that process has stopped.
 A follow-up sent with `whenBusy: 'queue'` is held by Station instead, in the
 conversation's durable inbox (#3568): `POST /chat` answers `202` with a
 `ConversationInboxQueuedReceipt`, its `ConversationInboxEntry` says where the

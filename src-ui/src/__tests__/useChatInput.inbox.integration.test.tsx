@@ -203,6 +203,141 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     _resetOutboundQueueStorage();
   });
 
+  // A send Station refuses because an earlier start on this Session is held
+  // (the real route's answer). Where the notice says the message went is
+  // where the code put it: the composer for a direct send, the pending list
+  // for an outbox send.
+  for (const path of ['direct send', 'outbox send'] as const) {
+    test(`a held refusal of the ${path} says where the message is`, async () => {
+      vi.stubGlobal(
+        'Uint8Array',
+        Object.getPrototypeOf(Buffer.prototype).constructor,
+      );
+      let stored: unknown;
+      _setOutboundQueueStorage({
+        getItem: async () => stored,
+        setItem: async (_key, value) => {
+          stored = value;
+        },
+        updateItem: async (_key, updater) => {
+          stored = updater(stored);
+        },
+      });
+      const { OrchestrationService } = await import(
+        '../../../src-server/services/orchestration/orchestration-service'
+      );
+      const { SessionTurnStartHeldError } = await import(
+        '../../../src-server/services/orchestration/session-execution-coordinator'
+      );
+      const dispatchWithReceipt =
+        OrchestrationService.prototype.dispatchWithReceipt;
+      vi.spyOn(
+        OrchestrationService.prototype,
+        'dispatchWithReceipt',
+      ).mockImplementation(function (
+        this: InstanceType<typeof OrchestrationService>,
+        ...args: Parameters<typeof dispatchWithReceipt>
+      ) {
+        const [command] = args;
+        if (command.type === 'sendTurn')
+          return Promise.reject(
+            new SessionTurnStartHeldError(command.input.threadId, true),
+          );
+        return dispatchWithReceipt.apply(this, args);
+      });
+      const world = station();
+      // The outbox send: the first request gets no answer (offline), so its
+      // row is released for Station's lookup and replayed on reconnect.
+      let online = path === 'direct send';
+      vi.spyOn(navigator, 'onLine', 'get').mockImplementation(() => online);
+      connection.status = online ? 'connected' : 'disconnected';
+      const posts: string[] = [];
+      vi.stubGlobal(
+        'fetch',
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          if (!online) throw new TypeError('network unavailable');
+          const request = new Request(input, init);
+          if (request.method === 'POST')
+            posts.push(new URL(request.url).pathname);
+          return world.app.request(request);
+        },
+      );
+      activeChatsStore.initChat(sessionId, {
+        agentSlug: AGENT,
+        agentName: 'Claude',
+        title: 'Inbox',
+        conversationId: CONVERSATION,
+      });
+      activeChatsStore.updateChat(sessionId, {
+        status: 'idle',
+        orchestrationProvider: 'claude',
+        orchestrationDurability: STEERING_ENGINE_DURABILITY,
+        currentSessionId: 'fixture-execution',
+        messages: [],
+        input: 'held follow-up',
+      });
+      const client = new QueryClient({
+        defaultOptions: { queries: { retry: false, enabled: false } },
+      });
+      const tree = () => (
+        <QueryClientProvider client={client}>
+          <SDKProvider value={{ apiBase, contexts: {}, hooks: {} }}>
+            <ActiveChatsProvider>
+              <Flush />
+              <Composer />
+            </ActiveChatsProvider>
+          </SDKProvider>
+        </QueryClientProvider>
+      );
+      const mounted = render(tree());
+      fireEvent.click(await screen.findByRole('button', { name: 'Send' }));
+      if (path === 'outbox send') {
+        await waitFor(async () =>
+          expect(await outboundDispatch.snapshot()).toEqual([
+            expect.objectContaining({
+              content: 'held follow-up',
+              awaitingLookup: true,
+            }),
+          ]),
+        );
+        online = true;
+        connection.status = 'connected';
+        mounted.rerender(tree());
+        fireEvent(window, new Event('online'));
+      }
+      const notices = () =>
+        (activeChatsStore.getSnapshot()[sessionId]?.ephemeralMessages ?? [])
+          .map((message) => String(message.content))
+          .filter((content) => content.includes('may still be running'));
+      await waitFor(() => expect(notices()).toHaveLength(1));
+      const chat = activeChatsStore.getSnapshot()[sessionId];
+      const outbox = await outboundDispatch.snapshot();
+      if (path === 'direct send') {
+        expect(posts).toEqual(['/api/orchestration/chat']);
+        expect(chat?.input).toBe('held follow-up');
+        expect(outbox).toEqual([]);
+        expect(notices()[0]).toContain('Your message is back in the composer.');
+        expect(notices()[0]).not.toContain('pending');
+      } else {
+        // The replay is the outbox's own request; it adds no second row and
+        // no second notice.
+        expect(posts).toEqual(['/api/orchestration/chat/background']);
+        expect(chat?.input ?? '').toBe('');
+        expect(outbox).toEqual([
+          expect.objectContaining({ content: 'held follow-up' }),
+        ]);
+        expect(notices()[0]).toContain(
+          'Your message is kept in the pending list.',
+        );
+        expect(notices()[0]).not.toContain('composer');
+      }
+      expect(world.inbox.list(CONVERSATION)).toEqual([]);
+      mounted.unmount();
+      client.clear();
+      connection.status = 'connected';
+    });
+  }
+
   test('reconnect hands an offline busy send to the durable inbox', async () => {
     vi.stubGlobal(
       'Uint8Array',

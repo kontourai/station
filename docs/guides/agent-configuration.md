@@ -314,6 +314,13 @@ that cannot resume, starts a successor session and stops the old engine if
 it is idle. A
 session still running work it started under the old configuration refuses
 that message until the work ends, so a conversation never has two engines.
+A session whose engine has exited, or whose engine takes no more turns after
+a failure (Claude Code), is never restarted in place: its next message starts
+a successor once that engine process has stopped. An engine that keeps taking
+turns after a failed turn is restarted in place like any other. If stopping
+the old engine for a restart fails, that message and any sent meanwhile are
+refused, never run under the old configuration, and the next message tries
+again.
 While a change is still being applied, or the configuration cannot be read,
 a call is refused with a request to retry it.
 
