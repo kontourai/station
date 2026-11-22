@@ -982,6 +982,50 @@ describe('ChromiumServerHost with a fake browser', () => {
     });
   });
 
+  test('the closing set is bounded: the 257th entry evicts the first, whose late events stay ignored while it is also destroyed', async () => {
+    const { host, profileDir, emit, calls } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    for (let i = 0; i < 257; i += 1) await host.closeTarget(`C${i}`);
+    // C0 was evicted from `closing`; the browser then reports it destroyed.
+    emit('Target.targetDestroyed', { targetId: 'C0' });
+    const late = (id: string) =>
+      emit('Target.targetInfoChanged', {
+        targetInfo: { targetId: id, type: 'page', url: 'about:blank' },
+      });
+    late('C0'); // evicted from closing, held by destroyed: ignored
+    late('C1'); // still in closing: ignored
+    late('C256'); // the 257th entry: in closing, ignored
+    await new Promise((r) => setTimeout(r, 1_100));
+    const closes = (id: string) =>
+      calls.filter(
+        (c) =>
+          c.method === 'Target.closeTarget' &&
+          (c.params as { targetId?: string }).targetId === id,
+      ).length;
+    // Each was closed once by closeTarget above; none again.
+    for (const id of ['C0', 'C1', 'C256']) expect(closes(id)).toBe(1);
+  });
+
+  test('an id evicted from both the closing and destroyed sets is treated as an unknown page by a late event', async () => {
+    const { host, profileDir, emit, calls } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    for (let i = 0; i < 257; i += 1) await host.closeTarget(`C${i}`);
+    // C0 was evicted from `closing` and was never reported destroyed.
+    for (const id of ['C0', 'C1'])
+      emit('Target.targetInfoChanged', {
+        targetInfo: { targetId: id, type: 'page', url: 'about:blank' },
+      });
+    await new Promise((r) => setTimeout(r, 1_100));
+    const closes = (id: string) =>
+      calls.filter(
+        (c) =>
+          c.method === 'Target.closeTarget' &&
+          (c.params as { targetId?: string }).targetId === id,
+      ).length;
+    expect(closes('C0')).toBe(2); // the first close, then the untracked policy
+    expect(closes('C1')).toBe(1); // still remembered: ignored
+  });
+
   test('a target already destroyed is not closed again when its info arrives late', async () => {
     const { host, profileDir, emit, calls, events } = harness();
     await host.openTarget({ profileDir, viewport: VIEWPORT });

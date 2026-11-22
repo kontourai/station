@@ -77,7 +77,10 @@ type Handler = (params: Record<string, unknown>) => unknown;
  */
 interface FakeDocument {
   url: string;
+  /** The origin the browser reports; 'null' is opaque (reported as "://"). */
   origin: string;
+  /** What the page's own `self.origin` answers, if it has overridden it. */
+  selfOrigin?: string;
   context: string | undefined;
 }
 
@@ -116,8 +119,11 @@ function fakeHost() {
     if (p.silent === true) {
       try {
         const value: unknown = runInNewContext(String(p.expression), {
-          location: { href: page.url },
-          self: { origin: page.origin },
+          location: {
+            href: page.url,
+            protocol: new URL(page.url).protocol,
+          },
+          self: { origin: page.selfOrigin ?? page.origin },
         });
         return { result: { type: typeof value, value } };
       } catch (error) {
@@ -156,6 +162,12 @@ function fakeHost() {
     closeTarget: async () => {},
     onExit: () => () => {},
     mainWorld: (targetId) => (targetId === 'T1' ? page.context : undefined),
+    mainWorldOrigin: (targetId, uniqueId) =>
+      targetId === 'T1' && uniqueId === page.context
+        ? page.origin === 'null'
+          ? '://'
+          : page.origin
+        : undefined,
   };
   return {
     host,
@@ -1820,6 +1832,57 @@ describe('BrowserAutomation: D4 evaluation', () => {
     ]);
   });
 
+  test.each(['about:blank#x', 'about:blank?x', 'about:blank?x#y'])(
+    'a site-less %s page is refused like about:blank, and the script never runs',
+    async (url) => {
+      const h = await evaluating();
+      h.fake.navigatePage({ url, origin: 'null' });
+      expect(await h.evaluate()).toMatchObject({
+        ok: false,
+        code: 'browser-refused',
+      });
+      expect(h.fake.ran).toEqual([]);
+    },
+  );
+
+  test('a blank page that overrides self.origin is still decided by the origin the browser reported', async () => {
+    const h = await evaluating();
+    h.fake.navigatePage({
+      url: 'about:blank',
+      origin: 'null',
+      selfOrigin: 'http://127.0.0.1:4000',
+    });
+    expect(await h.evaluate()).toMatchObject({
+      ok: false,
+      code: 'browser-refused',
+    });
+    expect(h.fake.ran).toEqual([]);
+  });
+
+  test('an about: page whose origin the browser did not report is refused (fails closed)', async () => {
+    const h = await evaluating();
+    h.fake.navigatePage({
+      url: 'about:blank',
+      origin: 'http://127.0.0.1:4000',
+    });
+    h.fake.host.mainWorldOrigin = () => undefined;
+    expect(await h.evaluate()).toMatchObject({
+      ok: false,
+      code: 'browser-refused',
+    });
+    expect(h.fake.ran).toEqual([]);
+  });
+
+  test('an ordinary https page with a normal origin is not refused', async () => {
+    const h = await evaluating();
+    h.fake.navigatePage({
+      url: 'https://example.test/',
+      origin: 'https://example.test',
+    });
+    expect(await h.evaluate()).toMatchObject({ ok: true, value: '"ran"' });
+    expect(h.fake.ran.map((r) => r.url)).toEqual(['https://example.test/']);
+  });
+
   test('a navigation to a blank page between the check and the script: the script never runs in the new document', async () => {
     const h = await evaluating();
     // A person's address bar (or Back, or the page) lands on about:blank
@@ -1866,7 +1929,7 @@ describe('BrowserAutomation: D4 evaluation', () => {
   test('a blank-page check that does not answer false refuses (fails closed)', async () => {
     const h = await evaluating();
     // The check throws inside the page: no answer.
-    Object.defineProperty(h.fake.page, 'origin', {
+    Object.defineProperty(h.fake.page, 'url', {
       get() {
         throw new Error('no answer');
       },

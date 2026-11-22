@@ -2783,11 +2783,12 @@ export class BrowserAutomation {
         // The check and the script run in ONE page-world context, named by
         // its unique id: a navigation between them (a person's address bar,
         // Back, Reload, or the page itself) destroys that context, so the
-        // script then fails instead of running in the new document. On a
-        // site-less blank page no page script has ever run (its origin is
-        // opaque and unique, so no other document reaches it), and
-        // `location` is unforgeable, so the page world answers truthfully
-        // where it matters. Anything but a definite "no" is refused.
+        // script then fails instead of running in the new document. The
+        // address half comes from the page (`location` is the document's own,
+        // and a page cannot make it say another scheme). The origin half
+        // comes from the browser's report for that same context, which a page
+        // cannot forge (`self.origin` it can). Anything but a definite "no,
+        // and a real origin" is refused.
         // Idempotent; reports existing contexts if nobody had enabled it.
         await control.send('Runtime.enable', {});
         const world = selected.live.host.mainWorld?.(
@@ -2800,7 +2801,7 @@ export class BrowserAutomation {
           blank = await control.send(
             'Runtime.evaluate',
             {
-              expression: SITELESS_BLANK_PAGE,
+              expression: ABOUT_PAGE,
               uniqueContextId: world,
               returnByValue: true,
               silent: true,
@@ -2813,8 +2814,18 @@ export class BrowserAutomation {
             return refuse('browser-error', EVALUATE_PAGE_NAVIGATED);
           throw error;
         }
-        if (blank?.result?.value !== false)
-          return refuse('browser-refused', EVALUATE_ON_BLANK_PAGE);
+        const siteless =
+          blank?.result?.value === false
+            ? false
+            : blank?.result?.value === true
+              ? !hasSiteOrigin(
+                  selected.live.host.mainWorldOrigin?.(
+                    selected.live.target.targetId,
+                    world,
+                  ),
+                )
+              : true;
+        if (siteless) return refuse('browser-refused', EVALUATE_ON_BLANK_PAGE);
         let outcome:
           | {
               result?: {
@@ -2914,18 +2925,30 @@ export class BrowserAutomation {
 // ---------------------------------------------------------------------------
 
 /**
- * True on an `about:blank` page with an opaque origin: a new tab, or one the
- * browser (not a page) navigated to about:blank. Chrome 158 aborts the whole
- * browser, and every tab in it, when script on such a page adds a
- * `sandbox="allow-scripts"` srcdoc frame while sandboxed frames get their own
- * process (`site_instance_impl.cc` CHECK `has_site_`). An about:blank a page
- * opened or navigated to itself inherits that page's origin and site, so
- * evaluation there stays allowed. Some opaque-origin blank pages that would
+ * True on an `about:` page (about:blank, about:blank#x, about:blank?x). It is
+ * site-less, and Chrome 158 aborts the whole browser, and every tab in it,
+ * when script on a site-less page adds a `sandbox="allow-scripts"` srcdoc
+ * frame while sandboxed frames get their own process (`site_instance_impl.cc`
+ * CHECK `has_site_`). A browser-initiated navigation to any about:blank
+ * address leaves no site; one a page opened or navigated to itself inherits
+ * that page's origin and site, which the browser's report of the context's
+ * origin tells apart ({@link hasSiteOrigin}). Some site-less pages that would
  * not abort are refused too, on every Chrome version: writing throwaway HTML
  * into a blank tab is refused, and the refusal names the HTML reply tools.
  */
-const SITELESS_BLANK_PAGE =
-  "location.href === 'about:blank' && self.origin === 'null'";
+const ABOUT_PAGE = "location.protocol === 'about:'";
+
+/**
+ * Whether the origin the browser reported for a script context is a real
+ * `scheme://host[:port]` origin. An opaque origin reads `://` on Chrome 158;
+ * anything unrecognised, or absent, counts as site-less (fail closed).
+ */
+function hasSiteOrigin(origin: string | undefined): boolean {
+  return (
+    origin !== undefined &&
+    /^[a-z][a-z0-9+.-]*:\/\/[^/:?#]+(:\d+)?$/i.test(origin)
+  );
+}
 
 /**
  * Chromium's answer to a command bound to a script context that no longer

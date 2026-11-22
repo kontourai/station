@@ -87,9 +87,19 @@ new tab and a tab sent to `about:blank` through the address bar or
 opened (`window.open('')`) or navigated to itself inherits that page's site;
 on 158 the same frame loads there without an abort.
 
-`browser_evaluate` first reads whether the main frame is `about:blank` with
-an opaque origin, and refuses with `browser-refused` unless the answer is a
-definite no. The check also refuses opaque-origin blank pages that did not
+`browser_evaluate` first asks the page whether its address is an `about:`
+page (`location.protocol`, which covers `about:blank#x` and `about:blank?x`,
+both site-less and both aborting 158 when a browser-initiated navigation
+reaches them), then decides the origin half from the origin the browser itself
+reports for that script context in `Runtime.executionContextCreated`, which a
+page cannot alter, where the page's own `self.origin` it can. On 158 that
+event reports `://` for a new tab, for `about:blank#x`, and for a `data:`
+page, and the real origin (`http://127.0.0.1:<port>`) for an http page, for a
+page that navigated itself to `about:blank`, and for `window.open('about:blank')`
+from an http page. It refuses with `browser-refused` unless the address is not
+`about:` or the reported origin has a scheme and host; an unanswered check, a
+missing report and an unrecognised origin refuse. The check also refuses
+opaque-origin blank pages that did not
 abort on 158, such as the blank page Station leaves after refusing a page's
 own `blob:` navigation. It applies on every Chrome version, 157 included:
 a version gate would be one more thing to get wrong, and the pinned browser
@@ -110,9 +120,11 @@ A navigation that replaces the document destroys that context, so a script
 sent after it fails ("uniqueContextId not found") and the tool answers that
 the page navigated before the script ran, instead of running it in the new
 document. The check runs in that page world rather than Station's isolated
-world, because only the page world can be bound this way. It still cannot
-be talked out of a refusal: `location` is unforgeable, and a site-less blank
-page has run no page script and is reachable from no other document. On 158,
+world, because only the page world can be bound this way. The
+refusal cannot be talked away from inside the page: the address is the
+document's own `location`, the origin is the browser's report for the same
+context the script is bound to, and a site-less blank page has run no page
+script and is reachable from no other document. On 158,
 300 rounds each of an Agent's trigger racing an address-bar navigation to
 `about:blank` (either order), a Back and a Forward onto such an entry ended
 with no abort; with the binding removed, the Forward race aborted again

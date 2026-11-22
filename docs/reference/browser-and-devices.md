@@ -493,7 +493,7 @@ tab does not change an Agent tool's explicit session target. Empty popups that
 never provide a URL, disallowed URLs and popups beyond the profile's twelve
 live/opening-session bound are closed. The popup's own document request is
 held until the popup is admitted or refused: a refused popup's request is
-failed, so it never loads. A popup not adopted within 15 seconds is closed and
+failed, so its document never loads. Before admission, its opener can still write and run script in the popup's initial blank document; that script runs with the opener's own origin and egress, so it gains nothing, and admission gates the popup's own document request. A popup not adopted within 15 seconds is closed and
 its slot released. Browser policy still denies unsupported
 navigation and Station's own listeners; popup adoption does not grant network
 or Agent authority.

@@ -807,7 +807,10 @@ interface Running {
    */
   closing: Set<string>;
   /** Each target's current main-frame page-world script context. */
-  mainWorlds: Map<string, { id: number; uniqueId: string }>;
+  mainWorlds: Map<
+    string,
+    { id: number; uniqueId: string; origin: string | undefined }
+  >;
   /** One-shot documents this host serves to its own targets' main frames. */
   served: Map<string, string>;
   /** Recently destroyed targets: a late info event must not re-close them. */
@@ -826,6 +829,23 @@ export const SERVED_DOCUMENT_URL = 'http://station-document.invalid/';
 
 /** Destroyed target ids remembered against late `targetInfoChanged` events. */
 const DESTROYED_TARGET_MEMORY = 256;
+
+/**
+ * Closed-but-not-yet-destroyed ids are bounded the same way, oldest dropped.
+ * An id evicted from `closing` is still ignored while `destroyed` holds it.
+ * One evicted from both (256 other closes with no destroyed report for it
+ * since, which a live browser does not do) would, on a late info event, be
+ * treated as an unknown page again: the popup or untracked-page policy then
+ * decides and closes it, the same as for any page this host never saw.
+ */
+const CLOSING_TARGET_MEMORY = 256;
+
+/** Remember a closed target id, dropping the oldest past the bound. */
+function rememberClosing(closing: Set<string>, targetId: string): void {
+  closing.add(targetId);
+  if (closing.size > CLOSING_TARGET_MEMORY)
+    closing.delete(closing.values().next().value!);
+}
 
 /** Grace before an unknown page target (not ours, not a popup) is closed. */
 const UNTRACKED_TARGET_GRACE_MS = 1_000;
@@ -1079,6 +1099,11 @@ export class ChromiumServerHost implements BrowserHost {
     return this.running?.mainWorlds.get(targetId)?.uniqueId;
   }
 
+  mainWorldOrigin(targetId: string, uniqueId: string): string | undefined {
+    const world = this.running?.mainWorlds.get(targetId);
+    return world?.uniqueId === uniqueId ? world.origin : undefined;
+  }
+
   async closeTarget(
     targetId: string,
     origin: CloseOrigin = 'owned-close',
@@ -1088,7 +1113,7 @@ export class ChromiumServerHost implements BrowserHost {
     target?.unsubscribe();
     running.targets.delete(targetId);
     running.created.delete(targetId);
-    running.closing.add(targetId);
+    rememberClosing(running.closing, targetId);
     this.closeDiagnostic(targetId, origin, 'sent');
     try {
       await running.launch.transport.send('Target.closeTarget', { targetId });
@@ -2292,6 +2317,7 @@ export class ChromiumServerHost implements BrowserHost {
             context?: {
               id?: unknown;
               uniqueId?: unknown;
+              origin?: unknown;
               auxData?: { isDefault?: unknown; frameId?: unknown };
             };
           }
@@ -2308,6 +2334,10 @@ export class ChromiumServerHost implements BrowserHost {
         running.mainWorlds.set(targetId, {
           id: context.id,
           uniqueId: context.uniqueId,
+          // The browser's own report of the context's origin, which a page
+          // cannot alter: an opaque origin reads "://".
+          origin:
+            typeof context.origin === 'string' ? context.origin : undefined,
         });
       }),
       transport.on('Runtime.executionContextDestroyed', (params, session) => {

@@ -22,7 +22,7 @@
  * and the case titles name the browser it found.
  */
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -52,42 +52,13 @@ import {
   deriveStationListeners,
   localInterfaceAddresses,
 } from '../station-listeners.js';
+import { playwrightChromium } from './real-chromium-selection.js';
 
 const acquisitionHome = mkdtempSync(join(tmpdir(), 'station-blank-acq-'));
 const acquisitionStatus = new ChromiumAcquisition(
   acquisitionHome,
   defaultChromiumAcquisitionDeps(),
 ).status();
-/**
- * Playwright's installed Chromium (Chrome for Testing) under
- * `PLAYWRIGHT_BROWSERS_PATH`, newest revision first: the pinned browser,
- * which an older system Chrome would otherwise shadow on a workstation.
- */
-function playwrightChromium(): string | undefined {
-  const root = process.env.PLAYWRIGHT_BROWSERS_PATH;
-  if (!root || !existsSync(root)) return undefined;
-  const builds: Record<string, string[]> = {
-    darwin: [
-      'chrome-mac-arm64',
-      'Google Chrome for Testing.app',
-      'Contents',
-      'MacOS',
-      'Google Chrome for Testing',
-    ],
-    linux: ['chrome-linux64', 'chrome'],
-  };
-  const tail = builds[process.platform];
-  if (!tail) return undefined;
-  const revisions = readdirSync(root)
-    .filter((name) => /^chromium-\d+$/.test(name))
-    .sort((a, b) => Number(b.slice(9)) - Number(a.slice(9)));
-  for (const revision of revisions) {
-    const candidate = join(root, revision, ...tail);
-    if (existsSync(candidate)) return candidate;
-  }
-  return undefined;
-}
-
 const executablePath =
   playwrightChromium() ??
   (acquisitionStatus.state === 'found-system'
@@ -300,6 +271,58 @@ describe('browser_evaluate on a blank tab against a real installed Chromium', ()
     expect(await evaluate(site, SANDBOXED_SRCDOC)).toMatchObject({
       ok: false,
       code: 'browser-refused',
+    });
+  }, 120_000);
+
+  test(`a site-less about:blank#x and about:blank?x tab, reached by raw CDP navigation, is refused, and the browser reports an opaque origin for it (browser: ${BROWSER})`, async (ctx) => {
+    if (!executablePath) return ctx.skip(SKIP_REASON);
+    const other = await open(fixtureUrl);
+    const site = await open(`${fixtureUrl}hash`);
+    await answers(site);
+    const target = sessions.liveTarget(site)!.target;
+    const contextOrigin = () => {
+      const world = host?.mainWorld(target.targetId);
+      return world === undefined
+        ? undefined
+        : host?.mainWorldOrigin(target.targetId, world);
+    };
+    // A page's own origin is a real one in the browser's report.
+    expect(contextOrigin()).toBe(fixtureUrl.slice(0, -1));
+    for (const address of ['about:blank#x', 'about:blank?x']) {
+      const before = host?.mainWorld(target.targetId);
+      // The host's policy transport refuses these addresses, as Station's own
+      // inputs cannot reach them; the browser's raw connection does not.
+      const raw = (
+        host as unknown as { running: { launch: { transport: CdpTransport } } }
+      ).running.launch.transport;
+      await raw.send('Page.navigate', { url: address }, target.cdpSessionId);
+      const deadline = Date.now() + 10_000;
+      while (
+        [undefined, before].includes(host?.mainWorld(target.targetId)) &&
+        Date.now() < deadline
+      )
+        await new Promise((r) => setTimeout(r, 20));
+      expect(host?.mainWorld(target.targetId)).not.toBe(before);
+      expect(contextOrigin()).toBe('://');
+      expect(await evaluate(site, SANDBOXED_SRCDOC)).toMatchObject({
+        ok: false,
+        code: 'browser-refused',
+      });
+    }
+    await answers(other);
+  }, 120_000);
+
+  test(`a page on a second hostname (localhost, not 127.0.0.1) runs evaluate, and so does a fixture page after a blank tab was refused (browser: ${BROWSER})`, async (ctx) => {
+    if (!executablePath) return ctx.skip(SKIP_REASON);
+    const localhostUrl = fixtureUrl.replace('127.0.0.1', 'localhost');
+    const page = await open(localhostUrl);
+    expect(await evaluate(page, 'location.origin')).toMatchObject({
+      ok: true,
+      value: JSON.stringify(localhostUrl.slice(0, -1)),
+    });
+    expect(await evaluate(page, SANDBOXED_SRCDOC)).toMatchObject({
+      ok: true,
+      value: '"loaded"',
     });
   }, 120_000);
 

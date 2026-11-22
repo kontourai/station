@@ -39,6 +39,7 @@ import {
   localInterfaceAddresses,
   type StationListeners,
 } from '../station-listeners.js';
+import { playwrightChromium } from './real-chromium-selection.js';
 
 // Only a system install counts; the acquisition's own Station home is a
 // throwaway directory, so a previously downloaded build is never used and
@@ -48,11 +49,14 @@ const acquisitionStatus = new ChromiumAcquisition(
   acquisitionHome,
   defaultChromiumAcquisitionDeps(),
 ).status();
+// Playwright's Chromium under PLAYWRIGHT_BROWSERS_PATH wins, so the pinned
+// Chrome for Testing runs here rather than an older system Chrome.
 const executablePath =
-  acquisitionStatus.state === 'found-system'
+  playwrightChromium() ??
+  (acquisitionStatus.state === 'found-system'
     ? acquisitionStatus.executablePath
-    : undefined;
-const SKIP_REASON = `no installed Google Chrome / Microsoft Edge / Chromium was found (acquisition state: ${acquisitionStatus.state}); this real-browser test never downloads one`;
+    : undefined);
+const SKIP_REASON = `no Playwright Chromium under PLAYWRIGHT_BROWSERS_PATH and no installed Google Chrome / Microsoft Edge / Chromium was found (acquisition state: ${acquisitionStatus.state}); this real-browser test never downloads one`;
 
 function listen(server: Server): Promise<number> {
   return new Promise((resolve) => {
