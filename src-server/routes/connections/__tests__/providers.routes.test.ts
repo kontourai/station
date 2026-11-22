@@ -131,22 +131,29 @@ describe('Provider Routes', () => {
   test('POST and PUT refuse an OpenAI-compatible provider with no server URL', async () => {
     const svc = createMockProviderService();
     const app = createProviderRoutes(svc as any);
-    const send = (method: 'POST' | 'PUT', path: string, baseUrl: string) =>
+    const send = (
+      method: 'POST' | 'PUT',
+      path: string,
+      baseUrl: string | undefined,
+    ) =>
       app.request(path, {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'openai-compat',
           name: 'Compat',
-          config: { baseUrl },
+          // `undefined` drops the key: a config with no `baseUrl` at all.
+          config: baseUrl === undefined ? {} : { baseUrl },
         }),
       });
 
-    const create = await send('POST', '/', ' ');
-    expect(create.status).toBe(400);
-    expect(await json(create)).toMatchObject({
-      code: 'connection_address_required',
-    });
+    for (const baseUrl of ['', ' ', undefined]) {
+      const create = await send('POST', '/', baseUrl);
+      expect(create.status).toBe(400);
+      expect(await json(create)).toMatchObject({
+        code: 'connection_address_required',
+      });
+    }
     expect(svc.listProviderConnections()).toEqual([]);
 
     svc.saveProviderConnection({

@@ -548,8 +548,7 @@ describe('Connection Routes', () => {
       });
     const refusal = {
       success: false,
-      error:
-        'A server URL is required to save this OpenAI-compatible connection.',
+      error: 'A server URL is required to save this connection.',
       code: 'connection_address_required',
     };
 

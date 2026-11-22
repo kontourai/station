@@ -546,7 +546,7 @@ export const rateSchema = z.object({
  */
 export const CONNECTION_ADDRESS_REQUIRED_CODE = 'connection_address_required';
 export const CONNECTION_ADDRESS_REQUIRED_MESSAGE =
-  'A server URL is required to save this OpenAI-compatible connection.';
+  'A server URL is required to save this connection.';
 
 function refuseMissingOpenAICompatAddress(
   data: { type: string; config?: Record<string, unknown> },
@@ -622,13 +622,13 @@ export const connectionSchema = z
       .optional(),
     lastCheckedAt: z.string().nullable().optional(),
   })
+  .superRefine(refuseMissingOpenAICompatAddress)
   // Bedrock's auth-mode discriminant (docs/design/connections-onboarding.md
   // §3.1) is enforced here, not just at the credential-resolution helper: a
   // save must never persist a mode with its required field missing, which
   // would otherwise silently resolve to the default credential chain later
   // (HIGH-2, review fix round). `config` stays a generic `z.record` for
   // every other connection type — this refinement only fires for `bedrock`.
-  .superRefine(refuseMissingOpenAICompatAddress)
   .superRefine((data, ctx) => {
     if (data.type !== 'bedrock') return;
     const authMode = data.config?.authMode;
