@@ -1,0 +1,7 @@
+{
+  "revision": "1f969537d3735b7e015ed450225c0c03e4b9672e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Reworded the refused-source 400: details carries the validation reasons, error names the rule only for a refused source, and a schema failure answers Validation failed. Checked against the validate middleware and the route's failure mapping.","inputs":["docs/reference/api.md"]}
+  ]
+}
