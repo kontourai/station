@@ -276,8 +276,11 @@ decisions are unchanged. With `STATION_QUALIFICATION_SIGNAL=enforce`, a
 known-only run that completed within the 24-hour scheduled-skip window
 replaces the fourteen-hour staleness reason with that line, and a new
 failure is reported as its own reason. It also reports a
-failed scheduled or manual Nightly delivery after its source gate passed. The
-passing gate's completion time and exact source identify qualification health;
+failed scheduled or manual Nightly delivery after its source gate passed.
+A failure in the separate hosted delivery-validation jobs stays open until
+a later qualifying run passes all delivery families. A manual dispatch of
+`main-qualification.yml` can reuse current source qualification and run those
+checks. The passing gate's completion time and exact source identify qualification health;
 a long native build does not make qualification stale by itself.
 
 The same observer reports a missing scheduled Nightly request after four hours
