@@ -198,15 +198,22 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   visible. **Runs on <Station>** opens the Station chooser when another
   permitted destination is available; choosing one continues to its Engine &
   model. Setup, repair and read errors scroll above the composer.
-- **Header.** The dock's title slot (and the phone header) reads **New chat**,
-  **New Task** or **Fork from here** (**Regenerate** or **Edit and resend**
-  for a fork a message action started). A fork starts with the source Agent
-  selected. Moving the pointer over a different Agent or using the arrow keys
-  changes the selection. The start composer's Project chip
-  is the single owner of destination choice; dock headers have no project picker.
-- **Leaving.** Escape, Back, **Cancel return** or Cancel fork dismisses the
+- **Header.** The dock's title slot (and the phone header) reads **New chat**
+  or **New Task**. The start composer's Project chip is the single owner of
+  destination choice; dock headers have no project picker.
+- **Fork.** **Fork from here** (and **Regenerate** or **Edit and resend**,
+  which fork before a message) is not a draft. It opens a compact dialog with
+  the same Agent and model choice as **Switch agent**
+  ([`AgentModelChoice`](../../src-ui/src/components/chat-dock/AgentModelChoice.tsx),
+  [dialog](../../src-ui/src/components/chat-dock/ConversationForkDialog.tsx)):
+  the chat-ready Agents of the chat's workspace, the source Agent first and
+  selected on the source turn's model, one line saying a new chat opens from
+  here, and what carries over under **Details**. Cancel fork stays available
+  while the fork is being created and aborts it; a refusal stays in the
+  dialog so the same choice can retry. The fork keeps the source Project.
+- **Leaving.** Escape, Back or **Cancel return** dismisses the
   draft and hands back its text; on a phone this restores the dock size the
-  draft replaced. Start (and a fork's open) closes it as started before
+  draft replaced. Start closes it as started before
   navigating, opening the chat at the size the dock had, as `focusSession`
   does. Going to another chat (tab, inbox, toast, `?chat=`, history),
   compared by chat identity, leaves the draft and keeps the dock as that
@@ -283,7 +290,8 @@ coding app's default profile, and does not edit saved Agent defaults. Known
 capability incompatibilities remain visible with a refusal reason; live resource
 and adapter delivery checks still decide admission. In an existing conversation,
 changing or resetting the engine opens a compact **Switch engine** (or
-**Switch agent**) picker; on a phone it replaces Agent & model. Its one action
+**Switch agent**) picker, the same Agent and model choice **Fork from here**
+uses; on a phone it replaces Agent & model. Its one action
 switches now, sending the composer's draft as the first turn, prepared like
 any send (mentions, quotes and the size limit), or, with no draft, a fixed
 catch-up turn (the route starts the target Session with a real turn, so
