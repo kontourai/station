@@ -21,6 +21,7 @@ import {
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
   CONVERSATION_FORK_REFUSAL_CODES,
   CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  CONVERSATION_HANDOFF_REFUSAL_CODES,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
 } from './orchestration.js';
 import {
@@ -214,6 +215,12 @@ export const PROVIDER_FAILURE_KINDS = {
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
   // The current Session still has a turn running; the handoff waits for it.
   [CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE]: 'busy',
+  // A handoff that conflicts with the conversation's state
+  // (`CONVERSATION_HANDOFF_REFUSAL_CODES`): the person resolves it first.
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.idempotencyConflict]: 'conflict',
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.awaitingTarget]: 'conflict',
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.sessionChanged]: 'conflict',
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.contextChangePending]: 'conflict',
   // Continuing a conversation on a paired Station: the paired Station refused
   // the import outright (not retryable as sent), refused this Station's
   // credential, or takes imports only from a Station paired as a Station.

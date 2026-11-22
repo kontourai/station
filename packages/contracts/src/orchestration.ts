@@ -1665,6 +1665,27 @@ export const CONVERSATION_HANDOFF_CARRIED_FIELDS = Object.freeze([
 export const CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE =
   'conversation_handoff_predecessor_busy';
 
+/**
+ * Machine codes on a refused Agent/engine handoff beside
+ * {@link CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE}. Each names a state of the
+ * conversation the request conflicts with, so none is worth retrying as sent.
+ */
+export const CONVERSATION_HANDOFF_REFUSAL_CODES = Object.freeze({
+  /** The idempotency key already names a different target or message. */
+  idempotencyConflict: 'conversation_handoff_idempotency_conflict',
+  /**
+   * An earlier handoff is reserved and its target Session has not started;
+   * that handoff must start (or be withdrawn) before another turn or handoff.
+   */
+  awaitingTarget: 'conversation_handoff_awaiting_target',
+  /** A staged handoff named a current Session the conversation has moved past. */
+  sessionChanged: 'conversation_handoff_session_changed',
+  /** A staged handoff met a context change that has not been sent yet. */
+  contextChangePending: 'conversation_handoff_context_change_pending',
+} as const);
+export type ConversationHandoffRefusalCode =
+  (typeof CONVERSATION_HANDOFF_REFUSAL_CODES)[keyof typeof CONVERSATION_HANDOFF_REFUSAL_CODES];
+
 export const CONVERSATION_HANDOFF_RESET_FIELDS = Object.freeze([
   'providerNativeCursor',
   'toolState',

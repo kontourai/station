@@ -1,0 +1,9 @@
+{
+  "revision": "8d861da1494bb0518bd049acf9b2c419a87383ef",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Mapped the four handoff refusal codes to conflict; the contracts failure-kind table now lists them with the fork codes. SDK claims about the closed map hold.","inputs":["packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Mapped the four handoff refusal codes to conflict; the contracts failure-kind table now lists them with the fork codes. SDK claims about the closed map hold.","inputs":["packages/contracts/src/provider-failure.ts"]}
+  ]
+}
