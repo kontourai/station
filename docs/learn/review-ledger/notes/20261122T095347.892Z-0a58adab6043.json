@@ -1,0 +1,7 @@
+{
+  "revision": "3e119df23ae0f56b6e15972f3a27e5bffa9a73d6",
+
+  "notes": [
+    {"path":"docs/guides/web-push-notifications.md","note":"Slice 4.10: router.test.ts changed only the 'Allow once' action label in a fixture. No push claim affected. No prose change.","inputs":["docs/guides/web-push-notifications.md","src-server/services/notifications/delivery/__tests__/router.test.ts"]}
+  ]
+}
