@@ -1228,7 +1228,9 @@ To add skills, choose **Browse Registry Skills** (**Browse Registry** while the
 library is empty) and inspect the available catalog before installing. **Import .md** accepts standalone Markdown skill
 files and reports the outcome of each file. Open an imported skill from its
 result to review and use it. Import does not copy a repository's
-scripts or supporting files. Load plugin packages through Registry.
+scripts or supporting files. Load plugin packages through Registry. A
+front-matter block Station cannot read as a skill header is removed from the
+imported body, and its description is kept when it has one.
 
 When the Station's computer has saved Codex prompts, **Import from Codex…**
 lists them with nothing selected. Tick the ones you want and choose
@@ -1240,7 +1242,9 @@ or `$NAME` are copied as written; Station's own inputs use `{{name}}`, so edit
 the skill if you want Station to ask for them. Station imports up to 32 prompts
 at a time and leaves the Codex files unchanged. **Undo import** removes the
 skills the import created, until you close the import window. Only the Station
-operator can import from Codex.
+operator can import from Codex. **Import from Codex…** is not offered when the
+Codex home or its prompts folder is a symbolic link, as in some dotfiles
+setups.
 
 For a writable skill, **Edit skill** opens its definition and command settings.
 **Back to overview** asks before discarding unsaved edits. Package-owned or
