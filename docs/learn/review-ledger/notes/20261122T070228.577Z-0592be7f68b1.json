@@ -1,0 +1,9 @@
+{
+  "revision": "5b60cfe86e8f2b93211f95b05b11e352489095a8",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The address refusal message is now the same sentence as the UI's and the refinement sits above the Bedrock comment; api.md documents the code, not the sentence, so it remains accurate.","inputs":["src-server/routes/schemas/schema-definitions/runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The address refusal message is now the same sentence as the UI's and the refinement sits above the Bedrock comment; api.md documents the code, not the sentence, so it remains accurate.","inputs":["src-server/routes/schemas/schema-definitions/runtime.ts"]}
+  ]
+}
