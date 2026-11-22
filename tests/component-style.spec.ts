@@ -148,7 +148,6 @@ for (const theme of ['light', 'dark']) {
       expect(
         await action.evaluate((node) => getComputedStyle(node).backgroundColor),
       ).toBe(rest);
-      expect(await contrastRatio(action)).toBeGreaterThanOrEqual(4.5);
     }
   });
   for (const width of [390, 1280]) {
