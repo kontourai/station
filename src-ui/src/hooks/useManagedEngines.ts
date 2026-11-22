@@ -98,7 +98,7 @@ export function useManagedEngines(): ManagedEnginesView | null {
 
 /**
  * The managed-policy state of one engine connection, as the Engines list,
- * the engine detail and the section rail all read it: an ACP connection is
+ * the engine detail and the Customize list all read it: an ACP connection is
  * the policy engine `acp`, and a public-registry ACP agent is refused when the
  * policy turns registry agents off — while its status still reads `ready`.
  */

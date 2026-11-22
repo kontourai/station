@@ -315,6 +315,19 @@ export const RETIRED_USER_TERMS = Object.freeze([
     pattern: /\breset agent context\b/i,
     pending: true,
   },
+  // Navigation area (first-release-navigation.md, slice 1.2): Connections is
+  // no longer a destination, so copy that sends a reader to it or to one of
+  // its tabs names a place that is gone. Enforced: slice 1.2 removed the last
+  // uses. Only the place sense is matched: "open/review/configure in/in/under/
+  // from Connections" and "Connections › <tab>". The bare word, and phrases
+  // such as "set up connections", stay legal: the phone header's Station menu
+  // row is still labelled Connections until the Station page slices.
+  {
+    term: 'Connections as a place',
+    use: 'Customize, its item, or the Station menu',
+    pattern:
+      /\b(?:(?:open|review|configure in|in|under|from) connections\b(?![-\w])|connections\s*[›→>]\s*(?:models|engines|tools|knowledge|computers)\b)/i,
+  },
 ]);
 
 /** The retired user-facing terms the gate enforces today. */

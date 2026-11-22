@@ -1,8 +1,15 @@
 # Connections overhaul and the resource-hub kit
 
-> **Status: proposal, 2026-11-07; owner-directed.** Tracking issue
-> [#4710](https://github.com/kontourai/station/issues/4710). Nothing here is
-> implemented yet. The [Connections guide](../guides/connections.md) remains the
+> **Status: superseded, 2026-11-22.** The
+> [first-release design](first-release.md) replaces this proposal: Connections
+> is no longer a destination, and its parts are items on the Customize page
+> ([`first-release-customize.md`](first-release-customize.md)). Delivery is
+> tracked in [#5386](https://github.com/kontourai/station/issues/5386); this
+> record's epic, [#4710](https://github.com/kontourai/station/issues/4710),
+> continues there. The readiness rules below that the first-release design
+> keeps (one readiness derivation, finite labels, explicit Add) stay true.
+>
+> Earlier status: proposal, 2026-11-07; owner-directed. The [Connections guide](../guides/connections.md) remains the
 > current user journey until each slice lands and updates it. This record keeps
 > the finite readiness labels and explicit-Add rules in
 > [connections onboarding](connections-onboarding.md). It changes one recorded
@@ -37,7 +44,7 @@ Screenshots were not committed; they contain a real account's allowance.
 | Claude Code listed 64 models, including other vendors', while **Connect through** read **Your account**. | The server passes its own environment to engine children ([child-process environment](../../src-server/utils/child-process-environment.ts)). An inherited `ANTHROPIC_BASE_URL` with gateway model discovery made the CLI list that endpoint's catalog. The page does not disclose ambient routing. |
 | Cursor, Kiro CLI and OpenCode were detected but appeared only deep inside **Add engine**. | The Engines list shows connected engines and added-but-unconnected entries, not detected apps. |
 | Nothing told the user that semantic search was off with no embedding model. | [Section signals](../../src-ui/src/views/connections-hub/connection-section-signals.ts) check only the vector database, and the Knowledge page shows the gap as an empty card. |
-| `/connections` opened an empty Models tab. | [The resolver](../../src-ui/src/views/ConnectionsHub.tsx) navigates on first render, before its queries resolve, then falls back to Models. |
+| `/connections` opened an empty Models tab. | The resolver (`ConnectionsHub.tsx`, removed in first-release slice 1.2) navigated on first render, before its queries resolve, then falls back to Models. |
 | Engine usage appears only for Claude Code and Codex. | `/api/analytics/usage-rollup` allow-lists `provider` to `claude` and `codex` ([analytics routes](../../src-server/routes/operations/analytics.ts)). Receipts carry no connection id. ACP adapters record context occupancy and deliberately omit cost. |
 | Engine detail repeats status three times and ends in a long **Advanced** section. | [Engine detail](../../src-ui/src/views/AgentConnectionView.tsx) renders read-only facts as inputs, the catalog as chips and every option in one disclosure. |
 | Computers rows show the UI origin and **Authorized**, nothing about the machine. | [Computer rows](../../src-ui/src/views/connections-hub/computer-rows.ts) hold liveness only for SSH profiles. |

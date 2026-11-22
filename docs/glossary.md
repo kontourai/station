@@ -86,14 +86,24 @@ OpenCode”, never infer the engine from the agent's name.
 
 ## Connections
 
-Within Connections, **Models** and **Engines** cover model and agent setup.
-**The tab owns the noun** (#592): the Models tab's user-facing objects are **Model connections**
+Connections is no longer a destination (first-release slice 1.2). Its parts
+are items on the **Customize** page (`/customize`): **Engines** and
+**Providers** under "What they run on", **Tools** and **Knowledge** under "What
+they can reach", beside **Agents** and **Skills** under "Your agents". Its old
+addresses open the matching item. **Computers** is not a Customize item: it
+keeps `/connections/computers` until the Station page replaces it. "Connection"
+stays the word for a configured model service, engine or tool server.
+
+Within Customize, **Providers** and **Engines** cover model and agent setup.
+**The item owns the noun** (#592): the Providers item still lists **Model connections**
 (list title, add flow, delete confirm — all say "model connection"); the
-Engines tab's objects are **Engines**. "Provider" is no longer a user-facing
-object name anywhere — it survives only as the brand/service word inside
+Engines item's objects are **Engines**. **Providers** is the item's name, as
+the first-release design records; the objects inside it become providers with
+the Providers slices (2.11 to 2.15), and until then "provider" is not an
+object name inside the item. It also survives as the brand/service word inside
 descriptive copy ("Pick the name you recognize…") and as the internal kind
 vocabulary below. People still choose the thing they recognize first and a
-model second; the tabs, not an umbrella noun, do the classifying.
+model second; the items, not an umbrella noun, do the classifying.
 
 The internal connection model retains two kinds where execution needs the
 distinction:
@@ -475,8 +485,9 @@ release delivery.
 |---|---|
 | agent run by Station's engine | **"Station" engine chip** + agent name |
 | agent run by an external engine (incl. ACP) | **engine chip** naming the engine ("Claude Code", "Codex", "OpenCode · GLM-4.7") |
-| A configured LLM endpoint | **Model connection** (Connections › Models) |
-| A configured agent CLI or custom engine | **Engine** (Connections › Engines) |
+| A configured LLM endpoint | **Model connection** (Customize › Providers) |
+| A configured agent CLI or custom engine | **Engine** (Customize › Engines) |
+| The page that lists the agents, what they run on and what they can reach | **Customize** (`/customize`), six items in three groups: **Your agents**, **What they run on**, **What they can reach** |
 | A selectable inference option within a connection | **Model** |
 | This device's saved binding to one Station | **Station** (verbs: Add / Edit / **Forget**) |
 | A project's named view | **Layout** |
@@ -529,8 +540,8 @@ can receive the current marker. The production migration registry is empty.
 See the [schema tests](../packages/shared/src/__tests__/station-home-schema.test.ts)
 and [reset command](reference/cli.md#home-reset) for the separate outcomes.
 
-- **User-facing labels:** the Connections tab owns the noun (#592) — **Model
-  connection** on the Models tab, **Engine** on the Engines tab, **Model** for
+- **User-facing labels:** the Customize item owns the noun (#592) — **Model
+  connection** in Providers, **Engine** in Engines, **Model** for
   the option selected within a connection. Station/external and model/agent
   distinctions remain execution properties.
 - **Guidance → Skills (#2144):** the page a reader reaches at `/guidance` is
@@ -547,7 +558,7 @@ and [reset command](reference/cli.md#home-reset) for the separate outcomes.
   branded types. Synthetic slugs, alias maps, promotion callbacks, and
   load-time identity normalization do not exist.
 - **Engine vocabulary and identity (current):** user-facing labels, engine chips,
-  the Connections hub, and new-chat grouping all name the engine. Persisted Agent
+  the Engines item, and new-chat grouping all name the engine. Persisted Agent
   IDs and engine-connection IDs use the clean grammar in
   `packages/contracts/src/agent-identity.ts`; the branded namespaces may share a
   text ID without becoming interchangeable types. The registry owns default

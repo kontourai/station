@@ -26,7 +26,13 @@ import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 const ROUTES: readonly string[] = [
   '/',
   '/agents',
-  '/connections',
+  '/appearance',
+  '/connections/computers',
+  '/customize',
+  '/customize/engines',
+  '/customize/knowledge',
+  '/customize/providers',
+  '/customize/tools',
   '/developer',
   '/developer/telemetry',
   '/guidance',
@@ -48,7 +54,7 @@ const SPLIT_PANE_ROUTES: ReadonlyArray<{ path: string; item: string }> = [
   { path: '/agents', item: 'E2E Sweep Agent' },
   { path: '/guidance?tab=skills', item: 'e2e-sweep-skill' },
   // The built-in tool server every runtime registers, so no seed is needed.
-  { path: '/connections/tools', item: 'Station Control' },
+  { path: '/customize/tools', item: 'Station Control' },
 ];
 
 const SWEEP_AGENT_SLUG = 'e2e-sweep-agent';

@@ -204,7 +204,7 @@ export function StartAgentMenu({
               label="Nothing to chat with yet"
               description={NO_AGENT_SETUP_HINT}
               action={
-                <Button onClick={onSetUpConnections}>Set up Connections</Button>
+                <Button onClick={onSetUpConnections}>Open Customize</Button>
               }
             />
           ))}

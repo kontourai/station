@@ -437,10 +437,10 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
   // was a single click that removed the connection and its saved API key from
   // disk with no confirmation of any kind.
   test('provider delete confirms, then leaves a dirty deleted connection without another discard decision', () => {
-    navigationStore.navigate('/connections/models/anthropic-1');
+    navigationStore.navigate('/customize/providers/anthropic-1');
     onNavigate.mockImplementation((view) => {
       if (view.type === 'connections-models') {
-        navigationStore.navigate('/connections/models');
+        navigationStore.navigate('/customize/providers');
       }
     });
     modelConnections = [
@@ -480,7 +480,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       'value',
       'Unsaved name',
     );
-    expect(window.location.pathname).toBe('/connections/models/anthropic-1');
+    expect(window.location.pathname).toBe('/customize/providers/anthropic-1');
 
     fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
     fireEvent.click(
@@ -504,11 +504,11 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       'value',
       'Unsaved name',
     );
-    act(() => navigationStore.navigate('/connections/models'));
+    act(() => navigationStore.navigate('/customize/providers'));
     expect(
       screen.getByRole('dialog', { name: 'Unsaved Changes' }),
     ).toBeTruthy();
-    expect(window.location.pathname).toBe('/connections/models/anthropic-1');
+    expect(window.location.pathname).toBe('/customize/providers/anthropic-1');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByLabelText('Name')).toHaveProperty(
       'value',
@@ -528,7 +528,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       deleteMutationOptions.onSuccess!(undefined, 'anthropic-1');
     });
 
-    expect(window.location.pathname).toBe('/connections/models');
+    expect(window.location.pathname).toBe('/customize/providers');
     expect(
       screen.queryByRole('dialog', { name: 'Unsaved Changes' }),
     ).toBeNull();
@@ -553,7 +553,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         first,
         { ...first, id: 'anthropic-2', name: 'Second model' },
       ];
-      navigationStore.navigate('/connections/models/anthropic-1');
+      navigationStore.navigate('/customize/providers/anthropic-1');
       const view = render(<ModelSelectionFromNavigation />);
 
       fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
@@ -571,7 +571,7 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
       expect(screen.queryByRole('alertdialog')).toBeNull();
 
       fireEvent.click(screen.getByText('Second model'));
-      expect(window.location.pathname).toBe('/connections/models/anthropic-2');
+      expect(window.location.pathname).toBe('/customize/providers/anthropic-2');
       fireEvent.change(screen.getByLabelText('Name'), {
         target: { value: 'Second model draft' },
       });
@@ -593,14 +593,14 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
         'value',
         'Second model draft',
       );
-      expect(window.location.pathname).toBe('/connections/models/anthropic-2');
+      expect(window.location.pathname).toBe('/customize/providers/anthropic-2');
       expect(screen.queryByText('Old deletion refused')).toBeNull();
-      act(() => navigationStore.navigate('/connections/models'));
+      act(() => navigationStore.navigate('/customize/providers'));
       expect(
         screen.getByRole('dialog', { name: 'Unsaved Changes' }),
       ).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-      expect(window.location.pathname).toBe('/connections/models/anthropic-2');
+      expect(window.location.pathname).toBe('/customize/providers/anthropic-2');
       expect(screen.getByLabelText('Name')).toHaveProperty(
         'value',
         'Second model draft',

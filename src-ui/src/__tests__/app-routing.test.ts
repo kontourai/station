@@ -25,9 +25,9 @@ const LEGACY_PATH_CASES = [
   ['/developer/config', '/settings'],
   // archive#3313: Feature Previews retired into a Settings section.
   ['/feature-previews', '/settings?view=feature-previews'],
-  ['/developer/storage', '/connections/knowledge'],
-  ['/developer/mcp', '/connections/tools'],
-  ['/developer/mcp/example', '/connections/tools/example'],
+  ['/developer/storage', '/customize/knowledge'],
+  ['/developer/mcp', '/customize/tools'],
+  ['/developer/mcp/example', '/customize/tools/example'],
   ['/agents/planner/tools', '/agents/planner'],
   ['/agents/planner/workflows', '/agents/planner'],
   // Playbooks are Skills: the retired paths land on the surface that absorbed
@@ -38,8 +38,8 @@ const LEGACY_PATH_CASES = [
   ['/playbooks/release-review', '/guidance/release-review?tab=skills'],
   ['/skills', '/guidance?tab=skills'],
   ['/skills/code-review', '/guidance/code-review?tab=skills'],
-  ['/integrations', '/connections/tools'],
-  ['/integrations/example', '/connections/tools/example'],
+  ['/integrations', '/customize/tools'],
+  ['/integrations/example', '/customize/tools/example'],
   ['/monitoring', '/developer/telemetry'],
   ['/sys/monitoring', '/developer/telemetry'],
   ['/sys/schedule', '/automations'],
@@ -82,19 +82,37 @@ const LEGACY_PATH_CASES = [
   ['/manage/prompts/release-review', '/guidance/release-review?tab=skills'],
   ['/manage/plugins', '/plugins'],
   ['/manage/plugins/example', '/plugins/example'],
-  ['/manage/integrations', '/connections/tools'],
-  ['/manage/integrations/example', '/connections/tools/example'],
-  ['/manage/providers', '/connections/models'],
-  ['/manage/providers/example', '/connections/models/example'],
-  ['/tools', '/connections/tools'],
-  ['/connections/providers', '/connections/models'],
-  ['/connections/providers/example', '/connections/models/example'],
-  ['/connections/agent-apps', '/connections/engines'],
-  ['/connections/agent-apps/example', '/connections/engines/example'],
-  ['/connections/agents', '/connections/engines'],
-  ['/connections/agents/example', '/connections/engines/example'],
-  ['/connections/acp', '/connections/engines'],
+  ['/manage/integrations', '/customize/tools'],
+  ['/manage/integrations/example', '/customize/tools/example'],
+  ['/manage/providers', '/customize/providers'],
+  ['/manage/providers/example', '/customize/providers/example'],
+  ['/tools', '/customize/tools'],
+  ['/connections/providers', '/customize/providers'],
+  ['/connections/providers/example', '/customize/providers/example'],
+  ['/connections/agent-apps', '/customize/engines'],
+  ['/connections/agent-apps/example', '/customize/engines/example'],
+  ['/connections/agents', '/customize/engines'],
+  ['/connections/agents/example', '/customize/engines/example'],
+  ['/connections/acp', '/customize/engines'],
   ['/connections/environments', '/connections/computers'],
+  // Connections is no longer a destination: its old addresses land on the
+  // matching Customize item, and the bare address on Customize itself.
+  ['/connections', '/customize'],
+  ['/connections/', '/customize'],
+  ['/connections?environment=x', '/customize?environment=x'],
+  ['/connections?section=models', '/customize/providers'],
+  ['/connections?section=engines&dock=open', '/customize/engines?dock=open'],
+  ['/connections?section=knowledge', '/customize/knowledge'],
+  ['/connections?section=computers', '/connections/computers'],
+  ['/connections/models', '/customize/providers'],
+  ['/connections/models/example', '/customize/providers/example'],
+  ['/connections/engines', '/customize/engines'],
+  ['/connections/engines/claude/usage', '/customize/engines/claude/usage'],
+  ['/connections/engines/new/opencode', '/customize/engines/new/opencode'],
+  ['/connections/tools', '/customize/tools'],
+  ['/connections/tools/example', '/customize/tools/example'],
+  ['/connections/knowledge', '/customize/knowledge'],
+  ['/connections/acp/new/opencode', '/customize/engines/new/opencode'],
 ] as const;
 
 const CANONICAL_VIEWS = [
@@ -103,7 +121,7 @@ const CANONICAL_VIEWS = [
   { type: 'agent-new' },
   { type: 'agent-edit', slug: 'planner' },
   { type: 'guidance', tab: 'skills', selectedId: 'code review' },
-  { type: 'connections' },
+  { type: 'customize' },
   { type: 'connections-models' },
   { type: 'connections-model-edit', id: 'provider' },
   { type: 'connections-engine-new', providerId: 'custom' },
@@ -205,10 +223,10 @@ describe('app-shell routing', () => {
 
   test.each([
     ['/developer/config', '/settings'],
-    ['/developer/storage', '/connections/knowledge'],
-    ['/developer/mcp', '/connections/tools'],
-    ['/developer/mcp/new', '/connections/tools/new'],
-    ['/developer/mcp/example%20server', '/connections/tools/example%20server'],
+    ['/developer/storage', '/customize/knowledge'],
+    ['/developer/mcp', '/customize/tools'],
+    ['/developer/mcp/new', '/customize/tools/new'],
+    ['/developer/mcp/example%20server', '/customize/tools/example%20server'],
   ])('redirects retired developer path %s to %s', (legacy, canonical) => {
     expect(getLegacyPathRedirect(legacy)).toBe(canonical);
   });
@@ -216,7 +234,7 @@ describe('app-shell routing', () => {
   test.each([
     [
       '/developer/mcp/example?source=notification',
-      '/connections/tools/example?source=notification',
+      '/customize/tools/example?source=notification',
     ],
     ['/developer/config?foo=bar', '/settings?foo=bar'],
     [
@@ -237,7 +255,7 @@ describe('app-shell routing', () => {
     ],
     [
       '/connections/agents/claude?source=notification',
-      '/connections/engines/claude?source=notification',
+      '/customize/engines/claude?source=notification',
     ],
   ])(
     'preserves search while redirecting legacy path %s',
@@ -284,7 +302,7 @@ describe('app-shell routing', () => {
   // siblings.
   test.each([
     ['agents'],
-    ['connections'],
+    ['customize'],
     ['guidance'],
     ['plugins'],
     ['developer'],
@@ -302,8 +320,12 @@ describe('app-shell routing', () => {
   // the same change and unpinned; the connections pair now matches the siblings
   // it belongs with rather than jumping to Home from two levels down.
   test('getParentView declares the parents the Home fallback used to supply', () => {
-    expect(getParentView({ type: 'connections-computers' })).toEqual({
-      type: 'connections',
+    // Computers is not a Customize item, and the Station page that will be
+    // its parent does not exist yet.
+    expect(getParentView({ type: 'connections-computers' })).toBeNull();
+    // A Customize item's parent is Customize.
+    expect(getParentView({ type: 'connections-knowledge' })).toEqual({
+      type: 'customize',
     });
     expect(
       getParentView({ type: 'connections-engine-new', providerId: 'ollama' }),
@@ -323,18 +345,18 @@ describe('app-shell routing', () => {
   });
   test('resolveViewFromPath maps agent, connection, and project routes', () => {
     expect(resolveViewFromPath('/agents/new')).toEqual({ type: 'agent-new' });
-    expect(resolveViewFromPath('/connections/models/demo')).toEqual({
+    expect(resolveViewFromPath('/customize/providers/demo')).toEqual({
       type: 'connections-model-edit',
       id: 'demo',
     });
-    expect(resolveViewFromPath('/connections/engines')).toEqual({
+    expect(resolveViewFromPath('/customize/engines')).toEqual({
       type: 'connections-engines',
     });
     // #592 slice 2: `connections-acp` (the plain, id-less route) retired —
     // `/connections/acp` only ever resolves here (a genuine 404) when a
     // caller skips `getLegacyPathRedirect`, which every real navigation runs
     // first (see the LEGACY_PATH_CASES row above canonicalising it to
-    // `/connections/engines`).
+    // `/customize/engines`).
     expect(resolveViewFromPath('/connections/acp')).toEqual({
       type: 'not-found',
       path: '/connections/acp',
@@ -749,60 +771,62 @@ describe('app-shell routing', () => {
 
   test('getPathForView emits the canonical route for Models and Agent apps', () => {
     expect(getPathForView({ type: 'connections-models' })).toBe(
-      '/connections/models',
+      '/customize/providers',
     );
     expect(getPathForView({ type: 'connections-model-edit', id: 'demo' })).toBe(
-      '/connections/models/demo',
+      '/customize/providers/demo',
     );
     expect(getPathForView({ type: 'connections-engines' })).toBe(
-      '/connections/engines',
+      '/customize/engines',
     );
     expect(
       getPathForView({ type: 'connections-engine-edit', id: 'demo' }),
-    ).toBe('/connections/engines/demo');
+    ).toBe('/customize/engines/demo');
   });
 
   test('an engine detail takes an allow-listed tab segment; any other is not found', () => {
-    expect(resolveViewFromPath('/connections/engines/claude/accounts')).toEqual(
-      { type: 'connections-engine-edit', id: 'claude', tab: 'accounts' },
-    );
+    expect(resolveViewFromPath('/customize/engines/claude/accounts')).toEqual({
+      type: 'connections-engine-edit',
+      id: 'claude',
+      tab: 'accounts',
+    });
     expect(
       getPathForView({
         type: 'connections-engine-edit',
         id: 'claude',
         tab: 'accounts',
       }),
-    ).toBe('/connections/engines/claude/accounts');
+    ).toBe('/customize/engines/claude/accounts');
     // The 4th segment used to be dropped silently.
     for (const path of [
-      '/connections/engines/claude/bogus',
-      '/connections/engines/claude/usage/extra',
+      '/customize/engines/claude/bogus',
+      '/customize/engines/claude/usage/extra',
     ])
       expect(resolveViewFromPath(path)).toEqual({ type: 'not-found', path });
     // No tab, or a trailing slash, is the detail itself.
     for (const path of [
-      '/connections/engines/claude',
-      '/connections/engines/claude/',
+      '/customize/engines/claude',
+      '/customize/engines/claude/',
     ])
       expect(resolveViewFromPath(path)).toEqual({
         type: 'connections-engine-edit',
         id: 'claude',
       });
     // A trailing slash is the same route, with a tab too.
-    expect(resolveViewFromPath('/connections/engines/claude/usage/')).toEqual({
+    expect(resolveViewFromPath('/customize/engines/claude/usage/')).toEqual({
       type: 'connections-engine-edit',
       id: 'claude',
       tab: 'usage',
     });
     expect(
       getPathForView({ type: 'connections-engine-edit', id: 'team/engine' }),
-    ).toBe('/connections/engines/team%2Fengine');
+    ).toBe('/customize/engines/team%2Fengine');
     // The add flow's deep link is not an engine id with a tab.
-    expect(resolveViewFromPath('/connections/engines/new/opencode')).toEqual({
+    expect(resolveViewFromPath('/customize/engines/new/opencode')).toEqual({
       type: 'connections-engine-new',
       providerId: 'opencode',
     });
-    expect(resolveViewFromPath('/connections/engines/new')).toEqual({
+    expect(resolveViewFromPath('/customize/engines/new')).toEqual({
       type: 'connections-engine-edit',
       id: 'new',
     });

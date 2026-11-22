@@ -1,0 +1,7 @@
+{
+  "revision": "3812d62c7f0613e06de5d6a625c885e5c396d870",
+
+  "notes": [
+    {"path":"docs/design/shell-skeletons.md","note":"Slice 1.2 follow-up: the port table and section 3.1 now name ConnectionsHub.tsx as removed instead of linking a path that no longer exists; the rest of the slice 1.2 review stands.","inputs":["docs/design/shell-skeletons.md"]}
+  ]
+}

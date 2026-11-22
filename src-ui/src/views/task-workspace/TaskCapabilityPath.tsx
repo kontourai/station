@@ -301,7 +301,7 @@ function SourceTools({
           </p>
         )}
         {source.installed && !source.enabled && (
-          <p>Check this source in Connections.</p>
+          <p>Check this source in Customize.</p>
         )}
         {!source.permitted && (
           <p>

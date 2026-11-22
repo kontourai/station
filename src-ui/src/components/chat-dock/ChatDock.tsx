@@ -175,6 +175,7 @@ import {
   isSessionWorkActive,
 } from '../../utils/execution';
 import { displayProvider, sessionTitle } from '../../utils/sessionDisplay';
+import { COMPUTERS_PATH } from '../../views/connections-hub/connection-sections';
 import { withConversationInventory } from '../../views/home/conversation-inventory-facts';
 import {
   isCurrentInboxItem,
@@ -246,7 +247,6 @@ import { claimComposerDraftRequest } from './composerDraftRequest';
 import type { ConversationOpenRecovery } from './conversationOpenController';
 import { conversationRefusalMessage } from './conversationRefusalCopy';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
-
 import { NewChatUnavailableError } from './newChatErrors';
 import {
   activateProjectChat,
@@ -3131,7 +3131,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
       focusRemote: ({ sourceInstanceId }) => {
         collapseDockForNavigation();
         navigate(
-          `/connections?environment=${encodeURIComponent(sourceInstanceId)}`,
+          `${COMPUTERS_PATH}?environment=${encodeURIComponent(sourceInstanceId)}`,
         );
       },
     });

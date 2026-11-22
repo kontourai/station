@@ -440,7 +440,7 @@ export function ProviderSettingsView({
   // 6-OPS-27: the list rail used to carry no readiness at all — a green dot
   // meaning `enabled` — while the hub card for the same connection asserted
   // "Ready". One derivation now feeds the row badge, the hub card and the
-  // section rail.
+  // Customize list.
   const items = filtered.map((p) => {
     const described = describeProvider(p);
     return resourceRow({
@@ -481,15 +481,15 @@ export function ProviderSettingsView({
       listClassName="entrance-stagger"
       label={
         selectedProviderId && !isCreatingSelection
-          ? 'Connections / Models / Edit'
-          : 'Connections / Models'
+          ? 'Customize / Providers / Edit'
+          : 'Customize / Providers'
       }
       // FLAGGED FOR CLEANUP (archive#4463): `breadcrumbLinks`
       // is looked up per SEGMENT (`seg.toLowerCase` against one word from
       // the split trail), so this compound key ('connections / providers')
       // can never match any single segment and this handler is dead. Harmless
       // today — this view's live route always renders inside
-      // `ConnectionsSectionFrame`'s `PageHeaderScope`, which suppresses this
+      // `CustomizeSectionFrame`'s `PageHeaderScope`, which suppresses this
       // component's own header/breadcrumb entirely — but worth fixing (or
       // removing) the next time this file is touched.
       breadcrumbLinks={

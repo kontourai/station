@@ -1,0 +1,27 @@
+{
+  "revision": "75a5320c831fd3eb899c0761ff745834e310a728",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked: the cited change restores four palette keywords on Customize destinations and rewords two copy strings (CLI doctor \"Change the default path in Customize\", connections timeout \"Open Customize again shortly\"); grep found no claim here about those keywords or strings.","inputs":["docs/architecture/module-map.md","src-server/routes/connections/connections.ts","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/design/pane-or-shell.md","note":"Checked: the cited change restores four palette keywords on Customize destinations and rewords two copy strings (CLI doctor \"Change the default path in Customize\", connections timeout \"Open Customize again shortly\"); grep found no claim here about those keywords or strings.","inputs":["docs/design/pane-or-shell.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked: the cited change restores four palette keywords on Customize destinations and rewords two copy strings (CLI doctor \"Change the default path in Customize\", connections timeout \"Open Customize again shortly\"); grep found no claim here about those keywords or strings.","inputs":["docs/design/placement.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked: the registry change restores palette keywords (tool servers, acp, search, set up) for Customize items; the glossary's palette-keyword claim (guidance) and Customize entries are unaffected.","inputs":["docs/glossary.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Checked: the cited change restores four palette keywords on Customize destinations and rewords two copy strings (CLI doctor \"Change the default path in Customize\", connections timeout \"Open Customize again shortly\"); grep found no claim here about those keywords or strings.","inputs":["docs/guides/feature-previews.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Checked: the cited change restores four palette keywords on Customize destinations and rewords two copy strings (CLI doctor \"Change the default path in Customize\", connections timeout \"Open Customize again shortly\"); grep found no claim here about those keywords or strings.","inputs":["docs/guides/native-shell-verification.md","packages/cli/src/commands/lifecycle-doctor.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Checked: the cited change restores four palette keywords on Customize destinations and rewords two copy strings (CLI doctor \"Change the default path in Customize\", connections timeout \"Open Customize again shortly\"); grep found no claim here about those keywords or strings.","inputs":["docs/plans/whole-app-ux-campaign.md","src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked: the connections route change only rewords the 504 timeout error text (now \"Open Customize again shortly\"); this page documents the code connection_inventory_timed_out, the deadline and the empty payload, all unchanged.","inputs":["docs/reference/api.md","src-server/routes/connections/connections.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked: the cited change restores four palette keywords on Customize destinations and rewords two copy strings (CLI doctor \"Change the default path in Customize\", connections timeout \"Open Customize again shortly\"); grep found no claim here about those keywords or strings.","inputs":["docs/user/concepts.md","packages/cli/src/commands/lifecycle-doctor.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked: the cited change restores four palette keywords on Customize destinations and rewords two copy strings (CLI doctor \"Change the default path in Customize\", connections timeout \"Open Customize again shortly\"); grep found no claim here about those keywords or strings.","inputs":["docs/user/getting-started.md","packages/cli/src/commands/lifecycle-doctor.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Checked: the cited change restores four palette keywords on Customize destinations and rewords two copy strings (CLI doctor \"Change the default path in Customize\", connections timeout \"Open Customize again shortly\"); grep found no claim here about those keywords or strings.","inputs":["docs/user/native-recovery.md","packages/cli/src/commands/lifecycle-doctor.ts"]}
+  ]
+}

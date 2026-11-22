@@ -3090,7 +3090,7 @@ async function readConnection(
           ? `: ${blockers}`
           : // No prerequisite is recorded (a failed smoke, say): a fixed next
             // step, never the connection's own free text.
-            `. Check this connection in Connections or run \`station connections test ${id}\``
+            `. Check this connection in Customize → Engines or run \`station connections test ${id}\``
       }`,
     );
   }
@@ -3099,7 +3099,7 @@ async function readConnection(
 
 function connectionUnavailableReason(connection: AgentConnectionView): string {
   if (!connection.enabled || connection.status === 'disabled') {
-    return 'Enable this engine connection in Connections before delegating work.';
+    return 'Enable this engine connection in Customize → Engines before delegating work.';
   }
   if (!connection.capabilities.includes('agent-runtime')) {
     return 'This connection does not provide an agent runtime.';
@@ -3108,7 +3108,7 @@ function connectionUnavailableReason(connection: AgentConnectionView): string {
     return 'Install the required runtime and finish its setup first.';
   }
   if (connection.status === 'error') {
-    return 'Review this engine connection in Connections and resolve its error first.';
+    return 'Review this engine connection in Customize → Engines and resolve its error first.';
   }
   return 'Finish setting up this engine connection before delegating work.';
 }

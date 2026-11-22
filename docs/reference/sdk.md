@@ -1476,7 +1476,7 @@ See [operator passkeys](../guides/operator-passkeys.md#change-device-access-from
 
 #### `useConnectionsQuery()`
 
-Returns the merged Connections list used by the Connections hub. The result includes both model and runtime rows from `GET /api/connections`.
+Returns the merged connections list that Customize's connection items read. The result includes both model and runtime rows from `GET /api/connections`.
 
 #### `useModelConnectionsQuery()`
 
@@ -1499,7 +1499,7 @@ Rows can expose model-catalog metadata on `runtimeCatalog`, including:
 - `builtInModels` — Station's bounded built-in entries when live enumeration is unavailable
 - `reason`, `fetchedAt`, and `truncated` — catalog status and completeness metadata
 
-Current callers include `ConnectionsHub`, `AgentConnectionView`, `EnginePicker`
+Current callers include `AgentConnectionView`, `EnginePicker`
 and `AgentEditorForm`. Built-in candidates are not proof that an engine currently
 offers a model; preserve the catalog source and availability when presenting them.
 

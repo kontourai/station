@@ -350,7 +350,7 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
     fireEvent.click(action);
     expect(navigateSpy).toHaveBeenCalledWith(
-      '/connections/engines/factory-droid',
+      '/customize/engines/factory-droid',
     );
     expect(onNewChat).not.toHaveBeenCalled();
   });
@@ -376,7 +376,7 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
     expect(screen.getByText(/Sign in to this tool integration/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
     fireEvent.click(action);
-    expect(navigateSpy).toHaveBeenCalledWith('/connections/tools');
+    expect(navigateSpy).toHaveBeenCalledWith('/customize/tools');
   });
 
   test('an expired OAuth session offers Switch agent, not Send again, and hides stderr behind Details', async () => {

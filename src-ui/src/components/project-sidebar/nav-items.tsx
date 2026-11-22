@@ -19,6 +19,13 @@ function sidebarIcon(children: ReactNode): ReactNode {
   );
 }
 
+const PLUGINS_ICON = sidebarIcon(
+  <>
+    <path d="M12 2v4m0 12v4M2 12h4m12 0h4" />
+    <circle cx="12" cy="12" r="3" />
+  </>,
+);
+
 const DESTINATION_ICONS: Readonly<Record<DestinationIconId, ReactNode>> = {
   agents: sidebarIcon(
     <>
@@ -45,18 +52,9 @@ const DESTINATION_ICONS: Readonly<Record<DestinationIconId, ReactNode>> = {
       <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
     </>,
   ),
-  connections: sidebarIcon(
-    <>
-      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-    </>,
-  ),
-  plugins: sidebarIcon(
-    <>
-      <path d="M12 2v4m0 12v4M2 12h4m12 0h4" />
-      <circle cx="12" cy="12" r="3" />
-    </>,
-  ),
+  plugins: PLUGINS_ICON,
+  // The same mark the sidebar footer's Customize button has always shown.
+  customize: PLUGINS_ICON,
   notifications: sidebarIcon(
     <>
       <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />

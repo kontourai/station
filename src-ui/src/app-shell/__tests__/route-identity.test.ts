@@ -157,7 +157,7 @@ describe('routeIdentity', () => {
       { type: 'home' },
       { type: 'agents' },
       { type: 'agent-new' },
-      { type: 'connections' },
+      { type: 'customize' },
       { type: 'connections-models' },
       { type: 'connections-engines' },
       { type: 'connections-tools' },

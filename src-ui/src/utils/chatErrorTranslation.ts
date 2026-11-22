@@ -673,7 +673,7 @@ export function translateChatError(
       title: 'Sign in to this tool integration',
       body: text,
       // "→" matches the server's own sign-in body this hint sits under.
-      hint: 'Open Connections → Tools, sign in to the integration, then try again.',
+      hint: 'Open Customize › Tools, sign in to the integration, then try again.',
       retryable: false,
     };
 
@@ -681,16 +681,16 @@ export function translateChatError(
     return {
       title: 'Sign in to this engine',
       body: text || 'This engine needs you to sign in before it can run.',
-      hint: "Sign in from the engine's page in Connections, then start a new chat.",
+      hint: "Sign in from the engine's page in Customize, then start a new chat.",
       // Signing in lets the engine run later turns; it does not resend this
       // one, and without a new chat this conversation is where they go.
       callerHints: {
         noSend: true,
         noNewChat:
-          "Signing in from the engine's page in Connections lets this engine run again. It does not resend this message.",
+          "Signing in from the engine's page in Customize lets this engine run again. It does not resend this message.",
         // No "resend" even in the negative: this caller cannot send at all.
         neither:
-          "Signing in from the engine's page in Connections lets this engine run again. This message is not delivered by signing in.",
+          "Signing in from the engine's page in Customize lets this engine run again. This message is not delivered by signing in.",
       },
       retryable: false,
     };
@@ -802,7 +802,7 @@ export function translateChatError(
     return {
       title: 'Model connection credentials were rejected',
       body: 'The credentials for this Model connection are invalid or have expired.',
-      hint: 'Open Connections › Models, update the access key, secret, or token for this connection, then retry.',
+      hint: 'Open Customize › Providers, update the access key, secret, or token for this connection, then retry.',
     };
   }
 

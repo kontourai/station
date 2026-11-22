@@ -178,7 +178,7 @@ export function KnowledgeStoreSection({
           <button
             type="button"
             className="button button--link"
-            onClick={() => navigate('/connections/knowledge')}
+            onClick={() => navigate('/customize/knowledge')}
           >
             Open Knowledge infrastructure
           </button>

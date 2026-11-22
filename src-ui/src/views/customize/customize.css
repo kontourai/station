@@ -1,0 +1,151 @@
+.customize-nav {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  padding: var(--k-space-6) var(--k-space-3);
+}
+
+.customize-nav__title {
+  margin: 0 0 var(--k-space-3);
+  padding: 0 var(--k-space-3);
+  color: var(--k-text);
+  font-size: var(--k-text-lg);
+  font-weight: 600;
+}
+
+.customize-nav__group {
+  margin-top: var(--k-space-4);
+}
+
+.customize-nav__group-label {
+  margin: 0 0 var(--k-space-1);
+  padding: 0 var(--k-space-3);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-xs);
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.customize-nav__list,
+.customize-landing__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.customize-nav__item,
+.customize-landing__item {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-3);
+  min-height: 2.5rem;
+  padding: var(--k-space-2) var(--k-space-3);
+  border-radius: var(--k-radius-md);
+  color: var(--k-text);
+  text-decoration: none;
+}
+
+.customize-nav__item:hover,
+.customize-landing__item:hover {
+  background: var(--k-panel-raised);
+}
+
+.customize-nav__item:focus-visible,
+.customize-landing__item:focus-visible {
+  outline: var(--k-focus-ring-width) solid var(--k-focus);
+  outline-offset: var(--k-focus-ring-offset);
+}
+
+.customize-nav__item[aria-current="page"] {
+  background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
+  color: var(--k-action);
+}
+
+.customize-nav__item > svg,
+.customize-landing__item > svg {
+  flex: none;
+  color: var(--k-text-muted);
+}
+
+.customize-nav__item[aria-current="page"] > svg {
+  color: currentColor;
+}
+
+.customize-item__label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.customize-item__dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--k-caution);
+}
+
+.customize-item__count {
+  flex: none;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.customize-landing {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-6);
+  max-width: 48rem;
+}
+
+.customize-landing__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--k-space-1) var(--k-space-3);
+  margin: 0 0 var(--k-space-2);
+  color: var(--k-text);
+  font-size: var(--k-text-md);
+  font-weight: 600;
+}
+
+.customize-landing__description {
+  color: var(--k-text-muted);
+  font-weight: 400;
+}
+
+.customize-landing__list {
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+  padding: var(--k-space-1);
+}
+
+.customize-landing__item {
+  min-height: var(--touch-target-min, 2.5rem);
+}
+
+.customize-landing__chevron {
+  flex: none;
+  color: var(--k-text-muted);
+}
+
+.customize-landing__note {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.customize-landing__note a {
+  display: inline-flex;
+  align-items: center;
+  /* A way in on a phone, so it gets the touch floor there. */
+  min-block-size: var(--touch-target-min, 0px);
+  color: var(--k-action);
+}

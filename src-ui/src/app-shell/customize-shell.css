@@ -1,0 +1,28 @@
+/* The Customize page: a left list beside the routed page. A flow page grows
+   and `.content-view` scrolls it; a fill page takes the outlet's height. */
+.customize-shell {
+  display: flex;
+  flex: 1 0 auto;
+}
+
+.customize-shell--fill {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.customize-shell__nav {
+  flex: 0 0 15rem;
+  border-right: var(--k-border-thin) solid var(--k-line);
+  background: var(--k-panel);
+}
+
+.customize-shell__main {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.customize-shell--fill .customize-shell__main {
+  min-height: 0;
+}

@@ -402,12 +402,12 @@ test.describe('Schedule Page', () => {
     await dialog
       .getByRole('button', { name: 'Repair this agent’s setup' })
       .click();
-    await expect(page).toHaveURL(/\/connections\/models$/);
+    await expect(page).toHaveURL(/\/customize\/providers$/);
     await expect(dialog).not.toBeVisible();
     await page
       .getByRole('button', { name: 'My local model', exact: true })
       .click();
-    await expect(page).toHaveURL(/\/connections\/models\/existing-model$/);
+    await expect(page).toHaveURL(/\/customize\/providers\/existing-model$/);
     await page
       .getByRole('textbox', { name: 'Base URL', exact: true })
       .fill('http://127.0.0.1:11435');

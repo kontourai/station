@@ -113,7 +113,7 @@ interface AgentConnectionViewProps {
   selectedRuntimeId?: EngineConnectionId | string;
   /**
    * With the add route: the catalogue entry to open on its confirm step
-   * (`/connections/engines/new/<id>`; `custom` opens the custom form).
+   * (`/customize/engines/new/<id>`; `custom` opens the custom form).
    */
   addChoiceId?: string;
   /** Agents, for an engine's connection details. */
@@ -153,7 +153,7 @@ export function AgentConnectionView({
   const [error, setError] = useState<string | null>(null);
   /**
    * The section frame owns this section's single add action (design P3), and
-   * it navigates to `/connections/engines/new` rather than reaching into this
+   * it navigates to `/customize/engines/new` rather than reaching into this
    * component's state. `new` is not a connection id: it selects nothing, and
    * opens the add flow in the detail pane.
    */
@@ -579,19 +579,19 @@ export function AgentConnectionView({
       listClassName="entrance-stagger"
       label={
         selectedRuntimeId
-          ? 'Connections / Engines / Detail'
-          : 'Connections / Engines'
+          ? 'Customize / Engines / Detail'
+          : 'Customize / Engines'
       }
       breadcrumbLinks={
         selectedRuntimeId
           ? {
-              connections: () => guardedNavigate({ type: 'connections' }),
+              customize: () => guardedNavigate({ type: 'customize' }),
               engines: () =>
                 guardedNavigate({
                   type: 'connections-engines',
                 } as NavigationView),
             }
-          : { connections: () => guardedNavigate({ type: 'connections' }) }
+          : { customize: () => guardedNavigate({ type: 'customize' }) }
       }
       title="Engines"
       subtitle="Connect installed engines for chats and delegated work"
@@ -903,7 +903,7 @@ export function AgentConnectionView({
                     checked={form.enabled}
                     onChange={(checked) => setField('enabled', checked)}
                   >
-                    Expose this engine in Connections and agent setup
+                    Expose this engine in Customize and agent setup
                   </Checkbox>
                 </div>
 

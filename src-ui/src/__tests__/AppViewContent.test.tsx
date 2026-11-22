@@ -48,9 +48,29 @@ vi.mock('../views/AgentsView', () => ({
     </div>
   ),
 }));
-vi.mock('../views/ConnectionsHub', () => ({
-  ConnectionsHub: () => <div>ConnectionsHub</div>,
+vi.mock('../views/GuidanceView', () => ({
+  GuidanceView: () => <div>Skills page</div>,
 }));
+vi.mock('../views/connections-hub/ComputersPage', () => ({
+  ComputersPage: () => <div>ComputersPage</div>,
+}));
+vi.mock('../views/customize/CustomizeLanding', () => ({
+  CustomizeLanding: () => <div>CustomizeLanding</div>,
+}));
+// The Customize list reads every item's data; this suite is about where it
+// sits and that it stays mounted, so a stand-in records its mounts.
+let customizeNavMounts = 0;
+vi.mock('../views/customize/CustomizeNav', async () => {
+  const { useEffect } = await import('react');
+  return {
+    CustomizeNav: ({ activeId }: { activeId: string | null }) => {
+      useEffect(() => {
+        customizeNavMounts += 1;
+      }, []);
+      return <nav aria-label="Customize" data-active={activeId ?? ''} />;
+    },
+  };
+});
 vi.mock('../views/IntegrationsView', () => ({
   IntegrationsView: () => <div>Integrations</div>,
 }));
@@ -96,12 +116,12 @@ vi.mock('../views/ProviderSettingsView', async () => {
     },
   };
 });
-// The Connections section frame wraps every `/connections/*` view and reads
+// The Customize section frame wraps every connection-backed item and reads
 // live query state; this suite is about the page header across a route
 // change, so it stands in for the frame's own chrome and keeps publishing
 // whatever title the wrapped view publishes.
-vi.mock('../views/ConnectionsSectionFrame', () => ({
-  ConnectionsSectionFrame: ({ children }: { children: React.ReactNode }) => (
+vi.mock('../views/CustomizeSectionFrame', () => ({
+  CustomizeSectionFrame: ({ children }: { children: React.ReactNode }) => (
     <div>{children}</div>
   ),
 }));
@@ -273,9 +293,10 @@ describe('AppViewContent — the page header while a route loads', () => {
 
     expect(screen.getByText('Loading route')).toBeTruthy();
     const heading = screen.getByRole('heading', { level: 1 });
-    // The sidebar's own word for this surface, from `destination-registry.ts`,
-    // not a second copy written into the frame table.
-    expect(heading.textContent).toBe('Connections');
+    // The Customize list's own word for this item, from
+    // `destination-registry.ts`, not a second copy written into the frame
+    // table.
+    expect(heading.textContent).toBe('Providers');
   });
 
   test('shows the arriving route’s name while it loads, never the departing one’s title', async () => {
@@ -326,6 +347,66 @@ describe('AppViewContent — not-found', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Go home' }));
     expect(onShowHome).toHaveBeenCalledTimes(1);
     expect(onReturnToOutlet).not.toHaveBeenCalled();
+  });
+});
+
+describe('AppViewContent — the Customize page', () => {
+  test('puts the Customize list beside the landing and each item, and keeps it mounted between them', async () => {
+    customizeNavMounts = 0;
+    const { rerender } = render(
+      <AppViewContent {...baseProps} currentView={{ type: 'customize' }} />,
+    );
+    await screen.findByText('CustomizeLanding');
+    const nav = await screen.findByRole('navigation', { name: 'Customize' });
+    expect(nav.getAttribute('data-active')).toBe('customize');
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe(
+      'Customize',
+    );
+    for (const [view, active] of [
+      [{ type: 'connections-models' }, 'providers'],
+      [{ type: 'connections-engines' }, 'engines'],
+      [{ type: 'agents' }, 'agents'],
+    ] as const) {
+      rerender(<AppViewContent {...baseProps} currentView={view} />);
+      expect(
+        screen
+          .getByRole('navigation', { name: 'Customize' })
+          .getAttribute('data-active'),
+      ).toBe(active);
+    }
+    // One mount across four routes: moving between items does not reload it.
+    expect(customizeNavMounts).toBe(1);
+  });
+
+  test('names Customize above every item page as the way back, and not above the landing', async () => {
+    const { rerender } = render(
+      <AppViewContent {...baseProps} currentView={{ type: 'customize' }} />,
+    );
+    await screen.findByText('CustomizeLanding');
+    expect(screen.queryByRole('link', { name: 'Customize' })).toBeNull();
+    // Agents and Skills publish no eyebrow of their own; they still get one.
+    for (const view of [{ type: 'agents' }, { type: 'guidance' }] as const) {
+      rerender(<AppViewContent {...baseProps} currentView={view} />);
+      const back = screen.getByRole('link', { name: 'Customize' });
+      expect(back.getAttribute('href')).toBe('/customize');
+      expect(back.closest('.page__label')).toBeTruthy();
+    }
+  });
+
+  test('leaves the list off pages that are not Customize items', async () => {
+    for (const view of [
+      { type: 'plugins' },
+      { type: 'settings' },
+      { type: 'connections-computers' },
+    ] as const) {
+      const { unmount } = render(
+        <AppViewContent {...baseProps} currentView={view} />,
+      );
+      expect(
+        screen.queryByRole('navigation', { name: 'Customize' }),
+      ).toBeNull();
+      unmount();
+    }
   });
 });
 

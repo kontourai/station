@@ -95,7 +95,7 @@ function blankIntegration(): IntegrationDef {
 
 /* ── Integrations View ── */
 export function IntegrationsView({
-  basePath = '/connections/tools',
+  basePath = '/customize/tools',
   selection,
   onDirtyChange,
 }: {
@@ -257,7 +257,7 @@ export function IntegrationsView({
       ?.renderAllowed ?? true;
 
   /**
-   * `/connections/tools/new` is the section frame's add action, so the blank
+   * `/customize/tools/new` is the section frame's add action, so the blank
    * form has to exist for a route the user reached directly — not only for
    * the in-page click that used to seed it. Without this the add action
    * selected `new` and rendered nothing.
@@ -312,7 +312,7 @@ export function IntegrationsView({
   return (
     <>
       <SplitPaneLayout
-        label="connections / tools"
+        label="customize / tools"
         title="Tool servers"
         items={items}
         loading={isLoading}

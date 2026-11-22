@@ -135,13 +135,6 @@
   padding: 0;
 }
 
-/* Section tabs above flush content (Connections) are page navigation, not
-   the content's chrome: they keep the header's inset so they line up with
-   the title above them. */
-.page-frame--flush > .page-frame__body .page__tabs--frame-inset {
-  padding-inline: 1.5rem;
-}
-
 @media (max-width: 640px) {
   .page-frame__header {
     padding: 1.5rem 1rem 0;
@@ -153,10 +146,6 @@
 
   .page-frame--flush > .page-frame__body {
     padding: 0;
-  }
-
-  .page-frame--flush > .page-frame__body .page__tabs--frame-inset {
-    padding-inline: 1rem;
   }
 }
 
@@ -177,6 +166,12 @@
 .page__label-link {
   cursor: pointer;
   transition: opacity var(--motion-fast) var(--ease-standard);
+  /* An eyebrow link is a way back, so on touch it gets the touch floor. */
+  display: inline-flex;
+  align-items: center;
+  min-block-size: var(--touch-target-min, 0px);
+  color: inherit;
+  text-decoration: none;
 }
 
 .page__label-link:hover {

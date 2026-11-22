@@ -1,3 +1,5 @@
+import { createElement, Fragment } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 import type { NavigationView } from '../../types';
 import { APP_DESTINATION_REGISTRY } from '../destination-registry';
@@ -17,7 +19,7 @@ const ROUTES: NavigationView[] = [
   { type: 'agent-new' },
   { type: 'agent-edit', slug: 'a' },
   { type: 'guidance' },
-  { type: 'connections' },
+  { type: 'customize' },
   { type: 'connections-models' },
   { type: 'connections-model-edit', id: 'p' },
   { type: 'connections-engines' },
@@ -182,12 +184,11 @@ describe('page-frame registry', () => {
   // NO eyebrow. Every one of these routes IS the surface the sidebar links
   // to (not reached under a parent), so a static eyebrow here could only ever
   // restate the route's own title — the retired `GUIDANCE`-over-**Guidance**
-  // pattern.
+  // pattern. Agents and Skills are Customize items now: their eyebrow is
+  // the parent, Customize, asserted below.
   it('gives every top-level nav route no static eyebrow', () => {
     for (const type of [
-      'agents',
-      'guidance',
-      'connections',
+      'customize',
       'registry',
       'plugins',
       'activity',
@@ -210,9 +211,39 @@ describe('page-frame registry', () => {
   // 'Connections / <section>' breadcrumb-as-eyebrow that restated the title.
   it('gives every subpage with a static eyebrow just its parent, not a breadcrumb trail', () => {
     expect(resolvePageFrame({ type: 'developer' })?.eyebrow).toBe('Developer');
-    for (const route of [{ type: 'connections-knowledge' }] as const) {
-      const spec = resolvePageFrame(route as NavigationView);
-      expect(spec?.eyebrow, `${route.type} eyebrow`).toBe('Connections');
+  });
+
+  // On a phone the Customize list is hidden, so every page a Customize item
+  // hosts carries a link back to the landing above its title, including
+  // Agents and Skills, which publish no eyebrow of their own.
+  it('gives every Customize item page a Customize link as its eyebrow, and nothing else one', () => {
+    const eyebrowHtml = (view: NavigationView) => {
+      const eyebrow = resolvePageFrame(view)?.eyebrow;
+      return eyebrow === undefined
+        ? null
+        : renderToStaticMarkup(createElement(Fragment, null, eyebrow));
+    };
+    for (const view of [
+      { type: 'agents' },
+      { type: 'agent-edit', slug: 'a' },
+      { type: 'guidance' },
+      { type: 'connections-engines' },
+      { type: 'connections-engine-new', providerId: 'p' },
+      { type: 'connections-models' },
+      { type: 'connections-tools' },
+      { type: 'connections-knowledge' },
+    ] as NavigationView[]) {
+      expect(eyebrowHtml(view), view.type).toMatch(
+        /^<a href="\/customize"[^>]*>Customize<\/a>$/,
+      );
+    }
+    for (const view of [
+      { type: 'customize' },
+      { type: 'connections-computers' },
+      { type: 'plugins' },
+      { type: 'settings' },
+    ] as NavigationView[]) {
+      expect(eyebrowHtml(view), view.type).toBeNull();
     }
   });
 });

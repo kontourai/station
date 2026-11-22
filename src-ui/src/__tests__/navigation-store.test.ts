@@ -303,9 +303,9 @@ describe('navigationStore dialog history isolation', () => {
   test('does not carry a dialog Back marker into a new route entry', () => {
     window.history.replaceState({ [DIALOG_HISTORY_KEY]: 'new-chat' }, '', '/');
 
-    navigationStore.navigate('/connections/models');
+    navigationStore.navigate('/customize/providers');
 
-    expect(window.location.pathname).toBe('/connections/models');
+    expect(window.location.pathname).toBe('/customize/providers');
     expect(window.history.state[DIALOG_HISTORY_KEY]).toBeUndefined();
   });
 
@@ -1097,17 +1097,92 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
     ).toEqual(['override']);
   });
 
-  test('routes the Agent editor engine setup target to the Engines section', () => {
+  test('routes the old Agent editor engine setup target to the Engines item', () => {
     navigationStore.navigate('/connections?section=engines');
 
     expect(window.location.pathname + window.location.search).toBe(
-      '/connections/engines',
+      '/customize/engines',
     );
-    expect(navigationStore.getSnapshot().pathname).toBe('/connections/engines');
+    expect(navigationStore.getSnapshot().pathname).toBe('/customize/engines');
     expect(
       resolveViewFromPath(
         getLegacyPathRedirect('/connections?section=engines')!,
       ),
     ).toEqual({ type: 'connections-engines' });
   });
+});
+
+describe('the Customize page by address', () => {
+  /** Waits for the store to settle on a popstate-driven path. */
+  async function settleOn(pathname: string) {
+    for (let tick = 0; tick < 60; tick += 1) {
+      if (navigationStore.getSnapshot().pathname === pathname) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+
+  const ITEMS = [
+    ['/customize', { type: 'customize' }],
+    ['/agents', { type: 'agents' }],
+    ['/guidance?tab=skills', { type: 'guidance', tab: 'skills' }],
+    ['/customize/engines', { type: 'connections-engines' }],
+    ['/customize/providers', { type: 'connections-models' }],
+    ['/customize/tools', { type: 'connections-tools' }],
+    ['/customize/knowledge', { type: 'connections-knowledge' }],
+  ] as const;
+  const here = () => `${window.location.pathname}${window.location.search}`;
+
+  /** Waits for a popstate-driven move to land on `address`. */
+  async function settleAt(address: string) {
+    for (let tick = 0; tick < 60; tick += 1) {
+      if (here() === address) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+
+  test('opens each item by address, and Back and Forward walk one item per press', async () => {
+    navigationStore.navigate('/');
+    for (const [address, view] of ITEMS) {
+      navigationStore.navigate(address);
+      expect(here()).toBe(address);
+      expect(resolveViewFromPath(here())).toEqual(view);
+    }
+    for (let index = ITEMS.length - 2; index >= 0; index -= 1) {
+      const [address, view] = ITEMS[index]!;
+      window.history.back();
+      await settleAt(address);
+      expect(here()).toBe(address);
+      await settleOn(address.split('?')[0]!);
+      expect(resolveViewFromPath(here())).toEqual(view);
+    }
+    for (let index = 1; index < ITEMS.length; index += 1) {
+      const [address, view] = ITEMS[index]!;
+      window.history.forward();
+      await settleAt(address);
+      expect(here()).toBe(address);
+      expect(resolveViewFromPath(here())).toEqual(view);
+    }
+  });
+
+  test.each([
+    ['/connections', '/customize'],
+    ['/connections/models', '/customize/providers'],
+    ['/connections/providers/openai', '/customize/providers/openai'],
+    ['/connections/engines/claude', '/customize/engines/claude'],
+    ['/connections/tools', '/customize/tools'],
+    ['/connections/knowledge', '/customize/knowledge'],
+  ])(
+    'an old Connections address %s lands on %s in one history entry',
+    async (legacy, current) => {
+      navigationStore.navigate('/notifications');
+      navigationStore.navigate(legacy);
+      expect(window.location.pathname).toBe(current);
+      expect(navigationStore.getSnapshot().pathname).toBe(current);
+      // The redirect replaced the old address rather than stacking on it, so
+      // Back leaves the item instead of bouncing through the redirect.
+      window.history.back();
+      await settleOn('/notifications');
+      expect(navigationStore.getSnapshot().pathname).toBe('/notifications');
+    },
+  );
 });

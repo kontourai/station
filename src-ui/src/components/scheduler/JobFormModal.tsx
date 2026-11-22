@@ -312,7 +312,7 @@ export function JobFormModal({
     : undefined;
   const repairTarget = repairCandidate
     ? repairRoute === 'models'
-      ? '/connections/models'
+      ? '/customize/providers'
       : repairRoute === 'edit'
         ? `/agents/${encodeURIComponent(repairCandidate.slug)}`
         : undefined

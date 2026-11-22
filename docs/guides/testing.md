@@ -1644,14 +1644,14 @@ Chromium on the measured host already rasterizes through software
 SwiftShader/Vulkan by default. What had been diagnosed as residual
 sub-pixel rasterization jitter (station#4464) turned out, on closer
 inspection of the diff images, to be a genuine content race instead: the
-Connections hub's shared tab-bar badges (`useIntegrationsQuery` /
+Customize list's counts and dots (`useIntegrationsQuery` /
 `GET /integrations`, `useGlobalKnowledgeStatusQuery` /
-`GET /api/knowledge/status`) can still be mid-fetch when any of the five
-Connections-hub screens is shot, because TanStack Query's default
+`GET /api/knowledge/status`, `useSkillsQuery` / `GET /api/system/skills`) can
+still be mid-fetch when any of the Customize screens is shot, because TanStack Query's default
 `staleTime: 0` re-fetches on every fresh mount rather than trusting an
 earlier screen's cached value. `armConnectionsHubBadgeSettle` in
-`tests/screenshots.spec.ts` arms a `page.waitForResponse` for both endpoints
-before each of those five screens' `page.goto` and awaits it before the
+`tests/screenshots.spec.ts` arms a `page.waitForResponse` for those endpoints
+before each of those screens' `page.goto` and awaits it before the
 shot. With both fixes in place, repeated full captures compared bit-for-bit
 identical across every screen, including `motion-reduced-notification`
 (previously the one hand-marked `volatile: true` exception) — its

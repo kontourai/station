@@ -78,7 +78,7 @@ export function StationPeoplePanel() {
         <Empty
           variant="compact"
           label="No approved person profiles"
-          description="Paired devices without a person binding are managed in Connections."
+          description="Paired devices without a person binding are managed on Computers."
         />
       ) : (
         <ul className="profile-people-list">

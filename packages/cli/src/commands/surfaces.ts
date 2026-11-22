@@ -1490,7 +1490,7 @@ async function runAcpCommand(args: string[]) {
           !('code' in error)
         ) {
           throw new Error(
-            'This Station does not support guided engine setup. Update the Station host or open Connections → Engines.',
+            'This Station does not support guided engine setup. Update the Station host or open Customize → Engines.',
           );
         }
         throw error;

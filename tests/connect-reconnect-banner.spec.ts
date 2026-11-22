@@ -480,28 +480,60 @@ test.describe('compatibility-aware reconnect', () => {
               .tap();
             await expect(details).toBeHidden();
 
+            // Connections is not a destination: its parts are Customize
+            // items. On a phone the Customize list is hidden, so an item is
+            // reached the way a person does it there — up to the Customize
+            // landing (the page eyebrow, when there is one), then the item.
+            const openCustomizeItem = async (title: string) => {
+              // Every page this walk starts an item from carries the eyebrow
+              // (Customize items) or is Computers, whose landing link is the
+              // way in; a missing eyebrow fails here rather than being
+              // papered over with a reload.
+              if (new URL(page.url()).pathname === '/connections/computers') {
+                await page.goto('/customize');
+              } else if (new URL(page.url()).pathname !== '/customize') {
+                await page
+                  .locator('.page__label')
+                  .getByRole('link', { name: 'Customize', exact: true })
+                  .tap();
+              }
+              await expect(page).toHaveURL(
+                (url) => url.pathname === '/customize',
+              );
+              await page
+                .locator('.customize-landing')
+                .getByRole('link', {
+                  name:
+                    title === 'Computers'
+                      ? 'Computers'
+                      : new RegExp(`^${title}\\b`),
+                  exact: title === 'Computers',
+                })
+                .tap();
+            };
+
             const sections = [
               {
-                title: 'Models',
-                path: '/connections/models',
+                title: 'Providers',
+                path: '/customize/providers',
                 add: 'Add model connection',
-                target: '/connections/models/new',
+                target: '/customize/providers/new',
               },
               {
                 title: 'Engines',
-                path: '/connections/engines',
+                path: '/customize/engines',
                 add: 'Add engine',
-                target: '/connections/engines/new',
+                target: '/customize/engines/new',
               },
               {
                 title: 'Tools',
-                path: '/connections/tools',
+                path: '/customize/tools',
                 add: 'Add tool server',
-                target: '/connections/tools/new',
+                target: '/customize/tools/new',
               },
               {
                 title: 'Knowledge',
-                path: '/connections/knowledge',
+                path: '/customize/knowledge',
                 add: 'Add knowledge source',
                 target: '/settings?view=knowledge',
               },
@@ -513,14 +545,9 @@ test.describe('compatibility-aware reconnect', () => {
             ];
             for (const section of sections) {
               await test.step(section.title, async () => {
-                const tabs = page.getByRole('tablist', {
-                  name: 'Connection sections',
-                });
-                await tabs
-                  .getByRole('tab', {
-                    name: new RegExp(`^${section.title}\\b`),
-                  })
-                  .tap();
+                // Computers is not a Customize item: the landing links to it
+                // until the Station page exists. Same walk: up, then in.
+                await openCustomizeItem(section.title);
                 await expect(page).toHaveURL(
                   (url) => url.pathname === section.path,
                 );
@@ -561,10 +588,7 @@ test.describe('compatibility-aware reconnect', () => {
             }
 
             await test.step('Saved model and tool details', async () => {
-              const tabs = page.getByRole('tablist', {
-                name: 'Connection sections',
-              });
-              await tabs.getByRole('tab', { name: /^Models/ }).tap();
+              await openCustomizeItem('Providers');
               await page
                 .getByRole('button', {
                   name: 'Add model connection',
@@ -597,7 +621,7 @@ test.describe('compatibility-aware reconnect', () => {
                 data: { id: modelId },
               } = (await created.json()) as { data: { id: string } };
               await expect(page).toHaveURL(
-                (url) => url.pathname === `/connections/models/${modelId}`,
+                (url) => url.pathname === `/customize/providers/${modelId}`,
               );
 
               await page.route(
@@ -756,10 +780,10 @@ test.describe('compatibility-aware reconnect', () => {
               expect(
                 (await page.request.get(modelPath, { headers })).status(),
               ).toBe(404);
-              await expect(page).toHaveURL(/\/connections\/models$/);
+              await expect(page).toHaveURL(/\/customize\/providers$/);
               await expect(updatedModel).toHaveCount(0);
 
-              await tabs.getByRole('tab', { name: /^Tools/ }).tap();
+              await openCustomizeItem('Tools');
               await expect(
                 page.getByRole('button', { name: /^Station Docs\b/ }),
               ).toBeVisible();
@@ -819,7 +843,7 @@ test.describe('compatibility-aware reconnect', () => {
                 name: new RegExp(`^Renamed tool server ${suffix}`),
               });
               await expect(page).toHaveURL(
-                (url) => url.pathname === `/connections/tools/${toolId}`,
+                (url) => url.pathname === `/customize/tools/${toolId}`,
               );
               await page
                 .getByRole('button', { name: 'Delete', exact: true })
@@ -942,16 +966,13 @@ test.describe('compatibility-aware reconnect', () => {
               expect(
                 (await page.request.get(toolPath, { headers })).status(),
               ).toBe(404);
-              await expect(page).toHaveURL(/\/connections\/tools$/);
+              await expect(page).toHaveURL(/\/customize\/tools$/);
               await expect(updatedTool).toHaveCount(0);
-              await tabs.getByRole('tab', { name: /^Computers/ }).tap();
+              await page.goto('/connections/computers');
             });
 
             await test.step('Engine setup and Knowledge navigation', async () => {
-              const tabs = page.getByRole('tablist', {
-                name: 'Connection sections',
-              });
-              await tabs.getByRole('tab', { name: /^Engines/ }).tap();
+              await openCustomizeItem('Engines');
               await page
                 .getByRole('button', { name: 'Add engine', exact: true })
                 .tap();
@@ -1022,9 +1043,9 @@ test.describe('compatibility-aware reconnect', () => {
               await expect(custom).toBeVisible();
 
               await page.goBack();
-              await expect(page).toHaveURL(/\/connections\/engines$/);
+              await expect(page).toHaveURL(/\/customize\/engines$/);
 
-              await tabs.getByRole('tab', { name: /^Knowledge/ }).tap();
+              await openCustomizeItem('Knowledge');
               const sections = page.getByRole('navigation', {
                 name: 'Knowledge sections',
               });
@@ -1054,9 +1075,9 @@ test.describe('compatibility-aware reconnect', () => {
               );
               await page.goBack();
               await expect(page).toHaveURL(
-                (url) => url.pathname === '/connections/knowledge',
+                (url) => url.pathname === '/customize/knowledge',
               );
-              await tabs.getByRole('tab', { name: /^Computers/ }).tap();
+              await page.goto('/connections/computers');
             });
 
             await test.step('Computer chooser branches', async () => {
@@ -1194,7 +1215,7 @@ test.describe('compatibility-aware reconnect', () => {
               return record.data.config.dataDir ?? '';
             };
             const originalDirectory = await readDataDirectory();
-            await page.goto('/connections/knowledge');
+            await page.goto('/customize/knowledge');
             const toolbar = page.getByTestId('app-toolbar-connection');
             await expect(toolbar).toHaveAttribute(
               'aria-label',
@@ -1340,7 +1361,7 @@ test.describe('compatibility-aware reconnect', () => {
                 },
               }),
             );
-            await page.goto('/connections/engines');
+            await page.goto('/customize/engines');
             await expect(
               page.getByTestId('app-toolbar-connection'),
             ).toHaveAttribute(
@@ -1425,9 +1446,9 @@ test.describe('compatibility-aware reconnect', () => {
                 exact: true,
               })
               .tap();
-            await expect(page).toHaveURL(/\/connections\/models$/);
+            await expect(page).toHaveURL(/\/customize\/providers$/);
             await page.goBack();
-            await expect(page).toHaveURL(/\/connections\/engines\/codex$/);
+            await expect(page).toHaveURL(/\/customize\/engines\/codex$/);
             const refreshed = page.waitForResponse(
               (response) =>
                 response.request().method() === 'POST' &&
@@ -1502,7 +1523,7 @@ test.describe('compatibility-aware reconnect', () => {
             expect(engine).toBeNull();
             await expect(confirmation).toBeHidden();
             await page.getByRole('button', { name: '← Back to list' }).tap();
-            await expect(page).toHaveURL(/\/connections\/engines$/);
+            await expect(page).toHaveURL(/\/customize\/engines$/);
             await expect(updated).toHaveCount(0);
           });
 

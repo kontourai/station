@@ -1709,7 +1709,7 @@ seven days; older rows sit behind **Show older**, and search shows every row.
 The window is a default, not a setting. With the preview off, Dismiss and both
 shelves behave as before.
 
-Customize → Appearance offers Comfortable, Wide and Full answer widths.
+Appearance offers Comfortable, Wide and Full answer widths.
 The compact context ring places its percentage inside the ring beside Send;
 Agent, model, Mode and Approval remain choices inside Agent & model. Basis stays
 answer-scoped. Chat inventory and Browse turns are conversation overflow actions.

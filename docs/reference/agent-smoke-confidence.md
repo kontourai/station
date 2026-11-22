@@ -34,7 +34,7 @@ phone/native behavior.
 
 ## Check a connection in the UI
 
-**Connections → Engines → Check connection** runs the same bounded turn, with a
+**Customize → Engines → Check connection** runs the same bounded turn, with a
 visible allowance disclosure. Save changes first. The check can retry retained
 authentication failures; missing binaries and other prerequisites still block it.
 When the catalog is temporarily empty, a previously selected model can be checked

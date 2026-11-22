@@ -1839,7 +1839,7 @@ function LiveConversationBody({
                   : chatErrorCode === MCP_SIGN_IN_REQUIRED_CODE
                     ? {
                         label: 'Sign in to tool',
-                        onClick: () => navigate('/connections/tools'),
+                        onClick: () => navigate('/customize/tools'),
                       }
                     : chatErrorCode === ENGINE_SIGN_IN_REQUIRED_CODE &&
                         activeSession.agentConnectionId
@@ -1847,7 +1847,7 @@ function LiveConversationBody({
                           label: 'Sign in',
                           onClick: () =>
                             navigate(
-                              `/connections/engines/${encodeURIComponent(activeSession.agentConnectionId ?? '')}`,
+                              `/customize/engines/${encodeURIComponent(activeSession.agentConnectionId ?? '')}`,
                             ),
                         }
                       : chatErrorCode === ENGINE_MEMORY_EXHAUSTED_CODE
@@ -2774,8 +2774,8 @@ function LiveConversationBody({
                     onClick={() =>
                       navigate(
                         agent.unavailableFix?.target
-                          ? `/connections/engines/${encodeURIComponent(agent.unavailableFix.target)}`
-                          : '/connections/engines',
+                          ? `/customize/engines/${encodeURIComponent(agent.unavailableFix.target)}`
+                          : '/customize/engines',
                       )
                     }
                     style={BANNER_LINK_BUTTON_STYLE}

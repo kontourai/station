@@ -83,6 +83,15 @@ import { primeNativeNotifications } from '../platform/native/notify';
 import { LazyBoundary } from './LazyBoundary';
 import { ManagedRemoteClientsNote } from './managed/ManagedRemoteClientsNote';
 
+/** Where a setup trip from the banner goes: Customize, or Computers. */
+function isSetupPath(pathname: string): boolean {
+  return (
+    pathname === '/customize' ||
+    pathname.startsWith('/customize/') ||
+    pathname.startsWith('/connections/')
+  );
+}
+
 type ConnectionModalMode =
   | 'list'
   | 'pair-device'
@@ -252,7 +261,7 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
   const unconfiguredPhone =
     profile.isMobile && !hasRealSavedConnection(connections);
   const { data: config } = useRecoveryConfig({ enabled: !unconfiguredPhone });
-  const wasInConnections = useRef(pathname.startsWith('/connections'));
+  const wasInConnections = useRef(isSetupPath(pathname));
   const credentialRequired = activeConnection?.credentialState === 'required';
   const connectionEvidence = `${activeConnection?.id ?? ''}:${activeConnection?.lastSuccessAt ?? ''}:${activeConnection?.credentialState ?? ''}`;
   const previousConnectionEvidence = useRef(connectionEvidence);
@@ -436,11 +445,12 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
     setShowModal(true);
   }, []);
 
-  // A deferral covers the trip into Connections; leaving that area again ends
+  // A deferral covers the trip into Customize's connection items (and the
+  // Computers page); leaving that area again ends
   // it, so an abandoned setup does not stay hidden for the whole session while
   // chat is still unready (archive#794).
   useEffect(() => {
-    const isInConnections = pathname.startsWith('/connections');
+    const isInConnections = isSetupPath(pathname);
     if (wasInConnections.current && !isInConnections) {
       void refetch().finally(rearmSetupBanner);
     }
@@ -774,12 +784,12 @@ export function OnboardingGate({ children }: { children: ReactNode }) {
                     type: 'connections-engine-edit',
                     id: setupBannerContent.engineConnectionId,
                   })!
-                : getPathForView({ type: 'connections' })!,
+                : getPathForView({ type: 'customize' })!,
           );
         }}
         onOpenHub={() => {
           deferSetupBanner();
-          navigate(getPathForView({ type: 'connections' })!);
+          navigate(getPathForView({ type: 'customize' })!);
         }}
         onDismiss={dismiss}
       />

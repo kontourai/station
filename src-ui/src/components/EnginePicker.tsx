@@ -375,7 +375,7 @@ export function EnginePicker({
           </div>
         )}
         <div className="engine-picker__description">
-          Engines that can: {capableNames}. Add one in Connections.
+          Engines that can: {capableNames}. Add one in Customize.
         </div>
         {variant === 'step' ? (
           <ResponsiveSurfaceActions className="first-run-chapter__actions">

@@ -338,11 +338,11 @@ describe('continuing a chat on a paired Station', () => {
   test.each([
     [
       'peer_conversation_handoff_access_refused',
-      "Receiver didn't let this Station continue chats there. Check the pairing's access in Connections.",
+      "Receiver didn't let this Station continue chats there. Check the pairing's access in the Station menu.",
     ],
     [
       'peer_conversation_handoff_pairing_required',
-      'Receiver is connected with a device sign-in. Pair it as a Station in Connections to continue chats there.',
+      'Receiver is connected with a device sign-in. Pair it as a Station from the Station menu to continue chats there.',
     ],
     [
       'conversation_import_deleted',

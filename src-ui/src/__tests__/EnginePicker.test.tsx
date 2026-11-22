@@ -438,7 +438,7 @@ describe('EnginePicker component', () => {
     expect(names.length).toBeGreaterThan(1);
     const list = `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
     expect(
-      screen.getByText(`Engines that can: ${list}. Add one in Connections.`),
+      screen.getByText(`Engines that can: ${list}. Add one in Customize.`),
     ).toBeTruthy();
   });
 

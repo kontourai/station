@@ -1295,7 +1295,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "station#3902: the chat dock is shell chrome, so the shell's route outlet reserves what the dock actually occupies — its published height PLUS the device safe area and the visible-viewport inset it re-anchors to. At 390x844 with a 34px bottom inset the shell used to stop reserving 34px above the rendered bar, and --layer-dock took every tap in that band; the witness is /connections/models/new, where the last provider tile's centre hit-tested to the dock's resize handle. Sets --safe-bottom explicitly because headless Chromium's env(safe-area-inset-bottom) is always 0 and the spec would otherwise pass on the broken build.",
+      "station#3902: the chat dock is shell chrome, so the shell's route outlet reserves what the dock actually occupies — its published height PLUS the device safe area and the visible-viewport inset it re-anchors to. At 390x844 with a 34px bottom inset the shell used to stop reserving 34px above the rendered bar, and --layer-dock took every tap in that band; the witness is /customize/providers/new, where the last provider tile's centre hit-tested to the dock's resize handle. Sets --safe-bottom explicitly because headless Chromium's env(safe-area-inset-bottom) is always 0 and the spec would otherwise pass on the broken build.",
     exceptions: [],
   },
   {
@@ -1473,7 +1473,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "Connections IA lane for the five-section frame (connection-sections.ts + ConnectionsSectionFrame.tsx): the /connections resolver and legacy-path (/connections/providers, /connections/acp) redirects into their owning section, every section's own H1 + Connections eyebrow + exactly one add action (desktop and 390x844, plus a no-horizontal-scroll proof per section at 390), the Models Add-provider-then-Test-Connection journey rendering the server's own failure sentence (never the mock object), the Tools built-in-vs-user-server distinction (Built in tag with no Delete vs a real Delete control), and the Engines list's vocabulary - an engine named by its own name rather than its type slug, and its catalogue read as a sentence rather than an enum (station#3739).",
+      "Customize page lane (connection-sections.ts, CustomizeSectionFrame.tsx, views/customize/): the page opened from the sidebar, each of its six items opened from its list and walked back with Back, old Connections addresses (/connections, /connections/models, /connections/providers, /connections/acp and the rest) landing on their Customize item, every item's own H1 + Customize eyebrow back to the list + exactly one add action, Computers keeping its own address outside Customize (desktop and 390x844, where the landing is the list, plus a no-horizontal-scroll proof per item at 390), the Providers Add-provider-then-Test-Connection journey rendering the server's own failure sentence (never the mock object), the Tools built-in-vs-user-server distinction (Built in tag with no Delete vs a real Delete control), and the Engines list's vocabulary - an engine named by its own name rather than its type slug, and its catalogue read as a sentence rather than an enum (station#3739).",
     exceptions: [],
   },
   {

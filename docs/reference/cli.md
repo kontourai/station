@@ -1076,7 +1076,7 @@ engine's `setupPath`, next action, recorded handshake time and advertised HTTP
 tool channel. It runs no engine, installation or sign-in. The Station Control
 counterpart is `list_engine_setup`; `open_engine_setup` navigates the person's
 client to that same destination. An older host can answer 404 without supporting
-this journey; use Connections → Engines or update the host. Preserve any
+this journey; use Customize → Engines or update the host. Preserve any
 preview or authority refusal rather than editing configuration. See the
 [ACP guide](../guides/acp.md#set-up-an-engine-from-chat).
 
