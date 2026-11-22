@@ -19,6 +19,7 @@ import {
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
+  CONVERSATION_FORK_REFUSAL_CODES,
   CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
 } from './orchestration.js';
@@ -256,6 +257,17 @@ export const PROVIDER_FAILURE_KINDS = {
   [APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE]: 'permission_denied',
   [FOREGROUND_MESSAGE_INDETERMINATE_CODE]: 'indeterminate',
   [CONVERSATION_CONTEXT_UNAVAILABLE_CODE]: 'conflict',
+  // A refused fork (`CONVERSATION_FORK_REFUSAL_CODES`): only a history read
+  // that could not complete is worth retrying as sent.
+  [CONVERSATION_FORK_REFUSAL_CODES.invalidRequest]: 'input_unsupported',
+  [CONVERSATION_FORK_REFUSAL_CODES.sourceNotFound]: 'session_gone',
+  [CONVERSATION_FORK_REFUSAL_CODES.targetUnavailable]: 'input_unsupported',
+  [CONVERSATION_FORK_REFUSAL_CODES.callerUnresolved]: 'auth',
+  [CONVERSATION_FORK_REFUSAL_CODES.historyUnavailable]: 'unavailable',
+  [CONVERSATION_FORK_REFUSAL_CODES.historyTooLarge]: 'input_unsupported',
+  [CONVERSATION_FORK_REFUSAL_CODES.turnIncomplete]: 'input_unsupported',
+  [CONVERSATION_FORK_REFUSAL_CODES.sourceAgentMismatch]: 'conflict',
+  [CONVERSATION_FORK_REFUSAL_CODES.idempotencyConflict]: 'conflict',
   [PRINCIPAL_UNRESOLVED_CODE]: 'auth',
   [PROJECT_IDENTITY_NOT_PREPARED_CODE]: 'input_unsupported',
   // No such Project on this Station (#4855): like `stage_not_found`, an

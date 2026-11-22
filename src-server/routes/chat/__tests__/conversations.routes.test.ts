@@ -2,11 +2,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
   sessionReadAuthorityFromRequest,
   tenantId,
 } from '@kontourai/station-contracts/tenancy';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createForkContextWriter } from '../../../__test-utils__/fork-context-writer.js';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
@@ -80,11 +82,8 @@ vi.mock('../../../runtime/conversation/conversation-manager.js', () => ({
   }),
 }));
 
-const {
-  createConversationRoutes,
-  createGlobalConversationRoutes,
-  readCompleteForkConversationWindow,
-} = await import('../conversations.js');
+const { createConversationRoutes, createGlobalConversationRoutes } =
+  await import('../conversations.js');
 const { FileMemoryAdapter } = await import(
   '../../../adapters/file/memory-adapter.js'
 );
@@ -2228,195 +2227,6 @@ describe('Conversation Routes', () => {
     },
   );
 
-  test('bounded conversation pager fails closed on a stalled cursor and reauthorizes every page', async () => {
-    const authority = alphaAuthority();
-    const readConversationEventWindow = vi.fn(
-      async (_conversationId: string, _options: { authority: unknown }) => ({
-        watermark: 1,
-        events: [],
-        hasMore: true,
-        nextCursor: 'same-cursor',
-      }),
-    );
-    const result = await readCompleteForkConversationWindow(
-      { readConversationEventWindow } as any,
-      'conversation',
-      authority,
-    );
-    expect(result).toEqual({
-      status: 'incomplete',
-      reason: 'conversation cursor stalled',
-    });
-    expect(readConversationEventWindow).toHaveBeenCalledTimes(2);
-    expect(
-      readConversationEventWindow.mock.calls.every(
-        ([, options]) => options.authority === authority,
-      ),
-    ).toBe(true);
-  });
-
-  test.each([
-    [
-      'thrown read',
-      async () => {
-        throw new Error('cursor decode failed');
-      },
-      'conversation page read failed',
-    ],
-    [
-      'numeric cursor',
-      async () => ({ watermark: 1, events: [], hasMore: true, nextCursor: 42 }),
-      'conversation cursor stalled',
-    ],
-    [
-      'overlong cursor',
-      async () => ({
-        watermark: 1,
-        events: [],
-        hasMore: true,
-        nextCursor: 'x'.repeat(513),
-      }),
-      'conversation cursor stalled',
-    ],
-  ])(
-    'bounded conversation pager classifies %s as incomplete',
-    async (_name, implementation, reason) => {
-      const result = await readCompleteForkConversationWindow(
-        { readConversationEventWindow: vi.fn(implementation) } as any,
-        'conversation',
-        alphaAuthority(),
-      );
-      expect(result).toEqual({ status: 'incomplete', reason });
-    },
-  );
-
-  test('bounded conversation pager times out a hung page read', async () => {
-    const result = await readCompleteForkConversationWindow(
-      {
-        readConversationEventWindow: vi.fn(() => new Promise(() => {})),
-      } as any,
-      'conversation',
-      alphaAuthority(),
-    );
-    expect(result).toEqual({
-      status: 'incomplete',
-      reason: 'conversation history read timed out',
-    });
-  }, 5_000);
-
-  test.each(['events', 'bytes', 'pages'])(
-    'bounded conversation pager enforces the %s limit',
-    async (limit) => {
-      let call = 0;
-      const event = {
-        eventId: 'e',
-        provider: 'codex',
-        threadId: 'session',
-        method: 'turn.completed',
-        createdAt: '2026-01-01T00:00:00Z',
-        ...(limit === 'bytes'
-          ? { outputText: 'x'.repeat(2 * 1024 * 1024) }
-          : {}),
-      };
-      const readConversationEventWindow = vi.fn(async () => {
-        call += 1;
-        return {
-          watermark: call,
-          events:
-            limit === 'events'
-              ? Array.from({ length: 3_201 }, (_, sequence) => ({
-                  sequence,
-                  event: { ...event, eventId: `e-${sequence}` },
-                }))
-              : [{ sequence: call, event }],
-          hasMore: limit === 'pages',
-          ...(limit === 'pages' ? { nextCursor: `page-${call}` } : {}),
-        };
-      });
-      const result = await readCompleteForkConversationWindow(
-        { readConversationEventWindow } as any,
-        'conversation',
-        alphaAuthority(),
-      );
-      expect(result.status).toBe('incomplete');
-      expect((result as { reason: string }).reason).toMatch(
-        limit === 'pages' ? /page limit/ : /exceeds fork limits/,
-      );
-    },
-  );
-
-  test.each([
-    ['missing', undefined, 'conversation event sequence is malformed'],
-    ['NaN', Number.NaN, 'conversation event sequence is malformed'],
-  ])(
-    'bounded conversation pager rejects %s global sequence',
-    async (_name, sequence, reason) => {
-      const result = await readCompleteForkConversationWindow(
-        {
-          readConversationEventWindow: vi.fn(async () => ({
-            watermark: 1,
-            events: [
-              {
-                sequence,
-                event: {
-                  eventId: 'e1',
-                  provider: 'codex',
-                  threadId: 's',
-                  method: 'turn.completed',
-                  createdAt: '2026-01-01T00:00:00Z',
-                },
-              },
-            ],
-            hasMore: false,
-          })),
-        } as any,
-        'conversation',
-        alphaAuthority(),
-      );
-      expect(result).toEqual({ status: 'incomplete', reason });
-    },
-  );
-
-  test('bounded conversation pager dedupes overlap but rejects distinct IDs sharing a sequence', async () => {
-    let page = 0;
-    const event = (eventId: string) => ({
-      sequence: 1,
-      event: {
-        eventId,
-        provider: 'codex',
-        threadId: 's',
-        method: 'turn.completed',
-        createdAt: '2026-01-01T00:00:00Z',
-      },
-    });
-    const reader = {
-      readConversationEventWindow: vi.fn(async () => {
-        page += 1;
-        return page === 1
-          ? {
-              watermark: 2,
-              events: [event('same')],
-              hasMore: true,
-              nextCursor: 'next',
-            }
-          : {
-              watermark: 2,
-              events: [event('same'), event('conflict')],
-              hasMore: false,
-            };
-      }),
-    };
-    const result = await readCompleteForkConversationWindow(
-      reader as any,
-      'conversation',
-      alphaAuthority(),
-    );
-    expect(result).toEqual({
-      status: 'incomplete',
-      reason: 'conversation event sequence conflicts',
-    });
-  });
-
   test.each([
     '550e8400-e29b-41d4-a716-446655440000',
     'user:fork:abcdef',
@@ -2487,6 +2297,76 @@ describe('Conversation Routes', () => {
       undefined,
     );
     let unresolvedCaller = false;
+    const handoffEvents: { event: CanonicalRuntimeEvent }[] = [
+      {
+        event: {
+          eventId: 'e1',
+          provider: 'codex',
+          threadId: 'session-codex',
+          turnId: 'turn-codex',
+          method: 'turn.started',
+          createdAt: '2026-01-01T00:00:00Z',
+          prompt: 'before',
+        },
+      },
+      {
+        event: {
+          eventId: 'e2',
+          provider: 'codex',
+          threadId: 'session-codex',
+          turnId: 'turn-codex',
+          method: 'content.text-delta',
+          createdAt: '2026-01-01T00:00:01Z',
+          itemId: 'a1',
+          delta: 'codex answer',
+        },
+      },
+      {
+        event: {
+          eventId: 'e3',
+          provider: 'codex',
+          threadId: 'session-codex',
+          turnId: 'turn-codex',
+          method: 'turn.completed',
+          createdAt: '2026-01-01T00:00:02Z',
+          outputText: 'codex answer',
+        },
+      },
+      {
+        event: {
+          eventId: 'e4',
+          provider: 'claude',
+          threadId: 'session-claude',
+          turnId: 'turn-claude',
+          method: 'turn.started',
+          createdAt: '2026-01-01T00:00:03Z',
+          prompt: 'after',
+        },
+      },
+      {
+        event: {
+          eventId: 'e5',
+          provider: 'claude',
+          threadId: 'session-claude',
+          turnId: 'turn-claude',
+          method: 'content.text-delta',
+          createdAt: '2026-01-01T00:00:04Z',
+          itemId: 'a2',
+          delta: 'claude answer',
+        },
+      },
+      {
+        event: {
+          eventId: 'e6',
+          provider: 'claude',
+          threadId: 'session-claude',
+          turnId: 'turn-claude',
+          method: 'turn.completed',
+          createdAt: '2026-01-01T00:00:05Z',
+          outputText: 'claude answer',
+        },
+      },
+    ];
     const adapter = createMockAdapter();
     adapter.getConversation.mockResolvedValue(null);
     adapter.getMessages.mockResolvedValue([]);
@@ -2502,91 +2382,22 @@ describe('Conversation Routes', () => {
             },
       ),
       readSessionMessages: vi.fn(() => []),
-      readConversationEventWindow: vi.fn(async (_id, options) =>
-        options.authority.userId !== principal.id
+      readConversationForkSource: vi.fn(async (_id, authority) =>
+        authority.userId !== principal.id
           ? null
           : {
-              watermark: 6,
-              currentSessionId: 'session-claude',
-              session: { displayTitle: 'Handoff conversation' },
-              sessionLineage: [
-                { sessionId: 'session-codex', agentSlug: 'codex' },
-                { sessionId: 'session-claude', agentSlug: 'claude' },
-              ],
-              events: [
-                {
-                  event: {
-                    eventId: 'e1',
-                    provider: 'codex',
-                    threadId: 'session-codex',
-                    turnId: 'turn-codex',
-                    method: 'turn.started',
-                    createdAt: '2026-01-01T00:00:00Z',
-                    prompt: 'before',
-                  },
-                },
-                {
-                  event: {
-                    eventId: 'e2',
-                    provider: 'codex',
-                    threadId: 'session-codex',
-                    turnId: 'turn-codex',
-                    method: 'content.text-delta',
-                    createdAt: '2026-01-01T00:00:01Z',
-                    itemId: 'a1',
-                    delta: 'codex answer',
-                  },
-                },
-                {
-                  event: {
-                    eventId: 'e3',
-                    provider: 'codex',
-                    threadId: 'session-codex',
-                    turnId: 'turn-codex',
-                    method: 'turn.completed',
-                    createdAt: '2026-01-01T00:00:02Z',
-                    outputText: 'codex answer',
-                  },
-                },
-                {
-                  event: {
-                    eventId: 'e4',
-                    provider: 'claude',
-                    threadId: 'session-claude',
-                    turnId: 'turn-claude',
-                    method: 'turn.started',
-                    createdAt: '2026-01-01T00:00:03Z',
-                    prompt: 'after',
-                  },
-                },
-                {
-                  event: {
-                    eventId: 'e5',
-                    provider: 'claude',
-                    threadId: 'session-claude',
-                    turnId: 'turn-claude',
-                    method: 'content.text-delta',
-                    createdAt: '2026-01-01T00:00:04Z',
-                    itemId: 'a2',
-                    delta: 'claude answer',
-                  },
-                },
-                {
-                  event: {
-                    eventId: 'e6',
-                    provider: 'claude',
-                    threadId: 'session-claude',
-                    turnId: 'turn-claude',
-                    method: 'turn.completed',
-                    createdAt: '2026-01-01T00:00:05Z',
-                    outputText: 'claude answer',
-                  },
-                },
-              ]
-                .map((item, index) => ({ ...item, sequence: index + 1 }))
-                .slice(options.cursor ? 0 : 2, options.cursor ? 3 : 6),
-              hasMore: !options.cursor,
-              ...(options.cursor ? {} : { nextCursor: 'page-2' }),
+              title: 'Handoff conversation',
+              // Each Session projects on its own, as the lineage reader
+              // projects `readSessionSeedMessages` per Session.
+              messages: ['session-codex', 'session-claude'].flatMap(
+                (sessionId) =>
+                  projectRuntimeEventsToMessages(
+                    handoffEvents
+                      .map((item) => item.event)
+                      .filter((event) => event.threadId === sessionId),
+                    { stableIds: true },
+                  ),
+              ),
             },
       ),
     };
@@ -2641,7 +2452,7 @@ describe('Conversation Routes', () => {
     expect(claude.status).toBe(404);
     expect(forks).toHaveLength(0);
     forkAuthority = principalAuthority;
-    reader.readConversationEventWindow.mockClear();
+    reader.readConversationForkSource.mockClear();
     const authorizedClaude = await request('claude', 'turn-claude');
     expect(
       authorizedClaude.status,
@@ -2649,12 +2460,10 @@ describe('Conversation Routes', () => {
     ).toBe(200);
     expect((await request('codex', 'turn-claude')).status).toBe(409);
     expect((await request('codex', 'turn-codex')).status).toBe(200);
+    expect(reader.readConversationForkSource).toHaveBeenCalledTimes(3);
     expect(
-      reader.readConversationEventWindow.mock.calls.length,
-    ).toBeGreaterThan(3);
-    expect(
-      reader.readConversationEventWindow.mock.calls.every(
-        ([, options]) => options.authority.userId === principal.id,
+      reader.readConversationForkSource.mock.calls.every(
+        ([, authority]) => authority.userId === principal.id,
       ),
     ).toBe(true);
     forkAuthority = sessionReadAuthorityFromRequest(
@@ -2667,9 +2476,9 @@ describe('Conversation Routes', () => {
     expect(forks).toHaveLength(factsBeforeOtherOwner);
     unresolvedCaller = true;
     const factCount = forks.length;
-    reader.readConversationEventWindow.mockClear();
+    reader.readConversationForkSource.mockClear();
     expect((await request('codex', 'turn-codex')).status).toBe(403);
-    expect(reader.readConversationEventWindow).not.toHaveBeenCalled();
+    expect(reader.readConversationForkSource).not.toHaveBeenCalled();
     expect(forks).toHaveLength(factCount);
   });
 
@@ -2765,6 +2574,51 @@ describe('Conversation Routes', () => {
       }).toEqual(before);
     },
   );
+
+  test('a fork past the lineage read bound is refused before its history is read', async () => {
+    const source = createMockAdapter();
+    source.getConversation.mockResolvedValue(null);
+    const reader = {
+      ...emptyHistoryReader(),
+      conversationSessionIds: vi.fn(() =>
+        Array.from({ length: 65 }, (_, index) => `session-${index}`),
+      ),
+      readConversationForkSource: vi.fn(),
+    };
+    const app = createForkConversationRoutes(
+      new Map([['codex', source]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => source as any,
+      reader as any,
+      () => 'user',
+      undefined,
+      undefined,
+      {
+        appendConversationFork: vi.fn(),
+        appendConversationForkIfAbsent: vi.fn(),
+        readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
+      },
+      () => true,
+    );
+    const response = await app.request(
+      '/codex/conversations/long-lineage/fork',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetAgent: 'codex' }),
+      },
+    );
+    expect(response.status).toBe(422);
+    expect(await json(response)).toMatchObject({
+      code: 'conversation_lineage_too_long',
+    });
+    expect(reader.readConversationForkSource).not.toHaveBeenCalled();
+  });
 
   test('named runtime reads refuse when the request cannot resolve the Session owner', async () => {
     const adapter = createMockAdapter();

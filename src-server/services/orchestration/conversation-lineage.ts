@@ -1892,15 +1892,76 @@ export class ConversationLineage {
         throw new ConversationStartContextError(
           'Retained summary source is no longer authorized.',
         );
-    for (const entry of filtered.sources)
+    const carried = await this.authorizedLineageSeedMessages(
+      filtered.sources,
+      authority,
+    );
+    if (!carried) throw new Error('Conversation context is not authorized.');
+    return [...this.summaryMessages(filtered.seed), ...carried];
+  }
+
+  /**
+   * The source transcript a fork cuts at its branch point. It is read the way
+   * a handoff reads the history it carries (every lineage Session authorized,
+   * then `readSessionSeedMessages`: out-of-line content resolved, rows an
+   * earlier fork copied in included), so a fork costs the same as a handoff
+   * whatever the conversation's length; the seed it builds is budgeted later.
+   *
+   * Unlike a handoff it does not start at the latest context boundary: a fork
+   * may branch from any completed turn the conversation shows. A reserved
+   * successor that has not started holds no history and is passed over.
+   * Null when the conversation is absent here or the caller cannot read every
+   * Session of it, so neither discloses anything.
+   */
+  async readConversationForkSource(
+    conversationId: string,
+    authority: SessionReadScope,
+  ): Promise<{
+    messages: ConversationMessage[];
+    title?: string;
+    projectSlug?: string;
+  } | null> {
+    const store = this.deps.eventStore;
+    if (!store) return null;
+    let lineage: readonly { sessionId: string }[] =
+      store.conversationSessions(conversationId);
+    if (lineage.length === 0) {
+      // A child Session is part of another conversation, never one itself.
+      if (store.conversationForSession(conversationId)) return null;
+      lineage = [{ sessionId: conversationId }];
+    } else if (
+      lineage.length > 1 &&
+      !store.readSessionByThread(lineage.at(-1)!.sessionId)
+    ) {
+      lineage = lineage.slice(0, -1);
+    }
+    const messages = await this.authorizedLineageSeedMessages(
+      lineage,
+      authority,
+    );
+    if (!messages) return null;
+    const current = await this.readSessionConversation(
+      lineage.at(-1)!.sessionId,
+      authority,
+    );
+    return {
+      messages,
+      ...(current?.title ? { title: current.title } : {}),
+      ...(current?.projectSlug ? { projectSlug: current.projectSlug } : {}),
+    };
+  }
+
+  /** Null unless the caller may read every Session; never a partial read. */
+  private async authorizedLineageSeedMessages(
+    sources: readonly { sessionId: string }[],
+    authority: SessionReadScope,
+  ): Promise<ConversationMessage[] | null> {
+    for (const entry of sources)
       if (!(await this.deps.readSession(entry.sessionId, authority)))
-        throw new Error('Conversation context is not authorized.');
-    return [
-      ...this.summaryMessages(filtered.seed),
-      ...filtered.sources.flatMap((entry) =>
-        this.deps.readSessionSeedMessages(entry.sessionId, authority),
-      ),
-    ];
+        return null;
+    return sources.flatMap((entry) =>
+      this.deps.readSessionSeedMessages(entry.sessionId, authority),
+    );
   }
 
   private contextSources(sources: readonly { sessionId: string }[]) {

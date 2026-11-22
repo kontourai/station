@@ -2939,7 +2939,19 @@ routes check the Agent recorded by runtime admission. An addressed Session
 uses its own recorded Agent when it has no conversation-root resolution.
 An Agent mismatch or refused runtime admission returns 404. A successor stores only its
 own turns; earlier history reaches its model without being copied into its
-record. Export, fork and summary use the same read. A successor's own record
+record. Export and summary use the same read. A fork reads the conversation's
+runtime turns first, every Session whole and authorized together, as a handoff
+reads the history it carries
+([`readConversationForkSource`](../../src-server/services/orchestration/conversation-lineage.ts)),
+so a long or tool-heavy conversation forks like a short one. It falls back to
+this read only when the conversation has no readable runtime turns, such as one
+that exists only as an Agent's stored record.
+Its saved copy keeps each message whole when it fits the 2 MB fork-context
+bound and keeps only the text otherwise. Every 4xx refusal from the fork route
+carries a `code` from `CONVERSATION_FORK_REFUSAL_CODES`
+(`@kontourai/station-contracts/orchestration`), a Station Control scope code,
+`conversation_lineage_too_long`, or `conversation-context-unavailable` for a
+saved fork context that needs reconciling. A successor's own record
 is never listed as a conversation of its own, and conversation message search
 reports its hits under the conversation it continues. A conversation whose
 lineage exceeds 64 Sessions is refused with 422 `conversation_lineage_too_long`
