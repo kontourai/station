@@ -1109,11 +1109,13 @@ class ConversationSeedTurnRefusedError extends SendTurnRefusedError {
  */
 export class PolicyReplacedSessionRefusedError extends SendTurnRefusedError {
   readonly code = SESSION_CONFIGURATION_REPLACED_CODE;
-  constructor(reason: 'busy' | 'successor') {
+  constructor(reason: 'busy' | 'successor' | 'changed-again') {
     super(
       reason === 'busy'
         ? "This agent's settings changed while the chat was still working. That work can no longer use tools. When it finishes, send your message again: the chat continues this conversation with the new settings."
-        : "This agent's settings changed and this chat's engine can't pick up where it left off. Send your message again: the chat continues this conversation in a new session with the new settings.",
+        : reason === 'changed-again'
+          ? "This agent's settings changed again before your message was sent, so nothing was sent. Send it again: the chat continues with the new settings."
+          : "This agent's settings changed and this chat's engine can't pick up where it left off. Send your message again: the chat continues this conversation in a new session with the new settings.",
       reason === 'busy' ? 'busy' : 'conflict',
     );
     this.name = 'PolicyReplacedSessionRefusedError';
@@ -10948,7 +10950,7 @@ export class OrchestrationService {
                     );
                     if (stillReplaced !== 'none')
                       throw new PolicyReplacedSessionRefusedError(
-                        stillReplaced === 'successor' ? 'successor' : 'busy',
+                        'changed-again',
                       );
                     const invoke = async () => {
                       const assertInputRequestCurrent = () => {
