@@ -1,0 +1,7 @@
+{
+  "revision": "a5a2668f1ad7e7de9c624288bc5fbbe12ed87a84",
+
+  "notes": [
+    {"path":"docs/design/verified-action-replay.md","note":"Round 3: browser_evaluate refuses any about: page whose browser-reported script-context origin (Runtime.executionContextCreated, recorded beside the uniqueContextId) is opaque, instead of an in-page self.origin read; the closing-target set is bounded at 256 like destroyed; a popup's opener can write to its initial blank document before admission, with its own origin and egress. Grepped this page for browser_evaluate, about:blank, popup, origin-check and evaluation claims: none describe the changed behavior beyond the Browser guide, the agent-actions decision and the browser reference, which were updated.","inputs":["docs/decisions/browser-agent-actions-and-bound-channel.md"]}
+  ]
+}
