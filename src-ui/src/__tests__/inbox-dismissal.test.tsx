@@ -13,6 +13,7 @@ import { InboxDismissUndo } from '../components/chat-dock/inbox-dismissals';
 import { useInboxNeedsYouCount } from '../components/chat-dock/useInboxGroups';
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
 import { UndoableActionShortcut } from '../components/undo/UndoableActionShortcut';
+import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { ActiveChatsStore } from '../contexts/active-chats-store';
 import {
   findShortcutConflicts,
@@ -24,8 +25,9 @@ import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import type { WorkFactsById } from '../views/home/work-facts';
 
+const station = vi.hoisted(() => ({ apiBase: 'http://localhost' }));
 vi.mock('../contexts/ApiBaseContext', () => ({
-  useApiBase: () => ({ apiBase: 'http://localhost' }),
+  useApiBase: () => ({ apiBase: station.apiBase }),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigationActions: () => ({ navigate: vi.fn() }),
@@ -94,6 +96,13 @@ function Harness({
   );
 }
 
+/** Whether the dismissal's notice is live (a closing card lingers, inert, until its exit animation ends). */
+function dismissNoticeShown() {
+  return toastStore
+    .getSnapshot()
+    .some((toast) => toast.message === 'Conversation dismissed');
+}
+
 function dismiss() {
   fireEvent.click(
     screen.getByRole('button', { name: 'Dismiss Review the inbox from inbox' }),
@@ -101,6 +110,7 @@ function dismiss() {
 }
 
 beforeEach(() => {
+  station.apiBase = 'http://localhost';
   toastStore.clear();
   toastStore.clearHistory();
   localStorage.clear();
@@ -447,11 +457,104 @@ describe('inbox dismissal through the rendered panel', () => {
     expect(findShortcutConflicts(registeredShortcuts)).toEqual([]);
   });
 
-  it('Cmd+Z restores the dismissal, then does nothing once the notice has gone', () => {
+  it('Cmd+Z restores the dismissal while its notice is shown, and does nothing once the notice has gone', () => {
     render(<Harness items={[thread]} />);
+    const row = () =>
+      screen.queryByRole('button', { name: /^Review the inbox\b/ });
     dismiss();
+    expect(row()).toBeNull();
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(row()).toBeTruthy();
+    expect(dismissNoticeShown()).toBe(false);
+
+    dismiss();
+    expect(row()).toBeNull();
     act(() => toastStore.clear());
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(row()).toBeNull();
+  });
+
+  it.each([
+    {
+      saved: { 'inbox.undoDismiss': { key: 'u', modifiers: ['cmd'] } },
+      expected: { key: 'u', modifiers: ['cmd'] },
+      chord: { key: 'u', ctrlKey: true },
+    },
+    {
+      saved: {
+        'inbox.undoDismiss': { key: 'u', modifiers: ['cmd'] },
+        'app.undoLastAction': { key: 'y', modifiers: ['cmd'] },
+      },
+      expected: { key: 'y', modifiers: ['cmd'] },
+      chord: { key: 'y', ctrlKey: true },
+    },
+    {
+      saved: { 'inbox.undoDismiss': null },
+      expected: { key: 'z', modifiers: ['cmd'] },
+      chord: { key: 'z', ctrlKey: true },
+    },
+  ])(
+    'a key saved for the retired inbox Undo carries to Undo last action unless it has its own: $saved',
+    ({ saved, expected, chord }) => {
+      localStorage.setItem(
+        'station-device-settings-v1',
+        JSON.stringify({ version: 2, values: { shortcutOverrides: saved } }),
+      );
+      deviceSettingsStore.reloadFromStorage();
+      render(<Harness items={[thread]} />);
+      const undo = registeredShortcuts.find(
+        (shortcut) => shortcut.id === 'app.undoLastAction',
+      );
+      expect(undo && { key: undo.key, modifiers: [...undo.modifiers] }).toEqual(
+        expected,
+      );
+      expect(
+        registeredShortcuts.some(
+          (shortcut) => shortcut.id === 'inbox.undoDismiss',
+        ),
+      ).toBe(false);
+
+      dismiss();
+      fireEvent.keyDown(window, chord);
+      expect(
+        screen.getByRole('button', { name: /^Review the inbox\b/ }),
+      ).toBeTruthy();
+    },
+  );
+
+  it('changing Station closes the dismissal notice, and Cmd+Z then restores nothing', () => {
+    const view = render(<Harness items={[thread]} />);
+    dismiss();
+    expect(dismissNoticeShown()).toBe(true);
+
+    station.apiBase = 'http://other-station';
+    view.rerender(<Harness items={[thread]} />);
+
+    expect(dismissNoticeShown()).toBe(false);
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
+    ).toBeNull();
+  });
+
+  it('changing namespace closes the dismissal notice, and Cmd+Z then restores nothing', () => {
+    const inNamespace = (namespace: string) => (
+      <AuthorityPersistenceContext.Provider
+        value={{ status: 'verified', namespace, observation: null }}
+      >
+        <Harness items={[thread]} />
+      </AuthorityPersistenceContext.Provider>
+    );
+    const view = render(inNamespace('station-a'));
+    dismiss();
+    expect(dismissNoticeShown()).toBe(true);
+
+    view.rerender(inNamespace('station-b'));
+    expect(dismissNoticeShown()).toBe(false);
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+
+    // Back in the namespace the dismissal was made in, it still stands.
+    view.rerender(inNamespace('station-a'));
     expect(
       screen.queryByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeNull();

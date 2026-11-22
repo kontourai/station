@@ -1685,8 +1685,9 @@ re-read runs. Full-size cards in the desktop and mobile Inbox share the title an
 column. Status and one time align on the right. Hover or keyboard focus exposes
 the desktop row actions. A touch row keeps the agent named beside its mark.
 Dismissal offers a
-transient Undo toast and the configurable inbox Undo shortcut. Native editor
-and terminal undo retain their keys.
+transient Undo toast, which **Undo last action** (⌘Z / Ctrl+Z, rebindable)
+also reaches while the toast is shown. Native editor and terminal undo retain
+their keys.
 
 With the preview on, Settle is the one way to put an owned conversation away:
 its row offers no Dismiss. A third-party Session of this host offers **Hide**
@@ -1696,7 +1697,8 @@ beside the settled records), so it is hidden on every device of that person.
 It stays hidden through its status updates and returns when the row is no
 longer third-party (adopted into Station), which also clears the record, or
 when the person restores it from search, where hidden rows are listed as
-Hidden. Hide and Restore share the dismissal Undo toast and shortcut. A host
+Hidden. Hide and Restore share the dismissal Undo toast and **Undo last
+action**. A host
 whose work-state read carries no `hidden` map, and a row from another Station,
 keep local Dismiss. Existing local third-party dismissals of this host move to
 the host when it first offers hiding and are then removed from the browser; a

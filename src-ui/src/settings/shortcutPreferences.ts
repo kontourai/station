@@ -25,8 +25,31 @@ export type { ShortcutBinding, ShortcutModifier };
 
 export type ShortcutOverrides = Record<string, ShortcutBinding | null>;
 
+/**
+ * Retired command ids whose saved binding now belongs to the command that
+ * replaced them. #5397 folded "Undo inbox dismissal" into "Undo last action",
+ * so a key the person chose for the first carries over to the second, unless
+ * they already chose one for it. A retired command that was turned off
+ * (`null`) carries nothing: turning off the inbox Undo never meant turning
+ * off every Undo. Read-time only; the next binding the person saves writes
+ * the carried map back.
+ */
+const RETIRED_SHORTCUT_IDS: Readonly<Record<string, string>> = {
+  'inbox.undoDismiss': 'app.undoLastAction',
+};
+
 export function readShortcutOverrides(): ShortcutOverrides {
-  return deviceSettingsStore.get('shortcutOverrides');
+  const stored = deviceSettingsStore.get('shortcutOverrides');
+  let overrides = stored;
+  for (const [retired, successor] of Object.entries(RETIRED_SHORTCUT_IDS)) {
+    if (!Object.hasOwn(overrides, retired)) continue;
+    const { [retired]: binding, ...rest } = overrides;
+    overrides =
+      binding && !Object.hasOwn(rest, successor)
+        ? { ...rest, [successor]: binding }
+        : rest;
+  }
+  return overrides;
 }
 
 export function writeShortcutOverrides(overrides: ShortcutOverrides) {

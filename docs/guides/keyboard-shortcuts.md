@@ -88,11 +88,19 @@ hiding a third-party session. **Undo last action** is the only command on that
 key and can be rebound in Keyboard shortcuts. It declines inside text fields,
 contenteditable editors, CodeMirror and terminals, preserving their own Undo,
 and does nothing when no notice is waiting. Each press undoes one action,
-newest first; choose **Undo** in a notice to pick which. If an Undo can no
-longer apply, the notice says why.
+newest first, among the notices still on screen; choose **Undo** in a notice
+to pick which. If an Undo can no longer apply, the notice says why.
 
-Dismissal does not stop work or delete conversation history. Changing Station
-closes the dismissal notice, so its Undo is not offered for another Station.
+Only the latest inbox dismissal keeps its notice: dismissing a second
+conversation closes the first one's, so a second press does not bring the
+first back. Once its notice has gone, a dismissed conversation is restored by
+searching the inbox for it and choosing **Restore to inbox** under
+**Dismissed**. Dismissal does not stop work or delete conversation history.
+Changing Station closes the dismissal notice, so its Undo is not offered for
+another Station.
+
+A key saved for the retired **Undo inbox dismissal** command carries over to
+**Undo last action** unless that command has a key of its own.
 
 ## Dispatch and limits
 
