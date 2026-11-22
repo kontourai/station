@@ -575,7 +575,7 @@ describe('a rule names its Project by slug through the SDK and the route', () =>
   function sdkAgainst(s: Awaited<ReturnType<typeof operatorSurface>>) {
     vi.stubGlobal(
       'fetch',
-      async (input: RequestInfo | URL, init?: RequestInit) => {
+      async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
         const request = new Request(input, init);
         const url = new URL(request.url);
         return s.app.request(
@@ -594,9 +594,9 @@ describe('a rule names its Project by slug through the SDK and the route', () =>
     const s = await operatorSurface({ projects: [STATION] });
     sdkAgainst(s);
     const rule = await createAutomationRule('http://station.test', {
-      ...(DISPATCH_RULE as never),
+      ...DISPATCH_RULE,
       sourceId: s.sourceId,
-    });
+    } as never);
     expect(rule.action.projectId).toBe(STATION.id);
     const stored = JSON.parse(readFileSync(s.store.path, 'utf8'));
     expect(stored.rules[0].action.projectId).toBe(STATION.id);
@@ -608,10 +608,10 @@ describe('a rule names its Project by slug through the SDK and the route', () =>
     sdkAgainst(s);
     await expect(
       createAutomationRule('http://station.test', {
-        ...(DISPATCH_RULE as never),
-        action: { ...DISPATCH_RULE.action, projectId: 'nope' } as never,
+        ...DISPATCH_RULE,
+        action: { ...DISPATCH_RULE.action, projectId: 'nope' },
         sourceId: s.sourceId,
-      }),
+      } as never),
     ).rejects.toThrow('action.projectId: no Project has the id or slug "nope"');
     expect(s.store.read().rules).toEqual([]);
   });
