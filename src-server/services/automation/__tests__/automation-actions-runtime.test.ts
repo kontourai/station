@@ -16,6 +16,7 @@ import {
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import type {
   ProviderSendTurnInput,
   ProviderSessionStartInput,
@@ -36,6 +37,7 @@ import {
   fixtureAgentStartResolver,
   fixtureTaskAgentSessionResolver,
 } from '../../projects/__tests__/task-dispatch-test-helpers.js';
+import { ProjectService } from '../../projects/project-service.js';
 import { createTaskBriefSource } from '../../projects/task-brief-source.js';
 import { composeTaskDispatcher } from '../../projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
@@ -112,6 +114,26 @@ class RecordingAdapter extends GateTestAdapter {
   }
 }
 
+/** Real Project files and the real ProjectService that reads them. */
+async function realProjects(
+  home: string,
+  projects: readonly { id: string; slug: string }[],
+) {
+  const storage = new FileStorageAdapter(join(home, 'station'));
+  const now = new Date().toISOString();
+  const create = (project: { id: string; slug: string }) =>
+    storage.createProject({
+      id: project.id,
+      slug: project.slug,
+      name: `Project ${project.slug}`,
+      workingDirectory: home,
+      createdAt: now,
+      updatedAt: now,
+    });
+  for (const project of projects) await create(project);
+  return { storage, service: new ProjectService(storage), create };
+}
+
 async function world(
   options: {
     episode?: boolean;
@@ -140,10 +162,16 @@ async function world(
 ) {
   const ruleModes = options.ruleModes ?? ['live'];
   const home = makeTempDir('automation-actions-');
-  const projects = options.projects ?? [{ id: 'project', slug: 'project' }];
-  const store = new AutomationStore(home, undefined, {
-    listProjects: () => projects,
-  });
+  const agentStarts: string[] = [];
+  // Given `projects`, a real ProjectService over real Project files: its
+  // `getProject` reads by slug only, as production's does.
+  const real = options.projects
+    ? await realProjects(home, options.projects)
+    : undefined;
+  const projects = real?.service ?? {
+    listProjects: () => [{ id: 'project', slug: 'project' }],
+  };
+  const store = new AutomationStore(home, undefined, projects);
   const source = (
     await store.createSource({
       kind: 'github-poll',
@@ -151,7 +179,7 @@ async function world(
       repository: 'kontourai/station',
       grants: [
         {
-          projectId: options.grantProject ?? projects[0]!.id,
+          projectId: options.grantProject ?? projects.listProjects()[0]!.id,
           agentId: FIXTURE_TASK_AGENT,
           actions: ['dispatch-task'],
         },
@@ -168,7 +196,7 @@ async function world(
         sourceId: source.id,
         action: {
           kind: 'dispatch-task',
-          projectId: options.actionProject ?? projects[0]!.id,
+          projectId: options.actionProject ?? projects.listProjects()[0]!.id,
           agentId: FIXTURE_TASK_AGENT,
           instructions: 'Investigate the failure.',
           budget: { maxTurns: 1, maxTokens: 20000, maxWallRuntimeMs: 60000 },
@@ -249,7 +277,7 @@ async function world(
   const graphHome = join(home, 'graph');
   mkdirSync(graphHome);
   const graph = new TaskGraphService(graphHome, {
-    projectService: {
+    projectService: real?.service ?? {
       getProject: (slug) => ({
         id: slug,
         slug,
@@ -262,8 +290,15 @@ async function world(
   });
   const dispatcher = composeTaskDispatcher(graph, {
     orchestrationService: service,
-    resolveAgentStart: (input) =>
-      fixtureAgentStartResolver('claude')({ ...input, cwd: home }),
+    resolveAgentStart: (input) => {
+      // The real resolver reads `GET /projects/<projectSlug>`, which answers
+      // only a slug: the same lookup, through the real ProjectService.
+      if (real) {
+        real.service.getProject(input.projectSlug);
+        agentStarts.push(input.projectSlug);
+      }
+      return fixtureAgentStartResolver('claude')({ ...input, cwd: home });
+    },
     resolveProjectWorkspace: () => home,
     ...(options.turnPreparation
       ? {
@@ -292,13 +327,17 @@ async function world(
     error: vi.fn(),
   } as never);
   let inbox: ThreadInboxDelivery | undefined;
-  const projectIds = new Set(projects.map((project) => project.id));
+  const projectIds = new Set(
+    projects.listProjects().map((project) => project.id),
+  );
   const warnings = vi.fn();
   const ledgerReads = vi.fn(() => ledger);
   const makeRuntime = () =>
     createAutomationActionsRuntime({
       hosted: false,
-      isProjectCurrent: (id) => projectIds.has(id),
+      projects: real?.service ?? {
+        listProjects: () => [...projectIds].map((id) => ({ id, slug: id })),
+      },
       featurePreviews: previews,
       store,
       ledger: ledgerReads,
@@ -384,6 +423,8 @@ async function world(
   return {
     controller,
     projectIds,
+    real,
+    agentStarts,
     ledgerReads,
     dispatcher,
     ledger,
@@ -1483,22 +1524,20 @@ async function liveTick(w: World) {
   await w.runtime.tick();
 }
 
-test('a live rule naming its Project by slug starts a Task in that Project, and the store keeps the id', async () => {
+test('a live rule naming its Project by slug starts its Agent in that Project', async () => {
   const w = await world({
     projects: [STATION_PROJECT],
     actionProject: 'station',
     grantProject: 'station',
   });
-  const stored = JSON.parse(readFileSync(w.store.path, 'utf8'));
-  expect(stored.rules[0].action.projectId).toBe(STATION_PROJECT.id);
-  expect(stored.sources[0].grants[0].projectId).toBe(STATION_PROJECT.id);
   await liveTick(w);
   await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
   const intent = w.ledger.listActionIntents()[0]!;
   expect(intent.action.projectId).toBe(STATION_PROJECT.id);
   expect(w.graph.readTaskView(intent.taskId!)?.projectId).toBe(
-    STATION_PROJECT.id,
+    STATION_PROJECT.slug,
   );
+  expect(w.agentStarts.at(-1)).toBe(STATION_PROJECT.slug);
   expect(w.ledger.listDeliveries()[0]).toMatchObject({ outcome: 'started' });
 });
 
@@ -1512,8 +1551,9 @@ test('a live rule naming its Project by id still starts a Task in that Project',
   await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
   const intent = w.ledger.listActionIntents()[0]!;
   expect(w.graph.readTaskView(intent.taskId!)?.projectId).toBe(
-    STATION_PROJECT.id,
+    STATION_PROJECT.slug,
   );
+  expect(w.agentStarts.at(-1)).toBe(STATION_PROJECT.slug);
 });
 
 test('a rule already stored with a slug dispatches without being rewritten', async () => {
@@ -1529,8 +1569,9 @@ test('a rule already stored with a slug dispatches without being rewritten', asy
   const intent = w.ledger.listActionIntents()[0]!;
   expect(intent.action.projectId).toBe(STATION_PROJECT.id);
   expect(w.graph.readTaskView(intent.taskId!)?.projectId).toBe(
-    STATION_PROJECT.id,
+    STATION_PROJECT.slug,
   );
+  expect(w.agentStarts.at(-1)).toBe(STATION_PROJECT.slug);
   // A later tick keeps it running: the Task's Project matches the intent's.
   await w.runtime.tick();
   expect(w.ledger.readIntent(intent.intentId)?.state).toBe('running');
@@ -1557,7 +1598,8 @@ test("a value that is one Project's id and another's slug names the Project with
   await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
   const intent = w.ledger.listActionIntents()[0]!;
   expect(intent.action.projectId).toBe(byId.id);
-  expect(w.graph.readTaskView(intent.taskId!)?.projectId).toBe(byId.id);
+  expect(w.graph.readTaskView(intent.taskId!)?.projectId).toBe(byId.slug);
+  expect(w.agentStarts).toEqual([byId.slug]);
 });
 
 test('a new rule naming no Project is refused with the value as given', async () => {
@@ -1635,6 +1677,7 @@ test("retry-episode on a slug-named rule's exhausted episode starts the retry in
       : undefined;
   expect(second?.action.projectId).toBe(STATION_PROJECT.id);
   expect(w.graph.readTaskView(second!.taskId!)?.projectId).toBe(
-    STATION_PROJECT.id,
+    STATION_PROJECT.slug,
   );
+  expect(w.agentStarts.at(-1)).toBe(STATION_PROJECT.slug);
 });

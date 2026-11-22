@@ -71,7 +71,6 @@ import {
   type PausedGateReviewAggregate,
 } from '../../services/projects/attention-projection.js';
 import { FileAttentionSnoozeStore } from '../../services/projects/attention-snooze-store.js';
-import { localProjectIdFor } from '../../services/projects/project-local-id.js';
 import { defaultedProjectWorkingDirectory } from '../../services/projects/project-service.js';
 import type {
   ScheduledProjectHold,
@@ -788,8 +787,7 @@ export function configureRuntimeSupportServices(
           hosted: false,
           featurePreviews: context.featurePreviews,
           store: automationStore,
-          isProjectCurrent: (id) =>
-            localProjectIdFor(context.projectService, id) === id,
+          projects: context.projectService,
           ledger: () => automationLedger.get(),
           existingLedger: () => automationLedger.getExisting(),
           taskGraph: context.taskGraphService,

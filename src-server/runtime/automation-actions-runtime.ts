@@ -32,6 +32,10 @@ import type {
   ThreadInboxDelivery,
   ThreadInboxPayload,
 } from '../services/orchestration/thread-inbox.js';
+import {
+  localProjectIdFor,
+  type ProjectIdentityLookup,
+} from '../services/projects/project-local-id.js';
 import type { TaskDispatcher } from '../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../services/projects/task-graph-service.js';
 import { MonitorTaskTurnSupervisor } from '../services/scheduling/monitor-task-supervisor.js';
@@ -43,11 +47,12 @@ interface AutomationActionsOptions {
   featurePreviews: FeaturePreviewRegistry;
   store: Pick<AutomationStore, 'read'>;
   /**
-   * Whether this is the exact id of a current Project; a same-named
-   * replacement never inherits a grant. The store has already resolved a
-   * rule's slug to its id, so the intent carries the id.
+   * The current Projects. An intent's Project must be the exact id of one
+   * of them (a same-named replacement never inherits a grant; the store has
+   * already resolved a rule's slug to its id). Throws when they cannot be
+   * listed, which stops the tick without refusing anything.
    */
-  isProjectCurrent: (projectId: string) => boolean;
+  projects: ProjectIdentityLookup;
   ledger: () => AutomationLedger;
   existingLedger: () => AutomationLedger | undefined;
   taskGraph: Pick<
@@ -128,6 +133,7 @@ class AutomationActionsRuntime implements AutomationActions {
   private busy = false;
   private closed = false;
   private journalObserved = false;
+  private projectsUnreadable = false;
   private recoveryUnavailable = false;
 
   constructor(
@@ -256,14 +262,61 @@ class AutomationActionsRuntime implements AutomationActions {
    * `current` is returned, so every caller acts under the newest version;
    * a running Session is told at its next turn boundary.
    */
+  /**
+   * The current Projects. A failure is an availability problem, not a
+   * missing Project: it is logged once until a read succeeds, and rethrown
+   * so the caller stops (fails closed) without refusing anything.
+   */
+  private listProjects(): ReadonlyArray<{
+    readonly id: string;
+    readonly slug: string;
+  }> {
+    try {
+      const listed = this.options.projects.listProjects();
+      this.projectsUnreadable = false;
+      return listed;
+    } catch (error) {
+      if (!this.projectsUnreadable)
+        this.options.logger.warn(
+          'Automation could not read the Project list; no automation action starts until it can',
+          { error: error instanceof Error ? error.message : 'unknown' },
+        );
+      this.projectsUnreadable = true;
+      throw error;
+    }
+  }
+
+  /** The current Project whose exact id the intent names. */
+  private intentProject(
+    intent: NativeAutomationIntent,
+  ): Readonly<{ id: string; slug: string }> | undefined {
+    return this.listProjects().find(
+      (project) => project.id === intent.action.projectId,
+    );
+  }
+
   private authority(intent: AutomationActionIntent): ActionAuthority {
     if (!nativeIntent(intent))
       return { kind: 'stopped', reason: 'policy_changed' };
     if (intent.revocation)
       return { kind: 'revoked', cause: intent.revocation.cause };
     if (!this.enabled()) return { kind: 'revoked', cause: 'preview-disabled' };
-    if (!this.options.isProjectCurrent(intent.action.projectId))
-      return { kind: 'revoked', cause: 'project-unavailable' };
+    const listed = this.listProjects();
+    const project = listed.find(({ id }) => id === intent.action.projectId);
+    if (!project)
+      // An intent recorded before slugs were resolved names a Project that
+      // exists by slug: its rule now binds the id, so that is a rule change,
+      // not a missing Project.
+      return {
+        kind: 'revoked',
+        cause:
+          localProjectIdFor(
+            { listProjects: () => listed },
+            intent.action.projectId,
+          ) === undefined
+            ? 'project-unavailable'
+            : 'rule-changed',
+      };
     const occurredAt = Date.parse(intent.event.occurredAt);
     const now = Date.now();
     if (
@@ -277,7 +330,9 @@ class AutomationActionsRuntime implements AutomationActions {
       if (
         !task ||
         task.createdAt !== intent.taskCreatedAt ||
-        task.projectId !== intent.action.projectId ||
+        // The Task names its Project by slug; compare Project identities.
+        localProjectIdFor({ listProjects: () => listed }, task.projectId) !==
+          project.id ||
         task.status === 'done' ||
         task.status === 'canceled'
       )
@@ -643,9 +698,16 @@ class AutomationActionsRuntime implements AutomationActions {
       // An amendment adopted just now is the version this Task starts under.
       intent = (ledger.readIntent(intent.intentId) ??
         intent) as NativeAutomationIntent;
+      const project = this.intentProject(intent);
+      if (!project) {
+        claim.release();
+        return;
+      }
+      // Authority holds the id; the Task names its Project by slug, the
+      // identity TaskGraph and the Agent start resolve a Project by.
       const task = await this.options.taskGraph.createTaskIdempotent(
         {
-          projectId: intent.action.projectId,
+          projectId: project.slug,
           title: `Automation: ${rule.name}`,
           description: automationIntentMessage(intent),
           agentId: intent.action.agentId,
