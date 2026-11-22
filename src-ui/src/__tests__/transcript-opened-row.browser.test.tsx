@@ -93,7 +93,7 @@ for (const [name, viewport] of [
     }
   });
 
-  test(`(${name}) scrolling away and back to the end releases the hold`, async () => {
+  test(`(${name}) returning to the end releases the hold`, async () => {
     const { browser, page, errors } = await tailFixture(viewport);
     try {
       await settledAtTail(page);
@@ -101,22 +101,27 @@ for (const [name, viewport] of [
       await row.click();
       await expect.poll(() => row.getAttribute('aria-expanded')).toBe('true');
       await page.waitForTimeout(1_500);
-      // The reader scrolls up, then all the way back to the end.
-      const log = (await page
-        .getByRole('log', { name: 'Conversation transcript' })
-        .boundingBox())!;
-      await page.mouse.move(log.x + log.width / 2, log.y + log.height / 2);
-      await page.mouse.wheel(0, -600);
+      const grow = () =>
+        row.evaluate((button) => {
+          const late = document.createElement('div');
+          late.style.height = '600px';
+          button.closest('.chat-message-anchor')!.append(late);
+        });
+      // Held: the opened row grows and the end is left below.
+      await grow();
       await frames(page);
-      await page.mouse.wheel(0, 8000);
+      expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+      // The reader jumps to the end in one step (a scrollbar drag to the
+      // bottom), never scrolling up on the way.
+      await page
+        .getByRole('log', { name: 'Conversation transcript' })
+        .evaluate((log) => {
+          log.scrollTop = log.scrollHeight;
+        });
       await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
       await page.waitForTimeout(1_500);
-      // The opened row grows again: back at the end, the end is followed.
-      await row.evaluate((button) => {
-        const late = document.createElement('div');
-        late.style.height = '600px';
-        button.closest('.chat-message-anchor')!.append(late);
-      });
+      // Back at the end the tail is followed again.
+      await grow();
       await frames(page);
       await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
       expect(errors).toEqual([]);
