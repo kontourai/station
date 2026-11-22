@@ -179,6 +179,12 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // plain job, so a client offers Project schedules only on this flag.
   // Hosted deployments withdraw it: they compose no Project runner.
   projectSchedules: true,
+  // A job's display name: src-server/routes/operations/scheduler.ts accepts
+  // `displayName` on create and edit and derives the slug when a create
+  // names none. An older host drops the field and reports success, so a
+  // client offers renaming only on this flag. Hosted deployments withdraw
+  // it with every scheduler route: see servesScheduledConversationTarget.
+  schedulerJobDisplayName: true,
   // #5067: the Project Library, `/api/projects/:slug/library…`
   // (src-server/routes/projects/project-library-routes.ts). Hosted
   // deployments withdraw it: see servesProjectLibrary.
@@ -321,6 +327,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   followUpAttachments: servesFollowUpAttachments,
   pullRequestFeedback: servesPullRequestFeedback,
   projectSchedules: servesScheduledConversationTarget,
+  schedulerJobDisplayName: servesScheduledConversationTarget,
   projectRoomCoordinator: servesProjectRoomCoordinator,
   remoteSessionHistory: servesRemoteSessionReads,
   projectLibrary: servesProjectLibrary,

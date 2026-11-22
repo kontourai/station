@@ -501,6 +501,7 @@ describe('Scheduler Routes', () => {
     await expect(json(response)).resolves.toEqual({
       success: false,
       error: "Job 'test-job' already exists",
+      code: 'job_name_taken',
     });
   });
 

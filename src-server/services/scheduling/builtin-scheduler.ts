@@ -2,11 +2,13 @@ import { type Schedule, validateSchedule } from '@kontourai/ephemeris';
 import {
   AUTOMATION_RUN_POLICY,
   SCHEDULER_EXECUTION_LIMITS,
+  SCHEDULER_JOB_NAME_TAKEN,
   type SchedulerAutomationCreator,
   type SchedulerAutomationTarget,
   type SchedulerConcurrencyDisposition,
   type SchedulerEvent,
   type SchedulerManualRunReceipt,
+  schedulerJobSlugCandidates,
 } from '@kontourai/station-contracts/scheduler';
 import type {
   AddJobOpts,
@@ -79,8 +81,9 @@ function storageError(outcome: SchedulerUnavailable): Error {
 }
 
 export class SchedulerJobConflictError extends Error {
-  constructor(name: string) {
-    super(`Job '${name}' already exists`);
+  readonly code = SCHEDULER_JOB_NAME_TAKEN;
+  constructor(name: string, message = `Job '${name}' already exists`) {
+    super(message);
     this.name = 'SchedulerJobConflictError';
   }
 }
@@ -244,6 +247,11 @@ export interface ScheduledProjectRunner {
       projectId: string;
       jobName: string;
       /**
+       * What people call the job, from the claimed receipt: the Task title
+       * and its run summaries say it.
+       */
+      jobLabel: string;
+      /**
        * #5126: who the run acts as, the claimed job's recorded creator.
        * `undefined`: the job has no owner and must not start a Task.
        */
@@ -290,6 +298,8 @@ export interface BuiltinSchedulerOptions {
   integrationSecretResolver?: IntegrationSecretResolver;
   onActionableMonitor?: (input: {
     jobName: string;
+    /** What people call the job: its display name, else its slug. */
+    jobLabel: string;
     jobId: string;
     fingerprint: string;
     triggerId: string;
@@ -550,6 +560,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
     return this.trackAnnouncement(
       announceSchedulerJobFailure({
         job: entry.job,
+        label: this.jobLabels().get(entry.job),
         id: entry.id,
         error: entry.error ?? 'Failed without a recorded reason',
         broadcast: (event) => this.broadcast(event),
@@ -1060,6 +1071,9 @@ export class BuiltinScheduler implements ISchedulerProvider {
               ...input,
               projectId,
               jobName,
+              // The claimed receipt's job, so the Task title a run creates
+              // stays the one it was claimed under.
+              jobLabel: input.receipt.job.displayName ?? jobName,
               // The claimed receipt's own job, so an edit between claim and
               // run never changes who this run acts as.
               createdBy: input.receipt.job.createdBy,
@@ -1115,16 +1129,33 @@ export class BuiltinScheduler implements ISchedulerProvider {
     await this.sweepOwedFatigueAnnouncements();
   }
 
+  /**
+   * What people call each job, by slug, read now. A notification about a
+   * job says the name the person reads; a job without one, or a read that
+   * fails, leaves the slug.
+   */
+  private jobLabels(): Map<string, string> {
+    const jobs = this.ledger.list();
+    return new Map(
+      jobs.kind === 'available'
+        ? jobs.value.flatMap((job) =>
+            job.displayName ? [[job.name, job.displayName] as const] : [],
+          )
+        : [],
+    );
+  }
+
   private async sweepOwedFatigueAnnouncements(): Promise<void> {
     if (this.stopping || this.closed) return;
     const owed = this.ledger.owedFatigueAnnouncements();
     if (owed.kind !== 'available') return;
+    const labels = owed.value.length > 0 ? this.jobLabels() : new Map();
     const delivered = owed.value.map((announcement) =>
       this.announceOwedNotification({
         id: announcement.id,
         jobName: announcement.jobName,
         category: 'job-failure',
-        title: `Automation "${announcement.jobName}" turned off`,
+        title: `Automation "${labels.get(announcement.jobName) ?? announcement.jobName}" turned off`,
         body: `It failed ${announcement.failures} times in a row. Fix it, then turn it back on.`,
         dedupeTag: fatigueDedupeTag(announcement.id),
         outbox: this.fatigueOutbox,
@@ -1534,6 +1565,7 @@ export class BuiltinScheduler implements ISchedulerProvider {
         try {
           dispatched = await this.options.onActionableMonitor({
             jobName: receipt.job.name,
+            jobLabel: receipt.job.displayName ?? receipt.job.name,
             jobId: receipt.jobId,
             fingerprint: decision.fingerprint,
             triggerId: reservation.triggerId,
@@ -1930,7 +1962,9 @@ export class BuiltinScheduler implements ISchedulerProvider {
   }
 
   async addJob(opts: AddJobOpts): Promise<string> {
-    if (!opts.name?.trim()) throw new Error('Job name is required');
+    const displayName = opts.displayName?.trim() || undefined;
+    if (!opts.name?.trim() && !displayName)
+      throw new Error('Job name is required');
     if (!opts.prompt?.trim()) throw new Error('Job prompt is required');
     if (opts.cron !== undefined && opts.schedule !== undefined) {
       throw new Error('Use either cron or schedule, not both');
@@ -1950,9 +1984,9 @@ export class BuiltinScheduler implements ISchedulerProvider {
       if (err !== null) throw new Error(`Invalid schedule: ${err}`);
     }
     const createdAt = new Date().toISOString();
-    const result = this.ledger.create({
-      name: opts.name,
-      ...(opts.displayName ? { displayName: opts.displayName } : {}),
+    const stored = (name: string): StoredSchedulerJob => ({
+      name,
+      ...(displayName ? { displayName } : {}),
       cron: opts.cron,
       schedule,
       prompt: opts.prompt,
@@ -1975,10 +2009,23 @@ export class BuiltinScheduler implements ISchedulerProvider {
       enabled: true,
       createdAt,
     });
-    if (result.kind === 'unavailable') throw storageError(result);
-    if (result.kind === 'exists')
-      throw new SchedulerJobConflictError(opts.name);
-    return `Job '${opts.name}' created`;
+    // An explicit slug is the caller's identity: a taken one is refused. A
+    // create that names only a display name gets the first unused slug it
+    // suggests, decided here, where every job is visible, and bounded.
+    const candidates = opts.name?.trim()
+      ? [opts.name]
+      : schedulerJobSlugCandidates(displayName!);
+    for (const name of candidates) {
+      const result = this.ledger.create(stored(name));
+      if (result.kind === 'unavailable') throw storageError(result);
+      if (result.kind !== 'exists') return `Job '${name}' created`;
+    }
+    throw opts.name?.trim()
+      ? new SchedulerJobConflictError(opts.name)
+      : new SchedulerJobConflictError(
+          candidates[0]!,
+          `Too many automations already have names like '${displayName}'. Choose a different name.`,
+        );
   }
 
   async editJob(

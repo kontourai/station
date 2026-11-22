@@ -968,8 +968,11 @@ untargeted run; absent for older records),
 `automationRunClientTurnId`, and `SCHEDULER_EXECUTION_LIMITS.maxConcurrentConversationHandoffs`
 (the separate pool a targeted run holds only until its turn is queued).
 It also owns a job's name: `SchedulerJob.name` is the internal slug, and the
-optional `displayName` (at most `SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS`) is
-what people read and rename.
+optional `displayName` (at most `SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS`,
+checked by `isSchedulerJobDisplayName`) is what people read and rename.
+`schedulerJobSlug` and `schedulerJobSlugCandidates` derive the slugs a
+display name suggests, up to `SCHEDULER_JOB_SLUG_ATTEMPTS`, and
+`SCHEDULER_JOB_NAME_TAKEN` is the refusal code for a taken slug.
 
 `@kontourai/station-contracts/coordinator` owns a person's coordinator Session
 (#3628): `CoordinatorDesignation`, the route bodies

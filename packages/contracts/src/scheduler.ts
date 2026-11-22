@@ -233,6 +233,84 @@ export function automationRunClientTurnId(runId: string): string {
  */
 export const SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS = 120;
 
+/**
+ * A zero-width joiner between two pictographs joins an emoji sequence (a
+ * family, a profession). Anywhere else it is an invisible control.
+ */
+const EMOJI_JOINER =
+  /(?<=\p{Extended_Pictographic}\uFE0F?)\u200D(?=\p{Extended_Pictographic})/gu;
+
+/**
+ * Whether `value` (already trimmed) is a name a person can read: within the
+ * length bound, at least one letter, digit, symbol or punctuation mark, and
+ * no control, format or line/paragraph separator characters. Format
+ * characters include bidi overrides and zero-width spaces, which make a name
+ * read differently from what it stores; the one exception is the joiner
+ * inside an emoji sequence. Variation selectors are marks, so an emoji with
+ * one is accepted.
+ */
+export function isSchedulerJobDisplayName(value: string): boolean {
+  if (value.length === 0 || value.length > SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS)
+    return false;
+  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(value.replace(EMOJI_JOINER, '')))
+    return false;
+  return /[\p{L}\p{N}\p{S}\p{P}]/u.test(value);
+}
+
+/** Longest slug the scheduler derives from a display name. */
+const SCHEDULER_JOB_SLUG_MAX_CHARS = 60;
+
+/**
+ * The slug a display name suggests: lowercase ASCII letters, digits and
+ * hyphens. Accents are dropped ("Café crème" gives `cafe-creme`); a letter
+ * with no ASCII decomposition is a word break ("Straße" gives `stra-e`). A
+ * name with no ASCII letter or digit gives `automation-` and a short hash of
+ * the name, so different such names do not compete for one slug. The
+ * scheduler makes it unique (`schedulerJobSlugCandidates`).
+ */
+export function schedulerJobSlug(displayName: string): string {
+  const slug = displayName
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, SCHEDULER_JOB_SLUG_MAX_CHARS)
+    .replace(/-+$/, '');
+  if (slug) return slug;
+  // FNV-1a over the UTF-16 code units: stable and dependency-free.
+  let hash = 0x811c9dc5;
+  for (let index = 0; index < displayName.length; index += 1) {
+    hash ^= displayName.charCodeAt(index);
+    hash = Math.imul(hash, 0x01000193) >>> 0;
+  }
+  return `automation-${hash.toString(36)}`;
+}
+
+/**
+ * How many slugs the scheduler tries for one display name before it refuses:
+ * the base slug, then `-2` up to this many.
+ */
+export const SCHEDULER_JOB_SLUG_ATTEMPTS = 50;
+
+/** The slugs tried for a display name, in order. */
+export function schedulerJobSlugCandidates(displayName: string): string[] {
+  const base = schedulerJobSlug(displayName);
+  return [
+    base,
+    ...Array.from(
+      { length: SCHEDULER_JOB_SLUG_ATTEMPTS - 1 },
+      (_, index) => `${base}-${index + 2}`,
+    ),
+  ];
+}
+
+/**
+ * The refusal code when a job's slug is taken: an explicit `name` another
+ * job has, or a display name whose every candidate slug is taken.
+ */
+export const SCHEDULER_JOB_NAME_TAKEN = 'job_name_taken';
+
 export interface SchedulerJob {
   /** Internal slug: the identity routes, runs and stats are keyed by. */
   name: string;
@@ -318,7 +396,12 @@ export interface SchedulerLogEntry {
 }
 
 export interface AddJobOpts {
-  name: string;
+  /**
+   * The slug. Omit it and give `displayName` to have the scheduler derive an
+   * unused one (`schedulerJobSlugCandidates`); a slug given here that another
+   * job has is refused (`SCHEDULER_JOB_NAME_TAKEN`).
+   */
+  name?: string;
   /** See {@link SchedulerJob.displayName}. */
   displayName?: string;
   provider?: string;

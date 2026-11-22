@@ -6081,10 +6081,20 @@ POST /scheduler/jobs
 }
 ```
 
-`name` and `prompt` are required. `name` is the job's slug and identity
-(lowercase letters, digits and hyphens); an optional `displayName` (one line,
-at most `SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS` characters, trimmed) is what
-people read, and `GET /scheduler/jobs` returns it when set. Use either legacy
+`prompt` is required, with `name`, `displayName` or both. `name` is the
+job's slug and identity (lowercase letters, digits and hyphens); a `name`
+another job already has is refused with 409 and `code: "job_name_taken"`.
+`displayName` is what people read, and `GET /scheduler/jobs` returns it when
+set: trimmed, at most `SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS` characters, with
+at least one letter, digit, symbol or punctuation mark and no control, format
+(bidi, zero-width) or line/paragraph separator characters, except the joiner
+inside an emoji sequence (`isSchedulerJobDisplayName`); anything else is 400.
+A body with `displayName` and no `name` gets the first unused slug of
+`schedulerJobSlugCandidates` (the slug the name suggests, then `-2` up to
+`SCHEDULER_JOB_SLUG_ATTEMPTS`), checked against every job, including those
+the caller cannot list; when all are taken it is 409 `job_name_taken`. The
+response's `output` names the slug. Hosts that support this advertise the
+`schedulerJobDisplayName` capability flag. Use either legacy
 `cron` or the `schedule` union, not both. Other schedule variants are
 `{kind: "every", everyMs}` and `{kind: "at", timeMs, deleteAfterRun?}`; the
 scheduler removes a one-time job after its run only when `deleteAfterRun` is
@@ -6284,8 +6294,10 @@ are the coordinator's account, not live work status.
 
 `PUT /scheduler/jobs/:target` accepts supported partial job options, including
 that schedule union and `target` (`null` removes it, under the same admission
-as create), and `displayName` (`null` removes it), and returns
-`{success: true, data: {output}}`. Renaming changes only `displayName`: the
+as create), and `displayName` (validated as on create; `null` removes it),
+and returns `{success: true, data: {output}}`. A host without the
+`schedulerJobDisplayName` flag drops `displayName` and still answers success,
+so clients offer renaming only with the flag. Renaming changes only `displayName`: the
 slug, the job id and its runs stay. An edit never changes `createdBy`. Re-enabling a disabled job resets its
 `consecutiveFailures`.
 

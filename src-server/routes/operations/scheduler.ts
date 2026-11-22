@@ -703,7 +703,13 @@ export function createSchedulerRoutes(
     } catch (error: unknown) {
       logger.error('Failed to add job', { error });
       return c.json(
-        { success: false, error: errorMessage(error) },
+        {
+          success: false,
+          error: errorMessage(error),
+          ...(error instanceof SchedulerJobConflictError
+            ? { code: error.code }
+            : {}),
+        },
         schedulerErrorStatus(error),
       );
     }

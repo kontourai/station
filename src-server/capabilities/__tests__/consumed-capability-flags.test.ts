@@ -830,6 +830,35 @@ const CONSUMED_FLAGS: Record<
         .projectId === 'project-a'
     );
   },
+  // PUT /scheduler/jobs/:target accepts `displayName`; the scheduler routes
+  // answer 404 to every hosted request.
+  schedulerJobDisplayName: async ({ hosted }) => {
+    const editJob = vi.fn(async () => "Job 'digest' updated");
+    const routes = createSchedulerRoutes(
+      {
+        editJob,
+        listJobs: vi.fn(async () => [
+          { name: 'digest', provider: 'built-in', prompt: 'x', enabled: true },
+        ]),
+      } as never,
+      { error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
+      {
+        readAuthorityForRequest: () =>
+          ({ mode: hosted ? 'hosted' : 'personal' }) as never,
+      },
+    );
+    const response = await routes.request('/jobs/digest', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: 'Morning digest' }),
+    });
+    return (
+      response.status === 200 &&
+      editJob.mock.calls.length === 1 &&
+      ((editJob.mock.calls[0] as unknown[])[1] as { displayName?: unknown })
+        .displayName === 'Morning digest'
+    );
+  },
   scheduledConversationTarget: async ({ hosted }) => {
     const addJob = vi.fn(async () => "Job 'digest' created");
     const routes = createSchedulerRoutes(
@@ -1020,6 +1049,7 @@ describe('consumed capability flags match what their routes serve', () => {
     readMarkers: { personal: true, hosted: true },
     scheduledConversationTarget: { personal: true, hosted: false },
     projectSchedules: { personal: true, hosted: false },
+    schedulerJobDisplayName: { personal: true, hosted: false },
     sessionEventWindow: { personal: true, hosted: true },
     remoteSessionHistory: { personal: true, hosted: false },
     sessionInventoryInputRead: { personal: true, hosted: false },

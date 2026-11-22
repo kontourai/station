@@ -4,7 +4,10 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { SCHEDULER_EXECUTION_LIMITS } from '@kontourai/station-contracts/scheduler';
+import {
+  SCHEDULER_EXECUTION_LIMITS,
+  SCHEDULER_JOB_SLUG_ATTEMPTS,
+} from '@kontourai/station-contracts/scheduler';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../__test-utils__/read-json.js';
 import { createLogger } from '../../utils/logger.js';
@@ -479,6 +482,7 @@ describe('BuiltinScheduler', () => {
     });
     dead.create({
       name: 'abandoned',
+      displayName: 'Abandoned check',
       prompt: 'run',
       enabled: true,
       createdAt: '2026-01-01T00:00:00.000Z',
@@ -512,7 +516,8 @@ describe('BuiltinScheduler', () => {
       'scheduler',
       expect.objectContaining({
         category: 'job-failure',
-        title: 'Job "abandoned" failed',
+        // Read when the recovered run is announced: the name people read.
+        title: 'Job "Abandoned check" failed',
         body: 'Scheduler process stopped after this run was claimed; invocation was not replayed automatically.',
       }),
     );
@@ -2322,6 +2327,24 @@ describe('SchedulerService', () => {
 
 // ── Route Handlers ──
 
+/**
+ * Display names a person could not read back as typed: blank, too long, a
+ * line or paragraph break, a C1 control, a bidi override, or nothing visible.
+ */
+const UNREADABLE_DISPLAY_NAMES = [
+  '   ',
+  'x'.repeat(121),
+  'two\nlines',
+  'two\u2028lines',
+  'two\u2029lines',
+  'next\u0085line',
+  'c1\u009Bcontrol',
+  'invoice\u202Etxt.exe',
+  '\u200B',
+  'zero\u200Bwidth',
+  '\uFE0F',
+];
+
 describe('Scheduler Routes', () => {
   let service: InstanceType<typeof SchedulerService>;
   let app: ReturnType<typeof createSchedulerRoutes>;
@@ -2450,15 +2473,136 @@ describe('Scheduler Routes', () => {
         prompt: 'x',
       }),
     });
-    for (const displayName of ['   ', 'two\nlines', 'x'.repeat(121)]) {
+    for (const displayName of UNREADABLE_DISPLAY_NAMES) {
       const res = await app.request('/jobs/keep-name', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ displayName }),
       });
-      expect(res.status).toBe(400);
+      expect(res.status, JSON.stringify(displayName)).toBe(400);
     }
     expect((await jobNamed('keep-name'))?.displayName).toBe('Keep');
+  });
+
+  test('POST /jobs refuses the same unreadable display names and creates nothing', async () => {
+    for (const [index, displayName] of UNREADABLE_DISPLAY_NAMES.entries()) {
+      const res = await app.request('/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `bad-name-${index}`,
+          displayName,
+          prompt: 'x',
+        }),
+      });
+      expect(res.status, JSON.stringify(displayName)).toBe(400);
+    }
+    expect(await service.listJobs()).toEqual([]);
+  });
+
+  test('display names with emoji, joined emoji and marks are accepted on create and rename', async () => {
+    const names = [
+      'Digest 📬 weekly',
+      'Family 👨\u200D👩\u200D👧 check-in',
+      'Heart ❤\uFE0F review',
+      'Café crème',
+    ];
+    for (const [index, displayName] of names.entries()) {
+      const res = await app.request('/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: `ok-${index}`, displayName, prompt: 'x' }),
+      });
+      expect(res.status, displayName).toBe(200);
+      expect((await jobNamed(`ok-${index}`))?.displayName).toBe(displayName);
+    }
+    const renamed = await app.request('/jobs/ok-0', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: 'Family 👨\u200D👩\u200D👧 digest' }),
+    });
+    expect(renamed.status).toBe(200);
+    expect((await jobNamed('ok-0'))?.displayName).toBe(
+      'Family 👨\u200D👩\u200D👧 digest',
+    );
+  });
+
+  test('POST /jobs with only a display name gets an unused slug, even when the taken one is hidden from the caller', async () => {
+    // A job in another person's chat: this request's default read rule does
+    // not list it, and its slug is the one "Daily briefing" suggests.
+    await service.addJob({
+      name: 'daily-briefing',
+      prompt: 'theirs',
+      target: { kind: 'dedicated', agent: 'station' },
+      createdBy: { userId: 'someone-else' },
+    });
+    const listed = await json(await app.request('/jobs'));
+    expect(listed.data.map((job: { name: string }) => job.name)).not.toContain(
+      'daily-briefing',
+    );
+
+    const res = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: 'Daily briefing', prompt: 'mine' }),
+    });
+    expect(res.status).toBe(200);
+    expect((await json(res)).data.output).toBe(
+      "Job 'daily-briefing-2' created",
+    );
+    expect(await jobNamed('daily-briefing-2')).toMatchObject({
+      displayName: 'Daily briefing',
+      prompt: 'mine',
+    });
+    expect((await jobNamed('daily-briefing'))?.prompt).toBe('theirs');
+  });
+
+  test('POST /jobs refuses an explicit slug that is taken, and a display name whose every slug is taken', async () => {
+    await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'taken', prompt: 'first' }),
+    });
+    const explicit = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'taken',
+        displayName: 'Taken',
+        prompt: 'second',
+      }),
+    });
+    expect(explicit.status).toBe(409);
+    expect(await json(explicit)).toMatchObject({ code: 'job_name_taken' });
+    expect((await jobNamed('taken'))?.prompt).toBe('first');
+
+    for (let suffix = 2; suffix <= SCHEDULER_JOB_SLUG_ATTEMPTS; suffix += 1)
+      await service.addJob({ name: `taken-${suffix}`, prompt: 'filler' });
+    const exhausted = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: 'Taken', prompt: 'third' }),
+    });
+    expect(exhausted.status).toBe(409);
+    expect(await json(exhausted)).toEqual({
+      success: false,
+      code: 'job_name_taken',
+      error:
+        "Too many automations already have names like 'Taken'. Choose a different name.",
+    });
+    expect(
+      (await service.listJobs()).filter((job) => job.prompt === 'third'),
+    ).toEqual([]);
+  });
+
+  test('POST /jobs needs a slug or a display name', async () => {
+    const res = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'nameless' }),
+    });
+    expect(res.status).toBe(400);
+    expect(await service.listJobs()).toEqual([]);
   });
 
   test('DELETE /jobs/:target removes a job', async () => {
