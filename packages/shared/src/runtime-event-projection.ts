@@ -718,6 +718,7 @@ function createRuntimeMessageProjection(
         NonNullable<ConversationMessage['metadata']>['turnStoppedBy']
       >;
     },
+    cutOff?: NonNullable<ConversationMessage['metadata']>['turnCutOff'],
   ) => {
     flushReasoning();
     flushText();
@@ -739,6 +740,7 @@ function createRuntimeMessageProjection(
       row.metadata = {
         ...row.metadata,
         turnEnded: ended,
+        ...(cutOff ? { turnCutOff: cutOff } : {}),
         ...(endedStop && row.parts.length === 0
           ? {
               ...(endedStop.reason
@@ -1723,7 +1725,15 @@ function createRuntimeMessageProjection(
           flushText();
           parts.push(runtimeErrorPart(failure));
         }
-        emitAssistantTurn(true, failure ? undefined : 'completed');
+        emitAssistantTurn(
+          true,
+          failure ? undefined : 'completed',
+          undefined,
+          // The engine stopped at its output limit: the reply is incomplete.
+          !failure && ev.finishReason === 'max-tokens'
+            ? 'max-tokens'
+            : undefined,
+        );
         break;
       }
       case 'session.configured': {

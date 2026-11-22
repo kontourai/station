@@ -65,12 +65,12 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
   // activity" complaint in the other direction.
   idle: new Set(['Idle', 'Read only']),
   // Over. The refinement is which ending.
-  recentlyFinished: new Set(['Done', 'Stopped', 'Failed']),
+  recentlyFinished: new Set(['Done', 'Cut off', 'Stopped', 'Failed']),
   // #2310: nothing has been sent. Not "Queued" or "Running" — the raw state
   // of a never-prompted session is a transport fact, and either word would
   // claim work exists.
   drafts: new Set(['Draft']),
-  earlier: new Set(['Done', 'Stopped', 'Failed']),
+  earlier: new Set(['Done', 'Cut off', 'Stopped', 'Failed']),
 };
 
 const NOW = Date.parse('2026-08-18T12:00:00.000Z');
@@ -227,6 +227,12 @@ const MIXED_FIXTURE: OrchestrationSessionSummary[] = [
     draft: true,
   }),
   session({ threadId: 'just-completed', lifecycleState: 'completed' }),
+  // The latest turn stopped at the engine's output limit.
+  session({
+    threadId: 'just-cut-off',
+    lifecycleState: 'idle',
+    lastTurnCutOff: 'max-tokens',
+  }),
   session({ threadId: 'just-failed', lifecycleState: 'failed' }),
   session({ threadId: 'just-canceled', lifecycleState: 'canceled' }),
   session({ threadId: 'closed-undecorated', status: 'closed' }),
@@ -239,6 +245,12 @@ const MIXED_FIXTURE: OrchestrationSessionSummary[] = [
   session({
     threadId: 'long-completed',
     lifecycleState: 'completed',
+    updatedAt: new Date(NOW - 5 * 3_600_000).toISOString(),
+  }),
+  session({
+    threadId: 'long-cut-off',
+    lifecycleState: 'completed',
+    lastTurnCutOff: 'max-tokens',
     updatedAt: new Date(NOW - 5 * 3_600_000).toISOString(),
   }),
   session({
@@ -379,9 +391,12 @@ describe('a row status word never contradicts its lane', () => {
     running: new Set(['Running']),
     idle: new Set(['Idle', 'Read only']),
     drafts: new Set(['Draft']),
-    finished: new Set(['Done', 'Failed', 'Stopped']),
+    finished: new Set(['Done', 'Cut off', 'Failed', 'Stopped']),
   };
-  const statusOf = (lifecycleLabel: HomeLifecycleLabel) =>
+  const statusOf = (
+    lifecycleLabel: HomeLifecycleLabel,
+    facts?: Parameters<typeof workStatus>[2],
+  ) =>
     workStatus(
       {
         id: 'row',
@@ -395,7 +410,14 @@ describe('a row status word never contradicts its lane', () => {
         lifecycleLabel,
       },
       0,
+      facts,
     );
+
+  test('a cut-off completed row reads a word its lane permits', () => {
+    const { lane, word } = statusOf('Completed', { cutOff: true });
+    expect([lane, word]).toEqual(['finished', 'Cut off']);
+    expect(WORD_VOCABULARY[lane].has(word)).toBe(true);
+  });
 
   test.each([...HOME_LIFECYCLE_LABELS])(
     '%s reads a word its lane permits',

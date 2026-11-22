@@ -432,6 +432,9 @@ function finishReason(
   if (value === 'stop' || value === 'tool-calls' || value === 'max-tokens') {
     return value;
   }
+  // The agent's stream carries the model SDK's own vocabulary, where a reply
+  // stopped at the output limit is `length`: Station calls that max-tokens.
+  if (value === 'length') return 'max-tokens';
   if (value === 'cancelled' || value === 'canceled' || value === 'aborted') {
     return 'cancelled';
   }

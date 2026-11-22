@@ -368,25 +368,20 @@ registerCommand(
   },
 );
 
-// Clear/New command
-registerCommand(
-  'clear',
-  async ({ updateChat, sessionId, addEphemeralMessage }) => {
-    updateChat(sessionId, { messages: [] });
-    addEphemeralMessage(sessionId, {
-      role: 'system',
-      content: 'Conversation cleared',
-    });
-  },
-);
-
+// /new opens New chat, the same action as the dock's New chat button. There
+// is no /clear: emptying the list on screen left the agent's memory and the
+// stored transcript untouched, so it looked like a reset and was not one.
 registerCommand(
   'new',
-  async ({ updateChat, sessionId, addEphemeralMessage }) => {
-    updateChat(sessionId, { messages: [] });
+  async ({ autocomplete, addEphemeralMessage, sessionId }) => {
+    autocomplete.closeAll();
+    if (autocomplete.openNewChat) {
+      autocomplete.openNewChat();
+      return;
+    }
     addEphemeralMessage(sessionId, {
       role: 'system',
-      content: 'Conversation cleared',
+      content: 'Start a new chat from the chat panel.',
     });
   },
 );
@@ -394,12 +389,12 @@ registerCommand(
 // Resume/Chat command — opens the "Open chat" modal
 registerCommand('resume', async ({ autocomplete }) => {
   autocomplete.closeAll();
-  autocomplete.openNewChat();
+  autocomplete.openNewChat?.();
 });
 
 registerCommand('chat', async ({ autocomplete }) => {
   autocomplete.closeAll();
-  autocomplete.openNewChat();
+  autocomplete.openNewChat?.();
 });
 
 // Help command - list all available commands
