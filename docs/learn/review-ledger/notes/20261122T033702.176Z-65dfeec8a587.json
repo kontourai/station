@@ -1,0 +1,25 @@
+{
+  "revision": "13483c4f23ed6cc521785732b1b65a8da58be452",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked pages citing the event store: added readSessionsHistoryFootprint, a read-only count and octet_length/SUM(bytes) query over named Sessions' events and out-of-line content. No write, schema, ledger or retention behaviour changes; cited claims unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Checked pages citing the event store: added readSessionsHistoryFootprint, a read-only count and octet_length/SUM(bytes) query over named Sessions' events and out-of-line content. No write, schema, ledger or retention behaviour changes; cited claims unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked pages citing the event store: added readSessionsHistoryFootprint, a read-only count and octet_length/SUM(bytes) query over named Sessions' events and out-of-line content. No write, schema, ledger or retention behaviour changes; cited claims unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked pages citing the event store: added readSessionsHistoryFootprint, a read-only count and octet_length/SUM(bytes) query over named Sessions' events and out-of-line content. No write, schema, ledger or retention behaviour changes; cited claims unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Checked pages citing the event store: added readSessionsHistoryFootprint, a read-only count and octet_length/SUM(bytes) query over named Sessions' events and out-of-line content. No write, schema, ledger or retention behaviour changes; cited claims unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Checked pages citing the event store: added readSessionsHistoryFootprint, a read-only count and octet_length/SUM(bytes) query over named Sessions' events and out-of-line content. No write, schema, ledger or retention behaviour changes; cited claims unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked pages citing the event store: added readSessionsHistoryFootprint, a read-only count and octet_length/SUM(bytes) query over named Sessions' events and out-of-line content. No write, schema, ledger or retention behaviour changes; cited claims unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked pages citing the event store: added readSessionsHistoryFootprint, a read-only count and octet_length/SUM(bytes) query over named Sessions' events and out-of-line content. No write, schema, ledger or retention behaviour changes; cited claims unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked pages citing the event store: added readSessionsHistoryFootprint, a read-only count and octet_length/SUM(bytes) query over named Sessions' events and out-of-line content. No write, schema, ledger or retention behaviour changes; cited claims unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked pages citing the event store: added readSessionsHistoryFootprint, a read-only count and octet_length/SUM(bytes) query over named Sessions' events and out-of-line content. No write, schema, ledger or retention behaviour changes; cited claims unchanged.","inputs":["src-server/services/orchestration/event-store.ts"]}
+  ]
+}
