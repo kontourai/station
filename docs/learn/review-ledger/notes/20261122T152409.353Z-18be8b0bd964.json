@@ -1,0 +1,7 @@
+{
+  "revision": "ac3c0bc3e815b6d8fcfd3997caa9bd94e434f527",
+
+  "notes": [
+    {"path":"docs/design/station-connection.md","note":"Rechecked chat.css (#5398 round 4): nothing about Station connection styling changed.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}
