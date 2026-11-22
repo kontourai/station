@@ -95,16 +95,41 @@ const STALLED: Record<AutomationActionsUnavailable['reason'], string> = {
     'Automation Tasks are paused: Station could not check their rules. Pending runs start once it can.',
 };
 
-/** Why the Agent did not start, and whether Retry can help now. */
+/** A rule's effective approval posture, in a few words. */
+function rulePosture(rule: AutomationRule): string | undefined {
+  if (rule.action.kind !== 'dispatch-task') return undefined;
+  if (rule.action.approvalMode === 'auto') return 'Approves its own tool calls';
+  if (rule.action.approvalMode === 'connection-default')
+    return "Agent's own approval settings";
+  return 'Asks before each tool call';
+}
+
+/** Whether a Retry sent now could start the Agent. */
+function retryCanStart(
+  episode: AutomationEpisodeRecord,
+  mayAct: boolean,
+): boolean {
+  return (
+    mayAct &&
+    !episode.retryNeedsRuleChange &&
+    episode.startFailure !== 'task-not-canceled'
+  );
+}
+
+/** Why the Agent did not start, and what helps now. */
 function startFailedNote(
   episode: AutomationEpisodeRecord,
   rule: AutomationRule | undefined,
   mayAct: boolean,
 ): string {
-  const why =
-    episode.startFailure === 'agent-option-unsupported'
-      ? `Agent ${rule?.action.agentId ?? ''} cannot take this rule's approval mode, so nothing ran.`
-      : 'The Agent did not start, so nothing ran.';
+  const agent = rule?.action.agentId ?? '';
+  if (episode.startFailure === 'task-not-canceled')
+    return 'The Agent did not start, and its Task could not be canceled. Cancel that Task before retrying.';
+  if (episode.retryNeedsRuleChange)
+    return episode.startFailure === 'agent-own-approval-required'
+      ? `Agent ${agent} uses its own approval settings; set the rule's approval to the Agent's own, or change its Agent.`
+      : `Agent ${agent} cannot take this rule's approval setting, so nothing ran. Change the setting or the Agent.`;
+  const why = 'The Agent did not start, so nothing ran.';
   return mayAct
     ? `${why} Retry is available.`
     : `${why} The rule is not live, so it cannot be retried.`;
@@ -144,7 +169,8 @@ function EpisodeRow({
           {startFailedNote(episode, rule, mayAct)}
         </span>
       ) : null}
-      {episode.state === 'exhausted' || (episode.startFailed && mayAct) ? (
+      {episode.state === 'exhausted' ||
+      (episode.startFailed && retryCanStart(episode, mayAct)) ? (
         <Button
           disabled={retry.isPending}
           aria-label={`Retry episode ${episode.episodeId} of ${ruleName}`}
@@ -226,6 +252,7 @@ export function AutomationsSection() {
                 <li key={rule.id} className="automations__item">
                   <span>
                     {rule.name} · {rule.action.kind}
+                    {rulePosture(rule) ? ` · ${rulePosture(rule)}` : ''}
                   </span>
                   <StatusBadge
                     status={rule.mode}
@@ -237,6 +264,9 @@ export function AutomationsSection() {
             {episodes.data?.actionsUnavailable ? (
               <p className="automations__note" role="status">
                 {STALLED[episodes.data.actionsUnavailable.reason]}
+                {episodes.data.actionsUnavailable.detail
+                  ? ` ${episodes.data.actionsUnavailable.detail}`
+                  : ''}
               </p>
             ) : null}
             <AutomationList<AutomationEpisodeRecord>

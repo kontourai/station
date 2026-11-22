@@ -115,7 +115,7 @@ const dispatchRule = z
         projectId: id,
         agentId: id,
         instructions: z.string().min(1).max(8192),
-        approvalMode: z.enum(['ask', 'auto']).optional(),
+        approvalMode: z.enum(['ask', 'auto', 'connection-default']).optional(),
         budget: z
           .object({
             maxTurns: z.number().int().positive(),

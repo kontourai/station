@@ -17,3 +17,10 @@ when the rule asks for an approval mode its Agent cannot take.
 `AutomationEpisodeList` (`GET /automations/episodes`) adds
 `actionsUnavailable` while no automation Task can start, and
 `listAutomationEpisodes` returns it.
+
+A dispatch-task rule's `approvalMode` adds `connection-default` (the
+Agent's own approval settings; no per-invocation setting is sent). Omitted
+still means `ask`, and an Agent that cannot be told `ask` is refused before
+any Task is created. Open episodes add `startFailure` values
+`agent-own-approval-required` and `task-not-canceled`, and
+`retryNeedsRuleChange`; `actionsUnavailable` adds `detail`.

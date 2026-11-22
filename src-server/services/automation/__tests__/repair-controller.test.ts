@@ -67,6 +67,8 @@ async function fixture(
      * by this reference.
      */
     projectRef?: string;
+    /** Replace the Project with a same-slug one before the repair tick. */
+    replaceProject?: boolean;
   } = {},
 ) {
   const home = temporary('isolated-repair-caller-');
@@ -455,6 +457,21 @@ async function fixture(
       now: Date.now(),
     });
   expect(intake().outcome).toBe('matched');
+  if (options.replaceProject) {
+    await storage!.deleteProject(REPAIR_PROJECT.slug);
+    await storage!.createProject({
+      id: 'a-replacement-project',
+      slug: REPAIR_PROJECT.slug,
+      name: 'Station',
+      workingDirectory: repo,
+      createdAt: '2026-10-30T10:00:00.000Z',
+      updatedAt: '2026-10-30T10:00:00.000Z',
+    });
+    await controller.tick();
+    await controller.tick();
+    // Only these fields are read when the Project was replaced.
+    return { controller, tasks, ledger, worker } as never;
+  }
   await controller.tick();
   await vi.waitFor(() =>
     expect(controller.list()[0]?.phase, controller.list()[0]?.reasonCode).toBe(
@@ -1221,4 +1238,14 @@ test('a repair rule naming its Project by slug or id creates its Task under the 
     );
     expect(context.artifact.result).toBeTruthy();
   }
+});
+
+test('a repair whose Project was deleted and recreated under the same slug starts nothing', async () => {
+  const context = await fixture({
+    projectRef: REPAIR_PROJECT.slug,
+    replaceProject: true,
+  });
+  expect(context.controller.list()).toEqual([]);
+  expect(context.tasks.listTasks()).toEqual([]);
+  expect(context.worker).not.toHaveBeenCalled();
 });

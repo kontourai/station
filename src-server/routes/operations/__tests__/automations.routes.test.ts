@@ -334,7 +334,9 @@ async function operatorSurface(
       },
       store,
       listOpenEpisodes: (limit) =>
-        ledger.listOpenEpisodes(limit).map(projectAutomationEpisode),
+        ledger
+          .listOpenEpisodes(limit)
+          .map((record) => projectAutomationEpisode(record, store.read())),
       retryEpisode: (ruleId, episodeId) =>
         retryAutomationEpisode({
           ledger,

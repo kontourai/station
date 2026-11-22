@@ -7,6 +7,7 @@ import {
   APPLICATION_SESSION_NATIVE_PROOF_HEADER,
   APPLICATION_SESSION_PROOF_HEADER,
 } from '@kontourai/station-contracts/application-session';
+import type { AutomationConfiguration } from '@kontourai/station-contracts/automation';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
@@ -13653,11 +13654,22 @@ export function configureRuntimeRoutes(
           ? {}
           : {
               store: automationStore,
-              listOpenEpisodes: (limit: number) =>
-                automationLedger
+              listOpenEpisodes: (limit: number) => {
+                // The episodes stay readable while the policy is not; only
+                // the rule-change hint needs it.
+                let configuration: AutomationConfiguration | undefined;
+                try {
+                  configuration = automationStore.read();
+                } catch {
+                  configuration = undefined;
+                }
+                return automationLedger
                   .get()
                   .listOpenEpisodes(limit)
-                  .map(projectAutomationEpisode),
+                  .map((record) =>
+                    projectAutomationEpisode(record, configuration),
+                  );
+              },
               actionsUnavailable: () => automationActions?.unavailable(),
               retryEpisode: (ruleId: string, episodeId: string) =>
                 retryAutomationEpisode({

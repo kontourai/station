@@ -790,17 +790,14 @@ export function configureRuntimeSupportServices(
           featurePreviews: context.featurePreviews,
           store: automationStore,
           projects: context.projectService,
-          // The dispatch's own start resolution, without per-invocation
-          // settings, so a rule's preflight asks the same engine.
-          agentEngine: async ({ agentId, projectSlug }) =>
-            (
-              await runAsStationServer(() =>
-                resolveTaskDispatchAgentStart(
-                  { agentId, projectSlug },
-                  context.orchestrationService,
-                ),
-              )
-            ).provider,
+          // The dispatch's own start resolution, for a rule's preflight.
+          checkAgentStart: (input) =>
+            runAsStationServer(() =>
+              resolveTaskDispatchAgentStart(
+                input,
+                context.orchestrationService,
+              ),
+            ),
           ledger: () => automationLedger.get(),
           existingLedger: () => automationLedger.getExisting(),
           taskGraph: context.taskGraphService,

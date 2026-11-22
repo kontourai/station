@@ -84,6 +84,7 @@ import {
   type AutomationRefusalReason,
   type AutomationRuleDecision,
   type AutomationRuleDecisionOutcome,
+  type AutomationStartFailure,
   type AutomationSuppressionReason,
 } from '@kontourai/station-contracts/automation';
 import {
@@ -228,9 +229,18 @@ export type AutomationEpisodeRecord = Readonly<{
   updatedAt: string;
   /** Its latest start failed before the Agent started; a retry is accepted. */
   startFailed?: true;
-  /** Set when the Agent cannot take the rule's approval mode. */
-  startFailure?: 'agent-option-unsupported';
+  /** Why, when the intent's reason says (see `START_FAILURES`). */
+  startFailure?: AutomationStartFailure;
+  /** The failed start's policy fingerprint, to tell whether the rule changed. */
+  failedPolicyFingerprint?: string;
 }>;
+
+/** An intent's recorded reason, as the open episode reports it. */
+const START_FAILURES: Readonly<Record<string, AutomationStartFailure>> = {
+  agent_option_unsupported: 'agent-option-unsupported',
+  agent_own_approval_required: 'agent-own-approval-required',
+  task_not_canceled: 'task-not-canceled',
+};
 
 /**
  * A poll source's progress: when it last polled (any outcome) and the
@@ -1460,7 +1470,7 @@ class SqliteAutomationLedger implements AutomationLedger {
   private failedStart(
     ruleId: string,
     episodeId: string,
-  ): { reason: string | undefined } | undefined {
+  ): { reason: string | undefined; policyFingerprint: string } | undefined {
     const row = this.db
       .prepare(
         'SELECT state, invoked_ms, body FROM automation_action_intents WHERE rule_id = ? AND episode_id = ? ORDER BY retry DESC LIMIT 1',
@@ -1474,7 +1484,11 @@ class SqliteAutomationLedger implements AutomationLedger {
       (row.state !== 'failed' && row.state !== 'refused')
     )
       return undefined;
-    return { reason: decodeAutomationActionIntent(row.body).reason };
+    const intent = decodeAutomationActionIntent(row.body);
+    return {
+      reason: intent.reason,
+      policyFingerprint: intent.policyFingerprint,
+    };
   }
 
   recordDelivery(input: RecordDeliveryInput): RecordDeliveryOutcome {
@@ -1740,12 +1754,12 @@ class SqliteAutomationLedger implements AutomationLedger {
             ? this.failedStart(episode.ruleId, episode.episodeId)
             : undefined;
         if (!failed) return episode;
+        const startFailure = START_FAILURES[failed.reason ?? ''];
         return {
           ...episode,
           startFailed: true as const,
-          ...(failed.reason === 'agent_option_unsupported'
-            ? { startFailure: 'agent-option-unsupported' as const }
-            : {}),
+          failedPolicyFingerprint: failed.policyFingerprint,
+          ...(startFailure ? { startFailure } : {}),
         };
       }),
     );

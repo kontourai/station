@@ -18,7 +18,10 @@ import {
 } from '../services/automation/automation-intent.js';
 import type { AutomationLedger } from '../services/automation/automation-ledger.js';
 import type { AutomationStore } from '../services/automation/automation-store.js';
-import { modelOptionsRefusal } from '../services/execution-target/execution-target-resolver.js';
+import {
+  AgentCatalogRefreshingError,
+  UnsupportedModelOptionsError,
+} from '../services/execution-target/execution-target-resolver.js';
 import type {
   FeaturePreviewRegistry,
   FeaturePreviewSelector,
@@ -56,11 +59,15 @@ interface AutomationActionsOptions {
    */
   projects: ProjectIdentityLookup;
   /**
-   * The engine the Task's Agent would start on in this Project, resolved as
-   * the dispatch resolves it (without per-invocation settings). Used to ask
-   * `modelOptionsRefusal` which settings that Agent accepts.
+   * The dispatch's own Agent start resolution for these settings: throws
+   * `UnsupportedModelOptionsError` when the Agent cannot take them and
+   * `AgentCatalogRefreshingError` while Agents are being reloaded.
    */
-  agentEngine(input: { agentId: string; projectSlug: string }): Promise<string>;
+  checkAgentStart(input: {
+    agentId: string;
+    projectSlug: string;
+    modelOptions: { approvalMode: 'ask' | 'auto' };
+  }): Promise<unknown>;
   ledger: () => AutomationLedger;
   existingLedger: () => AutomationLedger | undefined;
   taskGraph: Pick<
@@ -106,6 +113,19 @@ type ActionAuthority =
   | Readonly<{ kind: 'current'; rule: AutomationRule }>
   | Readonly<{ kind: 'revoked'; cause: AutomationRevocationCause }>
   | Readonly<{ kind: 'stopped'; reason: 'stale_event' | 'policy_changed' }>;
+
+/**
+ * What failed, for the log and Settings: the error's own message (the
+ * Project store names the record it could not read), at most 200
+ * characters, control characters replaced.
+ */
+function boundedDetail(error: unknown): string | undefined {
+  if (!(error instanceof Error) || !error.message) return undefined;
+  return Array.from(error.message.slice(0, 200), (char) => {
+    const code = char.charCodeAt(0);
+    return code < 0x20 || code === 0x7f ? ' ' : char;
+  }).join('');
+}
 
 /** The inbox key of an action's first turn and of its amendment notices. */
 function startTurnKey(intentId: string): string {
@@ -476,7 +496,10 @@ class AutomationActionsRuntime implements AutomationActions {
           Date.now(),
         );
       this.supervisor.abandon(sessionId);
-      if (intent.action.approvalMode === 'auto')
+      if (
+        intent.action.approvalMode === 'auto' ||
+        intent.action.approvalMode === 'connection-default'
+      )
         this.options.orchestration.recordAskWhereUndecided(sessionId);
     } catch (error) {
       this.options.logger.warn('Automation hand-over was not recorded', {
@@ -693,13 +716,18 @@ class AutomationActionsRuntime implements AutomationActions {
       const reason = this.projectsUnreadable
         ? 'projects-unreadable'
         : 'unavailable';
-      // Logged when the stall starts or its reason changes, not every tick.
-      if (this.stalled?.reason !== reason) {
+      const detail = boundedDetail(error);
+      // Logged when the stall starts or what failed changes, not every tick.
+      if (this.stalled?.reason !== reason || this.stalled.detail !== detail) {
         this.options.logger.warn('Automation actions are unavailable', {
           reason,
-          error: error instanceof Error ? error.message : 'unknown',
+          detail,
         });
-        this.stalled = { reason, since: new Date().toISOString() };
+        this.stalled = {
+          reason,
+          since: new Date().toISOString(),
+          ...(detail ? { detail } : {}),
+        };
       }
     } finally {
       this.busy = false;
@@ -710,52 +738,73 @@ class AutomationActionsRuntime implements AutomationActions {
     return this.stalled;
   }
 
+  /**
+   * A failed cancel is kept on the intent (`task_not_canceled`), so the
+   * open episode says the Task is still there, as well as being logged.
+   */
   private async cancelUnstartedTask(taskId: string, intentId: string) {
     try {
       await this.options.taskGraph.updateTaskStatus(taskId, 'canceled');
     } catch (error) {
       this.options.logger.warn('Automation Task could not be canceled', {
         intentId,
+        taskId,
         error: error instanceof Error ? error.message : 'unknown',
       });
+      try {
+        this.options
+          .ledger()
+          .updateIntent(intentId, { reason: 'task_not_canceled' }, Date.now());
+      } catch {
+        /* The warning above still names it. */
+      }
     }
   }
 
   /**
-   * The per-invocation engine settings this Task starts with. A rule's own
-   * approval mode is sent as stated, and refused (with the explicit reason)
-   * when the Agent cannot take it. Without one, `ask` is sent where the
-   * Agent accepts it, so the start is never more permissive than before; an
-   * Agent that takes no per-invocation settings gets none.
+   * The per-invocation engine settings this Task starts with, decided by
+   * what the rule states, never by what the Agent turns out to be. Omitted
+   * means `ask`; `connection-default` sends none, so the Agent's own
+   * approval settings apply. Before any Task exists the dispatch's own start
+   * resolution is asked whether the Agent takes them; the dispatch asks it
+   * again, so an Agent rebound in between is refused there, never started
+   * without a setting.
    */
   private async startOptions(
     intent: NativeAutomationIntent,
     projectSlug: string,
   ): Promise<
     | { kind: 'options'; modelOptions?: { approvalMode: 'ask' | 'auto' } }
-    | { kind: 'refused'; message: string }
+    | { kind: 'refused'; reason: string; message: string }
+    | { kind: 'deferred' }
   > {
-    const requested = intent.action.approvalMode;
-    const modelOptions = { approvalMode: requested ?? ('ask' as const) };
-    let engine: string;
+    const stated = intent.action.approvalMode;
+    if (stated === 'connection-default') return { kind: 'options' };
+    const modelOptions = { approvalMode: stated ?? ('ask' as const) };
     try {
-      engine = await this.options.agentEngine({
+      await this.options.checkAgentStart({
         agentId: intent.action.agentId,
         projectSlug,
+        modelOptions,
       });
-    } catch {
-      // The Agent cannot be resolved now: send what the rule states (or
-      // `ask`) and let the dispatch's own start resolution answer it.
-      return { kind: 'options', modelOptions };
+    } catch (error) {
+      if (error instanceof AgentCatalogRefreshingError)
+        return { kind: 'deferred' };
+      if (error instanceof UnsupportedModelOptionsError)
+        return stated
+          ? {
+              kind: 'refused',
+              reason: 'agent_option_unsupported',
+              message: error.message,
+            }
+          : {
+              kind: 'refused',
+              reason: 'agent_own_approval_required',
+              message: `${error.message}. The Agent runs under its own approval settings; the rule must say so (approvalMode connection-default) to use it.`,
+            };
+      // Any other answer is the dispatch's to give, as before.
     }
-    const refusal = modelOptionsRefusal(
-      engine,
-      modelOptions,
-      intent.action.agentId,
-    );
-    if (!refusal) return { kind: 'options', modelOptions };
-    if (requested) return { kind: 'refused', message: refusal };
-    return { kind: 'options' };
+    return { kind: 'options', modelOptions };
   }
 
   private async dispatch(
@@ -781,15 +830,19 @@ class AutomationActionsRuntime implements AutomationActions {
       // Before any Task exists: an Agent that cannot take the rule's
       // approval mode is refused here, with the explicit reason, once.
       const start = await this.startOptions(intent, project.slug);
+      if (start.kind === 'deferred') {
+        claim.release();
+        return;
+      }
       if (start.kind === 'refused') {
         claim.release();
         ledger.updateIntent(
           intent.intentId,
-          { state: 'refused', reason: 'agent_option_unsupported' },
+          { state: 'refused', reason: start.reason },
           Date.now(),
         );
         this.options.logger.warn(
-          'Automation rule asks for an engine setting its Agent cannot take; no Task started',
+          'Automation rule asks for an approval setting its Agent cannot take; no Task started',
           { ruleId: intent.ruleId, reason: start.message },
         );
         return;
@@ -823,7 +876,10 @@ class AutomationActionsRuntime implements AutomationActions {
       intent = (ledger.readIntent(intent.intentId) ??
         intent) as NativeAutomationIntent;
       if (!this.currentRule(intent)) {
+        // Authority changed while the Task was being created: nothing ran,
+        // so the Task is canceled rather than left for a person to start.
         claim.release();
+        await this.cancelUnstartedTask(task.id, intent.intentId);
         return;
       }
       const deadlineAt = Date.now() + intent.action.budget.maxWallRuntimeMs;

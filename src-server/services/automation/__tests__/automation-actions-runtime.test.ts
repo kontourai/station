@@ -25,6 +25,10 @@ import type {
 import { currentUnattendedPrincipal } from '../../../runtime/agents/unattended-principal-context.js';
 import { createAutomationActionsRuntime } from '../../../runtime/automation-actions-runtime.js';
 import { installManagedApprovalCeiling } from '../../../security/managed-approval-ceiling.js';
+import {
+  modelOptionsRefusal,
+  UnsupportedModelOptionsError,
+} from '../../execution-target/execution-target-resolver.js';
 import { FeaturePreviewRegistry } from '../../feature-previews/feature-preview-registry.js';
 import { createRuntimeResourcePostureController } from '../../infra/resource-posture.js';
 import { EventBus } from '../../orchestration/event-bus.js';
@@ -53,6 +57,7 @@ import {
 } from '../automation-intent.js';
 import { createAutomationLedger } from '../automation-ledger.js';
 import {
+  projectAutomationEpisode,
   readAutomationTaskProjection,
   retryAutomationEpisode,
 } from '../automation-operator.js';
@@ -143,7 +148,7 @@ async function world(
     /** Store the rules in the pre-#4509 `enabled: true` shape. */
     legacyEnabled?: boolean;
     /** The rule action's posture (`dispatch-task` `approvalMode`). */
-    approvalMode?: 'ask' | 'auto';
+    approvalMode?: 'ask' | 'auto' | 'connection-default';
     /**
      * The current Projects, as `ProjectService.listProjects()` lists them.
      * Default: one Project whose id and slug are both `project`.
@@ -164,6 +169,13 @@ async function world(
     unresolvedStore?: boolean;
     /** The engine the Task's Agent resolves to (default `claude`). */
     agentEngine?: string;
+    /**
+     * The engine the dispatch's own start resolves the Agent to, when it was
+     * rebound after the preflight (default `agentEngine`).
+     */
+    startEngine?: string;
+    /** Who answers the ACP connection's approvals (`acpApprovalControl`). */
+    acpControl?: 'station' | 'requests' | 'engine';
   } = {},
 ) {
   const ruleModes = options.ruleModes ?? ['live'];
@@ -313,6 +325,15 @@ async function world(
         real.service.getProject(input.projectSlug);
         agentStarts.push(input.projectSlug);
       }
+      // The start resolution's own settings check, for the engine it
+      // resolves the Agent to now.
+      const refusal = modelOptionsRefusal(
+        options.startEngine ?? options.agentEngine ?? 'claude',
+        input.modelOptions,
+        input.agentId,
+        options.acpControl,
+      );
+      if (refusal) throw new UnsupportedModelOptionsError(refusal);
       return fixtureAgentStartResolver('claude')({ ...input, cwd: home });
     },
     resolveProjectWorkspace: () => home,
@@ -355,7 +376,15 @@ async function world(
         listProjects: () => [...projectIds].map((id) => ({ id, slug: id })),
       },
       featurePreviews: previews,
-      agentEngine: async () => options.agentEngine ?? 'claude',
+      checkAgentStart: async (input) => {
+        const refusal = modelOptionsRefusal(
+          options.agentEngine ?? 'claude',
+          input.modelOptions,
+          input.agentId,
+          options.acpControl,
+        );
+        if (refusal) throw new UnsupportedModelOptionsError(refusal);
+      },
       store,
       ledger: ledgerReads,
       existingLedger: () => ledger,
@@ -1837,7 +1866,9 @@ test('an unreadable Project list stops the tick as unavailable, refuses nothing,
   const list = vi
     .spyOn(w.real!.service, 'listProjects')
     .mockImplementation(() => {
-      throw new Error('project record unreadable');
+      throw new Error(
+        "project record identity does not match directory 'broken'",
+      );
     });
   await w.previews.setEnabled('github-automation-actions', true);
   await w.runtime.tick().catch(() => undefined);
@@ -1863,6 +1894,7 @@ test('an unreadable Project list stops the tick as unavailable, refuses nothing,
   ).toHaveLength(1);
   expect(w.runtime.unavailable()).toMatchObject({
     reason: 'projects-unreadable',
+    detail: "project record identity does not match directory 'broken'",
   });
   list.mockRestore();
   await w.runtime.tick();
@@ -1922,13 +1954,135 @@ function dispatchSettings(w: World) {
 }
 
 for (const engine of ['station-agent', 'acp'])
-  test(`a rule with no approval mode starts an Agent on ${engine}, which takes no approval setting, with none`, async () => {
+  test(`a rule with no approval mode is refused before any Task for an Agent on ${engine}, which cannot be told ask`, async () => {
     const w = await world({ projects: [STATION_PROJECT], agentEngine: engine });
+    const settings = dispatchSettings(w);
+    const first = w.ledger.listActionIntents()[0]!;
+    await liveTick(w);
+    await w.runtime.tick();
+    expect(w.ledger.readIntent(first.intentId)).toMatchObject({
+      state: 'refused',
+      reason: 'agent_own_approval_required',
+    });
+    expect(settings()).toEqual([]);
+    expect(w.graph.listTasks()).toEqual([]);
+    expect(
+      w.warnings.mock.calls.find(([message]) =>
+        String(message).includes('approval setting its Agent cannot take'),
+      )?.[1],
+    ).toMatchObject({
+      reason: expect.stringContaining(
+        'The Agent runs under its own approval settings; the rule must say so',
+      ),
+    });
+    expect(
+      projectAutomationEpisode(w.ledger.listOpenEpisodes()[0]!, w.store.read()),
+    ).toMatchObject({
+      startFailure: 'agent-own-approval-required',
+      retryNeedsRuleChange: true,
+    });
+  });
+
+for (const engine of ['station-agent', 'acp', 'claude'])
+  test(`a rule stating the Agent's own approval settings starts an Agent on ${engine} with no setting`, async () => {
+    const w = await world({
+      projects: [STATION_PROJECT],
+      agentEngine: engine,
+      approvalMode: 'connection-default',
+    });
     const settings = dispatchSettings(w);
     await liveTick(w);
     await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
     expect(settings()).toEqual([undefined]);
   });
+
+test('an ACP Agent whose approvals Station answers is told ask when the rule states none', async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    agentEngine: 'acp',
+    acpControl: 'requests',
+  });
+  const settings = dispatchSettings(w);
+  await liveTick(w);
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(settings()).toEqual([{ approvalMode: 'ask' }]);
+});
+
+test('an Agent rebound between the preflight and the start is refused by the start, never started without a setting', async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    agentEngine: 'claude',
+    startEngine: 'station-agent',
+  });
+  const settings = dispatchSettings(w);
+  const first = w.ledger.listActionIntents()[0]!;
+  await liveTick(w);
+  await vi.waitFor(() =>
+    expect(w.ledger.readIntent(first.intentId)?.state).toBe('failed'),
+  );
+  expect(settings()).toEqual([{ approvalMode: 'ask' }]);
+  expect(w.adapter.sends).toEqual([]);
+  expect(w.graph.listTasks().map((task) => task.status)).toEqual(['canceled']);
+});
+
+test("a refused stated mode stops asking for a rule change once the rule states the Agent's own", async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    approvalMode: 'ask',
+    agentEngine: 'station-agent',
+  });
+  const first = w.ledger.listActionIntents()[0]!;
+  await liveTick(w);
+  await w.runtime.tick();
+  expect(
+    projectAutomationEpisode(w.ledger.listOpenEpisodes()[0]!, w.store.read())
+      .retryNeedsRuleChange,
+  ).toBe(true);
+  await editRule(w, (rule) => ({
+    action: { ...rule.action, approvalMode: 'connection-default' } as never,
+  }));
+  expect(
+    projectAutomationEpisode(w.ledger.listOpenEpisodes()[0]!, w.store.read()),
+  ).not.toHaveProperty('retryNeedsRuleChange');
+  const settings = dispatchSettings(w);
+  expect(retryOf(w, first)().kind).toBe('retried');
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(settings()).toEqual([undefined]);
+});
+
+test('authority changing while the Task is created cancels that Task', async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  const create = w.graph.createTaskIdempotent.bind(w.graph);
+  vi.spyOn(w.graph, 'createTaskIdempotent').mockImplementationOnce(
+    async (...args) => {
+      const task = await create(...args);
+      await setRuleMode(w, w.rule.id, 'off');
+      return task;
+    },
+  );
+  await liveTick(w);
+  await w.runtime.tick();
+  expect(w.graph.listTasks().map((task) => task.status)).toEqual(['canceled']);
+  expect(w.adapter.sends).toEqual([]);
+});
+
+test('a Task that could not be canceled after a failed start is shown on the episode', async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  vi.spyOn(w.graph, 'updateTaskStatus').mockRejectedValueOnce(
+    new Error('task store unavailable'),
+  );
+  const first = await failedStart(w);
+  await vi.waitFor(() =>
+    expect(w.ledger.readIntent(first.intentId)?.reason).toBe(
+      'task_not_canceled',
+    ),
+  );
+  expect(w.ledger.listOpenEpisodes()[0]).toMatchObject({
+    startFailed: true,
+    startFailure: 'task-not-canceled',
+  });
+});
 
 test('a rule with no approval mode still starts an Agent that takes one at ask, never more permissive', async () => {
   const w = await world({ projects: [STATION_PROJECT] });
@@ -1972,7 +2126,7 @@ test('a rule asking for an approval mode its Agent cannot take is refused visibl
   });
   expect(
     w.warnings.mock.calls.filter(([message]) =>
-      String(message).includes('engine setting its Agent cannot take'),
+      String(message).includes('approval setting its Agent cannot take'),
     ),
   ).toEqual([
     [

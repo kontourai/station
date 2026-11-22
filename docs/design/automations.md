@@ -294,19 +294,29 @@ intent never qualifies. A start that fails before anything is invoked
 cancels its Task, so no leftover Task can be started outside the rule's
 authority; the retry creates the episode's next Task.
 
-A rule's `approvalMode` is sent as stated. Before any Task is created the
-runtime resolves the Agent's engine and asks the start resolution's
-`modelOptionsRefusal` whether the Agent takes it; if not, the intent is
-refused (`agent_option_unsupported`, named in Settings and logged with the
-explicit reason). Without an `approvalMode`, `ask` is sent to an Agent that
-takes it, as before, and an Agent that takes no per-invocation settings
-(a Station-engine or ACP Agent) gets none, so a rule never becomes more
-permissive than it states.
+A rule never runs an Agent under a posture it did not state. `approvalMode`
+is `ask`, `auto` or `connection-default`, and omitted means `ask`. `ask` and
+`auto` are sent to the Agent as stated; before any Task is created the
+dispatch's own start resolution is asked whether the Agent takes it (an ACP
+connection whose approvals Station answers takes `approvalMode`, as at the
+orchestration seam). An Agent that cannot is refused there:
+`agent_option_unsupported` for a stated mode, `agent_own_approval_required`
+when the rule stated none and the Agent cannot be told `ask`, with text that
+the Agent runs under its own approval settings and that the rule must say
+so. `connection-default` sends no per-invocation setting, so the Agent's or
+its connection's own approval settings apply; only a rule that states it
+runs so. The start resolves the Agent again with the same setting, so an
+Agent rebound after the check is refused at the start, never started
+without one. Settings shows each rule's posture ("Asks before each tool
+call", "Agent's own approval settings"), and an Agent-proposed rule can only
+be `ask`. Retry is not offered for such a refusal until the rule changes.
+A Task whose cancel fails is named on the open episode.
 
 While the Project list cannot be read, or authority cannot be checked, no
 automation Task starts and nothing is refused; the warning is logged when
-that starts or changes, and Settings shows that automation Tasks are paused
-until a tick succeeds. The list is read as a whole, so one unreadable
+that starts or changes, and Settings shows that automation Tasks are paused,
+with what failed (the Project store's message, bounded), until a tick
+succeeds. The list is read as a whole, so one unreadable
 Project record pauses rules for every Project.
 
 Three limits of pinning a stored slug: any read pins it, including a plain

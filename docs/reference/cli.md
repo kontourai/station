@@ -2414,7 +2414,11 @@ station automation delete <rule-id>
 
 A rule's `action.projectId` and a source grant's `projectId` accept a
 Project's id or slug (for example `"projectId":"station"`). Station stores the
-id, and refuses a value that names no Project, quoting it.
+id, and refuses a value that names no Project, quoting it. A rule's
+`action.approvalMode` is `ask` (the default when omitted), `auto` or
+`connection-default` (the Agent's own approval settings; nothing is sent).
+An Agent that cannot take the rule's mode, including an omitted one, is
+refused before any Task is created.
 
 Every action takes `--api-base=<url>`. Each is one `AUTOMATION_OPERATOR_SURFACE`
 verb under `/automations` (see

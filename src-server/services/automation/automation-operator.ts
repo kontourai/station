@@ -63,10 +63,30 @@ export function retryAutomationEpisode(input: {
   });
 }
 
-/** The public episode view: the internal episode key is not returned. */
+/** Failures a retry of the unchanged rule would meet again. */
+const RULE_CHANGE_FAILURES = new Set([
+  'agent-option-unsupported',
+  'agent-own-approval-required',
+]);
+
+/**
+ * The public episode view: the internal episode key is not returned. With
+ * the current configuration, a start refused for the rule's approval
+ * setting is marked `retryNeedsRuleChange` while the rule is unchanged.
+ */
 export function projectAutomationEpisode(
   record: AutomationEpisodeRecord,
+  configuration?: AutomationConfiguration,
 ): PublicEpisodeRecord {
+  const rule = configuration?.rules.find(({ id }) => id === record.ruleId);
+  const source = configuration?.sources.find(({ id }) => id === rule?.sourceId);
+  const unchanged =
+    record.startFailure !== undefined &&
+    RULE_CHANGE_FAILURES.has(record.startFailure) &&
+    rule !== undefined &&
+    source !== undefined &&
+    automationPolicyFingerprint(source, rule) ===
+      record.failedPolicyFingerprint;
   return {
     ruleId: record.ruleId,
     episodeId: record.episodeId,
@@ -77,6 +97,7 @@ export function projectAutomationEpisode(
     updatedAt: record.updatedAt,
     ...(record.startFailed ? { startFailed: true as const } : {}),
     ...(record.startFailure ? { startFailure: record.startFailure } : {}),
+    ...(unchanged ? { retryNeedsRuleChange: true as const } : {}),
   };
 }
 
