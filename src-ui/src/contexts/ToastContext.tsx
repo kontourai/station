@@ -40,7 +40,8 @@ export type ToastDismissReason = 'closed' | 'scope';
 type ToastAction = {
   label: string;
   onClick: () => unknown;
-  variant?: 'primary' | 'secondary' | 'danger';
+  /** `danger-outline` is an approval's Deny, drawn as the card draws it. */
+  variant?: 'primary' | 'secondary' | 'danger' | 'danger-outline';
   /**
    * Shown as an item of the card's one menu (named by
    * `Toast.actionsMenuLabel`) instead of a labelled button, so a card never

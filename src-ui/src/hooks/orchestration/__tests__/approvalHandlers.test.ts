@@ -139,8 +139,8 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     );
 
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
-      'Allow once',
       'Deny',
+      'Allow once',
       'Allow all Bash commands for this session',
     ]);
   });
@@ -192,8 +192,8 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     );
 
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
-      'Allow once',
       'Deny',
+      'Allow once',
     ]);
   });
 
@@ -288,7 +288,7 @@ describe('handleRequestOpenedEvent — the approval toast says what it grants (#
     );
 
     expect(approvalToast().actions.map((action) => action.label)).toEqual(
-      label ? ['Allow once', 'Deny', label] : ['Allow once', 'Deny'],
+      label ? ['Deny', 'Allow once', label] : ['Deny', 'Allow once'],
     );
   });
 
@@ -413,15 +413,15 @@ describe('#2316: the toast answers the exact prompt it shows', () => {
   });
 
   test.each([
-    [0, 'accept', false],
-    [1, 'decline', false],
-    [2, 'acceptForSession', false],
-    [0, 'accept', true],
-    [1, 'decline', true],
-    [2, 'acceptForSession', true],
+    ['Allow once', 'accept', false],
+    ['Deny', 'decline', false],
+    ['Allow all Bash commands for this session', 'acceptForSession', false],
+    ['Allow once', 'accept', true],
+    ['Deny', 'decline', true],
+    ['Allow all Bash commands for this session', 'acceptForSession', true],
   ] as const)(
-    'action %i sends %s bound to the request event id (visible draft: %s)',
-    async (index, decision, visibleDraft) => {
+    '"%s" sends %s bound to the request event id (visible draft: %s)',
+    async (label, decision, visibleDraft) => {
       if (visibleDraft)
         getChatForExecutionSession.mockReturnValue({
           title: 'Conversation',
@@ -438,7 +438,11 @@ describe('#2316: the toast answers the exact prompt it shows', () => {
         'http://localhost:1',
         requestOpened({ toolName: 'Bash', toolInput: { command: 'ls' } }),
       );
-      approvalToast().actions[index]?.onClick();
+      const action = approvalToast().actions.find(
+        (candidate) => candidate.label === label,
+      );
+      expect(action).toBeDefined();
+      action?.onClick();
       // The answer path loads on demand, so the call lands a tick later.
       await vi.waitFor(() =>
         expect(resolveOrchestrationRequest).toHaveBeenCalled(),
@@ -484,8 +488,8 @@ describe('the Station browser server grant on the toast', () => {
       requestOpened({ ...browserPayload, stationBrowserServer: true }),
     );
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
-      'Allow once',
       'Deny',
+      'Allow once',
       'Allow all station-browser.browser_click calls for this session',
       LABEL,
     ]);
@@ -497,8 +501,8 @@ describe('the Station browser server grant on the toast', () => {
       requestOpened(browserPayload),
     );
     expect(approvalToast().actions.map((action) => action.label)).toEqual([
-      'Allow once',
       'Deny',
+      'Allow once',
       'Allow all station-browser.browser_click calls for this session',
     ]);
   });
@@ -604,8 +608,8 @@ describe('#2344: the toast reports what happened to its answer', () => {
     expect(
       showToolApproval.mock.calls[1]?.[0].actions.map((a) => a.label),
     ).toEqual([
-      'Allow once',
       'Deny',
+      'Allow once',
       'Allow all Bash commands for this session',
     ]);
   });

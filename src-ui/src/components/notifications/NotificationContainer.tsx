@@ -59,6 +59,7 @@ function ToastCard({
   onActivate,
   clickable,
   swipeToDismiss = false,
+  queueKey,
 }: {
   notification: Notification;
   dismissToast: (id: string) => void;
@@ -79,6 +80,12 @@ function ToastCard({
   clickable: boolean;
   /** Transient toasts only: a touch swipe sideways dismisses the card. */
   swipeToDismiss?: boolean;
+  /**
+   * Approval queue only: the requests in the queue. A change closes an open
+   * session-grant menu, so its fixed-position list never sits over a card that
+   * arrived or moved under it.
+   */
+  queueKey?: string;
 }) {
   const isApproval = notification.type === 'tool-approval';
   const isActivity = notification.type === 'tool-activity';
@@ -368,6 +375,7 @@ function ToastCard({
           )}
           {menuActions.length > 0 && (
             <ActionOverflowMenu
+              key={queueKey}
               label={notification.actionsMenuLabel ?? 'More actions'}
               actions={menuActions}
             />
@@ -529,6 +537,7 @@ export function NotificationContainer() {
   );
   const approvals =
     showAllApprovals && approvalQueueOpen ? allApprovals : unclaimedApprovals;
+  const approvalQueueKey = approvals.map(notificationKey).join(' ');
   useEffect(() => {
     const open = () => {
       returnFocusRef.current = captureReturnFocus(
@@ -736,6 +745,7 @@ export function NotificationContainer() {
                 handleNavigateTo={handleNavigateTo}
                 handleAction={handleAction}
                 clickable={false}
+                queueKey={approvalQueueKey}
               />
             ))}
           </section>

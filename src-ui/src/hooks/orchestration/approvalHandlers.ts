@@ -294,7 +294,7 @@ function showApprovalToast(
   };
   const toastDecision = (
     option: InputRequestDecisionOption,
-    variant: 'primary' | 'secondary' | 'danger',
+    variant: 'primary' | 'secondary' | 'danger' | 'danger-outline',
   ) => ({
     label: option.label,
     variant,
@@ -318,7 +318,7 @@ function showApprovalToast(
     conversationTitle: view.conversationTitle,
     // #3390: the approval's decision body, the same options the inline card
     // and the sheet render, placed the same way (chat-14,
-    // `approvalDecisionLayout`): Allow once and Deny are the two buttons, and
+    // `approvalDecisionLayout`): Deny and Allow once are the two buttons, and
     // every session grant the request offered sits in one menu. Each grant's
     // label says what it covers: "Allow for Session" read as a grant for this
     // one call, and it is a standing grant for every later call to the same
@@ -345,8 +345,12 @@ function showApprovalToast(
             .map((option) => toastDecision(option, 'danger')),
         ]
       : [
+          // Deny, Allow once, then the menu: the order and tones of the
+          // card's and the sheet's ActionRow (secondary, primary, overflow).
+          ...(layout.deny
+            ? [toastDecision(layout.deny, 'danger-outline')]
+            : []),
           ...(layout.once ? [toastDecision(layout.once, 'primary')] : []),
-          ...(layout.deny ? [toastDecision(layout.deny, 'danger')] : []),
           ...layout.sessionGrants.map((option) => ({
             ...toastDecision(option, 'secondary'),
             inMenu: true,

@@ -192,8 +192,8 @@ On a phone: An identical sheet. The separate "Branch" icon is removed.
 
 On a phone: The same choices in the request sheet, with the grants in its menu.
 
-1. **The row offers Allow once (primary), Deny, a menu named "Allow for this session", and the row's details disclosure. The approval toast uses the same layout.** The inline card already had two labelled buttons with the session grants behind a menu. The toast was the surface that showed up to five buttons, one per choice. The button cap of two labelled actions holds, so the menu is not a third labelled button. _(layout; slice 4.10)_
-2. **The menu holds only the session grants the request offered, each in its own words and each "for this session".** These are a command prefix (`Allow "gh pr create *" for this session`), every call of one tool, file edits, folder access, or the Station browser. A grant lasts only until the agent's session ends, so the menu is not called "Always allow". There is no grant for all of a tool server's tools: Station has none, and adding one would be new, broader safety work. There is no "Manage rules in Settings" link, because nothing in Settings shows or revokes these grants. _(layout, copy; slice 4.10)_
+1. **The row offers Deny, Allow once (primary), a menu named "Allow for this session", and the row's details disclosure. The approval toast uses the same order and tones.** The inline card already had two labelled buttons with the session grants behind a menu. The toast was the surface that showed up to five buttons, one per choice. The button cap of two labelled actions holds, so the menu is not a third labelled button. _(layout; slice 4.10)_
+2. **The menu holds only the session grants the request offered, each in its own words and each "for this session".** These are a command prefix (`Allow "gh pr create *" for this session`), every call of one tool, file edits, folder access, or the Station browser. A grant lasts only until the agent's session ends, so the menu is not called "Always allow". There is no grant for all of an arbitrary tool server's tools; adding one would be new, broader safety work. The only server-wide grant is the Station browser's, offered only for a call the adapter found to be an authentic Station browser call. There is no "Manage rules in Settings" link, because nothing in Settings shows or revokes these grants. _(layout, copy; slice 4.10)_
 
 ### `chat-15` Chat menu (⋯)
 
@@ -356,7 +356,7 @@ On a phone: Same content in one column.
 | Reasoning (N words) | Keep | Shown as "Show reasoning". |
 | Rating (thumbs up and down) | Keep | Visible. |
 | Trace link | Hide for the first release | Developer mode only. |
-| Allow once, trust, trust-server, trust-rule and Deny | Simplify | The toast's up to five buttons become the card's shape: Allow once, Deny, and the offered session grants in one "Allow for this session" menu. |
+| Allow once, trust, trust-server, trust-rule and Deny | Simplify | The toast's up to five buttons become the card's shape: Deny, Allow once, and the offered session grants in one "Allow for this session" menu. |
 | Context ring and phone "Conversation stats" | Simplify | Three places become the ring popover plus the Usage tab. |
 | Chat inventory (dock ⋯, phone), Changed files (N), Task context | Simplify | Merged into the Work tab. |
 | Chat settings (gear) and phone "This chat" | Simplify | Merged into the Setup tab. |

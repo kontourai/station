@@ -103,18 +103,22 @@ const browserCall = (authentic: boolean) => ({
   ...(authentic ? { stationBrowserServer: true } : {}),
 });
 
-function openRequest(payload: Record<string, unknown>) {
+function raise(payload: Record<string, unknown>, requestId = 'req-1') {
   handleRequestOpenedEvent('http://localhost:1', {
-    eventId: 'evt-1',
+    eventId: `evt-${requestId}`,
     provider: 'claude',
     threadId: 'thread-1',
     createdAt: '2026-09-05T00:00:00.000Z',
     method: 'request.opened',
-    requestId: 'req-1',
+    requestId,
     requestType: 'approval',
     title: 'Allow a tool',
     payload,
   } as unknown as Parameters<typeof handleRequestOpenedEvent>[1]);
+}
+
+function openRequest(payload: Record<string, unknown>) {
+  raise(payload);
   render(<NotificationContainer />);
   const cards = screen.getAllByTestId('toast-card');
   expect(cards).toHaveLength(1);
@@ -175,13 +179,13 @@ describe('chat-14: the approval toast offers Allow once, Deny and one menu of se
 
   test('a Claude Bash ask with a prefix shows two labelled buttons, and the prefix and whole-tool grants in the menu', async () => {
     const card = openRequest(claudeBash([rule('npm ls *')]));
-    expect(labelledButtons(card)).toEqual(['Allow once', 'Deny']);
+    expect(labelledButtons(card)).toEqual(['Deny', 'Allow once']);
     expect(await menuItems(card)).toEqual([PREFIX, WHOLE_BASH]);
   });
 
   test('an authentic Station browser call shows the per-tool and browser grants in the menu', async () => {
     const card = openRequest(browserCall(true));
-    expect(labelledButtons(card)).toEqual(['Allow once', 'Deny']);
+    expect(labelledButtons(card)).toEqual(['Deny', 'Allow once']);
     expect(await menuItems(card)).toEqual([BROWSER_TOOL, BROWSER_SERVER]);
   });
 
@@ -203,8 +207,29 @@ describe('chat-14: the approval toast offers Allow once, Deny and one menu of se
     ],
   ] as const)('%s', async (_case, payload, grants) => {
     const card = openRequest(payload);
-    expect(labelledButtons(card)).toEqual(['Allow once', 'Deny']);
+    expect(labelledButtons(card)).toEqual(['Deny', 'Allow once']);
     expect(await menuItems(card)).toEqual(grants);
+  });
+
+  test('Deny is drawn in the same outline tone as the card and the sheet', () => {
+    const card = openRequest(claudeBash([rule('npm ls *')]));
+    const deny = within(card).getByRole('button', { name: 'Deny' });
+    expect(deny.classList.contains('button--danger-outline')).toBe(true);
+    expect(
+      within(card)
+        .getByRole('button', { name: 'Allow once' })
+        .classList.contains('button--primary'),
+    ).toBe(true);
+  });
+
+  test('a request joining the queue closes an open menu without answering anything', async () => {
+    const card = openRequest(claudeBash([rule('npm ls *')]));
+    fireEvent.click(within(card).getByRole('button', { name: MENU }));
+    expect(await screen.findAllByRole('menuitem')).toHaveLength(2);
+    act(() => raise(browserCall(true), 'req-2'));
+    expect(screen.getAllByTestId('toast-card')).toHaveLength(2);
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+    expect(resolveOrchestrationRequest).not.toHaveBeenCalled();
   });
 
   test.each([
@@ -222,7 +247,7 @@ describe('chat-14: the approval toast offers Allow once, Deny and one menu of se
       expect(sent).toMatchObject({
         threadId: 'thread-1',
         requestId: 'req-1',
-        expectedRequestEventId: 'evt-1',
+        expectedRequestEventId: 'evt-req-1',
         decision,
       });
       if (scope) expect(sent.sessionGrantScope).toBe(scope);
