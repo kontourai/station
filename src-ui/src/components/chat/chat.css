@@ -1062,7 +1062,8 @@
 .message-delivery__action:hover:not(:disabled) {
   background: var(--bg-tertiary);
 }
-.message-delivery__action:disabled {
+.message-delivery__action:disabled,
+.message-delivery__action[aria-disabled="true"] {
   opacity: 0.6;
   cursor: default;
 }

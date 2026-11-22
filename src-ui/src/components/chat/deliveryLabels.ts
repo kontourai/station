@@ -65,49 +65,81 @@ const CHECK_ANSWER_ORDER = [
 ] as const;
 type CheckAnswer = (typeof CHECK_ANSWER_ORDER)[number];
 
-function checkAnswer(outcome: TurnDeliveryOutcome | undefined): CheckAnswer {
+/** `undefined` is no answer (nothing to check): it is left out. */
+function checkAnswer(
+  outcome: TurnDeliveryOutcome | undefined,
+): CheckAnswer | undefined {
+  if (outcome === undefined) return undefined;
   if (outcome === 'not-received' || outcome === 'started') return outcome;
   if (outcome === 'received' || outcome === 'queued') return 'received';
   return 'cannot-confirm';
 }
 
-/** Where to act when the row's Check cannot settle a message itself. */
-const OPEN_TO_DISCARD = 'Open the chat to discard it.';
-
 function oneOrMany(count: number) {
   return count === 1 ? 'it' : 'them';
 }
 
+/** The answer, then where to act on it: one sentence each. */
+function answerSentences(
+  worst: CheckAnswer,
+  count: number,
+  total: number,
+): { answer: string; action?: string } {
+  const some = `${count === total ? total : `${count} of ${total}`} ${
+    total === 1 ? 'message' : 'messages'
+  }`;
+  const them = oneOrMany(count);
+  switch (worst) {
+    case 'not-received':
+      return {
+        answer: `Station did not receive ${some}.`,
+        action: `Open the chat to send ${them} again`,
+      };
+    case 'cannot-confirm':
+      return {
+        answer: `Station still can’t confirm ${some}.`,
+        action: `Open the chat to discard ${them}`,
+      };
+    case 'received':
+      return {
+        answer: `Station has ${some}; the agent has not started ${them}.`,
+      };
+    default:
+      return { answer: `The agent started ${some}.` };
+  }
+}
+
 /**
  * What one inbox-row Check found across the messages it asked about (#5398),
- * oldest first. One kind of answer reads as the message note's sentence for
- * the newest message. Differing answers name the most serious one, with its
- * count, and where to act, so a message Station never received is never
- * hidden behind another one's good news. `remaining` counts the messages
- * left unchecked.
+ * oldest first. A single answer reads as the message note's sentence.
+ * Several name the most serious answer first, with its count, and where to
+ * act, so a message Station never received is never hidden behind another
+ * one's good news. `remaining` counts the messages left unchecked; the line
+ * stays at two sentences.
  */
 export function inboxCheckResult(
   outcomes: readonly (TurnDeliveryOutcome | undefined)[],
   remaining = 0,
 ): string | null {
-  const answers = outcomes.map(checkAnswer);
-  const worst = CHECK_ANSWER_ORDER.find((answer) => answers.includes(answer));
-  if (!worst) return null;
-  const count = answers.filter((answer) => answer === worst).length;
-  const total = answers.length;
-  let sentence: string | null;
-  if (count === total) {
-    sentence = deliveryCheckResult(outcomes.at(-1));
-    if (worst === 'cannot-confirm' && outcomes.at(-1) !== undefined)
-      sentence = `${sentence} ${OPEN_TO_DISCARD}`;
-  } else if (worst === 'not-received') {
-    sentence = `Station did not receive ${count} of ${total} messages. Open the chat to send ${oneOrMany(count)} again.`;
-  } else if (worst === 'cannot-confirm') {
-    sentence = `Station still can’t confirm ${count} of ${total} messages. Open the chat to discard ${oneOrMany(count)}.`;
-  } else {
-    sentence = `Station has ${count} of ${total} messages. The agent has not started ${oneOrMany(count)} yet.`;
+  const answered = outcomes.filter((outcome) => outcome !== undefined);
+  const answers = answered.map(checkAnswer);
+  const more = remaining > 0 ? ` and check ${remaining} more` : '';
+  const checkMore = `Open the chat to check ${remaining} more.`;
+  if (answered.length === 0) {
+    const nothing = deliveryCheckResult(undefined);
+    return remaining > 0 ? `${nothing} ${checkMore}` : nothing;
   }
-  return remaining > 0
-    ? `${sentence ?? ''} ${remaining} more to check in the chat.`.trim()
-    : sentence;
+  const worst =
+    CHECK_ANSWER_ORDER.find((answer) => answers.includes(answer)) ??
+    'cannot-confirm';
+  if (answered.length === 1 && remaining === 0) {
+    const sentence = deliveryCheckResult(answered[0]);
+    return worst === 'cannot-confirm'
+      ? `${sentence} Open the chat to discard it.`
+      : sentence;
+  }
+  const count = answers.filter((answer) => answer === worst).length;
+  const { answer, action } = answerSentences(worst, count, answered.length);
+  if (action) return `${answer} ${action}${more}.`;
+  return remaining > 0 ? `${answer} ${checkMore}` : answer;
 }

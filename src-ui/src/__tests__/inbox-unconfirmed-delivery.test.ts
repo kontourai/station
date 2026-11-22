@@ -15,6 +15,7 @@ import {
   buildHomeWorkItems,
 } from '../views/home/home-view-model';
 import { buildWorkFacts } from '../views/home/work-facts';
+import { resolveWorkItemOpenAction } from '../views/home/work-item-open-policy';
 import { workStatus } from '../views/home/work-status';
 
 /**
@@ -307,4 +308,110 @@ describe('an unconfirmed delivery is a flag, not a lane (#5398)', () => {
       expect(facts.get(items[0]!.id)?.unconfirmedDelivery).toBeUndefined();
     });
   }
+
+  /**
+   * The shape a reopen writes: `useOpenConversation` mints a new chat key
+   * (`<agent>:<epoch ms>`) for an existing conversation and stores the
+   * conversation id on it, so the key and the conversation id differ.
+   */
+  const OLDER = 'station:1795332900000';
+  const NEWER = 'station:1795332999999';
+  function reopened(
+    createdAt: number,
+    over: Partial<ChatUIState> = {},
+  ): ChatUIState {
+    return {
+      ...unconfirmedChat({
+        conversationId: CONVERSATION,
+        createdAt,
+        status: 'idle',
+        outboundQueuedTurns: [],
+        messages: [
+          {
+            id: `m-${createdAt}`,
+            role: 'user',
+            content: 'Say hello in one short line.',
+            timestamp: createdAt,
+          },
+        ] as ChatUIState['messages'],
+      }),
+      ...over,
+    };
+  }
+  const held = {
+    'not sent': {
+      status: 'queued' as const,
+      outboundQueuedTurns: [
+        {
+          clientTurnId: 'turn-older',
+          content: 'An older message.',
+          createdAt: NOW - 100_000,
+          status: 'failed' as const,
+        },
+      ],
+    },
+    unconfirmed: {
+      status: 'queued' as const,
+      outboundQueuedTurns: [
+        {
+          clientTurnId: 'turn-older',
+          content: 'An older message.',
+          createdAt: NOW - 100_000,
+          status: 'may-have-started' as const,
+        },
+      ],
+    },
+  };
+  for (const surface of ['home', 'dock'] as const) {
+    for (const [kind, over] of Object.entries(held)) {
+      it(`${surface}: a row whose ${kind} message is in an older chat opens that chat`, () => {
+        const { items, facts } = rows(
+          {
+            [OLDER]: reopened(NOW - 100_000, over),
+            [NEWER]: reopened(NOW - 5_000),
+          },
+          [completed],
+          surface,
+        );
+        expect(items).toHaveLength(1);
+        const status = workStatus(items[0]!, NOW, facts.get(items[0]!.id));
+        if (kind === 'not sent') expect(status.word).toBe('Queued to send');
+        else
+          expect(facts.get(items[0]!.id)?.unconfirmedDelivery).toHaveLength(1);
+        expect(resolveWorkItemOpenAction(items[0]!)).toEqual({
+          kind: 'focus',
+          chatSessionId: OLDER,
+        });
+      });
+    }
+  }
+
+  it('the flag reads every chat of the conversation, whatever their keys', () => {
+    const { items, facts } = rows(
+      {
+        [OLDER]: reopened(NOW - 100_000, held.unconfirmed),
+        [NEWER]: reopened(NOW - 5_000, {
+          status: 'queued',
+          outboundQueuedTurns: [
+            {
+              clientTurnId: 'turn-newer',
+              content: 'A newer message.',
+              createdAt: NOW - 5_000,
+              status: 'may-have-started',
+            },
+          ],
+        }),
+      },
+      [completed],
+      'dock',
+    );
+    expect(items).toHaveLength(1);
+    expect(
+      facts
+        .get(items[0]!.id)
+        ?.unconfirmedDelivery?.map((turn) => turn.clientTurnId),
+    ).toEqual(['turn-older', 'turn-newer']);
+    // The newest chat holding one is the one the row opens.
+    expect(items[0]!.chatSessionId).toBe(NEWER);
+  });
 });

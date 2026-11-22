@@ -108,6 +108,8 @@ export function MessageDeliveryNote({
   variant?: 'bubble' | 'inline';
 }) {
   const [busy, setBusy] = useState(false);
+  /** A Check press while one runs is ignored: one press, one lookup. */
+  const checking = useRef(false);
   const [ownNotice, setNotice] = useState<DeliveryNotice | null>(null);
   const notice = ownNotice ?? outsideNotice ?? null;
   const discardDisclosure = useUnconfirmedDiscardDisclosure();
@@ -272,15 +274,21 @@ export function MessageDeliveryNote({
             ) : state === 'unconfirmed' || state === 'awaiting-confirmation' ? (
               <span className="message-delivery__actions">
                 {port.check && (
+                  // Never `disabled` while it runs: that drops keyboard focus
+                  // to the page. The press is ignored instead.
                   <button
                     type="button"
                     className="message-delivery__action"
-                    disabled={busy}
-                    onClick={() =>
-                      void run(async () => {
-                        return deliveryCheckResult(await port.check?.());
-                      })
-                    }
+                    aria-disabled={busy || undefined}
+                    onClick={() => {
+                      if (busy || checking.current) return;
+                      checking.current = true;
+                      void run(async () =>
+                        deliveryCheckResult(await port.check?.()),
+                      ).finally(() => {
+                        checking.current = false;
+                      });
+                    }}
                   >
                     Check
                   </button>

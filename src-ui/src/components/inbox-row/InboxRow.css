@@ -72,6 +72,11 @@
 .inbox-row__flag-action {
   min-block-size: var(--touch-target-min, 0px);
 }
+/* While its Check runs (aria-disabled, so it keeps keyboard focus). */
+.inbox-row__flag-action[aria-busy="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
 /* A flagged hover row: the flag belongs to the row, so the hover and current
    treatment moves from the open button to the whole row (the touch row's
    rules below), instead of stopping short of the flag. */

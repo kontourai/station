@@ -64,17 +64,32 @@ export function UnconfirmedDeliveryFlag({
   titleRef.current = title;
   /** The last Check's answer, when every message it asked about settled. */
   const settled = useRef<{ text: string; at: number } | null>(null);
-  useEffect(
-    () => () => {
+  const flagRef = useRef<HTMLDivElement>(null);
+  const checkRef = useRef<HTMLButtonElement>(null);
+  /** A press while a Check runs is ignored, so one press is one lookup each. */
+  const running = useRef(false);
+  /** Check held keyboard focus when its answer settled the message. */
+  const focusedAtSettle = useRef(false);
+  useEffect(() => {
+    // The row outlives its flag; it takes focus back when the flag goes.
+    const row = flagRef.current?.closest('.inbox-row');
+    return () => {
       const answer = settled.current;
-      if (answer && Date.now() - answer.at < RESULT_FRESH_MS)
-        toastStore.show(
-          `${titleRef.current.replace(/[.!?]+$/, '')}: ${answer.text}`,
-        );
-    },
-    [],
-  );
+      if (!answer || Date.now() - answer.at >= RESULT_FRESH_MS) return;
+      toastStore.show(
+        `${titleRef.current.replace(/[.!?]+$/, '')}: ${answer.text}`,
+      );
+      if (
+        focusedAtSettle.current &&
+        row?.isConnected &&
+        (!document.activeElement || document.activeElement === document.body)
+      )
+        row.querySelector<HTMLButtonElement>('.inbox-row__open')?.focus();
+    };
+  }, []);
   const run = async () => {
+    if (running.current) return;
+    running.current = true;
     setBusy(true);
     setResult(null);
     settled.current = null;
@@ -93,27 +108,38 @@ export function UnconfirmedDeliveryFlag({
       }
       const text = inboxCheckResult(outcomes, remaining);
       setResult(text);
-      if (text && remaining === 0 && outcomes.every(settles))
+      if (text && remaining === 0 && outcomes.every(settles)) {
         settled.current = { text, at: Date.now() };
+        focusedAtSettle.current = document.activeElement === checkRef.current;
+      }
     } catch (error) {
       // The same translation the message's own Check uses.
       setResult(describeStationFailure(error).body);
     } finally {
+      running.current = false;
       setBusy(false);
     }
   };
   return (
-    <div className="inbox-row__flag" data-testid="inbox-row-unconfirmed-flag">
+    <div
+      ref={flagRef}
+      className="inbox-row__flag"
+      data-testid="inbox-row-unconfirmed-flag"
+    >
       <WarningGlyph className="inbox-row__flag-glyph" />
       <span id={id} className="inbox-row__flag-text">
         {LAST_MESSAGE_UNCONFIRMED_LABEL}
         {checkable ? '' : `. ${OPEN_TO_CHECK}`}
       </span>
       {checkable && (
+        // Never `disabled` while it runs: a disabled button drops keyboard
+        // focus to the page, and the next Tab would start from the top.
         <Button
+          ref={checkRef}
           variant="link"
           className="inbox-row__flag-action"
-          pending={busy}
+          aria-disabled={busy || undefined}
+          aria-busy={busy || undefined}
           aria-label={`Check delivery in ${title}`}
           onClick={() => void run()}
         >

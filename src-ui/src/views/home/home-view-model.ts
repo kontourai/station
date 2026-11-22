@@ -1355,6 +1355,22 @@ export function buildActiveChatTaskItems({
       )
       .map((item) => item.id),
   );
+  // The row must open the chat that holds what it is about: of the chats
+  // with a message owed (waiting, not sent, held) or unconfirmed, the newest.
+  // Every reader of the row's chat (open, current, close, read state) takes
+  // `chatSessionId`, so pointing it there is the one place to decide it.
+  const holderByConversation = new Map<string, MergeItem>();
+  for (const item of items) {
+    const chat = item.chatSessionId ? chats[item.chatSessionId] : undefined;
+    if (
+      !chat ||
+      (!chatQueuedToSend(chat) && unconfirmedOutboundTurns(chat).length === 0)
+    )
+      continue;
+    const holder = holderByConversation.get(item.id);
+    if (!holder || item.updatedAt > holder.updatedAt)
+      holderByConversation.set(item.id, item);
+  }
   // A handoff replaces the execution Session while retaining one durable
   // Conversation. Every consumer of this adapter must therefore see the
   // newest child identity, never an arbitrary predecessor map entry.
@@ -1385,7 +1401,12 @@ export function buildActiveChatTaskItems({
       }, new Map<string, MergeItem>())
       .values(),
   ]
-    .map(({ currentSessionId: _currentSessionId, ...item }) => {
+    .map(({ currentSessionId: _currentSessionId, ...kept }) => {
+      const holder = holderByConversation.get(kept.id)?.chatSessionId;
+      const item =
+        holder && holder !== kept.chatSessionId
+          ? { ...kept, chatSessionId: holder }
+          : kept;
       if (
         !conversationsQueued.has(item.id) ||
         item.lifecycleLabel === 'Needs attention'

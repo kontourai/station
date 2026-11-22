@@ -27,6 +27,8 @@ const outbox = vi.hoisted(() => ({
   discard: vi.fn(async (_key: string) => undefined),
   dismissUnconfirmed: vi.fn(async (_key: string) => undefined),
   enqueue: vi.fn(),
+  flush: vi.fn(),
+  sendHeld: vi.fn(),
   rowStatus: vi.fn(
     async (_key: string): Promise<string | undefined> => undefined,
   ),
@@ -340,6 +342,9 @@ describe('MessageBubble delivery state', () => {
   });
 
   it('unconfirmed: "May have reached the agent", Check asks again and never resends', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('no request expected'));
     setChat({ deliveryChecks: { [KEY]: 'indeterminate' } });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'unconfirmed');
@@ -355,6 +360,31 @@ describe('MessageBubble delivery state', () => {
     expect(within(bubble).queryByRole('alert')).toBeNull();
     expect(outbox.retry).not.toHaveBeenCalled();
     expect(outbox.enqueue).not.toHaveBeenCalled();
+    expect(outbox.flush).not.toHaveBeenCalled();
+    expect(outbox.sendHeld).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('unconfirmed: Check keeps keyboard focus while it runs, and a double press asks once', async () => {
+    let answer: (outcome: 'indeterminate') => void = () => {};
+    recheckOutboundTurn.mockImplementationOnce(
+      () => new Promise((resolve) => (answer = resolve)),
+    );
+    setChat({ deliveryChecks: { [KEY]: 'indeterminate' } });
+    const { bubble } = renderBubble();
+    const check = within(bubble).getByRole('button', { name: 'Check' });
+    check.focus();
+    fireEvent.click(check);
+    fireEvent.click(check);
+    await waitFor(() =>
+      expect(check.getAttribute('aria-disabled')).toBe('true'),
+    );
+    expect(check.hasAttribute('disabled')).toBe(false);
+    answer('indeterminate');
+    await within(bubble).findByText('Station still can’t confirm it.');
+    expect(recheckOutboundTurn).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(check);
   });
 
   it('unconfirmed: discarding states the risk first, and only the explicit confirmation dismisses it (#3596)', async () => {

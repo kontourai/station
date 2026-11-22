@@ -19,6 +19,7 @@ import {
   createDefaultChatState,
 } from '../contexts/active-chats-state';
 import { toastStore } from '../contexts/ToastContext';
+import { outboundDispatch } from '../lib/outboundQueue';
 import {
   buildActiveChatTaskItems,
   buildHomeWorkItems,
@@ -132,6 +133,7 @@ const TWO_CHATS: Record<string, ChatUIState> = {
 beforeEach(() => {
   recheck.mockReset();
   toastStore.clear();
+  vi.restoreAllMocks();
 });
 
 describe('the inbox row flag for an unconfirmed delivery (#5398)', () => {
@@ -271,7 +273,7 @@ describe('the inbox row flag for an unconfirmed delivery (#5398)', () => {
     fireEvent.click(screen.getByRole('button', { name: CHECK }));
     await waitFor(() =>
       expect(screen.getByRole('status').textContent).toBe(
-        'Station still can’t confirm it. Open the chat to discard it. 1 more to check in the chat.',
+        'Station still can’t confirm 5 messages. Open the chat to discard them and check 1 more.',
       ),
     );
     expect(recheck.mock.calls.map(([key]) => key)).toEqual([
@@ -281,6 +283,115 @@ describe('the inbox row flag for an unconfirmed delivery (#5398)', () => {
       'turn-4',
       'turn-5',
     ]);
+  });
+
+  it.each([
+    ['started', 'The agent started this message.'],
+    [
+      'not-received',
+      'Station did not receive it. Retry sends it with the same message key.',
+    ],
+    [
+      'indeterminate',
+      'Station still can’t confirm it. Open the chat to discard it.',
+    ],
+    ['received', 'Station has the message. The agent has not started it yet.'],
+  ] as const)(
+    'Check never resends: an answer of %s makes the lookup and nothing else',
+    async (outcome, sentence) => {
+      const fetchSpy = vi
+        .spyOn(globalThis, 'fetch')
+        .mockRejectedValue(new Error('no request expected'));
+      const enqueue = vi.spyOn(outboundDispatch, 'enqueue');
+      const flush = vi.spyOn(outboundDispatch, 'flush');
+      const sendHeld = vi.spyOn(outboundDispatch, 'sendHeld');
+      recheck.mockResolvedValue(outcome);
+      renderRow({ [CONVERSATION]: chatState(UNCONFIRMED) });
+      for (let press = 0; press < 2; press++) {
+        fireEvent.click(screen.getByRole('button', { name: CHECK }));
+        await waitFor(() =>
+          expect(screen.getByRole('status').textContent).toBe(sentence),
+        );
+      }
+      expect(recheck.mock.calls).toEqual([
+        ['turn-unconfirmed'],
+        ['turn-unconfirmed'],
+      ]);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(enqueue).not.toHaveBeenCalled();
+      expect(flush).not.toHaveBeenCalled();
+      expect(sendHeld).not.toHaveBeenCalled();
+    },
+  );
+
+  it('a double press while Check runs asks once, and Check keeps keyboard focus', async () => {
+    let answer: (outcome: string) => void = () => {};
+    recheck.mockImplementation(
+      () => new Promise((resolve) => (answer = resolve)),
+    );
+    renderRow({ [CONVERSATION]: chatState(UNCONFIRMED) });
+    const check = screen.getByRole('button', { name: CHECK });
+    check.focus();
+    fireEvent.click(check);
+    fireEvent.click(check);
+    await waitFor(() =>
+      expect(check.getAttribute('aria-disabled')).toBe('true'),
+    );
+    // Never disabled: a disabled button would drop focus to the page.
+    expect(check.hasAttribute('disabled')).toBe(false);
+    answer('indeterminate');
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toContain(
+        'Station still can’t confirm it.',
+      ),
+    );
+    expect(recheck).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(check);
+  });
+
+  it('when a Check settles the message, focus returns to the row it leaves', async () => {
+    recheck.mockResolvedValueOnce('started');
+    const { rerender, view, facts, container } = renderRow({
+      [CONVERSATION]: chatState(UNCONFIRMED),
+    });
+    const check = screen.getByRole('button', { name: CHECK });
+    check.focus();
+    fireEvent.click(check);
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe(
+        'The agent started this message.',
+      ),
+    );
+    const { unconfirmedDelivery: _gone, ...settled } = facts ?? {};
+    rerender(view(settled));
+    expect(screen.queryByTestId('inbox-row-unconfirmed-flag')).toBeNull();
+    expect(document.activeElement).toBe(
+      container.querySelector('.inbox-row__open'),
+    );
+  });
+
+  it('answers that say nothing new are left out of the count', async () => {
+    recheck.mockImplementation(async (clientTurnId: string) =>
+      clientTurnId === 'turn-newer' ? 'started' : undefined,
+    );
+    renderRow(TWO_CHATS);
+    fireEvent.click(screen.getByRole('button', { name: CHECK }));
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe(
+        'The agent started this message.',
+      ),
+    );
+  });
+
+  it('when no answer says anything new, the line says so', async () => {
+    recheck.mockResolvedValue(undefined);
+    renderRow(TWO_CHATS);
+    fireEvent.click(screen.getByRole('button', { name: CHECK }));
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).toBe(
+        'Nothing new to check right now.',
+      ),
+    );
   });
 
   it('a title change while the flag is on screen raises no notice', async () => {
