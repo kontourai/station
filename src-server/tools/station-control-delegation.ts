@@ -2717,6 +2717,9 @@ function executionResolverDependencies(
         : undefined,
     getProviderAdapter: (provider: EngineId) =>
       orchestrationService.getProviderAdapter(provider),
+    acpApprovalControl: (connectionId: string) =>
+      // A service without ACP connections (or a narrowed test double) answers none.
+      orchestrationService.acpApprovalControlOf?.(connectionId),
   } satisfies Parameters<typeof resolveExecutionTarget>[1];
 }
 
@@ -7114,6 +7117,9 @@ export async function executeExecutionTargetMessage(
         : undefined,
     getProviderAdapter: (provider) =>
       orchestrationService.getProviderAdapter(provider),
+    acpApprovalControl: (connectionId) =>
+      // A service without ACP connections (or a narrowed test double) answers none.
+      orchestrationService.acpApprovalControlOf?.(connectionId),
     ...(admission
       ? {
           admitWorktreeProvisioning: (

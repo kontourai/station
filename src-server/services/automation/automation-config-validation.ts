@@ -351,7 +351,8 @@ function validateAction(
   if (
     value.approvalMode !== undefined &&
     value.approvalMode !== 'ask' &&
-    value.approvalMode !== 'auto'
+    value.approvalMode !== 'auto' &&
+    value.approvalMode !== 'connection-default'
   ) {
     problems.push(`${where}: approvalMode invalid`);
   }

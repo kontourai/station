@@ -1,0 +1,7 @@
+{
+  "revision": "4220017465d77b7b45b1ac3219498c9aa4abd3af",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Delta: the retry refusal list adds task-live (409) for a failed start's Task that is still live. Checked against RETRY_REFUSALS in src-server/routes/operations/automations.ts; other routes and payloads unchanged.","inputs":["docs/reference/api.md","src-server/routes/operations/automations.ts","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}
