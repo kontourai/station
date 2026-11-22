@@ -3883,6 +3883,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     } catch (error) {
       if (generation !== forkGenerationRef.current || controller.signal.aborted)
         return;
+      // A quiet fork (Regenerate / Edit and resend) that failed now shows its
+      // dialog, and keeps showing it through a retry from there.
+      if (source.quiet) setForkSource({ ...source, quiet: false });
       setForkOperation({
         pending: false,
         error:
@@ -3962,8 +3965,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     );
     const source = await openForkDraft(request.fork, followUp, Boolean(agent));
     if (!source) return;
-    if (agent)
+    if (agent) {
+      // No dialog while it runs: say so, as a fork takes a moment to open.
+      showToast(
+        request.mode === 'regenerate' ? 'Regenerating…' : 'Opening the edit…',
+      );
       await runFork(source, agent, source.projectSlug, source.projectName);
+    }
   };
 
   const parentRequestScope =

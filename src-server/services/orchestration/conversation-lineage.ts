@@ -308,7 +308,6 @@ interface ConversationLineageDeps {
   canReadSession: (threadId: string, authority: SessionReadScope) => boolean;
 }
 
-/** Deliberately shared by absent, unauthorized, and cross-tenant requests. */
 /**
  * The most history a fork reads in its one synchronous pass, decided from
  * SQL before any payload loads. Measured on 40 tool-heavy Codex turns (2,563
@@ -319,6 +318,7 @@ interface ConversationLineageDeps {
 export const FORK_SOURCE_MAX_EVENTS = 32_000;
 export const FORK_SOURCE_MAX_BYTES = 16 * 1024 * 1024;
 
+/** Deliberately shared by absent, unauthorized, and cross-tenant requests. */
 export class ConversationContextBoundaryNotFoundError extends Error {
   readonly name = 'ConversationContextBoundaryNotFoundError';
   constructor() {
