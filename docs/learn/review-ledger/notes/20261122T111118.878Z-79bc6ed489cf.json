@@ -1,0 +1,7 @@
+{
+  "revision": "498cca03db1d74f1877484478d4859d81caa18b7",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked against the Details summary rules added to NotificationHistory.css: they add a tap height and padding, no animation or duration, so the dismiss-collapse motion exception this page records is unchanged.","inputs":["docs/design/motion.md","src-ui/src/components/notifications/NotificationHistory.css"]}
+  ]
+}

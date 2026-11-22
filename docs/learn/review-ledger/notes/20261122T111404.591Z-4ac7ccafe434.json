@@ -1,0 +1,7 @@
+{
+  "revision": "498cca03db1d74f1877484478d4859d81caa18b7",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked against the shared refusal sentence and the provider-service throw sites: no claim on this page names the sentence or the default-connection cascade, and none changes.","inputs":["docs/guides/self-configuring-agent.md","packages/contracts/src/managed-model-binding.ts","src-server/services/connections/provider-service.ts"]}
+  ]
+}
