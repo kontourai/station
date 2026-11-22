@@ -300,15 +300,12 @@ export function JoinDevicePairingPanel({
     accountBoundDeviceRequest?.clientInstanceId,
   ]);
   // The scanner is offered only where this browser has a camera. With no
-  // camera API at all, open straight on code entry. A browser with the API
-  // but no listed camera, or whose capture finds none, drops the scanner once
-  // that is known.
+  // camera API, no listed camera, or a capture that finds none, the panel
+  // drops the scanner and moves to code entry.
   const [cameraUnavailable, setCameraUnavailable] = useState(
     () => !hasCameraApi(),
   );
-  const [mode, setMode] = useState<'direct' | 'scan' | 'manual'>(() =>
-    initialMode === 'scan' && cameraUnavailable ? 'manual' : initialMode,
-  );
+  const [mode, setMode] = useState<'direct' | 'scan' | 'manual'>(initialMode);
   const markCameraUnavailable = useCallback(() => {
     setCameraUnavailable(true);
     setMode((current) => (current === 'scan' ? 'manual' : current));
