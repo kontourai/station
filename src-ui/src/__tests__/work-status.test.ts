@@ -725,20 +725,22 @@ describe('status facts for chat, task and merged rows', () => {
     ).toBe('Queued to send');
   });
 
-  it('an uncertain message reads as delivery unconfirmed instead of queued to send', () => {
-    expect(
-      build({
-        status: 'queued',
-        outboundQueuedTurns: [
-          {
-            clientTurnId: 'uncertain',
-            content: 'continue',
-            createdAt: NOW,
-            status: 'may-have-started',
-          },
-        ],
-      }).line,
-    ).toBe('Delivery unconfirmed');
+  it('an uncertain message is a flag beside the status, not queued to send (#5398)', () => {
+    const built = build({
+      status: 'queued',
+      outboundQueuedTurns: [
+        {
+          clientTurnId: 'uncertain',
+          content: 'continue',
+          createdAt: NOW,
+          status: 'may-have-started',
+        },
+      ],
+    });
+    expect(built.line).toBe('Idle');
+    expect(built.facts?.unconfirmedDelivery).toEqual([
+      { chatSessionId: 'c1', clientTurnId: 'uncertain' },
+    ]);
   });
 
   it('a send queued while offline reads as queued', () => {

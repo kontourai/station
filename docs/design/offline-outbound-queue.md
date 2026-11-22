@@ -131,7 +131,13 @@ whose turn is still the open one, or whose conversation the snapshot carries no
 record for (an older Station), waits as before. A chat reads queued only while
 it lists an outbox row Station has not accepted (waiting to be sent, not sent,
 or unconfirmed); one whose listed rows were all accepted keeps the status its
-turn gives it.
+turn gives it. The inbox reads that state more narrowly (#5398): only a message
+waiting to be sent or not sent puts the conversation under Needs you as Queued
+to send. One whose only such messages are unconfirmed keeps the status and
+group its conversation gives it, and its row carries the flag "Last reply may
+not have arrived" with the same Check. The flag is read from this device's
+outbox, beside the conversation's synced status, and never settles or reopens
+the conversation.
 Rows written with Station identity are sent to or settled by that Station;
 for another they wait, listed. A verified environment ID takes precedence over
 the address; rows that never learned an ID use the normalized address. Older

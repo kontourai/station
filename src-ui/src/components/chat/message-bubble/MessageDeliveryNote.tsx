@@ -7,6 +7,7 @@ import { Button } from '../../Button';
 import type { DeliveryPort } from '../../conversation/DeliveryPort';
 import {
   AWAITING_CONFIRMATION_LABEL,
+  deliveryCheckResult,
   MAY_HAVE_REACHED_LABEL,
   receivedDeliveryLabel,
 } from '../deliveryLabels';
@@ -277,20 +278,7 @@ export function MessageDeliveryNote({
                     disabled={busy}
                     onClick={() =>
                       void run(async () => {
-                        const outcome = await port.check?.();
-                        if (outcome === undefined)
-                          return 'Nothing new to check right now.';
-                        if (outcome === 'not-received')
-                          return 'Station did not receive it. Retry sends it with the same message key.';
-                        if (outcome === 'received' || outcome === 'queued')
-                          return 'Station has the message. The agent has not started it yet.';
-                        if (outcome === 'started')
-                          return 'The agent started this message.';
-                        return outcome === 'indeterminate' ||
-                          outcome === 'expired' ||
-                          outcome === 'unknown'
-                          ? 'Station still can’t confirm it.'
-                          : null;
+                        return deliveryCheckResult(await port.check?.());
                       })
                     }
                   >

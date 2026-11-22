@@ -1061,6 +1061,39 @@ function serverReportsLiveWork(
   );
 }
 
+/**
+ * The keys of this chat's outbox messages whose delivery nothing can confirm:
+ * Station may have started them (`may-have-started`), or a send got no answer
+ * and waits for the delivery lookup. Neither is ever resent on its own, so
+ * neither waits on the connection or on the person (#5398).
+ */
+export function unconfirmedOutboundTurnIds(chat: ChatUIState): string[] {
+  return (chat.outboundQueuedTurns ?? [])
+    .filter(
+      (turn) =>
+        turn.status === 'may-have-started' ||
+        (turn.status === 'invoking' && turn.awaitingLookup),
+    )
+    .map((turn) => turn.clientTurnId);
+}
+
+/**
+ * Whether a chat's `queued` status is a send that waits on the connection.
+ * The outbox projection also marks a chat queued while it lists only
+ * unconfirmed or accepted messages; those wait on nothing here, so the
+ * conversation keeps its own status and the row carries the unconfirmed
+ * delivery as a flag (`WorkFacts.unconfirmedDelivery`) instead (#5398).
+ */
+export function chatQueuedToSend(chat: ChatUIState): boolean {
+  if (chat.status !== 'queued') return false;
+  const turns = chat.outboundQueuedTurns ?? [];
+  if (turns.length === 0) return true;
+  const unconfirmed = new Set(unconfirmedOutboundTurnIds(chat));
+  return turns.some(
+    (turn) => turn.status !== 'accepted' && !unconfirmed.has(turn.clientTurnId),
+  );
+}
+
 function chatLifecycleLabel(
   chat: ChatUIState,
   sessionId: string,
@@ -1082,8 +1115,8 @@ function chatLifecycleLabel(
     chatWaitsOnUser(chat) ||
     // archive#1224 (offline): a queued (offline) turn needs an
     // actionable label — it won't resolve on its own without the connection
-    // coming back.
-    chat.status === 'queued'
+    // coming back. An unconfirmed delivery is not one (#5398).
+    chatQueuedToSend(chat)
   )
     return 'Needs attention';
   // #2309: the conversation's server record, when there is one, is THE

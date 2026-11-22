@@ -44,6 +44,39 @@
   padding-block-end: var(--inbox-row-pad-block);
 }
 
+/* #5398: "Last reply may not have arrived" with Check, under the row's
+   status. A flag beside the status, not a status: the caution hue without
+   the act-now pulse, and the row stays in the lane its status gives it. It
+   sits outside the row's open button (Check is a control of its own), so it
+   is tucked up against the button's last line and starts where its text
+   starts. */
+.inbox-row__flag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+  margin-block-start: calc(var(--space-1) - var(--inbox-row-pad-block));
+  padding-inline: calc(
+      var(--inbox-row-pad-inline) +
+      var(--inbox-row-unread-gutter)
+    )
+    var(--inbox-row-pad-inline);
+  padding-block-end: var(--inbox-row-pad-block);
+  color: var(--warning-text);
+  font-size: var(--inbox-row-text-size);
+  line-height: var(--inbox-row-line);
+}
+.inbox-row__flag-glyph {
+  flex: 0 0 auto;
+}
+.inbox-row__flag-result:empty {
+  display: none;
+}
+.inbox-row__flag-result {
+  flex-basis: 100%;
+  color: var(--k-text-muted);
+}
+
 @keyframes inbox-row-enter {
   from {
     opacity: 0;
@@ -593,6 +626,14 @@
 
 .inbox-row--touch.is-current {
   border-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+}
+
+/* The flag takes a line of its own under the button and its actions. */
+.inbox-row--touch:has(.inbox-row__flag) {
+  flex-wrap: wrap;
+}
+.inbox-row--touch .inbox-row__flag {
+  flex-basis: 100%;
 }
 
 .inbox-row--touch .inbox-row__open,

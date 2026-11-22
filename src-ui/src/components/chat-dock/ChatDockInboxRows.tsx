@@ -70,6 +70,7 @@ import {
 } from '../inbox-row/inbox-row-actions';
 import { inboxRowChips } from '../inbox-row/inbox-row-chips';
 import { rowProjectMarks } from '../inbox-row/row-project-marks';
+import { UnconfirmedDeliveryFlag } from '../inbox-row/UnconfirmedDeliveryFlag';
 import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
 import { WorkItemFamily } from '../inbox-row/WorkItemFamily';
 import { LazyBoundary } from '../LazyBoundary';
@@ -1295,6 +1296,13 @@ export function InboxRow({
               ) : null,
             )}
         </div>
+      )}
+      {facts?.unconfirmedDelivery && (
+        <UnconfirmedDeliveryFlag
+          turns={facts.unconfirmedDelivery}
+          checkable={!remoteProject && facts.hostDetails !== false}
+          title={item.title}
+        />
       )}
       {inlineApproval &&
         status.rung === 'approval' &&
