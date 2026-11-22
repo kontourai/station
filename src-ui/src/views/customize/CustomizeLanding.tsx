@@ -35,7 +35,10 @@ export function CustomizeLanding() {
                   item={item}
                   className="customize-landing__item"
                   trailing={
-                    <span className="customize-landing__chevron" aria-hidden="true">
+                    <span
+                      className="customize-landing__chevron"
+                      aria-hidden="true"
+                    >
                       ›
                     </span>
                   }

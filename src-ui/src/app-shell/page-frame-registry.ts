@@ -206,7 +206,9 @@ const RESOLVED_FRAMES = ((): Record<
       spec.title ?? destination?.label() ?? UNSURFACED_FALLBACK_TITLES[type];
     // A page a Customize item hosts names Customize above its title: on a
     // phone, where the list is hidden, that eyebrow is the way back.
-    const eyebrow = destination?.customizeNav ? CUSTOMIZE_EYEBROW : spec.eyebrow;
+    const eyebrow = destination?.customizeNav
+      ? CUSTOMIZE_EYEBROW
+      : spec.eyebrow;
     resolved[type] =
       title === spec.title && eyebrow === spec.eyebrow
         ? spec

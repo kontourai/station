@@ -19,7 +19,10 @@ import { IntegrationStatusSection } from './connections-hub/IntegrationStatusSec
 
 /** Each item's header and add action. */
 const SECTION_COPY: Readonly<
-  Record<ConnectionSectionId, { title: string; subtitle: string; addLabel: string }>
+  Record<
+    ConnectionSectionId,
+    { title: string; subtitle: string; addLabel: string }
+  >
 > = {
   engines: {
     title: 'Engines',
