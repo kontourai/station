@@ -89,7 +89,7 @@ function RepositorySourceControls({
   const refId = useId();
   const subdirectoryId = useId();
   const acquireRef = useRef<HTMLButtonElement>(null);
-  const sourceFailureRef = useRef<HTMLParagraphElement>(null);
+  const sourceFieldRef = useRef<HTMLDivElement>(null);
   const client = useQueryClient();
   const key = [
     'repository-acquisition',
@@ -185,6 +185,9 @@ function RepositorySourceControls({
     },
     onSuccess: (data) => {
       if (!scope.isCurrent()) return;
+      // A reused checkout answers the earlier failure; it must not return when
+      // the person later chooses another source.
+      setSourceFailure('');
       try {
         sessionStorage.setItem(storageKey, data.request.requestId);
       } catch {
@@ -250,13 +253,13 @@ function RepositorySourceControls({
   }, [record, acquire.isPending, forgetOperation]);
 
   // The reason is beside the URL, but the next step is Acquire, which can sit
-  // below the dialog's fold. Bringing the reason and then the button into view
-  // with `nearest` shows both when they fit, keeps the button in view when they
-  // do not, and leaves an already visible form alone. Scrolling never moves
-  // focus.
+  // below the dialog's fold. Bringing the URL field (label, input and reason)
+  // and then the button into view with `nearest` shows both when they fit,
+  // keeps the button in view with the reason just above it when they do not,
+  // and leaves an already visible form alone. Scrolling never moves focus.
   useEffect(() => {
     if (!sourceFailure || requestId) return;
-    sourceFailureRef.current?.scrollIntoView?.({ block: 'nearest' });
+    sourceFieldRef.current?.scrollIntoView?.({ block: 'nearest' });
     acquireRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [sourceFailure, requestId]);
 
@@ -304,7 +307,7 @@ function RepositorySourceControls({
               setSourceRef(branch ?? '');
             }}
           />
-          <div className="editor-field">
+          <div className="editor-field" ref={sourceFieldRef}>
             <label className="editor-label" htmlFor={sourceId}>
               Repository URL
             </label>
@@ -322,12 +325,7 @@ function RepositorySourceControls({
               aria-describedby={sourceFailure ? sourceFailureId : undefined}
             />
             {sourceFailure && (
-              <p
-                ref={sourceFailureRef}
-                className="editor-error"
-                id={sourceFailureId}
-                role="alert"
-              >
+              <p className="editor-error" id={sourceFailureId} role="alert">
                 {sourceFailure}
               </p>
             )}

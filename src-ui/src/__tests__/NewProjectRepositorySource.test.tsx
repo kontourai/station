@@ -452,7 +452,7 @@ test.each([
   },
 );
 
-test('a failure brings its reason and then Acquire repository into view, and an untouched form does not scroll', async () => {
+test('a failure brings the URL field with its reason and then Acquire repository into view, and an untouched form does not scroll', async () => {
   const reason =
     'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.';
   const scrolled: Array<{ text: string | null; options: unknown }> = [];
@@ -488,10 +488,86 @@ test('a failure brings its reason and then Acquire repository into view, and an 
     await screen.findByText(reason);
     await waitFor(() =>
       expect(scrolled).toEqual([
-        { text: reason, options: { block: 'nearest' } },
+        // The URL field: its label, the input and the reason.
+        { text: `Repository URL${reason}`, options: { block: 'nearest' } },
         { text: 'Acquire repository', options: { block: 'nearest' } },
       ]),
     );
+  } finally {
+    Element.prototype.scrollIntoView = original;
+  }
+});
+
+test('a checkout reused after a failure leaves no old reason, and no scroll, when another source is chosen', async () => {
+  const reason =
+    'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.';
+  const retained = ready({
+    requestId: crypto.randomUUID(),
+    sourceUrl: 'git@github.com:org/research.git',
+  });
+  const scrolled: unknown[] = [];
+  const original = Element.prototype.scrollIntoView;
+  Element.prototype.scrollIntoView = (options?: unknown) => {
+    scrolled.push(options);
+  };
+  try {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (
+          init?.method === 'POST' &&
+          url.endsWith('/api/projects/repository-acquisitions')
+        )
+          return Response.json(
+            {
+              success: false,
+              error: reason,
+              details: { formErrors: [reason], fieldErrors: {} },
+            },
+            { status: 400 },
+          );
+        if (url.includes('/repository-acquisitions?'))
+          return Response.json({ success: true, data: [retained] });
+        if (
+          url.endsWith(
+            `/repository-acquisitions/${retained.request.requestId}/reuse`,
+          ) ||
+          url.endsWith(`/repository-acquisitions/${retained.request.requestId}`)
+        )
+          return Response.json({ success: true, data: retained });
+        throw new Error(`Unexpected fixture request: ${url}`);
+      }),
+    );
+    mount();
+    fireEvent.change(screen.getByLabelText('Repository URL'), {
+      target: { value: retained.request.sourceUrl },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Acquire repository' }));
+    await screen.findByText(reason);
+    await waitFor(() => expect(scrolled).toHaveLength(2));
+    // Reuse without editing a field, so nothing else clears the reason.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Find existing checkouts' }),
+    );
+    fireEvent.click(
+      await screen.findByRole('button', {
+        name: 'Check and reuse aaaaaaaaaaaa',
+      }),
+    );
+    await screen.findByRole('button', { name: 'Use this checkout' });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'More acquisition actions' }),
+    );
+    fireEvent.click(
+      screen.getByRole('menuitem', { name: 'Choose another source' }),
+    );
+    await screen.findByLabelText('Repository URL');
+    expect(screen.queryByText(reason)).toBeNull();
+    expect(
+      screen.getByLabelText('Repository URL').getAttribute('aria-invalid'),
+    ).toBeNull();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(scrolled).toHaveLength(2);
   } finally {
     Element.prototype.scrollIntoView = original;
   }
