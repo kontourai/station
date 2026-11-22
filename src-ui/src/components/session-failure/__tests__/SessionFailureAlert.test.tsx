@@ -108,3 +108,21 @@ describe('the session detail renders that same component', () => {
     expect(screen.queryByText('internal_machine_code')).toBeNull();
   });
 });
+
+describe('SessionFailureAlert: provider setup refusal (slice 0.17)', () => {
+  test('reads in plain words, with the recorded text only under Details', () => {
+    const raw =
+      'Station agent did not accept the task turn: Multiple enabled LLM provider connections require an application default.';
+    render(<SessionFailureAlert failureText={raw} />);
+
+    const banner = screen.getByTestId('session-failure');
+    expect(banner.querySelector('.session-failure__cause')?.textContent).toBe(
+      'Couldn’t start: two providers are turned on and neither is the default.',
+    );
+    const details = banner.querySelector('details');
+    expect(details?.textContent).toContain(raw);
+    const outside = banner.cloneNode(true) as HTMLElement;
+    outside.querySelector('details')?.remove();
+    expect(outside.textContent).not.toContain('application default');
+  });
+});

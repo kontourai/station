@@ -1,5 +1,8 @@
 import type { ReactNode } from 'react';
-import { describeInternalStreamFailure } from '../../utils/chatErrorTranslation';
+import {
+  describeInternalStreamFailure,
+  describeProviderDefaultFailure,
+} from '../../utils/chatErrorTranslation';
 import './SessionFailureAlert.css';
 
 /**
@@ -58,15 +61,29 @@ export function SessionFailureAlert({
   // `describeInternalStreamFailure`'s doc comment for why the full
   // translation table would misattribute them.
   const displayText = describeInternalStreamFailure(failureText) ?? failureText;
+  // A provider-configuration refusal is said in plain words (the summary
+  // already opens with "Couldn’t start", so no "Failed:" lead) and the
+  // recorded text stays behind Details.
+  const providerDefault = describeProviderDefaultFailure(failureText);
   return (
     <div
       className={className ? `session-failure ${className}` : 'session-failure'}
       role="alert"
       data-testid={testId}
     >
-      <p className="session-failure__cause">
-        <strong>Failed:</strong> {displayText}
-      </p>
+      {providerDefault ? (
+        <>
+          <p className="session-failure__cause">{providerDefault.summary}</p>
+          <details className="session-failure__raw">
+            <summary>Details</summary>
+            <p>{failureText}</p>
+          </details>
+        </>
+      ) : (
+        <p className="session-failure__cause">
+          <strong>Failed:</strong> {displayText}
+        </p>
+      )}
       {note ? <p className="session-failure__note">{note}</p> : null}
     </div>
   );

@@ -48,3 +48,17 @@
   line-height: 1.4;
   overflow-wrap: anywhere;
 }
+
+/* The recorded text behind a translated cause: closed by default. */
+.session-failure__raw {
+  margin-top: 0.25rem;
+}
+
+.session-failure__raw > summary {
+  cursor: pointer;
+}
+
+.session-failure__raw > p {
+  margin: 0.25rem 0 0;
+  overflow-wrap: anywhere;
+}

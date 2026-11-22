@@ -92,6 +92,22 @@
   overflow: hidden;
 }
 
+/* The recorded text behind a translated cause: closed by default. */
+.attention-item__raw {
+  margin-top: var(--k-space-1);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+
+.attention-item__raw > summary {
+  cursor: pointer;
+}
+
+.attention-item__raw > p {
+  margin: var(--k-space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
 /*
  * archive#3203: which session failed (engine · agent), one step quieter than
  * the cause above it so the cause stays the line you read first.

@@ -6,6 +6,7 @@ import {
 } from '@kontourai/station-contracts/provider';
 import { describe, expect, it } from 'vitest';
 import {
+  describeProviderDefaultFailure,
   formatChatErrorDisplay,
   SESSION_START_INDETERMINATE_CODE,
   translateChatError,
@@ -775,5 +776,35 @@ describe('model refusal (model_not_advertised)', () => {
     expect(translated.hint).not.toContain('temporary');
     expect(translated.hint).not.toContain('may already have started');
     expect(translated.retryable).toBe(false);
+  });
+});
+
+describe('describeProviderDefaultFailure (slice 0.17)', () => {
+  test('names the refusal the provider service records, wrapped or bare', () => {
+    const expected = {
+      summary:
+        'Couldn’t start: two providers are turned on and neither is the default.',
+      actionLabel: 'Choose a default',
+      actionHref: '/connections/models',
+    };
+    expect(
+      describeProviderDefaultFailure(
+        'Station agent did not accept the task turn: Multiple enabled LLM provider connections require an application default.',
+      ),
+    ).toEqual(expected);
+    expect(
+      describeProviderDefaultFailure(
+        'Multiple enabled LLM provider connections require an application default.',
+      ),
+    ).toEqual(expected);
+  });
+
+  test('leaves every other cause alone', () => {
+    expect(
+      describeProviderDefaultFailure(
+        'An application default LLM provider and model must be configured.',
+      ),
+    ).toBeNull();
+    expect(describeProviderDefaultFailure('ECONNREFUSED host:8443')).toBeNull();
   });
 });

@@ -275,6 +275,36 @@ export function describeInternalStreamFailure(text: string): string | null {
 }
 
 /**
+ * The provider service refuses a turn when more than one model provider is
+ * turned on and none is the default (`provider-service.ts`). The refusal
+ * carries no structured code, only that sentence, so it is recognised by the
+ * sentence and nothing looser. The notification surfaces use this to say it in
+ * plain words and offer the one step that fixes it; the recorded text stays
+ * available behind Details.
+ */
+const PROVIDER_DEFAULT_REQUIRED_PATTERN =
+  /Multiple enabled LLM provider connections require an application default/i;
+
+interface ProviderDefaultFailure {
+  summary: string;
+  actionLabel: string;
+  actionHref: string;
+}
+
+export function describeProviderDefaultFailure(
+  text: string,
+): ProviderDefaultFailure | null {
+  return PROVIDER_DEFAULT_REQUIRED_PATTERN.test(text)
+    ? {
+        summary:
+          'Couldn’t start: two providers are turned on and neither is the default.',
+        actionLabel: 'Choose a default',
+        actionHref: '/connections/models',
+      }
+    : null;
+}
+
+/**
  * archive#1827 fallback net: only consulted when no `code` was supplied
  * (see `ChatErrorInput.code`'s doc comment) — a caller that persisted the
  * marker before this field existed, or an older client build. Narrowed to

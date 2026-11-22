@@ -1107,3 +1107,42 @@ describe('AttentionCard — pull request feedback needs you', () => {
     expect(screen.getByRole('link', { name: 'Open chat' })).toBeTruthy();
   });
 });
+
+describe('AttentionCard: a failed turn caused by provider setup (slice 0.17)', () => {
+  const RAW =
+    'Station agent did not accept the task turn: Multiple enabled LLM provider connections require an application default.';
+
+  test('says it in plain words, with the recorded text only under Details', () => {
+    renderCard(baseFailure({ body: RAW }));
+
+    expect(screen.getByTestId('attention-cause').textContent).toBe(
+      'Couldn’t start: two providers are turned on and neither is the default.',
+    );
+    const details = screen.getByTestId('attention-raw');
+    expect(details.tagName).toBe('DETAILS');
+    expect(details.textContent).toContain(RAW);
+    // The raw sentence appears nowhere outside the Details disclosure.
+    const outside = document.body.cloneNode(true) as HTMLElement;
+    outside.querySelector('[data-testid="attention-raw"]')?.remove();
+    expect(outside.textContent).not.toContain('application default');
+  });
+
+  test('offers "Choose a default", which opens Providers and acknowledges the row', () => {
+    renderCard(baseFailure({ body: RAW }));
+
+    fireEvent.click(screen.getByRole('link', { name: 'Choose a default' }));
+
+    expect(navigate).toHaveBeenCalledWith('/connections/models');
+    expect(acknowledgeAsync).toHaveBeenCalledWith('session-failed:thread-boom');
+  });
+
+  test('any other cause is quoted as recorded, with no Details and no extra action', () => {
+    renderCard(baseFailure({ body: 'ECONNREFUSED api.example.com:443' }));
+
+    expect(screen.getByTestId('attention-cause').textContent).toBe(
+      'ECONNREFUSED api.example.com:443',
+    );
+    expect(screen.queryByTestId('attention-raw')).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Choose a default' })).toBeNull();
+  });
+});

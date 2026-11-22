@@ -11,7 +11,7 @@ import type {
   ProposedChangeAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const acknowledge = vi.fn();
@@ -468,5 +468,26 @@ describe('AttentionHistoryItem Flow gate rows', () => {
     expect(
       screen.getByRole('link', { name: 'Open session' }).getAttribute('href'),
     ).toBe('/?surface=activity&session=thread-1');
+  });
+});
+
+describe('AttentionHistoryItem: a failed turn caused by provider setup (slice 0.17)', () => {
+  const RAW =
+    'Station agent did not accept the task turn: Multiple enabled LLM provider connections require an application default.';
+
+  test('the bell row says it in plain words, raw text only under Details, with one fixing step', () => {
+    renderRow(baseFailure({ body: RAW }));
+
+    expect(screen.getByTestId('attention-cause').textContent).toBe(
+      'Couldn’t start: two providers are turned on and neither is the default.',
+    );
+    const details = screen.getByTestId('attention-raw');
+    expect(details.textContent).toContain(RAW);
+    const outside = document.body.cloneNode(true) as HTMLElement;
+    outside.querySelector('[data-testid="attention-raw"]')?.remove();
+    expect(outside.textContent).not.toContain('application default');
+
+    fireEvent.click(screen.getByRole('link', { name: 'Choose a default' }));
+    expect(navigate).toHaveBeenCalledWith('/connections/models');
   });
 });

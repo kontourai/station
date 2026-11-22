@@ -264,6 +264,22 @@
   overflow: hidden;
 }
 
+/* The recorded text behind a translated cause: closed by default. */
+.notification-history__raw {
+  margin-top: var(--k-space-1);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+
+.notification-history__raw > summary {
+  cursor: pointer;
+}
+
+.notification-history__raw > p {
+  margin: var(--k-space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
 /*
  * The row's footer: quiet controls (snooze, dismiss) bottom-left, the row's
  * actions bottom-right with the primary one last. Present on every row, so

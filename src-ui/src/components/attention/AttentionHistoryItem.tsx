@@ -4,10 +4,10 @@ import type { ReactNode } from 'react';
 import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
 import {
   attentionKindLabel,
+  explainSessionFailure,
   isFlowGateKind,
   isPeerHostedAttentionItem,
   peerAttentionElsewhereText,
-  sessionFailureCause,
 } from '../../utils/attention';
 import {
   isPlainLeftClick,
@@ -102,10 +102,28 @@ export function AttentionHistoryItem({
   // Same rule as the live card's `OpenFlowConsoleLink`.
   const { flow } = useDeveloperFeatures();
   const opensFlowConsole = isFlowGateKind(item.kind);
+  const failure =
+    item.kind === 'session-failed' ? explainSessionFailure(item) : null;
   const openLink = (
     <>
       {item.kind === 'session-failed' ? (
-        <FailedSessionOpenLink item={item} onClose={onClose} />
+        <>
+          <FailedSessionOpenLink item={item} onClose={onClose} />
+          {failure?.action && (
+            <a
+              className="notification-history__action"
+              href={failure.action.href}
+              onClick={(event) => {
+                onClose();
+                if (!isPlainLeftClick(event)) return;
+                event.preventDefault();
+                navigateToAttentionTarget(failure.action?.href ?? '');
+              }}
+            >
+              {failure.action.label}
+            </a>
+          )}
+        </>
       ) : (
         item.openHref &&
         (flow || !opensFlowConsole) && (
@@ -142,12 +160,23 @@ export function AttentionHistoryItem({
         </div>
         <div className="notification-history__item-title">{item.title}</div>
         {item.kind === 'session-failed' ? (
-          <div
-            className="notification-history__detail notification-history__detail--cause"
-            data-testid="attention-cause"
-          >
-            {sessionFailureCause(item)}
-          </div>
+          <>
+            <div
+              className="notification-history__detail notification-history__detail--cause"
+              data-testid="attention-cause"
+            >
+              {failure?.cause}
+            </div>
+            {failure?.details && (
+              <details
+                className="notification-history__raw"
+                data-testid="attention-raw"
+              >
+                <summary>Details</summary>
+                <p>{failure.details}</p>
+              </details>
+            )}
+          </>
         ) : (
           item.body && (
             <div className="notification-history__detail">{item.body}</div>
