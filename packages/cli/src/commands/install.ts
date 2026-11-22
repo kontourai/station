@@ -309,6 +309,15 @@ function describeInstall(
   return lines;
 }
 
+/** The plugin's list row, or undefined when the inventory cannot be read: the server stays the authority on what it accepts. */
+async function readPluginRow(apiBase: string, name: string) {
+  try {
+    return (await listPlugins(apiBase)).find((row) => row.name === name);
+  } catch {
+    return undefined;
+  }
+}
+
 export async function install(
   source: string,
   skipList: string[] = [],
@@ -342,19 +351,23 @@ export async function install(
   // block the install; the server remains the authority on what it accepts.
   const previewedName = previewed.manifest?.name;
   if (previewedName && parsed.flags.reinstall !== true) {
-    let rows: Awaited<ReturnType<typeof listPlugins>> | undefined;
-    try {
-      rows = await listPlugins(target.apiBase);
-    } catch {
-      rows = undefined;
+    const row = await readPluginRow(target.apiBase, previewedName);
+    if (row?.activationInFlight === true) {
+      // Not stopped: the server is still activating it, so there is nothing
+      // to recover yet and a second install would race the first.
+      console.log(
+        `${previewedName} is still activating. Check again shortly with \`station plugin list\`. Nothing was installed.`,
+      );
+      return {
+        pluginName: previewedName,
+        version: previewed.manifest?.version ?? '',
+      };
     }
-    const inactive = rows?.some(
-      (row) =>
-        row.name === previewedName &&
-        'installationReadiness' in row &&
-        row.installationReadiness?.state === 'pending',
-    );
-    if (inactive)
+    if (
+      row &&
+      'installationReadiness' in row &&
+      row.installationReadiness?.state === 'pending'
+    )
       throw new Error(
         `${previewedName} is already installed but not active. Run \`station plugin recover ${previewedName}\` to activate it, or pass --reinstall to install another copy of its code. Nothing was installed.`,
       );
@@ -553,6 +566,14 @@ export async function recover(
   if (!name) throw new Error('Usage: station plugin recover <name> [--yes]');
   const target = resolvePluginTarget(parsed);
   const path = `/${encodeURIComponent(name)}`;
+  if (
+    (await readPluginRow(target.apiBase, name))?.activationInFlight === true
+  ) {
+    console.log(
+      `${name} is still activating. Check again shortly with \`station plugin list\`. Nothing was recovered.`,
+    );
+    return;
+  }
   const review = await pluginRequest<PluginRecoveryReview>(
     parsed,
     `${path}/recovery-preview`,

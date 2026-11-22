@@ -4472,7 +4472,10 @@ not continue as if the plugin were active. Station does not retry the
 activation: recover it with `station plugin recover <name>` or **Recover
 plugin** in Plugins; do not install it again. `station plugin install` refuses
 a plugin that already reads Needs recovery, installing nothing, unless you pass
-`--reinstall` to install another copy on purpose. A change the receipt says
+`--reinstall` to install another copy on purpose. A plugin the server is still
+activating (its row carries `activationInFlight`) is not stopped: `station
+plugin install` and `station plugin recover` say it is still activating, to
+check again shortly, change nothing and exit 0. A change the receipt says
 Station finishes on its own (`recovery: "none"`, such as a legacy git update)
 prints that it finishes in the background and exits 0, and `station plugin
 remove` reports a removal saved this way as removed, exit 0. A receipt from an

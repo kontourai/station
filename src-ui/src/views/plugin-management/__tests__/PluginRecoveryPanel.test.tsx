@@ -346,9 +346,8 @@ test('an activating row is re-read on an interval, stops at the ceiling and then
       vi.advanceTimersByTime(ACTIVATION_POLL_CEILING_MS);
     });
     const atCeiling = state.invalidate.mock.calls.length;
-    expect(atCeiling).toBeLessThanOrEqual(
-      Math.floor(ACTIVATION_POLL_CEILING_MS / ACTIVATION_POLL_INTERVAL_MS),
-    );
+    // Reads at 2s, 4s, ... 14s; the 15s ceiling stops the interval.
+    expect(atCeiling).toBe(7);
     expect(
       screen.getByText(/still reported as activating\. Refresh status/),
     ).toBeTruthy();
@@ -360,6 +359,58 @@ test('an activating row is re-read on an interval, stops at the ceiling and then
   } finally {
     vi.useRealTimers();
   }
+});
+
+test('an activating row stops re-reading as soon as a read returns it without the flag', () => {
+  vi.useFakeTimers();
+  try {
+    const view = render(
+      <PluginRecoveryPanel
+        plugin={{ ...plugin, activationInFlight: true }}
+        onRemove={vi.fn()}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_INTERVAL_MS * 2);
+    });
+    expect(state.invalidate).toHaveBeenCalledTimes(2);
+    view.rerender(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_CEILING_MS * 2);
+    });
+    expect(state.invalidate).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('a row that turns activating after its review loaded drops Recover, and a fresh review loads once the flag clears', async () => {
+  const view = render(
+    <PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />,
+  );
+  await reviewLoaded();
+  expect(
+    await screen.findByRole('button', { name: 'Recover plugin' }),
+  ).toBeTruthy();
+
+  // An install or recover started elsewhere (the CLI, a second tab).
+  view.rerender(
+    <PluginRecoveryPanel
+      plugin={{ ...plugin, activationInFlight: true }}
+      onRemove={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('Activating…')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Recover plugin' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Recovery review' })).toBeNull();
+  expect(state.refetch).toHaveBeenCalledTimes(1);
+
+  // Still needing recovery afterwards: the earlier review is not reused.
+  view.rerender(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
+  await waitFor(() => expect(state.refetch).toHaveBeenCalledTimes(2));
+  expect(
+    await screen.findByRole('button', { name: 'Recover plugin' }),
+  ).toBeTruthy();
 });
 
 test('an activating row stops re-reading when the view unmounts', () => {

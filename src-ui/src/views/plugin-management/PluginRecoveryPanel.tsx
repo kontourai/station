@@ -57,8 +57,12 @@ export function PluginRecoveryPanel({
   const [pollExpired, setPollExpired] = useState(false);
   const queriesRef = useRef(queries);
   queriesRef.current = queries;
+  // Read after the consent prompt: an install or recover begun elsewhere can
+  // turn this row into an activating one while the person is deciding.
+  const pendingRef = useRef(pending);
+  pendingRef.current = pending;
   const basis =
-    preview.data?.recoveryRevision === reviewedRevision
+    pending && preview.data?.recoveryRevision === reviewedRevision
       ? preview.data
       : undefined;
   async function review() {
@@ -74,7 +78,10 @@ export function PluginRecoveryPanel({
   // row gets no review: that activation finishes by itself.
   // biome-ignore lint/correctness/useExhaustiveDependencies: once per change of state (the panel is keyed by plugin name).
   useEffect(() => {
+    // A review loaded before an activation is not reused after it: leaving
+    // pending drops it, and returning to pending loads a fresh one.
     if (pending) void review();
+    else setReviewedRevision(undefined);
   }, [pending]);
   // While the server reports the activation in flight, read the list again
   // until it settles into ready or stopped. The server stops an activation at
@@ -118,7 +125,7 @@ export function PluginRecoveryPanel({
         ],
         { action: 'recover' },
       );
-      if (!approved) return;
+      if (!approved || !pendingRef.current) return;
       const result = await recovery.mutateAsync({
         name: plugin.name,
         recoveryRevision: basis.recoveryRevision,
