@@ -153,7 +153,7 @@ On a phone: The status button goes full width (44px), with Share and ⋯ beside 
 
 1. **One status button ("● In progress ▾") offers only allowed transitions. The line under the title adds the agent state ("Waiting on you") separately.** Task status and agent state never contradict each other. _(layout; slice 3.8)_
 2. **A disabled Share always explains itself, with a fix link.** The text reads "Sharing needs people added to this Station first. Station › People". Today the only text is a generic tooltip, "Task sharing is unavailable here". Specific reasons are new copy and need the server's refusal causes mapped. _(copy, backend check first; slice 3.8)_
-3. **The pending approval comes first, with Allow once, Always allow here and Deny.** The thing waiting on you is the first thing you should see on the task. _(layout; slice 3.8)_
+3. **The pending approval comes first, with Allow once, Deny and the "Allow for this session" menu, as in `chat-14`.** The thing waiting on you is the first thing you should see on the task. _(layout; slice 3.8)_
 4. **Goal and Done when come from the Plan. The editable checklist is kept, and "Edit plan" goes to Plan.** _(layout; slice 3.8)_
 5. **Activity replaces the empty slots "Blockers: None recorded" and "Ready to review: Nothing kept yet".** Today the task page gives its space to slots that are usually empty. _(layout; slice 3.8)_
 6. **Tabs are Overview, Chat, Plan and Details. "Work chats" folds into a "Linked chats" card. "Conversation" is renamed "Chat".** Chat is the glossary word. Today's Work chats tab is an empty select. _(layout, copy; slice 3.8)_
