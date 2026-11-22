@@ -90,6 +90,12 @@ export interface WorkFacts {
    * item, not an item field, so the Home role projection is unchanged.
    */
   engineOpenedTurn?: true;
+  /**
+   * The Session's latest turn completed at the engine's output limit
+   * (`lastTurnCutOff`), so its reply is incomplete. Set only beside a
+   * Completed label; the ladder then words the row Cut off, not Done.
+   */
+  cutOff?: true;
 }
 
 export type WorkFactsById = ReadonlyMap<string, WorkFacts>;
@@ -273,6 +279,8 @@ export function buildWorkFacts({
         : session.latestTurnTrigger === 'provider')
     )
       entry.engineOpenedTurn = true;
+    if (item.lifecycleLabel === 'Completed' && session?.lastTurnCutOff)
+      entry.cutOff = true;
     if (item.lifecycleLabel === 'Needs attention') {
       if (
         session?.lifecycleState === 'needs_input' &&

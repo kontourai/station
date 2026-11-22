@@ -174,5 +174,6 @@ export function conversationMessageToChatMessage(
     turnEnded: metadata?.turnEnded,
     turnEndedReason: metadata?.turnEndedReason,
     turnStoppedBy: metadata?.turnStoppedBy,
+    turnCutOff: metadata?.turnCutOff,
   };
 }

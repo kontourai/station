@@ -52,6 +52,7 @@ const RUNG_GLYPHS: Record<
   running: PlayGlyph,
   draft: EditGlyph,
   done: CheckGlyph,
+  cutOff: WarningGlyph,
   idle: MoonGlyph,
   external: MonitorGlyph,
 };

@@ -145,6 +145,7 @@ describe('the client fixtures are what the server folds', () => {
       'runningWithChildren',
       'silentRun',
       'turnCompleted',
+      'turnCutOff',
     ]);
   });
 

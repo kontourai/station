@@ -81,6 +81,7 @@ const QUESTION_IN_OPEN_TURN = folded('questionInOpenTurn');
 const INTERRUPTED = folded('interrupted');
 const BLOCKED = folded('blocked');
 const TURN_COMPLETED = folded('turnCompleted');
+const TURN_CUT_OFF = folded('turnCutOff');
 const FAILED = folded('failed');
 
 function rowFor(summary: OrchestrationSessionSummary): {
@@ -118,6 +119,15 @@ it('keeps an armed check-back in Working after its turn settles, without hiding 
 });
 
 describe('the status ladder, from real server summaries', () => {
+  it('a turn cut off at the output limit reads Cut off, not Done, and still finished', () => {
+    expect(statusOf(TURN_CUT_OFF)).toEqual({
+      rung: 'cutOff',
+      lane: 'finished',
+      line: 'Cut off',
+    });
+    expect(statusOf(TURN_COMPLETED).line).toBe('Done');
+  });
+
   it('a running row with a pending approval reads as needs-approval, never as running', () => {
     // The turn really is still open on this summary; the shared attention
     // fold files it as awaiting anyway, and the row follows.

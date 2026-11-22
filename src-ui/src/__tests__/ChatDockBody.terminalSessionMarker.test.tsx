@@ -1301,3 +1301,67 @@ describe('a failed turn read back from stored events', () => {
     expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
   });
 });
+
+// A turn the engine ended at its output limit completed, but the reply stops
+// mid-way. The transcript says so under the reply.
+describe('a reply cut off at the output limit', () => {
+  const stored = (finishReason: string) => ({
+    protocolVersion: 1,
+    watermark: 10,
+    hasMore: false,
+    events: [
+      { method: 'turn.started', turnId: 'turn-1', prompt: 'Write a lot.' },
+      {
+        method: 'content.text-delta',
+        turnId: 'turn-1',
+        delta: 'This reply runs out of room before it can',
+      },
+      { method: 'turn.completed', turnId: 'turn-1', finishReason },
+    ].map((fields, index) => ({
+      sequence: index + 1,
+      event: {
+        eventId: `e${index + 1}`,
+        provider: 'claude',
+        threadId: 'thread-cut-off',
+        createdAt: `2026-11-21T10:00:0${index + 1}.000Z`,
+        ...fields,
+      },
+    })),
+  });
+  const reopened = () =>
+    buildSession({
+      id: 'thread-cut-off',
+      conversationId: 'conversation-cut-off',
+      status: 'idle',
+      orchestrationSessionStarted: true,
+      messages: [],
+    } as Partial<ChatSession>);
+
+  test('a max-tokens finish shows the cut-off notice under the reply', async () => {
+    sdk.fetchWindow.mockResolvedValue(stored('max-tokens'));
+    renderDock(reopened(), vi.fn());
+    const notice = await screen.findByRole(
+      'note',
+      {},
+      { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+    );
+    expect(notice.textContent).toBe(
+      'This reply was cut off at the model’s output limit.',
+    );
+    expect(screen.getByText(/runs out of room before it can/)).toBeTruthy();
+    expect(screen.queryByText('Done')).toBeNull();
+  });
+
+  test('an ordinary finish shows no notice', async () => {
+    sdk.fetchWindow.mockResolvedValue(stored('stop'));
+    renderDock(reopened(), vi.fn());
+    expect(
+      await screen.findByText(
+        /runs out of room before it can/,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/cut off at the model/)).toBeNull();
+  });
+});

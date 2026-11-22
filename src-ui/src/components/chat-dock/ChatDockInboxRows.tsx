@@ -679,7 +679,7 @@ function InboxRowSummary({
         ) : item.updatedAt > 0 ? (
           <span className="inbox-row__time">
             {relativeTime(
-              status.rung === 'done'
+              status.rung === 'done' || status.rung === 'cutOff'
                 ? (item.terminalAt ?? item.updatedAt)
                 : item.updatedAt,
               now,

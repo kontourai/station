@@ -1349,6 +1349,13 @@ function MessageBubbleComponent({
             />
           )}
         </div>
+        {msg.role === 'assistant' && msg.turnCutOff === 'max-tokens' ? (
+          // The engine stopped at its output limit, so the reply above ends
+          // mid-way even though the turn completed.
+          <p className="message__cut-off-note" role="note">
+            This reply was cut off at the model’s output limit.
+          </p>
+        ) : null}
         {msg.role === 'user' && msg.steerInterruptedRun && (
           <div className="message__steer-note">
             Sent by stopping the step that was running

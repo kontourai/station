@@ -932,6 +932,10 @@ reason. A later successful terminal clears them. `lastRuntimeErrorUsageLimit`
 is `true` when that terminal error carried an engine adapter's
 `UsageLimitFailureDetails` (a Claude Code or Codex usage limit); clients hold
 queued follow-ups on it until a turn starts or the user sends one.
+`lastTurnCutOff` (`'max-tokens'`) is set while the latest turn completed with
+`finishReason: 'max-tokens'` and no turn is open after it: the reply is
+incomplete, and `sessionLadderWord` answers "Cut off" instead of "Done".
+Engines that report no finish reason are never marked.
 
 `ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
 not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,

@@ -73,6 +73,7 @@ export type WorkStatusRung =
   | 'running'
   | 'draft'
   | 'done'
+  | 'cutOff'
   | 'idle';
 
 /**
@@ -280,6 +281,15 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         word: SESSION_STATUS_WORDS.draft,
       };
     case 'Completed':
+      // A turn that completed at the engine's output limit is over, but its
+      // reply is incomplete: worth a look, never "Done".
+      if (facts?.cutOff)
+        return {
+          rung: 'cutOff',
+          lane: 'finished',
+          tone: 'caution',
+          word: SESSION_STATUS_WORDS.cutOff,
+        };
       return {
         rung: 'done',
         lane:
