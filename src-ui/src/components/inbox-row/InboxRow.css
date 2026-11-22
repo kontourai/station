@@ -44,7 +44,7 @@
   padding-block-end: var(--inbox-row-pad-block);
 }
 
-/* #5398: "Last reply may not have arrived" with Check, under the row's
+/* #5398: "Last message may not have arrived" with Check, under the row's
    status. A flag beside the status, not a status: the caution hue without
    the act-now pulse, and the row stays in the lane its status gives it. It
    sits outside the row's open button (Check is a control of its own), so it
@@ -67,6 +67,10 @@
 }
 .inbox-row__flag-glyph {
   flex: 0 0 auto;
+}
+/* Check meets the touch floor on a phone; on a desktop it stays a line tall. */
+.inbox-row__flag-action {
+  min-block-size: var(--touch-target-min, 0px);
 }
 /* A flagged hover row: the flag belongs to the row, so the hover and current
    treatment moves from the open button to the whole row (the touch row's

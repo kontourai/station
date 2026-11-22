@@ -739,7 +739,7 @@ describe('status facts for chat, task and merged rows', () => {
     });
     expect(built.line).toBe('Idle');
     expect(built.facts?.unconfirmedDelivery).toEqual([
-      { chatSessionId: 'c1', clientTurnId: 'uncertain' },
+      { chatSessionId: 'c1', clientTurnId: 'uncertain', createdAt: NOW },
     ]);
   });
 

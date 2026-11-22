@@ -831,7 +831,7 @@ Project **Tasks** list. Release when the ring fills. Use **Refresh inbox** in In
 
 Each chat appears once in Inbox and on Home, under the group its status puts it
 in. When this device sent a message whose delivery Station can't confirm, the
-row keeps that status and adds **Last reply may not have arrived** with **Check**,
+row keeps that status and adds **Last message may not have arrived** with **Check**,
 which asks Station once and says what it found. It never sends the message again.
 
 In **Inbox**, delegated work folds under its recorded parent.
@@ -1074,11 +1074,11 @@ outcome unresolved rather than declaring success.
 
 For a running Codex subagent that supports direct instructions, expand its
 card and use **Send to** that subagent. Station shows those instructions and
-their delivery status separately from the engine transcript: **Sent**, **Not
-sent**, or **Delivery unconfirmed**. Sending requires permission to continue the
+their delivery status separately from the engine transcript: sent, **Not
+sent**, or **May have reached the agent**. Sending requires permission to continue the
 chat and an operator or device grant that can operate it. If delivery is
-unconfirmed, **Check saved instruction** retries the same instruction and target
-with its original key; Station will not automatically send a new instruction.
+unconfirmed, **Check** looks the saved instruction up in the subagent's history
+and never sends it again; Station will not automatically send a new instruction.
 Once the saved one is resolved, you can submit a new instruction if the
 subagent is still eligible. Some Codex
 subagents cannot accept direct instructions. Older Stations need an update to

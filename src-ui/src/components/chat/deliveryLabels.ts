@@ -28,11 +28,13 @@ export function receivedDeliveryLabel(
 }
 
 /**
- * An inbox row's flag for a conversation holding a message of this device's
- * whose delivery nothing can confirm (#5398). A flag beside the status, never
- * a status of its own.
+ * An inbox row's flag for a conversation holding a message the person sent
+ * from this device whose delivery nothing can confirm (#5398). A flag beside
+ * the status, never a status of its own. It is the person's message that is
+ * in doubt, not the agent's reply.
  */
-export const LAST_REPLY_UNCONFIRMED_LABEL = 'Last reply may not have arrived';
+export const LAST_MESSAGE_UNCONFIRMED_LABEL =
+  'Last message may not have arrived';
 
 /**
  * What one Check found, for the message's note and the inbox row's flag

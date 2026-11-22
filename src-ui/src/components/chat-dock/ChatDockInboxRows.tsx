@@ -976,6 +976,7 @@ export function InboxRow({
   });
   const reasonId = `${statusId}-reason`;
   const durationId = `${statusId}-duration`;
+  const flagId = `${statusId}-flag`;
   const explanation =
     size === 'slim'
       ? (status.detail ?? status.reason)
@@ -986,6 +987,8 @@ export function InboxRow({
     [
       explanation && reasonId,
       size !== 'slim' && status.since !== undefined && durationId,
+      // #5398: the flag sits outside the button; the row's name carries it.
+      facts?.unconfirmedDelivery && flagId,
     ]
       .filter(Boolean)
       .join(' ') || undefined;
@@ -1302,6 +1305,7 @@ export function InboxRow({
           turns={facts.unconfirmedDelivery}
           checkable={!remoteProject && facts.hostDetails !== false}
           title={item.title}
+          id={flagId}
         />
       )}
       {inlineApproval &&

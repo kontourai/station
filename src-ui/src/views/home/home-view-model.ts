@@ -1062,19 +1062,24 @@ function serverReportsLiveWork(
 }
 
 /**
- * The keys of this chat's outbox messages whose delivery nothing can confirm:
- * Station may have started them (`may-have-started`), or a send got no answer
- * and waits for the delivery lookup. Neither is ever resent on its own, so
- * neither waits on the connection or on the person (#5398).
+ * This chat's outbox messages whose delivery nothing can confirm yet:
+ * Station may have started them (`may-have-started`, never sent again on its
+ * own), or a send got no answer and waits for Station's delivery lookup
+ * (`invoking` with `awaitingLookup`; the lookup sends it once more, with the
+ * same key, only if Station answers that it never received it). Neither
+ * waits on the person, and neither is a send waiting on the connection
+ * (#5398).
  */
-export function unconfirmedOutboundTurnIds(chat: ChatUIState): string[] {
+export function unconfirmedOutboundTurns(
+  chat: ChatUIState,
+): { clientTurnId: string; createdAt: number }[] {
   return (chat.outboundQueuedTurns ?? [])
     .filter(
       (turn) =>
         turn.status === 'may-have-started' ||
         (turn.status === 'invoking' && turn.awaitingLookup),
     )
-    .map((turn) => turn.clientTurnId);
+    .map(({ clientTurnId, createdAt }) => ({ clientTurnId, createdAt }));
 }
 
 /**
@@ -1088,7 +1093,9 @@ export function chatQueuedToSend(chat: ChatUIState): boolean {
   if (chat.status !== 'queued') return false;
   const turns = chat.outboundQueuedTurns ?? [];
   if (turns.length === 0) return true;
-  const unconfirmed = new Set(unconfirmedOutboundTurnIds(chat));
+  const unconfirmed = new Set(
+    unconfirmedOutboundTurns(chat).map((turn) => turn.clientTurnId),
+  );
   return turns.some(
     (turn) => turn.status !== 'accepted' && !unconfirmed.has(turn.clientTurnId),
   );

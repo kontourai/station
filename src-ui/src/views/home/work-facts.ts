@@ -20,7 +20,7 @@ import { groupDelegatedSessionRuns } from '../sessions/run-groups';
 import {
   chatQueuedToSend,
   type HomeWorkItem,
-  unconfirmedOutboundTurnIds,
+  unconfirmedOutboundTurns,
 } from './home-view-model';
 
 /**
@@ -91,15 +91,16 @@ export interface WorkFacts {
   activity?: WorkActivity;
   /**
    * #5398: messages this device sent in this conversation whose delivery
-   * nothing can confirm (`unconfirmedOutboundTurnIds`), with the chat that
-   * holds each. A device-local fact read from this device's outbox, beside
-   * the conversation's synced status: it never moves the row to another lane
-   * and never settles or reopens the conversation. The row shows it as the
-   * flag "Last reply may not have arrived" with Check.
+   * nothing can confirm (`unconfirmedOutboundTurns`), oldest first, with the
+   * chat that holds each. A device-local fact read from this device's outbox,
+   * beside the conversation's synced status: it never moves the row to
+   * another lane and never settles or reopens the conversation. The row shows
+   * it as the flag "Last message may not have arrived" with Check.
    */
   unconfirmedDelivery?: readonly {
     chatSessionId: string;
     clientTurnId: string;
+    createdAt: number;
   }[];
   ownedWorkState?: NonNullable<
     OrchestrationSessionSummary['ownedWork']
@@ -243,11 +244,11 @@ export function buildWorkFacts({
   // only one of them, so the flag is read from all of them.
   const unconfirmedByRow = new Map<
     string,
-    { chatSessionId: string; clientTurnId: string }[]
+    { chatSessionId: string; clientTurnId: string; createdAt: number }[]
   >();
   for (const [chatSessionId, chat] of Object.entries(chats)) {
-    const turnIds = unconfirmedOutboundTurnIds(chat);
-    if (turnIds.length === 0) continue;
+    const turns = unconfirmedOutboundTurns(chat);
+    if (turns.length === 0) continue;
     const rowIds = new Set([
       chatSessionId,
       conversationStateKey(
@@ -257,9 +258,7 @@ export function buildWorkFacts({
     ]);
     for (const rowId of rowIds) {
       const held = unconfirmedByRow.get(rowId) ?? [];
-      held.push(
-        ...turnIds.map((clientTurnId) => ({ chatSessionId, clientTurnId })),
-      );
+      held.push(...turns.map((turn) => ({ chatSessionId, ...turn })));
       unconfirmedByRow.set(rowId, held);
     }
   }
@@ -322,7 +321,7 @@ export function buildWorkFacts({
               : []),
           ].map((turn) => [turn.clientTurnId, turn] as const),
         ).values(),
-      ];
+      ].sort((left, right) => left.createdAt - right.createdAt);
       if (unconfirmed.length > 0) entry.unconfirmedDelivery = unconfirmed;
     }
     if (item.lifecycleLabel === 'Needs attention') {

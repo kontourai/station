@@ -137,7 +137,11 @@ describe('an unconfirmed delivery is a flag, not a lane (#5398)', () => {
         lane: 'finished',
       });
       expect(facts.get(row.id)?.unconfirmedDelivery).toEqual([
-        { chatSessionId: CONVERSATION, clientTurnId: 'turn-unconfirmed' },
+        {
+          chatSessionId: CONVERSATION,
+          clientTurnId: 'turn-unconfirmed',
+          createdAt: NOW - 110_000,
+        },
       ]);
 
       const groups = groupMobileActivity(items, NOW, {}, facts);
@@ -170,7 +174,11 @@ describe('an unconfirmed delivery is a flag, not a lane (#5398)', () => {
     );
     expect(items).toHaveLength(1);
     expect(facts.get(items[0]!.id)?.unconfirmedDelivery).toEqual([
-      { chatSessionId: CONVERSATION, clientTurnId: 'turn-unconfirmed' },
+      {
+        chatSessionId: CONVERSATION,
+        clientTurnId: 'turn-unconfirmed',
+        createdAt: NOW - 110_000,
+      },
     ]);
     expect(workStatus(items[0]!, NOW, facts.get(items[0]!.id)).word).toBe(
       'Done',
@@ -204,7 +212,11 @@ describe('an unconfirmed delivery is a flag, not a lane (#5398)', () => {
     const status = workStatus(items[0]!, NOW, facts.get(items[0]!.id));
     expect(status).toMatchObject({ word: 'Queued to send', lane: 'needsYou' });
     expect(facts.get(items[0]!.id)?.unconfirmedDelivery).toEqual([
-      { chatSessionId: CONVERSATION, clientTurnId: 'turn-unconfirmed' },
+      {
+        chatSessionId: CONVERSATION,
+        clientTurnId: 'turn-unconfirmed',
+        createdAt: NOW - 110_000,
+      },
     ]);
   });
 
@@ -231,7 +243,30 @@ describe('an unconfirmed delivery is a flag, not a lane (#5398)', () => {
       'finished',
     );
     expect(facts.get(items[0]!.id)?.unconfirmedDelivery).toEqual([
-      { chatSessionId: CONVERSATION, clientTurnId: 'turn-lookup' },
+      {
+        chatSessionId: CONVERSATION,
+        clientTurnId: 'turn-lookup',
+        createdAt: NOW - 110_000,
+      },
     ]);
+  });
+  it('a chat with no server record that still reads running stays in Running, flagged', () => {
+    // No session summary for this conversation, and the chat store still
+    // says the send it could not confirm is running. With nothing better to
+    // read, the chat's own running state stands (`chatLifecycleLabel`); the
+    // flag says the message itself is in doubt.
+    const { items, facts } = rows(
+      {
+        [CONVERSATION]: unconfirmedChat({ orchestrationStatus: 'running' }),
+      },
+      [],
+      'dock',
+    );
+    expect(items).toHaveLength(1);
+    expect(workStatus(items[0]!, NOW, facts.get(items[0]!.id))).toMatchObject({
+      word: 'Running',
+      lane: 'running',
+    });
+    expect(facts.get(items[0]!.id)?.unconfirmedDelivery).toHaveLength(1);
   });
 });
