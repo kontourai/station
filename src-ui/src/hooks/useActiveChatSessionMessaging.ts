@@ -2030,7 +2030,12 @@ export function useSendMessage(
               err.code === SESSION_START_INDETERMINATE_CODE || turnStartBlocked
             ) && 'input' in rollbackComposer
               ? ' Your message is back in the composer.'
-              : ''
+              : // An outbox send: its row was kept above (`indeterminate`)
+                // and the composer was not touched, so the message waits in
+                // the pending list.
+                turnStartBlocked && dispatchClaim
+                ? ' Your message is kept in the pending list.'
+                : ''
           }`,
           ...(terminalSession ? { terminalSession: true } : {}),
           // A workspace refusal is permanent for this conversation. Other
