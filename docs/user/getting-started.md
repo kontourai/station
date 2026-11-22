@@ -829,6 +829,11 @@ for creating a project, including a short first-project prompt when empty.
 On a phone, pull down from the top of Inbox, Home’s **Recent work**, or the
 Project **Tasks** list. Release when the ring fills. Use **Refresh inbox** in Inbox actions or the refresh button beside **Recent work** on Home. A floating status pill shows what’s refreshing.
 
+Each chat appears once in Inbox and on Home, under the group its status puts it
+in. When this device sent a message whose delivery Station can't confirm, the
+row keeps that status and adds **Last reply may not have arrived** with **Check**,
+which asks Station once and says what it found. It never sends the message again.
+
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
 visible. Authorized work chats appear under their Task, including independent
