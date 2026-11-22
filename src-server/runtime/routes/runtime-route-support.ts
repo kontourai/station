@@ -877,7 +877,7 @@ export function configureRuntimeSupportServices(
         const task = await context.taskGraphService.createTaskIdempotent(
           {
             projectId: input.projectId,
-            title: `Review ready: ${input.jobName}`,
+            title: `Review ready: ${input.jobLabel}`,
             description: input.prompt,
             agentId: input.agentId,
             createdBy: 'external-monitor',

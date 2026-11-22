@@ -4,7 +4,10 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { SCHEDULER_EXECUTION_LIMITS } from '@kontourai/station-contracts/scheduler';
+import {
+  SCHEDULER_EXECUTION_LIMITS,
+  SCHEDULER_JOB_SLUG_ATTEMPTS,
+} from '@kontourai/station-contracts/scheduler';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../__test-utils__/read-json.js';
 import { createLogger } from '../../utils/logger.js';
@@ -479,6 +482,7 @@ describe('BuiltinScheduler', () => {
     });
     dead.create({
       name: 'abandoned',
+      displayName: 'Abandoned check',
       prompt: 'run',
       enabled: true,
       createdAt: '2026-01-01T00:00:00.000Z',
@@ -512,7 +516,8 @@ describe('BuiltinScheduler', () => {
       'scheduler',
       expect.objectContaining({
         category: 'job-failure',
-        title: 'Job "abandoned" failed',
+        // Read when the recovered run is announced: the name people read.
+        title: 'Job "Abandoned check" failed',
         body: 'Scheduler process stopped after this run was claimed; invocation was not replayed automatically.',
       }),
     );
@@ -2322,6 +2327,37 @@ describe('SchedulerService', () => {
 
 // ── Route Handlers ──
 
+/**
+ * Display names a person could not read back as typed: blank, too long, a
+ * line or paragraph break, a C1 control, a bidi override, or nothing visible.
+ */
+const UNREADABLE_DISPLAY_NAMES = [
+  '   ',
+  'x'.repeat(121),
+  'two\nlines',
+  'two\u2028lines',
+  'two\u2029lines',
+  'next\u0085line',
+  'c1\u009Bcontrol',
+  'invoice\u202Etxt.exe',
+  '\u200B',
+  'zero\u200Bwidth',
+  '\uFE0F',
+  'isolate\u2067txt\u2069',
+  'word\u2060joiner',
+  'soft\u00ADhyphen',
+  // A subdivision flag: tag characters are refused, so it is too.
+  'Flag \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}',
+  'note\uFFF9annotated\uFFFAgloss\uFFFB',
+  'grapheme\u034Fjoiner',
+  'vowel\u180Eseparator',
+  // Only blank glyphs: Hangul fillers and the braille blank draw nothing.
+  '\u3164',
+  '\u115F\u1160',
+  '\uFFA0\uFFA0',
+  '\u2800',
+];
+
 describe('Scheduler Routes', () => {
   let service: InstanceType<typeof SchedulerService>;
   let app: ReturnType<typeof createSchedulerRoutes>;
@@ -2389,6 +2425,242 @@ describe('Scheduler Routes', () => {
     });
     expect((await json(res)).success).toBe(true);
     expect((await jobNamed('edit-route'))?.prompt).toBe('updated');
+  });
+
+  test('PUT /jobs/:target renames a job without changing its id or runs', async () => {
+    const created = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'repo-digest',
+        displayName: 'Repo digest',
+        prompt: 'Summarize the repos',
+      }),
+    });
+    expect((await json(created)).success).toBe(true);
+    chatFnBehavior = { ok: true, text: 'digest written' };
+    const ran = await app.request('/jobs/repo-digest/run', { method: 'POST' });
+    expect((await json(ran)).data.receipt.outcome).toBe('completed');
+    const before = await jobNamed('repo-digest');
+    expect(before?.displayName).toBe('Repo digest');
+    const runsBefore = (await json(await app.request('/jobs/repo-digest/logs')))
+      .data;
+    expect(runsBefore).toHaveLength(1);
+
+    const res = await app.request('/jobs/repo-digest', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: '  Morning repo digest  ' }),
+    });
+    expect((await json(res)).success).toBe(true);
+
+    const after = await jobNamed('repo-digest');
+    expect(after).toMatchObject({
+      name: 'repo-digest',
+      displayName: 'Morning repo digest',
+      prompt: 'Summarize the repos',
+    });
+    expect(after?.unattendedPrincipal).toEqual(before?.unattendedPrincipal);
+    const runsAfter = (await json(await app.request('/jobs/repo-digest/logs')))
+      .data;
+    expect(runsAfter).toEqual(runsBefore);
+
+    // Removing the display name shows the slug again; the job stays.
+    await app.request('/jobs/repo-digest', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: null }),
+    });
+    const cleared = await jobNamed('repo-digest');
+    expect(cleared?.displayName).toBeUndefined();
+    expect(cleared?.unattendedPrincipal).toEqual(before?.unattendedPrincipal);
+  });
+
+  test('PUT /jobs/:target refuses a blank or multi-line display name', async () => {
+    await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'keep-name',
+        displayName: 'Keep',
+        prompt: 'x',
+      }),
+    });
+    for (const displayName of UNREADABLE_DISPLAY_NAMES) {
+      const res = await app.request('/jobs/keep-name', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ displayName }),
+      });
+      expect(res.status, JSON.stringify(displayName)).toBe(400);
+    }
+    expect((await jobNamed('keep-name'))?.displayName).toBe('Keep');
+  });
+
+  test('a display name over the length bound is refused with its own sentence', async () => {
+    const tooLong = 'x'.repeat(121);
+    const lengthSentence = 'A name can be at most 120 characters.';
+    const created = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'long', displayName: tooLong, prompt: 'x' }),
+    });
+    expect(created.status).toBe(400);
+    expect((await json(created)).details.fieldErrors.displayName).toEqual([
+      lengthSentence,
+    ]);
+    await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'short',
+        displayName: 'Short',
+        prompt: 'x',
+      }),
+    });
+    const renamed = await app.request('/jobs/short', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: tooLong }),
+    });
+    expect(renamed.status).toBe(400);
+    expect((await json(renamed)).details.fieldErrors.displayName).toEqual([
+      lengthSentence,
+    ]);
+  });
+
+  test('POST /jobs refuses the same unreadable display names and creates nothing', async () => {
+    for (const [index, displayName] of UNREADABLE_DISPLAY_NAMES.entries()) {
+      const res = await app.request('/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: `bad-name-${index}`,
+          displayName,
+          prompt: 'x',
+        }),
+      });
+      expect(res.status, JSON.stringify(displayName)).toBe(400);
+    }
+    expect(await service.listJobs()).toEqual([]);
+  });
+
+  test('display names with emoji, joined emoji and marks are accepted on create and rename', async () => {
+    const names = [
+      'Digest 📬 weekly',
+      'Family 👨\u200D👩\u200D👧 check-in',
+      'Heart ❤\uFE0F review',
+      'Café crème',
+      // Persian needs the zero-width non-joiner.
+      'می\u200Cخواهم',
+      // Devanagari can use a zero-width joiner between letters.
+      'क्\u200Dष report',
+      // A skin-tone modifier inside a joined emoji.
+      '👩🏽\u200D💻 dev',
+      // Left-to-right and right-to-left marks.
+      'Report \u200Eabc\u200F',
+    ];
+    for (const [index, displayName] of names.entries()) {
+      const res = await app.request('/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: `ok-${index}`, displayName, prompt: 'x' }),
+      });
+      expect(res.status, displayName).toBe(200);
+      expect((await jobNamed(`ok-${index}`))?.displayName).toBe(displayName);
+    }
+    const renamed = await app.request('/jobs/ok-0', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: 'Family 👨\u200D👩\u200D👧 digest' }),
+    });
+    expect(renamed.status).toBe(200);
+    expect((await jobNamed('ok-0'))?.displayName).toBe(
+      'Family 👨\u200D👩\u200D👧 digest',
+    );
+  });
+
+  test('POST /jobs with only a display name gets an unused slug, even when the taken one is hidden from the caller', async () => {
+    // A job in another person's chat: this request's default read rule does
+    // not list it, and its slug is the one "Daily briefing" suggests.
+    await service.addJob({
+      name: 'daily-briefing',
+      prompt: 'theirs',
+      target: { kind: 'dedicated', agent: 'station' },
+      createdBy: { userId: 'someone-else' },
+    });
+    const listed = await json(await app.request('/jobs'));
+    expect(listed.data.map((job: { name: string }) => job.name)).not.toContain(
+      'daily-briefing',
+    );
+
+    const res = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: 'Daily briefing', prompt: 'mine' }),
+    });
+    expect(res.status).toBe(200);
+    // The slug comes back as data; `output` stays the provider's text.
+    expect((await json(res)).data).toEqual({
+      output: "Job 'daily-briefing-2' created",
+      name: 'daily-briefing-2',
+    });
+    expect(await jobNamed('daily-briefing-2')).toMatchObject({
+      displayName: 'Daily briefing',
+      prompt: 'mine',
+    });
+    expect((await jobNamed('daily-briefing'))?.prompt).toBe('theirs');
+  });
+
+  test('POST /jobs refuses an explicit slug that is taken, and a display name whose every slug is taken', async () => {
+    await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'taken', prompt: 'first' }),
+    });
+    const explicit = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'taken',
+        displayName: 'Taken',
+        prompt: 'second',
+      }),
+    });
+    expect(explicit.status).toBe(409);
+    expect(await json(explicit)).toMatchObject({ code: 'job_name_taken' });
+    expect((await jobNamed('taken'))?.prompt).toBe('first');
+
+    // The bound is 50 slugs: `taken` and `taken-2` up to `taken-50`. A
+    // literal, so a changed constant fails here rather than moving with it.
+    expect(SCHEDULER_JOB_SLUG_ATTEMPTS).toBe(50);
+    for (let suffix = 2; suffix <= 50; suffix += 1)
+      await service.addJob({ name: `taken-${suffix}`, prompt: 'filler' });
+    const exhausted = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName: 'Taken', prompt: 'third' }),
+    });
+    expect(exhausted.status).toBe(409);
+    expect(await json(exhausted)).toEqual({
+      success: false,
+      code: 'job_name_taken',
+      error:
+        "Too many automations already have names like 'Taken'. Choose a different name.",
+    });
+    expect(
+      (await service.listJobs()).filter((job) => job.prompt === 'third'),
+    ).toEqual([]);
+  });
+
+  test('POST /jobs needs a slug or a display name', async () => {
+    const res = await app.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: 'nameless' }),
+    });
+    expect(res.status).toBe(400);
+    expect(await service.listJobs()).toEqual([]);
   });
 
   test('DELETE /jobs/:target removes a job', async () => {

@@ -50,6 +50,7 @@ afterEach(async () => {
 
 test("an external monitor's Task session is the operator's to read and acts for no one", async () => {
   const home = makeTempDir('runtime-support-monitor-');
+  const createTaskIdempotent = vi.fn(async () => ({ id: 'task-monitor' }));
   const dispatch = vi.fn(async () => ({
     kind: 'contended' as const,
     reason: 'test stops here',
@@ -65,7 +66,7 @@ test("an external monitor's Task session is the operator's to read and acts for 
       },
       configLoader: { getProjectHomeDir: () => home },
       taskGraphService: {
-        createTaskIdempotent: async () => ({ id: 'task-monitor' }),
+        createTaskIdempotent,
       },
       taskDispatcher: { dispatch },
     } as Record<PropertyKey, unknown>,
@@ -77,7 +78,8 @@ test("an external monitor's Task session is the operator's to read and acts for 
   shutdowns.push(() => services.notificationService.shutdown());
 
   await captured.options.builtin.onActionableMonitor({
-    jobName: 'Watch',
+    jobName: 'watch',
+    jobLabel: 'Watch the release',
     jobId: 'job-1',
     fingerprint: 'fp',
     triggerId: 'trigger-1',
@@ -94,6 +96,12 @@ test("an external monitor's Task session is the operator's to read and acts for 
     },
   });
 
+  // The Task a person reads is titled with the job's display name.
+  expect(createTaskIdempotent).toHaveBeenCalledWith(
+    expect.objectContaining({ title: 'Review ready: Watch the release' }),
+    'external-monitor',
+    'job-1:fp',
+  );
   expect(dispatch).toHaveBeenCalledWith(
     'task-monitor',
     expect.objectContaining({

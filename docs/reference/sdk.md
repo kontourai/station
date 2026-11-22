@@ -2515,6 +2515,13 @@ What deleting the Project removes, stops and keeps
 with a `projectId` as a Task in that Project. An older host would create a
 plain job, so offer Project schedules only on `true`.
 
+### `useSchedulerJobDisplayNameCapability()`
+
+`true` when the host advertises `schedulerJobDisplayName`: it stores a job's
+`displayName`, renames it on update, and derives the slug when a create names
+none. An older host drops the field and still answers success, so offer
+renaming only on `true`; `null` means the handshake could not be read.
+
 ### `useCreateLayoutMutation(projectSlug: string)`
 
 Creates a new layout within a project. Invalidates project layouts on success.

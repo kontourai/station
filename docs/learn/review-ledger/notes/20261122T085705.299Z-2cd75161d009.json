@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"schedule.spec.ts keeps the same journeys; the CRUD journey now names automations in plain words and no longer asserts a duplicate-name conflict, which a hidden numbered slug avoids. No matrix row changes.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/schedule.spec.ts"]}
+  ]
+}

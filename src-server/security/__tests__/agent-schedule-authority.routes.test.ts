@@ -444,7 +444,14 @@ async function boot(options: {
     '/scheduler',
     createSchedulerRoutes(
       options.scheduler ??
-        ({ addJob, listJobs: async () => [] } as unknown as SchedulerService),
+        ({
+          addJob,
+          createJob: async (opts: { name: string }) => ({
+            output: await addJob(opts),
+            name: opts.name,
+          }),
+          listJobs: async () => [],
+        } as unknown as SchedulerService),
       quietLogger(),
       {
         jobProposals: composition.jobProposals,

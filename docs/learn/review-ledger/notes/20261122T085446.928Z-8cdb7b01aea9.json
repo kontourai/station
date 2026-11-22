@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Scheduler contract paragraph now names SchedulerJob.name as the slug and the optional displayName with its exported bound; matches packages/contracts/src/scheduler.ts.","inputs":["docs/reference/contracts.md","packages/contracts/src/scheduler.ts"]}
+  ]
+}

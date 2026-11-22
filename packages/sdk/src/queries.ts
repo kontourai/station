@@ -667,6 +667,7 @@ export {
   useRunQuery,
   useRunsQuery,
   useScheduledConversationTargetCapability,
+  useSchedulerJobDisplayNameCapability,
   useSchedulerJobs,
   useSchedulerProviders,
   useSchedulerStats,
