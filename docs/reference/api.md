@@ -6399,13 +6399,13 @@ method. Every mutation also requires the operator in person (the same proof as
 | `PUT /automations/sources/:target/disable` | Optional `{expectedFingerprint}`. |
 | `DELETE /automations/sources/:target` | Only once no rule names the source. |
 | `GET /automations/rules` | `{configurationFingerprint, rules}`. |
-| `POST /automations/rules` | A `dispatch-task` rule with `sourceId`, created in `observe` (201). |
+| `POST /automations/rules` | A `dispatch-task` rule with `sourceId`, created in `observe` (201). `action.projectId` is a Project id or slug; the id is stored. |
 | `PUT /automations/rules/:target` | Replaces a `dispatch-task` rule's name, matcher, episode, action and rate limit at `expectedFingerprint`; never its source or mode. |
 | `PUT /automations/rules/:target/enable` | `{expectedFingerprint}`; sets `live` (`dispatch-task` only). |
 | `PUT /automations/rules/:target/disable` | Sets `off`; optional `{expectedFingerprint}`. |
 | `DELETE /automations/rules/:target` | A `dispatch-task` rule. |
-| `GET /automations/episodes?limit=<1-200>` | `{episodes}`: unclosed episodes, newest first, without their internal key. |
-| `POST /automations/episodes/:ruleId:episodeId/retry` | One more attempt for an exhausted episode; `{ruleId, episodeId, retry}`. |
+| `GET /automations/episodes?limit=<1-200>` | `{episodes, actionsUnavailable?}`: unclosed episodes, newest first, without their internal key (an open one whose start failed before its Agent carries `startFailed`, and `startFailure` when the Agent cannot take the rule's approval mode); `actionsUnavailable` (`{reason, since}`) while no automation Task can start. |
+| `POST /automations/episodes/:ruleId:episodeId/retry` | One more attempt for an exhausted episode, or an open one marked `startFailed`; `{ruleId, episodeId, retry}`. |
 
 Everything except disable and delete also needs the
 `github-automation-observations` Feature Preview (404
@@ -6413,7 +6413,8 @@ Everything except disable and delete also needs the
 answers 404 `automation_not_found`; a stale fingerprint or invalid change 409
 `invalid_automation`; an unreadable policy 503 `policy_unavailable`. A retry
 refusal answers 409 with `not-exhausted`, `indeterminate`, `active`,
-`no-intent`, `stale` or `policy-unavailable`. See
+`no-intent`, `stale`, `policy-unavailable` or `task-live` (the Task a failed
+start created is still live; cancel it first). See
 [Operator surface](../design/automations.md#operator-surface).
 
 ### Open File with System Handler

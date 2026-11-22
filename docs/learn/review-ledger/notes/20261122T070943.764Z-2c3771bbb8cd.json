@@ -1,0 +1,9 @@
+{
+  "revision": "b03fdb625dcb2d1db25822a1ebdc7c991d312fab",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Delta: retry-episode adds the 409 refusal task-live (the failed start's Task is still live; cancel it first). Checked the citing pages: the route surface, operator gate and payload shapes are otherwise unchanged.","inputs":["src-server/routes/operations/automations.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Delta: retry-episode adds the 409 refusal task-live (the failed start's Task is still live; cancel it first). Checked the citing pages: the route surface, operator gate and payload shapes are otherwise unchanged.","inputs":["src-server/routes/operations/automations.ts"]}
+  ]
+}

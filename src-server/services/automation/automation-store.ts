@@ -18,6 +18,17 @@
  * rule is refused unless its source grants its action (the two-keys rule;
  * see `automation-config-validation.ts`). Mutations run under a cross-process
  * file lock with the read inside it, and a corrupt file is never overwritten.
+ *
+ * A rule's action and a source's grant name their Project by id or by slug
+ * (the form a person types). Given the current Projects, the store resolves
+ * each to the Project's id ({@link localProjectIdFor}: an exact id wins over
+ * a slug) on every read, before validation, and every write stores the id.
+ * So every reader (intake, dispatch, the Task comparison, retry and repair)
+ * compares ids. A stored slug is pinned to the id the first time a read
+ * resolves it, so a same-slug replacement Project never inherits it. A value
+ * no current Project carries is kept as written; creating or editing a rule
+ * or a source grant with one is refused, and an unreadable Project list
+ * refuses the write as unavailable.
  */
 
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -40,6 +51,10 @@ import { writeJsonDurably } from '@kontourai/station-shared/durable-json-file';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import { isRecord } from '../../utils/is-record.js';
 import { resolveHomeDir } from '../../utils/paths.js';
+import {
+  localProjectIdFor,
+  type ProjectIdentityLookup,
+} from '../projects/project-local-id.js';
 import {
   automationConfigurationProblems,
   sourceGrantsRuleAction,
@@ -220,18 +235,132 @@ function assertFingerprint(
     ]);
 }
 
+/** The detail of the refusal when the Project list cannot be read. */
+export const AUTOMATION_PROJECTS_UNAVAILABLE = 'project list unavailable';
+
+/**
+ * The current Projects' ids by id and slug. `undefined` when no lookup was
+ * given, or when the list cannot be read and `unavailable` is `'skip'`: a
+ * read then leaves every reference as written (an id still matches only a
+ * Project that carries it, so nothing is granted by a guess). A write
+ * (`'throw'`) refuses as an availability problem instead.
+ */
+function projectIdentities(
+  projects: ProjectIdentityLookup | undefined,
+  unavailable: 'skip' | 'throw',
+): ((identity: string) => string | undefined) | undefined {
+  if (!projects) return undefined;
+  let listed: ReadonlyArray<{ readonly id: string; readonly slug: string }>;
+  try {
+    listed = projects.listProjects();
+  } catch (error) {
+    if (unavailable === 'throw')
+      throw new AutomationPolicyUnavailableError(
+        AUTOMATION_PROJECTS_UNAVAILABLE,
+        { cause: error },
+      );
+    return undefined;
+  }
+  const snapshot = { listProjects: () => listed };
+  return (identity) => localProjectIdFor(snapshot, identity);
+}
+
+/**
+ * Rewrites each rule action's and source grant's Project reference to the
+ * Project's id where one current Project is named by it; anything else is
+ * left as written (validation and dispatch then see an unknown Project).
+ */
+function canonicalProjectReferences(
+  parsed: unknown,
+  resolve: ((identity: string) => string | undefined) | undefined,
+  onResolved: () => void = () => undefined,
+): unknown {
+  if (!resolve || !isRecord(parsed)) return parsed;
+  const canonical = (record: unknown) => {
+    if (!isRecord(record) || typeof record.projectId !== 'string')
+      return record;
+    const id = resolve(record.projectId);
+    if (id === undefined || id === record.projectId) return record;
+    onResolved();
+    return { ...record, projectId: id };
+  };
+  return {
+    ...parsed,
+    ...(Array.isArray(parsed.sources)
+      ? {
+          sources: parsed.sources.map((source: unknown) =>
+            isRecord(source) && Array.isArray(source.grants)
+              ? { ...source, grants: source.grants.map(canonical) }
+              : source,
+          ),
+        }
+      : {}),
+    ...(Array.isArray(parsed.rules)
+      ? {
+          rules: parsed.rules.map((rule: unknown) =>
+            isRecord(rule) ? { ...rule, action: canonical(rule.action) } : rule,
+          ),
+        }
+      : {}),
+  };
+}
+
 function isAbsent(error: unknown): boolean {
   return (error as NodeJS.ErrnoException | undefined)?.code === 'ENOENT';
 }
 
 export class AutomationStore {
   readonly path: string;
+  private pinning: Promise<void> | undefined;
 
+  /**
+   * `projects`: the current Projects, so a rule or grant may name its
+   * Project by slug. Without it, Project references are compared as written.
+   */
   constructor(
     homeDir: string = resolveHomeDir(),
     private readonly newId: () => string = randomUUID,
+    private readonly projects?: ProjectIdentityLookup,
   ) {
     this.path = automationConfigPath(homeDir);
+  }
+
+  /**
+   * The Project ids that new or edited references name, in order. Refuses
+   * one that names no current Project, quoting the value as given, so the
+   * person sees it where they made the change. Without `projects`, each
+   * reference is returned as written.
+   */
+  private projectIdsFor(
+    references: readonly Readonly<{ where: string; projectId: string }>[],
+  ): string[] {
+    const resolve = projectIdentities(this.projects, 'throw');
+    if (!resolve) return references.map(({ projectId }) => projectId);
+    const problems: string[] = [];
+    const ids = references.map(({ where, projectId }) => {
+      const id = resolve(projectId);
+      if (id === undefined)
+        problems.push(`${where}: no Project has the id or slug "${projectId}"`);
+      return id ?? projectId;
+    });
+    if (problems.length > 0) throw new AutomationValidationError(problems);
+    return ids;
+  }
+
+  private withProjectIds<T extends Readonly<{ projectId: string }>>(
+    records: readonly T[],
+    where: (index: number) => string,
+  ): T[] {
+    const ids = this.projectIdsFor(
+      records.map((record, index) => ({
+        where: where(index),
+        projectId: record.projectId,
+      })),
+    );
+    return records.map((record, index) => ({
+      ...record,
+      projectId: ids[index]!,
+    }));
   }
 
   /** Validated read. Throws {@link AutomationPolicyUnavailableError} unless valid or absent. */
@@ -270,14 +399,43 @@ export class AutomationStore {
         cause: error,
       });
     }
-    const migrated = dropRetiredNotifyGrants(migrateLegacyRuleModes(parsed));
+    let resolvedSlug = false;
+    const migrated = canonicalProjectReferences(
+      dropRetiredNotifyGrants(migrateLegacyRuleModes(parsed)),
+      projectIdentities(this.projects, 'skip'),
+      () => {
+        resolvedSlug = true;
+      },
+    );
     const problems = automationConfigurationProblems(migrated);
     if (problems.length > 0) {
       throw new AutomationPolicyUnavailableError(
         `invalid: ${problems.slice(0, 8).join('; ')}`,
       );
     }
+    if (resolvedSlug) this.pinProjectReferences();
     return migrated as AutomationConfiguration;
+  }
+
+  /**
+   * A stored slug is bound to the Project it names when first resolved:
+   * the id is written through the normal mutation path (under the lock,
+   * re-read inside it), so a later same-slug replacement Project never
+   * inherits the rule or grant. Detached and best-effort: the read already
+   * answered with the id, and a failed pin is retried on the next read.
+   */
+  private pinProjectReferences(): void {
+    if (this.pinning) return;
+    this.pinning = this.mutate((current) => current)
+      .catch(() => undefined)
+      .finally(() => {
+        this.pinning = undefined;
+      });
+  }
+
+  /** Settles once a pin started by an earlier read has finished. */
+  async projectReferencesPinned(): Promise<void> {
+    await this.pinning;
   }
 
   listSources(): AutomationSourceProjection[] {
@@ -313,6 +471,12 @@ export class AutomationStore {
     assertCurrent?: () => Promise<void>,
     options?: Readonly<{ id?: string }>,
   ): Promise<CreateAutomationSourceResult> {
+    const grants = input.grants
+      ? this.withProjectIds(
+          input.grants,
+          (index) => `grants[${index}].projectId`,
+        )
+      : undefined;
     const id = options?.id ?? this.newId();
     let source: AutomationSource;
     let secret: string | undefined;
@@ -324,7 +488,7 @@ export class AutomationStore {
         name: input.name,
         repository: input.repository,
         enabled: false,
-        ...(input.grants ? { grants: input.grants } : {}),
+        ...(grants ? { grants } : {}),
         secret,
       };
     } else {
@@ -334,7 +498,7 @@ export class AutomationStore {
         name: input.name,
         repository: input.repository,
         enabled: false,
-        ...(input.grants ? { grants: input.grants } : {}),
+        ...(grants ? { grants } : {}),
         ...(input.credentialSecretBinding !== undefined
           ? { credentialSecretBinding: input.credentialSecretBinding }
           : {}),
@@ -366,6 +530,10 @@ export class AutomationStore {
     assertCurrent?: () => Promise<void>,
     options?: Readonly<{ id?: string }>,
   ): Promise<AutomationRule> {
+    const [action] = this.withProjectIds(
+      [input.action],
+      () => 'action.projectId',
+    );
     const rule: AutomationRule = {
       id: options?.id ?? this.newId(),
       name: input.name,
@@ -373,7 +541,7 @@ export class AutomationStore {
       sourceId: input.sourceId,
       match: input.match,
       ...(input.episode ? { episode: input.episode } : {}),
-      action: input.action,
+      action: action!,
       rateLimit: input.rateLimit,
     };
     await this.mutate((current) => {
@@ -436,6 +604,10 @@ export class AutomationStore {
     }>,
     assertCurrent?: () => Promise<void>,
   ): Promise<AutomationRule> {
+    const [action] = this.withProjectIds(
+      [input.rule.action],
+      () => 'action.projectId',
+    );
     let updated: AutomationRule | undefined;
     await this.mutate((current) => {
       assertFingerprint(current, input.expectedFingerprint);
@@ -455,7 +627,7 @@ export class AutomationStore {
         sourceId: existing.sourceId,
         match: input.rule.match,
         ...(input.rule.episode ? { episode: input.rule.episode } : {}),
-        action: input.rule.action,
+        action: action!,
         rateLimit: input.rule.rateLimit,
       };
       return {
@@ -537,7 +709,10 @@ export class AutomationStore {
       // Read inside the lock; a corrupt file throws here and is never
       // replaced by a write derived from an empty default.
       await assertCurrent?.();
-      const next = change(this.read());
+      const next = canonicalProjectReferences(
+        change(this.read()),
+        projectIdentities(this.projects, 'skip'),
+      ) as AutomationConfiguration;
       const problems = automationConfigurationProblems(next);
       if (problems.length > 0) throw new AutomationValidationError(problems);
       this.writePrivate(next);

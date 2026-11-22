@@ -1,0 +1,13 @@
+{
+  "revision": "1d0abda341fd30eacb6b6328bc5b454465fd79ba",
+
+  "notes": [
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Delta: the --approval-mode help line is reworded (Claude and Codex accept it, an ACP Agent when Station answers its approvals, others refuse). Checked the citing pages: flags and behavior they describe are unchanged.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Delta: the --approval-mode help line is reworded (Claude and Codex accept it, an ACP Agent when Station answers its approvals, others refuse). Checked the citing pages: flags and behavior they describe are unchanged.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Delta: the --approval-mode help line is reworded (Claude and Codex accept it, an ACP Agent when Station answers its approvals, others refuse). Checked the citing pages: flags and behavior they describe are unchanged.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Delta: the --approval-mode help line is reworded (Claude and Codex accept it, an ACP Agent when Station answers its approvals, others refuse). Checked the citing pages: flags and behavior they describe are unchanged.","inputs":["packages/cli/src/help.ts"]}
+  ]
+}

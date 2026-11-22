@@ -15630,6 +15630,14 @@ export class OrchestrationService {
     );
   }
 
+  /**
+   * #3290: who answers this ACP connection's approvals on this Station, for
+   * the start resolution's per-invocation settings check.
+   */
+  acpApprovalControlOf(connectionId: string): AcpApprovalControl | undefined {
+    return this.options.acpApprovalControl?.(connectionId);
+  }
+
   private acpApprovalControlOfThread(
     threadId: string,
     provider: EngineId,
