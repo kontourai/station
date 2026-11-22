@@ -1,0 +1,9 @@
+{
+  "revision": "faed86953d1729e2b258bd9575746bc7c40dd95b",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked the New Project repository steps: a refused source or failed clone now keeps the form with the reason under the URL, and a new attempt is a new acquisition. The described steps still hold.","inputs":["src-ui/src/components/modals/NewProjectRepositorySource.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the New Project repository steps: a refused source or failed clone now keeps the form with the reason under the URL, and a new attempt is a new acquisition. The described steps still hold.","inputs":["src-ui/src/components/modals/NewProjectRepositorySource.tsx"]}
+  ]
+}
