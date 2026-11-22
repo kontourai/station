@@ -819,6 +819,7 @@ export function configureRuntimeSupportServices(
         policy: automationStore,
         ledger: () => automationLedger.get(),
         tasks: context.taskGraphService,
+        projects: context.projectService,
         projectRoot: (id) => {
           const project = context.projectService
             .listProjects()

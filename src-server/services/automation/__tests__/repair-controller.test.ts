@@ -4,12 +4,14 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { createIsolatedRepairRoutes } from '../../../routes/operations/repairs.js';
 import {
   MANAGED_REPAIR_RELAY_REFUSED,
   type ManagedListenerAdmission,
 } from '../../../security/managed-network-exposure.js';
 import { execGitSync } from '../../../utils/git-exec.js';
+import { ProjectService } from '../../projects/project-service.js';
 import { TaskGraphService } from '../../projects/task-graph-service.js';
 import {
   automationEpisodeKey,
@@ -46,6 +48,11 @@ const gitHash = (type: string, value: Buffer) =>
     .update(value)
     .digest('hex');
 
+const REPAIR_PROJECT = {
+  id: '7c1d2e3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f',
+  slug: 'station',
+};
+
 async function fixture(
   options: {
     failure?: 'protected' | 'authority' | 'stopped' | 'case';
@@ -54,6 +61,12 @@ async function fixture(
     listenerAdmission?: ManagedListenerAdmission;
     /** The run is expected to end indeterminate without a `failure`. */
     expectIndeterminate?: boolean;
+    /**
+     * Real Project files read by the real ProjectService (by slug only, as
+     * production's), and every rule, grant and profile naming the Project
+     * by this reference.
+     */
+    projectRef?: string;
   } = {},
 ) {
   const home = temporary('isolated-repair-caller-');
@@ -81,8 +94,24 @@ async function fixture(
   const baseTree = git('rev-parse', 'HEAD^{tree}');
   const graphHome = join(home, 'graph');
   mkdirSync(graphHome);
+  const storage = options.projectRef
+    ? new FileStorageAdapter(join(home, 'station'))
+    : undefined;
+  await storage?.createProject({
+    id: REPAIR_PROJECT.id,
+    slug: REPAIR_PROJECT.slug,
+    name: 'Station',
+    workingDirectory: repo,
+    createdAt: '2026-10-30T10:00:00.000Z',
+    updatedAt: '2026-10-30T10:00:00.000Z',
+  });
+  const real = storage ? new ProjectService(storage) : undefined;
+  const projectRef = options.projectRef ?? 'project';
+  const projects = real ?? {
+    listProjects: () => [{ id: 'project', slug: 'project' }],
+  };
   const tasks = new TaskGraphService(graphHome, {
-    projectService: {
+    projectService: real ?? {
       getProject: (slug) => ({
         id: slug,
         slug,
@@ -93,7 +122,7 @@ async function fixture(
       }),
     },
   });
-  const policy = new AutomationStore(home);
+  const policy = new AutomationStore(home, undefined, projects);
   const ledger = createAutomationLedger({
     directory: join(home, 'automation'),
   });
@@ -276,6 +305,7 @@ async function fixture(
     ledger: () => ledger,
     tasks,
     projectRoot: () => repo,
+    projects,
     isAgentCurrent: async () => true,
     logger: { warn: vi.fn() },
     worker,
@@ -296,7 +326,7 @@ async function fixture(
       expectedRevision: 0,
       profile: {
         kind: 'execution',
-        projectId: 'project',
+        projectId: projectRef,
         agentId: 'repairer',
         repository: 'kontourai/station',
         repositoryId: 19,
@@ -341,7 +371,7 @@ async function fixture(
     repository: 'kontourai/station',
     grants: [
       {
-        projectId: 'project',
+        projectId: projectRef,
         agentId: 'repairer',
         actions:
           options.publishBranch === false
@@ -363,7 +393,7 @@ async function fixture(
         rateLimit: QUALIFICATION_RULE.rateLimit,
         action: {
           kind: 'isolated-repair',
-          projectId: 'project',
+          projectId: projectRef,
           agentId: 'repairer',
           profileId: execution.id,
           instructions: 'Repair the failing fixture.',
@@ -1181,3 +1211,14 @@ test.each([
     expect(context.worker).toHaveBeenCalledTimes(1);
   },
 );
+
+test('a repair rule naming its Project by slug or id creates its Task under the slug and reaches a proposal', async () => {
+  for (const projectRef of [REPAIR_PROJECT.slug, REPAIR_PROJECT.id]) {
+    const context = await fixture({ projectRef });
+    expect(context.retained.intent.action.projectId).toBe(REPAIR_PROJECT.id);
+    expect(context.tasks.readTaskView(context.retained.taskId)?.projectId).toBe(
+      REPAIR_PROJECT.slug,
+    );
+    expect(context.artifact.result).toBeTruthy();
+  }
+});
