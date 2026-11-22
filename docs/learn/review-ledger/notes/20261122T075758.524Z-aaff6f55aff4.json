@@ -1,0 +1,7 @@
+{
+  "revision": "0614c050ac70fd71b9f4133bf60a3cec849353ff",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Cites the session API reference; the only change there is that the live-engine refusal also applies to an Agent handoff, which does not touch this decision's routing of managed chat through orchestration.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]}
+  ]
+}
