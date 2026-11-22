@@ -742,6 +742,19 @@ async function openNewChatDraft(page: Page) {
   };
 }
 
+/** The dock remembers `slug`, as opening that project's page leaves it. */
+async function seedDockBinding(page: Page, slug: string) {
+  await page.addInitScript((bound) => {
+    localStorage.setItem(
+      'station-device-settings-v1',
+      JSON.stringify({
+        version: 2,
+        values: { chatDockProjectSlug: bound },
+      }),
+    );
+  }, slug);
+}
+
 /** Chooses a project through a composer's project chip. */
 async function chooseProject(page: Page, composer: Locator, slug: string) {
   await composer.getByRole('button', { name: /^Project: / }).click();
@@ -1049,39 +1062,75 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeUndefined();
   });
 
-  // #3312 review HIGH: once the user has opened a project, the dock is bound
-  // to it and Start runs in that project's context, so its default Model
-  // applies. Home must name that Model, not the global default it would
-  // name for an unbound dock (`gpt-5.3-codex`, the agent default).
-  test('names the project default Start runs on when the dock is bound to a project', async ({
+  // #5392: opening a project rebinds the dock silently. A chat from Home
+  // goes where Home's chip says, No project until the person picks one, so
+  // the global default applies (`gpt-5.3-codex`, the agent default), not the
+  // bound project's own default (`gpt-5.4`).
+  test('starts in No project when the dock remembers a project Home does not show', async ({
     page,
   }) => {
     const commands: Record<string, unknown>[] = [];
     await mockTaskFirstHome(page, { commands, projectDefaultModel: 'gpt-5.4' });
-    await page.addInitScript(() => {
-      localStorage.setItem(
-        'station-device-settings-v1',
-        JSON.stringify({
-          version: 2,
-          values: { chatDockProjectSlug: 'station' },
-        }),
-      );
-    });
+    await seedDockBinding(page, 'station');
     await page.goto('/');
-    const prompt = 'Reply exactly PROJECT READY. Use no tools.';
+    const prompt = 'Reply exactly NO PROJECT READY. Use no tools.';
     const form = page.getByRole('form', { name: 'Start work' });
     const start = form.getByRole('button', { name: 'Start', exact: true });
-    // Both chips name what Start uses: the bound project and its default.
     await expect(
-      form.getByRole('button', {
-        name: 'Project: Station',
-        exact: true,
-      }),
+      form.getByRole('button', { name: 'Project: No project', exact: true }),
     ).toBeVisible();
     await expect(
       await runSetupControl(form, (panel) =>
         panel.getByRole('button', {
-          name: 'Agent: Codex · GPT 5.4',
+          name: 'Agent: Codex · gpt-5.3-codex',
+          exact: true,
+        }),
+      ),
+    ).toBeVisible();
+    await closeRunSetup(page);
+    await page
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill(prompt);
+    await start.click();
+    await expect
+      .poll(() =>
+        commands.some((command) => command.type === 'sendExecutionMessage'),
+      )
+      .toBe(true);
+    const sent = commands.find(
+      (command) => command.type === 'sendExecutionMessage',
+    );
+    expect(sent?.input).toMatchObject({
+      message: prompt,
+      target: { agent: 'codex-agent' },
+    });
+    expect(
+      (sent?.input as { target?: { workspace?: unknown } } | undefined)?.target
+        ?.workspace,
+    ).toBeUndefined();
+    await expectStartedChatRuns(page, prompt, 'Codex', 'gpt-5.3-codex');
+  });
+
+  // The project the person picks on Home's chip is where Start goes, with
+  // that project's default Model.
+  test('starts in the project picked on Home and names its default', async ({
+    page,
+  }) => {
+    const commands: Record<string, unknown>[] = [];
+    await mockTaskFirstHome(page, { commands, projectDefaultModel: 'gpt-5.4' });
+    await seedDockBinding(page, 'station');
+    await page.goto('/');
+    const prompt = 'Reply exactly PROJECT READY. Use no tools.';
+    const form = page.getByRole('form', { name: 'Start work' });
+    const start = form.getByRole('button', { name: 'Start', exact: true });
+    await chooseProject(page, form, 'station');
+    await expect(
+      form.getByRole('button', { name: 'Project: Station', exact: true }),
+    ).toBeVisible();
+    await expect(
+      await runSetupControl(form, (panel) =>
+        panel.getByRole('button', {
+          name: 'Agent: Codex · gpt-5.4',
           exact: true,
         }),
       ),
@@ -1108,6 +1157,20 @@ test.describe('Task-first Home (#332, mocked)', () => {
       },
     });
     await expectStartedChatRuns(page, prompt, 'Codex', 'gpt-5.4');
+  });
+
+  // A full load of a project page does not rebind the dock, so its binding
+  // can name another project (here none). The dock's New chat opens on the
+  // page's project and its chip says so.
+  test("the dock's New chat on a project page opens on that page's project", async ({
+    page,
+  }) => {
+    await mockTaskFirstHome(page);
+    await page.goto('/projects/station?dock=open');
+    const { draft } = await openNewChatDraft(page);
+    await expect(
+      draft.getByRole('button', { name: 'Project: Station', exact: true }),
+    ).toBeVisible();
   });
 
   test('keeps sidebar, project-chat, help launch, and explicit maximize transitions connected', async ({
@@ -1434,13 +1497,14 @@ test.describe('Task-first Home (#332, mocked)', () => {
       .toBeNull();
     await expect(page.getByText('No chat open')).toBeVisible();
 
-    // The selection Home's chips name is the one the dock's draft opens
-    // with: the same chips, the same words. Opening the project's work bound
-    // the dock to it, so both now open on Station.
+    // Opening the project's work bound the dock to it, and the dock's draft
+    // (off a project page) opens there. Home does not follow that binding:
+    // its chip still says No project, with the same global Agent and Model
+    // the dock's draft names (#5392).
     await expect(advertised).toBeVisible();
     await expect(
       homeComposer.getByRole('button', {
-        name: 'Project: Station',
+        name: 'Project: No project',
         exact: true,
       }),
     ).toBeVisible();

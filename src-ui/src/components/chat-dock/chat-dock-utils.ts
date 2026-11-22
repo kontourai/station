@@ -243,15 +243,24 @@ export function resolveSessionProjectMismatchLabel(
   return input.sessionProjectName || input.sessionProjectSlug;
 }
 
-/** New chat follows the project shown in its dock; an explicit fork wins. */
+/**
+ * The project the dock's New chat opens on. An explicit fork wins, then a
+ * dock fixed to one project. Otherwise the project page the dock is opened
+ * on, when it is one: the remembered binding is written only by in-app
+ * navigation and the dock's own chips, so after a full load or a Back into a
+ * project page it can name a project the person is not looking at. Off a
+ * project page, the dock's remembered binding (No project when unbound). The
+ * draft's project chip shows the result either way.
+ */
 export function resolveNewChatModalDefaultProjectSlug(input: {
   forkProjectSlug: string | undefined;
   hasImmutableProjectScope: boolean;
   immutableProjectSlug: string | undefined;
   dockChromeProjectSlug: string | null;
-  routeActiveProjectSlug: string | null;
+  /** The route's own project (`/projects/:slug/...`), never a remembered one. */
+  pageProjectSlug: string | null;
 }): string | undefined {
   if (input.forkProjectSlug) return input.forkProjectSlug;
   if (input.hasImmutableProjectScope) return input.immutableProjectSlug;
-  return input.dockChromeProjectSlug ?? undefined;
+  return input.pageProjectSlug ?? input.dockChromeProjectSlug ?? undefined;
 }

@@ -16,7 +16,7 @@ import {
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { effectiveExecutionStationId } from '../../hooks/useExecutionStationCatalog';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
-import { resolveStartContextFromProjectSlug } from '../../hooks/useNewChatStartContext';
+import { resolveStartContextFromProjectSlug } from '../../hooks/startContext';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { useProjectIcons } from '../../hooks/useProjectIcons';
 import {
@@ -172,8 +172,9 @@ export function reloadHeldHomeDraftsForTests() {
  * draft (`NewChatModal`), over the same start context
  * (`resolveStartContextFromProjectSlug`). Home starts in No project and
  * changes only when the person picks a project in its chip; the dock's
- * remembered project (which opening any project rebinds) is never read, so
- * the chip is the only thing that decides where a chat from Home goes.
+ * remembered project (which opening any project rebinds) is neither read
+ * nor written, so the chip is the only thing that decides where a chat from
+ * Home goes, and a pick on Home never moves the dock.
  *
  * Start hands the dock exactly what the chips show (context, Agent, Model
  * and runtime options) and the dock starts it through the same path its own

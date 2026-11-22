@@ -36,7 +36,7 @@ import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useExecutionStations } from '../../hooks/useExecutionStationCatalog';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
-import { resolveStartContextFromProjectSlug } from '../../hooks/useNewChatStartContext';
+import { resolveStartContextFromProjectSlug } from '../../hooks/startContext';
 import {
   trackContextAgent,
   trackRecentAgent,
@@ -1473,7 +1473,8 @@ export function NewChatModal({
     setSelectedContext(value);
     setSelectedAgentIndex(0);
     // The project chip is remembered: it rebinds the dock, as the project
-    // switcher does, so Home and the dock open on the same project next.
+    // switcher does, so the dock's next draft off a project page opens on it.
+    // Home keeps its own pick and never reads this.
     if (projectBindable) bindProject(value);
   };
   const closeChatRequest = () => {

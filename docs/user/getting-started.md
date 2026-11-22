@@ -665,11 +665,12 @@ not interrupted for that Project's finished turns.
 Choosing on a chip starts nothing, and Station remembers it. An Agent is
 remembered only once it can start, and for each project and for **No project** on this browser and
 Station access, and the Model for each Agent. Home always starts in
-**No project**, and the project you pick on its chip holds until you reload the
-page; opening a Project elsewhere never changes it. The pick is also written
-as the chat dock's project for new chats, the same setting the dock's project
-switcher changes, so the dock's own new chat opens where you just chose.
-**No project** clears that setting.
+**No project**, and the project you pick on its chip holds in this browser tab,
+for this Station access, until you reload the page; opening a Project elsewhere
+never changes it, and the chat dock does not follow it. The dock's own new chat
+opens on the Project whose page you are on; anywhere else it opens on the
+project last chosen in the dock (its chip, or the Project you last opened), and
+its chip shows which.
 Runtime options such as reasoning effort stay with the Model choice for this
 browser tab only; they are not remembered after it. A choice you make stays on
 both surfaces for this browser tab, even if another chat later runs on a
@@ -703,8 +704,8 @@ the active mode is confirmed after startup.
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If
 the project list cannot be read, the composer says so instead. A
-chat started from Home opens in the chat dock's current project (by default,
-the project you last opened), so that project's default Agent and Model apply.
+chat started from Home opens in the project its chip shows, **No project** until
+you pick one, so that project's default Agent and Model apply.
 With no Agent ready at all, **Start** still works: Station uses working
 defaults, waits for discovery, and carries your original request into the
 conversation. An already-ready engine can be prepared through the existing

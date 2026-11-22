@@ -48,8 +48,12 @@ type StartAgentChoice = {
 const startChoices = {
   agents: new Map<string, StartAgentChoice>(),
   models: new Map<string, NewChatModelChoice>(),
-  /** Home's own project pick (a context), apart from the dock's binding. */
-  homeProject: undefined as string | undefined,
+  /**
+   * Home's own project pick (a context) per Station access, like the Agent
+   * choices: a pick made under one Station is not Home's pick under another.
+   * Nothing the dock reads.
+   */
+  homeProjects: new Map<string, string>(),
   version: 0,
 };
 const startChoiceListeners = new Set<() => void>();
@@ -71,7 +75,7 @@ export function resetStartChoicesForTests() {
   changeStartChoices(() => {
     startChoices.agents.clear();
     startChoices.models.clear();
-    startChoices.homeProject = undefined;
+    startChoices.homeProjects.clear();
   });
 }
 
@@ -91,7 +95,8 @@ export function resetStartChoicesForTests() {
  *   Reset forgets both. Runtime options are not remembered across sessions:
  *   the memory has no field for them.
  *
- * The project is the context itself; `useBindStartProject` remembers it.
+ * The project is the context itself: the dock's draft remembers it with
+ * `useBindStartProject`, Home keeps its own (`useHomeStartProject`).
  */
 export function useStartSelection(selection: SelectionModel, context: string) {
   const { namespace } = useAuthorityPersistence();
@@ -247,10 +252,10 @@ export function useStartSelection(selection: SelectionModel, context: string) {
 }
 
 /**
- * Remember the project chip: it rebinds the dock (`chatDockProjectSlug`),
- * the setting the dock's project switcher writes and that the dock's draft
- * reads as its default project. Home does not read it back
- * (`useHomeStartProject`): opening any project rebinds it silently.
+ * Remember the dock draft's project chip: it rebinds the dock
+ * (`chatDockProjectSlug`), the setting the dock's project switcher writes
+ * and that the dock's draft falls back to off a project page. Home never
+ * writes or reads it (`useHomeStartProject`).
  *
  * "No workspace" stores `null`, the binding's own "no project bound" value,
  * which the start context reads back as No workspace. A project with no
@@ -272,38 +277,42 @@ export function useBindStartProject(): (context: string) => void {
   );
 }
 
-/** Test seam: Home's chip already picked `context` in this tab. */
-export function seedHomeStartProjectForTests(context: string | undefined) {
+const homeProjectKey = (namespace: string | null) => JSON.stringify(namespace);
+
+/** Test seam: Home's chip already picked `context` under `namespace`. */
+export function seedHomeStartProjectForTests(
+  context: string | undefined,
+  namespace: string | null = null,
+) {
   changeStartChoices(() => {
-    startChoices.homeProject = context;
+    if (context === undefined)
+      startChoices.homeProjects.delete(homeProjectKey(namespace));
+    else startChoices.homeProjects.set(homeProjectKey(namespace), context);
   });
 }
 
 /**
- * Home's project pick, kept for this tab. Home starts in No project and
- * changes only when the person picks a project in its chip: the dock's
- * remembered binding is rebound silently by opening any project, so Home
- * must not read it. A pick is still written to that binding, so the dock's
- * own draft opens where the person just chose.
+ * Home's project pick, kept for this tab and this Station access. Home
+ * starts in No project and changes only when the person picks a project in
+ * its chip. It is Home's own: the dock's remembered binding is rebound
+ * silently by opening any project, so Home never reads it, and a pick on
+ * Home never writes it, so the dock never follows a choice made on Home.
  */
 export function useHomeStartProject(): [
   string | undefined,
   (context: string) => void,
 ] {
-  const bindProject = useBindStartProject();
-  const picked = useSyncExternalStore(
-    subscribeStartChoices,
-    () => startChoices.homeProject,
-    () => startChoices.homeProject,
-  );
+  const { namespace } = useAuthorityPersistence();
+  const key = homeProjectKey(namespace);
+  const read = () => startChoices.homeProjects.get(key);
+  const picked = useSyncExternalStore(subscribeStartChoices, read, read);
   const pick = useCallback(
     (context: string) => {
       changeStartChoices(() => {
-        startChoices.homeProject = context;
+        startChoices.homeProjects.set(key, context);
       });
-      bindProject(context);
     },
-    [bindProject],
+    [key],
   );
   return [picked, pick];
 }
