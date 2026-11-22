@@ -171,7 +171,7 @@ On a phone: The same transcript with a bottom sheet for the review.
 | Arranged app (today's Board) | copy | Exists today. Rename only. |
 | Discover, Library and Updates | layout | Plugins and Registry exist. A regroup plus routing. |
 | Facets "Works with" and "Opens as" | backend check first | Derivable from the manifest. The counts need a backend check. |
-| App badge or attention item | server work | Planned for v1.1. New server data and an SDK hook. |
+| App badge or attention item | server work | Planned after v1. New server data and an SDK hook. |
 | Reorder apps | server work | Planned for v1. New UI plus a stored order. |
 | "Sent from <app>" chat label | new screen state | Planned for v1. UI only: the origin on the chat. |
 | Embedded chat or diff component | new screen state | Later. A new SDK component. |

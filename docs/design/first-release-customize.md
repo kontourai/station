@@ -223,7 +223,7 @@ On a phone: A real bottom sheet over a dimmed composer, titled "Model", with a c
 | Capability summary | Keep | Reshaped as "About · N of M features · K safety notes". |
 | Recovery and delivery details | Keep | One level deeper. Expert detail. |
 | Add engine catalogue | Simplify | Found, install six, show more, custom. It is 6000px today. |
-| Install offers without installing | Keep | It works: Station offers the install command without running it. |
+| Install offers without installing | Keep | It works: nothing installs until you confirm. |
 | Knowledge tab | Simplify | One status page with no add button. Setup is in four places and the add button goes to Settings. |
 | Developer › Memory | Hide for the first release | An operator concern. |
 | Integration status strip | Hide for the first release | A preview. It is not reachable today. |
