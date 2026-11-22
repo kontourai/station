@@ -107,7 +107,12 @@ function EpisodeRow({
         status={episode.state}
         tone={episode.state === 'open' ? 'neutral' : 'caution'}
       />
-      {episode.state === 'exhausted' ? (
+      {episode.startFailed ? (
+        <span className="automations__note" role="status">
+          The Agent did not start, so nothing ran. Retry is available.
+        </span>
+      ) : null}
+      {episode.state === 'exhausted' || episode.startFailed ? (
         <Button
           disabled={retry.isPending}
           aria-label={`Retry episode ${episode.episodeId} of ${ruleName}`}

@@ -158,6 +158,8 @@ async function world(
      * grant's Project, as a hand edit or an older Station would store it.
      */
     storedProject?: string;
+    /** The rule's episode `maxAttempts` (default the fixture's). */
+    maxAttempts?: number;
   } = {},
 ) {
   const ruleModes = options.ruleModes ?? ['live'];
@@ -193,6 +195,14 @@ async function world(
         ...QUALIFICATION_RULE,
         name: index === 0 ? QUALIFICATION_RULE.name : `rule ${index}`,
         ...(options.episode === false ? { episode: undefined } : {}),
+        ...(options.maxAttempts
+          ? {
+              episode: {
+                ...QUALIFICATION_RULE.episode!,
+                maxAttempts: options.maxAttempts,
+              },
+            }
+          : {}),
         sourceId: source.id,
         action: {
           kind: 'dispatch-task',
@@ -1680,4 +1690,116 @@ test("retry-episode on a slug-named rule's exhausted episode starts the retry in
     STATION_PROJECT.slug,
   );
   expect(w.agentStarts.at(-1)).toBe(STATION_PROJECT.slug);
+});
+
+/** A start that fails before its Agent starts: nothing is invoked. */
+function failBeforeStart(w: World) {
+  vi.spyOn(w.dispatcher, 'dispatch').mockResolvedValueOnce({
+    kind: 'failed',
+    reason: 'provider start failed',
+  });
+}
+
+const retryOf = (w: World, intent: AutomationActionIntent) => () =>
+  retryAutomationEpisode({
+    ledger: w.ledger,
+    read: () => w.store.read(),
+    ruleId: intent.ruleId,
+    episodeId: intent.episodeId,
+    now: Date.now(),
+  });
+
+async function failedStart(w: World) {
+  failBeforeStart(w);
+  const first = w.ledger.listActionIntents()[0]!;
+  await liveTick(w);
+  await vi.waitFor(() =>
+    expect(w.ledger.readIntent(first.intentId)?.state).toBe('failed'),
+  );
+  return first;
+}
+
+test('a start that failed before its Agent started shows on the open episode, and one retry starts it once', async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    actionProject: 'station',
+    grantProject: 'station',
+  });
+  const first = await failedStart(w);
+  expect(w.ledger.listOpenEpisodes()).toEqual([
+    expect.objectContaining({
+      state: 'open',
+      attemptCount: 0,
+      startFailed: true,
+    }),
+  ]);
+  const retry = retryOf(w, first);
+  const retried = retry();
+  expect(retried.kind).toBe('retried');
+  // A second retry while the first is pending is refused: one attempt.
+  expect(retry().kind).toBe('not-exhausted');
+  expect(w.ledger.listOpenEpisodes()[0]).not.toHaveProperty('startFailed');
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  await w.runtime.tick();
+  expect(retry().kind).not.toBe('retried');
+  expect(w.adapter.sends).toHaveLength(1);
+  expect(w.agentStarts).toEqual([STATION_PROJECT.slug]);
+});
+
+test('a retry racing a new red run starts one Agent for the episode', async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  const first = await failedStart(w);
+  expect(retryOf(w, first)().kind).toBe('retried');
+  w.intake(laterFailure(w));
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  await w.runtime.tick();
+  await w.runtime.tick();
+  expect(w.adapter.sends).toHaveLength(1);
+  expect(
+    w.ledger
+      .listActionIntents()
+      .filter(
+        (intent) => intent.state === 'queued' || intent.state === 'running',
+      ),
+  ).toHaveLength(1);
+});
+
+test('retry-episode never accepts an open episode whose failed start was invoked', async () => {
+  const w = await world({ projects: [STATION_PROJECT], maxAttempts: 2 });
+  vi.spyOn(w.dispatcher, 'dispatch').mockImplementationOnce(
+    async (_taskId, input) => {
+      input.monitor!.onSessionReserved!({
+        sessionId: 'session-invoked',
+      } as never);
+      input.monitor!.beforeProviderStart!('session-invoked');
+      return { kind: 'failed', reason: 'provider failed after start' };
+    },
+  );
+  const first = w.ledger.listActionIntents()[0]!;
+  await liveTick(w);
+  await vi.waitFor(() =>
+    expect(w.ledger.readIntent(first.intentId)?.state).toBe('failed'),
+  );
+  expect(w.ledger.listOpenEpisodes()[0]).toMatchObject({
+    state: 'open',
+    attemptCount: 1,
+  });
+  expect(w.ledger.listOpenEpisodes()[0]).not.toHaveProperty('startFailed');
+  expect(retryOf(w, first)().kind).toBe('not-exhausted');
+});
+
+test('retry-episode never accepts an episode whose start is indeterminate', async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  vi.spyOn(w.adapter, 'startSession').mockRejectedValueOnce(
+    new Error('provider start failed'),
+  );
+  const first = w.ledger.listActionIntents()[0]!;
+  await liveTick(w);
+  await vi.waitFor(() =>
+    expect(w.ledger.readIntent(first.intentId)?.state).toBe('indeterminate'),
+  );
+  expect(retryOf(w, first)().kind).toMatch(/^(indeterminate|active)$/);
+  expect(w.ledger.listOpenEpisodes()[0]).not.toHaveProperty('startFailed');
 });

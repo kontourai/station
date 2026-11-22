@@ -226,6 +226,8 @@ export type AutomationEpisodeRecord = Readonly<{
   maxAttempts: number;
   openedAt: string;
   updatedAt: string;
+  /** Its latest start failed before the Agent started; a retry is accepted. */
+  startFailed?: true;
 }>;
 
 /**
@@ -1348,7 +1350,8 @@ class SqliteAutomationLedger implements AutomationLedger {
       if (episode.state === 'indeterminate') return { kind: 'indeterminate' };
       if (
         episode.state !== 'exhausted' &&
-        episode.attempt_count < episode.max_attempts
+        episode.attempt_count < episode.max_attempts &&
+        !this.startFailedBeforeInvocation(input.ruleId, input.episodeId)
       )
         return { kind: 'not-exhausted' };
       const live = this.db
@@ -1436,6 +1439,30 @@ class SqliteAutomationLedger implements AutomationLedger {
         .run(input.now, intent.deliveryKey);
       return { kind: 'retried', intent };
     });
+  }
+
+  /**
+   * Whether the episode's latest intent ended `failed` or `refused` without
+   * ever being invoked: its start failed before any effect, so the episode
+   * still holds an unused attempt and only an operator retry moves it on.
+   * An invoked or `indeterminate` intent never qualifies.
+   */
+  private startFailedBeforeInvocation(
+    ruleId: string,
+    episodeId: string,
+  ): boolean {
+    const row = this.db
+      .prepare(
+        'SELECT state, invoked_ms FROM automation_action_intents WHERE rule_id = ? AND episode_id = ? ORDER BY retry DESC LIMIT 1',
+      )
+      .get(ruleId, episodeId) as
+      | { state: string; invoked_ms: number | null }
+      | undefined;
+    return (
+      row !== undefined &&
+      row.invoked_ms === null &&
+      (row.state === 'failed' || row.state === 'refused')
+    );
   }
 
   recordDelivery(input: RecordDeliveryInput): RecordDeliveryOutcome {
@@ -1694,7 +1721,13 @@ class SqliteAutomationLedger implements AutomationLedger {
             "SELECT * FROM automation_episodes WHERE state <> 'closed' ORDER BY opened_ms DESC, rowid DESC LIMIT ?",
           )
           .all(Math.max(1, Math.min(1_000, Math.floor(limit)))) as EpisodeRow[]
-      ).map(episodeFromRow),
+      ).map((row) => {
+        const episode = episodeFromRow(row);
+        return episode.state === 'open' &&
+          this.startFailedBeforeInvocation(episode.ruleId, episode.episodeId)
+          ? { ...episode, startFailed: true as const }
+          : episode;
+      }),
     );
   }
 

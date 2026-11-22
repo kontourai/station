@@ -164,3 +164,24 @@ test('the section is reachable from the Advanced page beside Feature previews', 
     advanced.indexOf('feature-previews') + 1,
   );
 });
+
+test('an open episode whose start failed says the Agent did not start and offers a retry', () => {
+  episodes.mockReturnValue(
+    ok({
+      episodes: [
+        { ...EPISODE('43', 'open'), attemptCount: 0, startFailed: true },
+        EPISODE('42', 'open'),
+      ],
+    }),
+  );
+  render(<AutomationsSection />);
+  expect(
+    screen.getAllByText(
+      'The Agent did not start, so nothing ran. Retry is available.',
+    ),
+  ).toHaveLength(1);
+  const buttons = screen.getAllByRole('button', { name: /^Retry episode/ });
+  expect(buttons).toHaveLength(1);
+  fireEvent.click(buttons[0]!);
+  expect(retry).toHaveBeenCalledWith({ ruleId: 'rule-1', episodeId: '43' });
+});

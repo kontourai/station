@@ -590,6 +590,11 @@ export type AutomationEpisodeRecord = Readonly<{
   maxAttempts: number;
   openedAt: string;
   updatedAt: string;
+  /**
+   * The episode's latest start failed before its Agent started (nothing was
+   * invoked). The episode is still `open`; `retry-episode` accepts it.
+   */
+  startFailed?: true;
 }>;
 
 /** `POST /automations/sources`: a disabled `github-poll` source (#4513). */

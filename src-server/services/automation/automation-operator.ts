@@ -75,6 +75,7 @@ export function projectAutomationEpisode(
     maxAttempts: record.maxAttempts,
     openedAt: record.openedAt,
     updatedAt: record.updatedAt,
+    ...(record.startFailed ? { startFailed: true as const } : {}),
   };
 }
 
