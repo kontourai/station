@@ -125,6 +125,22 @@ describe('the inbox row flag for an unconfirmed delivery (#5398)', () => {
     expect(recheck).toHaveBeenCalledWith('turn-unconfirmed');
   });
 
+  it('a Check that cannot reach Station says so in words, not the raw error', async () => {
+    recheck.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    row(UNCONFIRMED);
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'Check delivery in Say hello in one short line.',
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole('status').textContent).not.toBe(''),
+    );
+    expect(screen.getByRole('status').textContent).not.toContain(
+      'Failed to fetch',
+    );
+  });
+
   it('a row with nothing unconfirmed has no flag', () => {
     row({ status: 'idle' });
     expect(screen.queryByTestId('inbox-row-unconfirmed-flag')).toBeNull();

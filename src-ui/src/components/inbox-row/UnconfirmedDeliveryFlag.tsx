@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useRecheckMessageDelivery } from '../../hooks/useMessageDeliveryState';
+import { describeStationFailure } from '../../utils/stationFailure';
 import type { WorkFacts } from '../../views/home/work-facts';
 import { Button } from '../Button';
 import {
@@ -46,11 +47,8 @@ export function UnconfirmedDeliveryFlag({
       }
       setResult(deliveryCheckResult(outcome));
     } catch (error) {
-      setResult(
-        error instanceof Error
-          ? error.message
-          : 'Could not check. Open the chat to try again.',
-      );
+      // The same translation the message's own Check uses.
+      setResult(describeStationFailure(error).body);
     } finally {
       setBusy(false);
     }

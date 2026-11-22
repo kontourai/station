@@ -153,7 +153,7 @@ On a phone: The same page in one column.
 6. **The Updates group, with "Mark all done".** _(layout; slice 4.14)_
 7. **An automation failure says what failed and offers one step ("Sign in to Codex").** Today a failed-turn notification shows raw text about provider connections needing an application default. _(layout; slice 4.14)_
 8. **Raw server text is translated: "Couldn't start: two providers are turned on and neither is the default.", with "Choose a default".** Today the page shows raw server text. The mapping is new copy per failure code. "Choose a default" goes to Customize › Providers. _(copy; slice 0.17)_
-9. **Done, plus a flag, plus "Check".** It follows the Tasks board rule. _(layout; slice 0.16)_
+9. **Done, plus a flag, plus "Check".** It follows the Tasks board rule. The flag takes its own line under the row's status line, not the end of it, because Check is a control of its own and the status line sits inside the row's open button. _(layout; slice 0.16)_
 10. **A row ⋯ menu.** It opens the menu specified on the row actions screen. _(layout; slice 4.13)_
 11. **The gear opens Settings › Notifications.** The separate "Notification settings" link and "Dismiss eligible items" button are removed. _(layout; slice 4.14)_
 12. **One row per chat. The duplicate "Session failed" and "Turn Failed" pair collapses into one Failed row.** Today one failed run appears twice on the Notifications page. _(new screen state; slice 4.13)_
