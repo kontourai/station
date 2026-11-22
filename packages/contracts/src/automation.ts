@@ -446,6 +446,11 @@ export const AUTOMATION_REFUSAL_REASONS = [
   'policy_unavailable',
   /** The rule, its source or its grant changed before the action started. */
   'policy_changed',
+  /**
+   * The rule's Project (by id or slug) names no current Project, so no Task
+   * started. The delivery's decision keeps the value as the rule names it.
+   */
+  'project_unavailable',
   /** A consumer's admission (inbox placement, repair setup) refused the action. */
   'admission_refused',
 ] as const;

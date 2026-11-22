@@ -6375,7 +6375,7 @@ method. Every mutation also requires the operator in person (the same proof as
 | `PUT /automations/sources/:target/disable` | Optional `{expectedFingerprint}`. |
 | `DELETE /automations/sources/:target` | Only once no rule names the source. |
 | `GET /automations/rules` | `{configurationFingerprint, rules}`. |
-| `POST /automations/rules` | A `dispatch-task` rule with `sourceId`, created in `observe` (201). |
+| `POST /automations/rules` | A `dispatch-task` rule with `sourceId`, created in `observe` (201). `action.projectId` is a Project id or slug; the id is stored. |
 | `PUT /automations/rules/:target` | Replaces a `dispatch-task` rule's name, matcher, episode, action and rate limit at `expectedFingerprint`; never its source or mode. |
 | `PUT /automations/rules/:target/enable` | `{expectedFingerprint}`; sets `live` (`dispatch-task` only). |
 | `PUT /automations/rules/:target/disable` | Sets `off`; optional `{expectedFingerprint}`. |

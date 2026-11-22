@@ -71,6 +71,7 @@ import {
   type PausedGateReviewAggregate,
 } from '../../services/projects/attention-projection.js';
 import { FileAttentionSnoozeStore } from '../../services/projects/attention-snooze-store.js';
+import { localProjectIdFor } from '../../services/projects/project-local-id.js';
 import { defaultedProjectWorkingDirectory } from '../../services/projects/project-service.js';
 import type {
   ScheduledProjectHold,
@@ -722,7 +723,12 @@ export function configureRuntimeSupportServices(
       createAutomationLedger({ directory: join(automationHome, 'automation') }),
     () => existsSync(join(automationHome, 'automation', 'automation.sqlite')),
   );
-  const automationStore = new AutomationStore(automationHome);
+  // Resolves a rule's or grant's Project slug to its id on read and write.
+  const automationStore = new AutomationStore(
+    automationHome,
+    undefined,
+    context.projectService,
+  );
   // #4508: Task tracker follow-ups ride the same tick, behind their own
   // Feature Preview; the store is the runtime's, shared with Task briefs.
   const taskFollowUps = context.taskFollowUps;
@@ -783,9 +789,7 @@ export function configureRuntimeSupportServices(
           featurePreviews: context.featurePreviews,
           store: automationStore,
           isProjectCurrent: (id) =>
-            context.projectService
-              .listProjects()
-              .some((project) => project.id === id),
+            localProjectIdFor(context.projectService, id) === id,
           ledger: () => automationLedger.get(),
           existingLedger: () => automationLedger.getExisting(),
           taskGraph: context.taskGraphService,

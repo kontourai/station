@@ -122,11 +122,28 @@ async function world(
     legacyEnabled?: boolean;
     /** The rule action's posture (`dispatch-task` `approvalMode`). */
     approvalMode?: 'ask' | 'auto';
+    /**
+     * The current Projects, as `ProjectService.listProjects()` lists them.
+     * Default: one Project whose id and slug are both `project`.
+     */
+    projects?: { id: string; slug: string }[];
+    /** How the rule's action names its Project (an id or a slug). */
+    actionProject?: string;
+    /** How the source's grant names its Project (an id or a slug). */
+    grantProject?: string;
+    /**
+     * Written straight into the stored file as both the action's and the
+     * grant's Project, as a hand edit or an older Station would store it.
+     */
+    storedProject?: string;
   } = {},
 ) {
   const ruleModes = options.ruleModes ?? ['live'];
   const home = makeTempDir('automation-actions-');
-  const store = new AutomationStore(home);
+  const projects = options.projects ?? [{ id: 'project', slug: 'project' }];
+  const store = new AutomationStore(home, undefined, {
+    listProjects: () => projects,
+  });
   const source = (
     await store.createSource({
       kind: 'github-poll',
@@ -134,7 +151,7 @@ async function world(
       repository: 'kontourai/station',
       grants: [
         {
-          projectId: 'project',
+          projectId: options.grantProject ?? projects[0]!.id,
           agentId: FIXTURE_TASK_AGENT,
           actions: ['dispatch-task'],
         },
@@ -151,7 +168,7 @@ async function world(
         sourceId: source.id,
         action: {
           kind: 'dispatch-task',
-          projectId: 'project',
+          projectId: options.actionProject ?? projects[0]!.id,
           agentId: FIXTURE_TASK_AGENT,
           instructions: 'Investigate the failure.',
           budget: { maxTurns: 1, maxTokens: 20000, maxWallRuntimeMs: 60000 },
@@ -167,12 +184,30 @@ async function world(
     store.path,
     JSON.stringify({
       ...draft,
-      sources: draft.sources.map((source) => ({ ...source, enabled: true })),
-      rules: draft.rules.map(({ mode: _mode, ...rule }, index) =>
-        options.legacyEnabled
+      sources: draft.sources.map((source) => ({
+        ...source,
+        enabled: true,
+        ...(options.storedProject === undefined
+          ? {}
+          : {
+              grants: source.grants?.map((grant) => ({
+                ...grant,
+                projectId: options.storedProject,
+              })),
+            }),
+      })),
+      rules: draft.rules.map(({ mode: _mode, ...stored }, index) => {
+        const rule =
+          options.storedProject === undefined
+            ? stored
+            : {
+                ...stored,
+                action: { ...stored.action, projectId: options.storedProject },
+              };
+        return options.legacyEnabled
           ? { ...rule, enabled: true }
-          : { ...rule, mode: ruleModes[index] },
-      ),
+          : { ...rule, mode: ruleModes[index] };
+      }),
     }),
     { mode: 0o600 },
   );
@@ -257,7 +292,7 @@ async function world(
     error: vi.fn(),
   } as never);
   let inbox: ThreadInboxDelivery | undefined;
-  const projectIds = new Set(['project']);
+  const projectIds = new Set(projects.map((project) => project.id));
   const warnings = vi.fn();
   const ledgerReads = vi.fn(() => ledger);
   const makeRuntime = () =>
@@ -1434,4 +1469,172 @@ test('the Task read projection shows the immutable mandate for that exact Task i
   expect(
     readAutomationTaskProjection(w.ledger, { ...task, createdBy: 'person' }),
   ).toBeUndefined();
+});
+
+// ── A rule names its Project by slug or by id ─────────────────────────────
+
+const STATION_PROJECT = {
+  id: '5b0d3c1e-8f6a-4c2b-9d7e-1a2b3c4d5e6f',
+  slug: 'station',
+};
+
+async function liveTick(w: World) {
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick();
+}
+
+test('a live rule naming its Project by slug starts a Task in that Project, and the store keeps the id', async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    actionProject: 'station',
+    grantProject: 'station',
+  });
+  const stored = JSON.parse(readFileSync(w.store.path, 'utf8'));
+  expect(stored.rules[0].action.projectId).toBe(STATION_PROJECT.id);
+  expect(stored.sources[0].grants[0].projectId).toBe(STATION_PROJECT.id);
+  await liveTick(w);
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  const intent = w.ledger.listActionIntents()[0]!;
+  expect(intent.action.projectId).toBe(STATION_PROJECT.id);
+  expect(w.graph.readTaskView(intent.taskId!)?.projectId).toBe(
+    STATION_PROJECT.id,
+  );
+  expect(w.ledger.listDeliveries()[0]).toMatchObject({ outcome: 'started' });
+});
+
+test('a live rule naming its Project by id still starts a Task in that Project', async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    actionProject: STATION_PROJECT.id,
+    grantProject: STATION_PROJECT.id,
+  });
+  await liveTick(w);
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  const intent = w.ledger.listActionIntents()[0]!;
+  expect(w.graph.readTaskView(intent.taskId!)?.projectId).toBe(
+    STATION_PROJECT.id,
+  );
+});
+
+test('a rule already stored with a slug dispatches without being rewritten', async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    storedProject: 'station',
+  });
+  const stored = JSON.parse(readFileSync(w.store.path, 'utf8'));
+  expect(stored.rules[0].action.projectId).toBe('station');
+  expect(stored.sources[0].grants[0].projectId).toBe('station');
+  await liveTick(w);
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  const intent = w.ledger.listActionIntents()[0]!;
+  expect(intent.action.projectId).toBe(STATION_PROJECT.id);
+  expect(w.graph.readTaskView(intent.taskId!)?.projectId).toBe(
+    STATION_PROJECT.id,
+  );
+  // A later tick keeps it running: the Task's Project matches the intent's.
+  await w.runtime.tick();
+  expect(w.ledger.readIntent(intent.intentId)?.state).toBe('running');
+});
+
+test('a grant naming its Project by slug grants an action naming the id', async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    actionProject: STATION_PROJECT.id,
+    grantProject: 'station',
+  });
+  await liveTick(w);
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+});
+
+test("a value that is one Project's id and another's slug names the Project with that id", async () => {
+  const byId = { id: 'station', slug: 'legacy' };
+  const w = await world({
+    projects: [STATION_PROJECT, byId],
+    actionProject: 'station',
+    grantProject: 'station',
+  });
+  await liveTick(w);
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  const intent = w.ledger.listActionIntents()[0]!;
+  expect(intent.action.projectId).toBe(byId.id);
+  expect(w.graph.readTaskView(intent.taskId!)?.projectId).toBe(byId.id);
+});
+
+test('a new rule naming no Project is refused with the value as given', async () => {
+  await expect(
+    world({ projects: [STATION_PROJECT], actionProject: 'nope' }),
+  ).rejects.toMatchObject({
+    problems: ['action.projectId: no Project has the id or slug "nope"'],
+  });
+  await expect(
+    world({ projects: [STATION_PROJECT], grantProject: 'nope' }),
+  ).rejects.toMatchObject({
+    problems: ['grants[0].projectId: no Project has the id or slug "nope"'],
+  });
+});
+
+test('a stored rule naming no Project refuses its delivery as project_unavailable, says so once, and starts no Task', async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    storedProject: 'nope',
+  });
+  await liveTick(w);
+  await w.runtime.tick();
+  await w.runtime.tick();
+  expect(w.ledger.listDeliveries()[0]).toMatchObject({
+    outcome: 'refused',
+    reason: 'project_unavailable',
+    decisions: [expect.objectContaining({ projectId: 'nope' })],
+  });
+  expect(w.graph.listTasks()).toEqual([]);
+  expect(w.adapter.sends).toEqual([]);
+  const notFound = w.warnings.mock.calls.filter(([message]) =>
+    String(message).includes('Project that was not found'),
+  );
+  expect(notFound).toEqual([
+    [expect.any(String), { ruleId: w.rule.id, projectId: 'nope' }],
+  ]);
+});
+
+test("retry-episode on a slug-named rule's exhausted episode starts the retry in that Project", async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    storedProject: 'station',
+  });
+  const first = await running(w);
+  w.adapter.events.push({
+    method: 'turn.completed',
+    eventId: 'slug-first-turn-done',
+    provider: w.adapter.provider,
+    threadId: first.sessionId!,
+    turnId: first.turnId!,
+    createdAt: new Date().toISOString(),
+    finishReason: 'stop',
+    invocationId: w.adapter.sends[0]?.invocationId,
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(first.sessionId!, ['turn.completed']),
+    ).toBeTruthy(),
+  );
+  await w.runtime.tick();
+  expect(w.ledger.episode(first.episodeKey)?.state).toBe('exhausted');
+  const retried = retryAutomationEpisode({
+    ledger: w.ledger,
+    read: () => w.store.read(),
+    ruleId: first.ruleId,
+    episodeId: first.episodeId,
+    now: Date.now(),
+  });
+  expect(retried.kind).toBe('retried');
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(2));
+  const second =
+    retried.kind === 'retried'
+      ? w.ledger.readIntent(retried.intent.intentId)!
+      : undefined;
+  expect(second?.action.projectId).toBe(STATION_PROJECT.id);
+  expect(w.graph.readTaskView(second!.taskId!)?.projectId).toBe(
+    STATION_PROJECT.id,
+  );
 });

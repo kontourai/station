@@ -42,7 +42,11 @@ interface AutomationActionsOptions {
   hosted: boolean;
   featurePreviews: FeaturePreviewRegistry;
   store: Pick<AutomationStore, 'read'>;
-  /** Exact current Project id; a same-named replacement never inherits a grant. */
+  /**
+   * Whether this is the exact id of a current Project; a same-named
+   * replacement never inherits a grant. The store has already resolved a
+   * rule's slug to its id, so the intent carries the id.
+   */
   isProjectCurrent: (projectId: string) => boolean;
   ledger: () => AutomationLedger;
   existingLedger: () => AutomationLedger | undefined;
@@ -578,6 +582,9 @@ class AutomationActionsRuntime implements AutomationActions {
         if (intent.state !== 'pending' || !this.enabled()) continue;
         const authority = this.authority(intent);
         if (authority.kind !== 'current') {
+          const projectMissing =
+            authority.kind === 'revoked' &&
+            authority.cause === 'project-unavailable';
           ledger.updateIntent(
             intent.intentId,
             {
@@ -585,10 +592,18 @@ class AutomationActionsRuntime implements AutomationActions {
               reason:
                 authority.kind === 'stopped'
                   ? authority.reason
-                  : 'policy_changed',
+                  : projectMissing
+                    ? 'project_unavailable'
+                    : 'policy_changed',
             },
             Date.now(),
           );
+          // Once per refused intent (the refusal is terminal), not per tick.
+          if (projectMissing)
+            this.options.logger.warn(
+              'Automation rule names a Project that was not found; no Task started',
+              { ruleId: intent.ruleId, projectId: intent.action.projectId },
+            );
           continue;
         }
         const rule = authority.rule;

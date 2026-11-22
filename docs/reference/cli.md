@@ -2412,6 +2412,10 @@ station automation disable <rule-id>
 station automation delete <rule-id>
 ```
 
+A rule's `action.projectId` and a source grant's `projectId` accept a
+Project's id or slug (for example `"projectId":"station"`). Station stores the
+id, and refuses a value that names no Project, quoting it.
+
 Every action takes `--api-base=<url>`. Each is one `AUTOMATION_OPERATOR_SURFACE`
 verb under `/automations` (see
 [Operator surface](../design/automations.md#operator-surface)). Reads need

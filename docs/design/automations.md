@@ -291,7 +291,10 @@ A held claim writes its reason to the delivery row as `suppressed(reason)`:
 while the action waits (the row moves on when it starts), and
 `episode-exhausted` or `episode-indeterminate` when it never will. A refused
 intent keeps its own reason on the row (`policy_changed`, `stale_event`,
-`admission_refused`), never a generic `policy_unavailable`.
+`admission_refused`), never a generic `policy_unavailable`. A pending intent
+whose rule names a Project that no longer exists is refused as
+`project_unavailable` (the row's decision keeps the Project value), and the
+runtime logs it once for that intent.
 
 There is no `notify` action: it was validated but never executed, so #4513
 removed it. A stored grant that lists it drops it on read; a stored `notify`
@@ -496,6 +499,13 @@ directory under [`src-server/services/`](../../src-server/services/).
 - `AutomationGrant` is `{ projectId; agentId; actions: readonly
   AutomationActionKind[] }`. Omitted means no authority, the same rule as
   `starts` on an inbound webhook token.
+- A grant's or an action's `projectId` accepts a Project's id or its slug.
+  The [store](../../src-server/services/automation/automation-store.ts)
+  resolves it to the id on every read and stores the id on every write, so
+  each reader compares ids and a rule stored with a slug keeps working. A
+  value that is one Project's id and another's slug names the Project with
+  that id. Creating or editing a rule or grant that names no Project is
+  refused with the value quoted.
 - `AutomationEvent` is `{ schemaVersion: 1; eventId; sourceId; sourceKind;
   type (for example `'github.workflow_run.completed'`); deliveryId?;
   semanticKey; occurredAt; receivedAt; fields: Readonly<Record<string,

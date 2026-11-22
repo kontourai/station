@@ -7559,6 +7559,8 @@ export function configureRuntimeRoutes(
             // so this instance and the runtime's never disagree.
             automations: new AutomationStore(
               context.configLoader.getProjectHomeDir(),
+              undefined,
+              context.projectService,
             ),
             projectSlugForId: (projectId: string) =>
               context.projectService

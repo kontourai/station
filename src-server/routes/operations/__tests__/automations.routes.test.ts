@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { createAutomationRule } from '@kontourai/station-sdk/client';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { requiredPairingScope } from '../../../security/pairing-route-scopes.js';
@@ -309,10 +311,17 @@ async function operatorSurface(
     operator?: (request: Request) => Promise<AutomationOperator>;
     preview?: boolean;
     grants?: string[];
+    /** The current Projects, so rules and grants may name one by slug. */
+    projects?: { id: string; slug: string }[];
   } = {},
 ) {
   const home = makeTempDir('automation-operator-');
-  const store = new AutomationStore(home);
+  const projects = options.projects;
+  const store = new AutomationStore(
+    home,
+    undefined,
+    projects ? { listProjects: () => projects } : undefined,
+  );
   const ledger = createAutomationLedger({ directory: join(home, 'ledger') });
   let previewOn = options.preview ?? true;
   const app = createAutomationRoutes(
@@ -552,5 +561,58 @@ describe('Automation operator surface (#4513)', () => {
     const open = await s.send('POST', '/episodes/rule-1%3A42/retry', {});
     expect(open.status).toBe(409);
     expect(await json(open)).toMatchObject({ code: 'not-exhausted' });
+  });
+});
+
+describe('a rule names its Project by slug through the SDK and the route', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const STATION = {
+    id: '5b0d3c1e-8f6a-4c2b-9d7e-1a2b3c4d5e6f',
+    slug: 'station',
+  };
+
+  /** The SDK's `fetch`, answered by the real route. */
+  function sdkAgainst(s: Awaited<ReturnType<typeof operatorSurface>>) {
+    vi.stubGlobal(
+      'fetch',
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const request = new Request(input, init);
+        const url = new URL(request.url);
+        return s.app.request(
+          url.pathname.replace(/^\/automations/, '') + url.search,
+          {
+            method: request.method,
+            headers: request.headers,
+            ...(request.body ? { body: await request.text() } : {}),
+          },
+        );
+      },
+    );
+  }
+
+  test('creating a rule with a slug stores the Project id', async () => {
+    const s = await operatorSurface({ projects: [STATION] });
+    sdkAgainst(s);
+    const rule = await createAutomationRule('http://station.test', {
+      ...(DISPATCH_RULE as never),
+      sourceId: s.sourceId,
+    });
+    expect(rule.action.projectId).toBe(STATION.id);
+    const stored = JSON.parse(readFileSync(s.store.path, 'utf8'));
+    expect(stored.rules[0].action.projectId).toBe(STATION.id);
+    expect(stored.sources[0].grants[0].projectId).toBe(STATION.id);
+  });
+
+  test('creating a rule naming no Project is refused with the value as typed', async () => {
+    const s = await operatorSurface({ projects: [STATION] });
+    sdkAgainst(s);
+    await expect(
+      createAutomationRule('http://station.test', {
+        ...(DISPATCH_RULE as never),
+        action: { ...DISPATCH_RULE.action, projectId: 'nope' } as never,
+        sourceId: s.sourceId,
+      }),
+    ).rejects.toThrow('action.projectId: no Project has the id or slug "nope"');
+    expect(s.store.read().rules).toEqual([]);
   });
 });
