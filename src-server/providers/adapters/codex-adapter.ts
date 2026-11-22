@@ -4140,7 +4140,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
     if (!current()) return false;
     if (decision.behavior === 'deny') {
-      if (decision.staleGeneration)
+      if (decision.staleGeneration || decision.generationSettling)
         throw new CodexBoundToolReasonedRefusal(decision.denial.reason);
       return false;
     }

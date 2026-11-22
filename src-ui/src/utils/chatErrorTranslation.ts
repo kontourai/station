@@ -455,10 +455,14 @@ export function translateChatError(
   if (code === SESSION_CONFIGURATION_REPLACED_CODE) {
     return {
       title: "This agent's settings changed",
-      body:
-        text ||
-        "This agent's configuration changed while the chat was still running work started under the old one. Nothing was sent.",
-      hint: 'Send your message again, after any work still running has finished: the chat continues this conversation with the new settings.',
+      // The server's text already says what to do; the hint stands in only
+      // when it sent none.
+      body: text || '',
+      ...(text
+        ? {}
+        : {
+            hint: 'Send your message again once any work still running has finished: the chat continues this conversation with the new settings.',
+          }),
       // A caller that may not send here has nothing true to be told.
       callerHints: { noNewChat: true, noSend: null, neither: null },
     };

@@ -1105,8 +1105,8 @@ export class PolicyReplacedSessionRefusedError extends SendTurnRefusedError {
   constructor(reason: 'busy' | 'successor') {
     super(
       reason === 'busy'
-        ? "This agent's configuration changed while the session was still running work started under the old configuration. That work cannot use tools any more; once it ends, send your message again and the session restarts under the current configuration."
-        : "This agent's configuration changed and this session's engine cannot resume. Continue from the conversation: its next message starts a new session under the current configuration.",
+        ? "This agent's settings changed while the chat was still working. That work can no longer use tools. When it finishes, send your message again: the chat continues this conversation with the new settings."
+        : "This agent's settings changed and this chat's engine can't pick up where it left off. Send your message again: the chat continues this conversation in a new session with the new settings.",
       reason === 'busy' ? 'busy' : 'conflict',
     );
     this.name = 'PolicyReplacedSessionRefusedError';
@@ -4766,7 +4766,15 @@ export class OrchestrationService {
   ): Promise<ProviderSessionStartInput['agent']> {
     const resolver = this.options.resolveSessionAgent;
     if (!resolver) return input.agent;
-    return (await resolver({ ...input, agent: undefined })).agent;
+    // The resolver reads the Agent from the metadata slug. A start that named
+    // its agent only through `input.agent` would otherwise resolve to no
+    // definition and bind as unbound, refused as replaced on every restart.
+    const slug = input.agent?.slug;
+    const metadata =
+      slug && typeof input.metadata?.agentSlug !== 'string'
+        ? { ...input.metadata, agentSlug: slug }
+        : input.metadata;
+    return (await resolver({ ...input, metadata, agent: undefined })).agent;
   }
 
   /**

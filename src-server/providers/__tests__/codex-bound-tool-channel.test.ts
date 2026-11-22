@@ -877,7 +877,9 @@ test('a replaced-configuration refusal reaches the engine as the tool result wit
   const process = new FakeCodexProcess();
   const reason =
     'Tool "browser_status" was blocked because this agent\'s configuration changed after this session started.';
-  let stale = true;
+  let mode: 'stale' | 'settling' | 'other' = 'stale';
+  const settlingReason =
+    'Tool "browser_status" was blocked while Station re-reads this agent\'s configuration after a change. Retry it in a moment.';
   const execute = vi.fn(async () => ({
     content: [{ type: 'text', text: 'ok' }],
   }));
@@ -885,16 +887,22 @@ test('a replaced-configuration refusal reaches the engine as the tool result wit
     processFactory: () => process as never,
     boundToolsEnabled: () => true,
     resolveBoundToolPolicy: async () => async () =>
-      stale
+      mode === 'stale'
         ? {
             behavior: 'deny',
             denial: { allowed: false, reason },
             staleGeneration: true,
           }
-        : {
-            behavior: 'deny',
-            denial: { allowed: false, reason: 'Project policy refused.' },
-          },
+        : mode === 'settling'
+          ? {
+              behavior: 'deny',
+              denial: { allowed: false, reason: settlingReason },
+              generationSettling: true,
+            }
+          : {
+              behavior: 'deny',
+              denial: { allowed: false, reason: 'Project policy refused.' },
+            },
     createBoundTools: async () => ({
       tools: [
         {
@@ -949,8 +957,21 @@ test('a replaced-configuration refusal reaches the engine as the tool result wit
     contentItems: [{ type: 'inputText', text: reason }],
   });
   expect(execute).not.toHaveBeenCalled();
+  // A change still being applied carries its "retry" advice the same way.
+  mode = 'settling';
+  await emit(process, {
+    id: 32,
+    method: 'item/tool/call',
+    params: { ...params, callId: 'settling' },
+  });
+  const settling = await waitFor(() => repliesTo(process, 32)[0], 'reply');
+  expect(settling.error).toBeUndefined();
+  expect(settling.result).toEqual({
+    success: false,
+    contentItems: [{ type: 'inputText', text: settlingReason }],
+  });
   // Other denials keep their existing wire shape.
-  stale = false;
+  mode = 'other';
   await emit(process, {
     id: 31,
     method: 'item/tool/call',

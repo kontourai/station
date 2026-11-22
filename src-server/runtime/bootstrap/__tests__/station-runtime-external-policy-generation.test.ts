@@ -696,6 +696,69 @@ describe('external engine pre-tool policy generation', () => {
     expect(w.policies.has('conversation')).toBe(true);
   });
 
+  test('a start that names its Agent only through input.agent binds normally: its calls are allowed and it is not replaced', async () => {
+    const w = world('claude');
+    const agent = await w.service.resolveLaunchAgent({
+      provider: 'claude',
+      threadId: 'conversation',
+      cwd: '/tmp',
+      metadata: { agentSlug: 'claude' },
+    } as never);
+    expect(agent?.slug).toBe('claude');
+    // As a start whose metadata lacks the slug: only `input.agent` has it.
+    await w.service.dispatch(
+      {
+        type: 'startSession',
+        input: {
+          threadId: 'conversation',
+          provider: 'claude',
+          agent,
+          metadata: { userId: 'owner', conversationId: 'conversation' },
+        },
+      } as never,
+      { userId: 'owner' },
+    );
+    for (let i = 0; i < 200 && !w.starts.length; i++)
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(w.starts).toHaveLength(1);
+    expect(w.starts[0]?.metadata?.agentSlug).toBeUndefined();
+    expect(
+      await w.runtime.preToolPolicyGenerations.replaced('conversation'),
+    ).toBe(false);
+    expect(await w.call('conversation')).toEqual(allowed);
+  });
+
+  test('a successor reserved without a context boundary and left unstarted (as after a crash) retires a predecessor replaced since', async () => {
+    const w = world('claude', { perTurnModel: false });
+    await w.start('conversation', {}, 'first-model');
+    await w.turn('conversation', 'Run the tests.');
+    // A model switch this engine cannot apply to a turn reserves a successor
+    // that is never started.
+    const reserved = await w.service.resolveConversationContinuation(
+      'conversation',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', modelOverride: 'another-model' },
+    );
+    expect(reserved.startRequired).toBe(true);
+    expect(w.stops).toEqual([]);
+    // The predecessor's launch is replaced while the reservation waits.
+    await w.saveAgent('claude', {
+      name: 'Claude',
+      prompt: 'Help the person.',
+      tools: { mcpServers: ['github'], autoApprove: [] },
+    });
+    expect(await w.call('conversation')).toMatchObject(replaced);
+    const again = await w.service.resolveConversationContinuation(
+      'conversation',
+      INTERNAL_SESSION_READ_SCOPE,
+      { provider: 'claude', modelOverride: 'another-model' },
+    );
+    expect(again.sessionId).toBe(reserved.sessionId);
+    expect(again.startRequired).toBe(true);
+    expect(again.contextBoundary).toBeUndefined();
+    expect(w.stops).toEqual(['conversation']);
+  });
+
   test.each(['after', 'with'] as const)(
     'an explicit context reset %s a real configuration change: one engine at the end, history once',
     async (timing) => {

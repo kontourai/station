@@ -75,7 +75,13 @@ export type PreToolPolicyDecision =
        */
       toolGrant?: true;
     }
-  | { behavior: 'deny'; denial: ToolCallDenial; staleGeneration?: true }
+  | {
+      behavior: 'deny';
+      denial: ToolCallDenial;
+      staleGeneration?: true;
+      /** A change is still being applied: the text says to retry. */
+      generationSettling?: true;
+    }
   | { behavior: 'ask'; required?: true; guardianReason?: string }
   | { behavior: 'defer' };
 
@@ -558,7 +564,7 @@ export function createStagedPreToolPolicyEvaluator(
           : "was blocked because this agent's configuration changed after this session started. Retrying in this turn will be refused again: stop, and tell the person that the agent's configuration changed. Their next message continues the conversation under the current configuration.",
       );
       return generation === 'settling'
-        ? denial
+        ? { ...denial, generationSettling: true }
         : { ...denial, staleGeneration: true };
     }
 
