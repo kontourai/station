@@ -15,7 +15,7 @@ const REFUSAL_COPY: Readonly<Record<string, string>> = {
   [CONVERSATION_FORK_REFUSAL_CODES.historyUnavailable]:
     'Station couldn’t read this chat’s history just now. Try again.',
   [CONVERSATION_FORK_REFUSAL_CODES.historyTooLarge]:
-    'The chat up to this answer is too large to fork. Fork from an earlier answer.',
+    'This chat is too long to fork. Start a new chat and reference this one instead.',
   [CONVERSATION_FORK_REFUSAL_CODES.turnIncomplete]:
     'This answer didn’t finish, so it can’t be forked. Fork from a completed answer.',
   [CONVERSATION_FORK_REFUSAL_CODES.sourceAgentMismatch]:
