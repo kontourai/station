@@ -123,3 +123,15 @@ export function classifyManagedModelBinding(input: {
   }
   return candidates.length === 0 ? { kind: 'none' } : { kind: 'ambiguous' };
 }
+
+/**
+ * The sentence the provider service refuses a turn with when no connection is
+ * named for it (no project or Station default) and more than one candidate is
+ * enabled. It reaches the UI only as text: the station-agent relay forwards
+ * `/chat`'s error string, and a failed session's attention body is that
+ * recorded reason. The UI recognises this one sentence to say the cause in
+ * plain words, so the server throws it from here and the UI matches it from
+ * here; rewording it in one place cannot silently turn the translation off.
+ */
+export const AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE =
+  'Multiple enabled LLM provider connections require an application default.';

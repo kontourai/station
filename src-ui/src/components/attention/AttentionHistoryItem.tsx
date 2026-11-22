@@ -108,20 +108,19 @@ export function AttentionHistoryItem({
     <>
       {item.kind === 'session-failed' ? (
         <>
-          <FailedSessionOpenLink item={item} onClose={onClose} />
+          <FailedSessionLink
+            item={item}
+            href={item.openHref}
+            label={openLinkLabel(item.kind)}
+            onClose={onClose}
+          />
           {failure?.action && (
-            <a
-              className="notification-history__action"
+            <FailedSessionLink
+              item={item}
               href={failure.action.href}
-              onClick={(event) => {
-                onClose();
-                if (!isPlainLeftClick(event)) return;
-                event.preventDefault();
-                navigateToAttentionTarget(failure.action?.href ?? '');
-              }}
-            >
-              {failure.action.label}
-            </a>
+              label={failure.action.label}
+              onClose={onClose}
+            />
           )}
         </>
       ) : (
@@ -242,15 +241,23 @@ export function AttentionHistoryItem({
  * firing it there would be a write that claims the row was seen and changes
  * nothing.
  */
-function FailedSessionOpenLink({
+/**
+ * A failed-session row's links ("Open session", and the fix its cause names):
+ * opening either target acknowledges the row (`openThenAcknowledge`), the
+ * same rule the live card follows.
+ */
+function FailedSessionLink({
   item,
+  href,
+  label,
   onClose,
 }: {
   item: SessionFailedItem;
+  href: string;
+  label: string;
   onClose: () => void;
 }) {
   const mutation = useAcknowledgeAttentionItemMutation();
-  const href = item.openHref;
   return (
     <a
       className="notification-history__action"
@@ -265,7 +272,7 @@ function FailedSessionOpenLink({
         });
       }}
     >
-      {openLinkLabel(item.kind)}
+      {label}
     </a>
   );
 }

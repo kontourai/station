@@ -7,6 +7,7 @@
  * words is how two surfaces come to describe one failure differently.
  */
 
+import { AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE } from '@kontourai/station-contracts/managed-model-binding';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import { SessionDetailErrors } from '../../session-detail/SessionDetailErrors';
@@ -110,19 +111,30 @@ describe('the session detail renders that same component', () => {
 });
 
 describe('SessionFailureAlert: provider setup refusal (slice 0.17)', () => {
+  const raw = `Station agent did not accept the task turn: ${AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE}`;
+
   test('reads in plain words, with the recorded text only under Details', () => {
-    const raw =
-      'Station agent did not accept the task turn: Multiple enabled LLM provider connections require an application default.';
     render(<SessionFailureAlert failureText={raw} />);
 
     const banner = screen.getByTestId('session-failure');
     expect(banner.querySelector('.session-failure__cause')?.textContent).toBe(
-      'Couldn’t start: two providers are turned on and neither is the default.',
+      'Couldn’t start: more than one model connection is turned on and none is the default.',
     );
     const details = banner.querySelector('details');
     expect(details?.textContent).toContain(raw);
     const outside = banner.cloneNode(true) as HTMLElement;
     outside.querySelector('details')?.remove();
     expect(outside.textContent).not.toContain('application default');
+  });
+
+  test('Details starts closed, so the recorded text waits to be asked for', () => {
+    render(<SessionFailureAlert failureText={raw} />);
+
+    const details = screen
+      .getByTestId('session-failure')
+      .querySelector('details');
+    expect(details).not.toBeNull();
+    expect(details?.open).toBe(false);
+    expect(details?.hasAttribute('open')).toBe(false);
   });
 });

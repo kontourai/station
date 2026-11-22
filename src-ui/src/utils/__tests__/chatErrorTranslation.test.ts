@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+
+import { AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE } from '@kontourai/station-contracts/managed-model-binding';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -780,26 +782,26 @@ describe('model refusal (model_not_advertised)', () => {
 });
 
 describe('describeProviderDefaultFailure (slice 0.17)', () => {
-  test('names the refusal the provider service records, wrapped or bare', () => {
+  it('names the refusal the provider service throws, wrapped by the relay or bare', () => {
     const expected = {
       summary:
-        'Couldn’t start: two providers are turned on and neither is the default.',
-      actionLabel: 'Choose a default',
+        'Couldn’t start: more than one model connection is turned on and none is the default.',
+      actionLabel: 'Open model connections',
       actionHref: '/connections/models',
     };
     expect(
       describeProviderDefaultFailure(
-        'Station agent did not accept the task turn: Multiple enabled LLM provider connections require an application default.',
+        `Station agent did not accept the task turn: ${AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE}`,
       ),
     ).toEqual(expected);
     expect(
       describeProviderDefaultFailure(
-        'Multiple enabled LLM provider connections require an application default.',
+        AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE,
       ),
     ).toEqual(expected);
   });
 
-  test('leaves every other cause alone', () => {
+  it('leaves every other cause alone', () => {
     expect(
       describeProviderDefaultFailure(
         'An application default LLM provider and model must be configured.',

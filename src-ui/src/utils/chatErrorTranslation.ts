@@ -3,6 +3,7 @@ import {
   CONTINUATION_WORKSPACE_REFUSAL_CODES,
   EXECUTION_ENGINE_CHANGED_CODE,
 } from '@kontourai/station-contracts/execution-target';
+import { AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE } from '@kontourai/station-contracts/managed-model-binding';
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   SESSION_CONFIGURATION_REPLACED_CODE,
@@ -275,16 +276,19 @@ export function describeInternalStreamFailure(text: string): string | null {
 }
 
 /**
- * The provider service refuses a turn when more than one model provider is
- * turned on and none is the default (`provider-service.ts`). The refusal
- * carries no structured code, only that sentence, so it is recognised by the
- * sentence and nothing looser. The notification surfaces use this to say it in
- * plain words and offer the one step that fixes it; the recorded text stays
- * available behind Details.
+ * The provider service refuses a turn when more than one model connection is
+ * turned on and none is the default. The refusal reaches the UI with no
+ * structured code, only that sentence (wrapped by the station-agent relay as
+ * "Station agent did not accept the task turn: …"), so it is recognised by the
+ * exact sentence the server throws, imported from the contract both sides
+ * share. The notification surfaces use this to say it in plain words and offer
+ * the page that holds the connections; the recorded text stays behind Details.
+ *
+ * The action opens the model connections list rather than promising a choice:
+ * no Station-wide screen sets the default model connection yet. From that list
+ * each connection opens to its Enabled switch, and one enabled connection is
+ * a choice the server can make on its own.
  */
-const PROVIDER_DEFAULT_REQUIRED_PATTERN =
-  /Multiple enabled LLM provider connections require an application default/i;
-
 interface ProviderDefaultFailure {
   summary: string;
   actionLabel: string;
@@ -294,11 +298,11 @@ interface ProviderDefaultFailure {
 export function describeProviderDefaultFailure(
   text: string,
 ): ProviderDefaultFailure | null {
-  return PROVIDER_DEFAULT_REQUIRED_PATTERN.test(text)
+  return text.includes(AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE)
     ? {
         summary:
-          'Couldn’t start: two providers are turned on and neither is the default.',
-        actionLabel: 'Choose a default',
+          'Couldn’t start: more than one model connection is turned on and none is the default.',
+        actionLabel: 'Open model connections',
         actionHref: '/connections/models',
       }
     : null;

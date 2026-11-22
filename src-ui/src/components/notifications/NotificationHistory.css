@@ -273,6 +273,12 @@
 
 .notification-history__raw > summary {
   cursor: pointer;
+  /* A tap target on a phone: the shared touch floor (44px there, unset on a
+     desktop), reached by padding the one line rather than a flex box, which
+     would drop the disclosure marker. */
+  min-height: var(--touch-target-min, auto);
+  padding-block: max(0px, calc((var(--touch-target-min, 0px) - 1lh) / 2));
+  box-sizing: border-box;
 }
 
 .notification-history__raw > p {
