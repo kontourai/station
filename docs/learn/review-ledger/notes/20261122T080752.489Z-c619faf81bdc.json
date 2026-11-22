@@ -1,0 +1,13 @@
+{
+  "revision": "1c30ac865f25326abcb4d568f790792ff5aec636",
+
+  "notes": [
+    {"path":"docs/learn/media/project-invitation-after-1440-dark.png","note":"Test-only change: added preview-off cases and one SDK mock export; cited claims about this test file are unaffected.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-after-390-light.png","note":"Test-only change: added preview-off cases and one SDK mock export; cited claims about this test file are unaffected.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-1440-dark.png","note":"Test-only change: added preview-off cases and one SDK mock export; cited claims about this test file are unaffected.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-390-light.png","note":"Test-only change: added preview-off cases and one SDK mock export; cited claims about this test file are unaffected.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]}
+  ]
+}

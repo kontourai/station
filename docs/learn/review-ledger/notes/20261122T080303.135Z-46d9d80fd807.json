@@ -1,0 +1,7 @@
+{
+  "revision": "1c30ac865f25326abcb4d568f790792ff5aec636",
+
+  "notes": [
+    {"path":"docs/guides/distribution-profiles.md","note":"Change is preview gating and a Builder-run filter on the Add Layout pickers; read the citing page's claims about this source and none concern the gated items (Schedules rail item, held banner, Archived toggle, Session Board entry).","inputs":["src-ui/src/components/registry/ProjectLayoutCatalog.tsx"]}
+  ]
+}
