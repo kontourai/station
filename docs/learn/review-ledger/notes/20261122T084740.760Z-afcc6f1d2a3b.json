@@ -1,0 +1,7 @@
+{
+  "revision": "87d58609752522b2501709a3472153762b55a8e2",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Edited: four rows added to the failure-kind table matching PROVIDER_FAILURE_KINDS.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

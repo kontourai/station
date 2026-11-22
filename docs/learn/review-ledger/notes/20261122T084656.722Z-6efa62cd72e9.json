@@ -1,0 +1,9 @@
+{
+  "revision": "87d58609752522b2501709a3472153762b55a8e2",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"PROVIDER_FAILURE_KINDS gains turn_start_held, turn_start_busy and conversation_predecessor_engine_live as busy and turn_start_held_until_restart as conflict. Checked each page's failure-kind and retryable claims; contracts.md's table lists the four rows; the other pages state the kind model, not per-code rows.","inputs":["packages/contracts/src/provider-failure.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"PROVIDER_FAILURE_KINDS gains turn_start_held, turn_start_busy and conversation_predecessor_engine_live as busy and turn_start_held_until_restart as conflict. Checked each page's failure-kind and retryable claims; contracts.md's table lists the four rows; the other pages state the kind model, not per-code rows.","inputs":["packages/contracts/src/provider-failure.ts"]}
+  ]
+}
