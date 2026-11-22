@@ -43,6 +43,7 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
     ['adoption_continuation_in_progress', 'busy', true],
     ['continuation_source_active', 'busy', true],
     ['conversation_handoff_predecessor_busy', 'busy', true],
+    ['session_configuration_replaced', 'busy', true],
     ['peer_conversation_handoff_refused', 'conflict', false],
     ['peer_conversation_handoff_access_refused', 'permission_denied', false],
     ['peer_conversation_handoff_pairing_required', 'permission_denied', false],

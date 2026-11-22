@@ -131,6 +131,7 @@ import {
   managedRemoteClientsDenial,
 } from '@kontourai/station-contracts/managed-policy';
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
+import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -161,6 +162,7 @@ import {
   DEFAULT_SYSTEM_PROMPT,
   isAgentOrIntegrationConfigPath,
 } from '../../domain/config-loader.js';
+import { AgentConfigNotFoundError } from '../../domain/config-loader-agents.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../domain/home-schema-gate.js';
 import { installManagedAppSettings } from '../../domain/managed-settings.js';
@@ -170,6 +172,8 @@ import { registerRuntimeConversationKnowledgeRoot } from '../../knowledge-store/
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
+import { isAcpResumeCursor } from '../../providers/adapters/acp-adapter.js';
+import { acpLaunchToolServerDefinitions } from '../../providers/adapters/acp-launch-tool-servers.js';
 import { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
@@ -185,10 +189,12 @@ import {
   createCredentialProfileAppHomeEnvResolver,
   credentialProfileEnvForHome,
 } from '../../providers/app-home/credential-profile-env.js';
+import { normalizeCredentialProfileRegistry } from '../../providers/app-home/credential-profile-registry.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { disposeRetainedPreparedPluginProviders } from '../../providers/registries/registry.js';
 import type { BuildProvenanceSnapshot } from '../../routes/system/build-provenance.js';
 import { createStationConfinementPreflight } from '../../security/confinement/confinement-preflight.js';
+import { loadConfinedNetworkPlan } from '../../security/confinement/confinement-provider.js';
 import {
   createManagedListenerAdmission,
   type ManagedListenerAdmission,
@@ -298,7 +304,15 @@ import {
 import {
   createStagedPreToolPolicyEvaluator,
   type PullRequestWatchPolicy,
+  type StagedPreToolPolicyEvaluator,
 } from '../agents/pre-tool-policy.js';
+import {
+  bindPreToolPolicyGeneration,
+  type PreToolPolicyGeneration,
+  PreToolPolicyGenerations,
+  type PreToolPolicyLaunchRead,
+  unboundPreToolPolicyGeneration,
+} from '../agents/pre-tool-policy-generation.js';
 import {
   activatePreparedRuntimeAgentInstance,
   buildRuntimeAgentInstance,
@@ -351,24 +365,10 @@ function credentialRecoveryRuntimeConnectionId(
   return undefined;
 }
 
-export async function loadStablePreToolPolicySpec(options: {
-  getStableRevision(): number | null;
-  loadAgent(): Promise<AgentSpec>;
-}): Promise<{ spec: AgentSpec; revision: number }> {
-  const revision = options.getStableRevision();
-  if (revision === null) {
-    throw new Error(
-      'Station agent configuration is not stable; pre-tool policy preparation was denied.',
-    );
-  }
-  const spec = await options.loadAgent();
-  if (options.getStableRevision() !== revision) {
-    throw new Error(
-      'Station agent configuration changed during pre-tool policy preparation; execution was denied.',
-    );
-  }
-  return { spec, revision };
-}
+export { loadStablePreToolPolicySpec } from '../agents/pre-tool-policy-generation.js';
+
+/** An external session's connection a launch would now refuse. */
+const EXTERNAL_CONNECTION_REVOKED = Symbol('external-connection-revoked');
 
 import { recordAdoptedBuiltinEngine } from './builtin-engine-adoption.js';
 import { primeEnginePrerequisites } from './engine-prerequisite-priming.js';
@@ -779,6 +779,8 @@ export class StationRuntime {
   >();
   private agentStatus = new Map<string, 'idle' | 'running'>();
   private agentConfigurationRevision = 0;
+  /** Each external session's pre-tool policy binding, by provider thread. */
+  private readonly preToolPolicyGenerations = new PreToolPolicyGenerations();
   private agentConfigurationMutationQueue: Promise<void> = Promise.resolve();
   private agentConfigurationPersistenceQueue: Promise<void> = Promise.resolve();
   private agentConfigurationPersistenceRevision = 0;
@@ -1511,12 +1513,199 @@ export class StationRuntime {
   private async resolveExternalPreToolPolicy(
     input: ProviderSessionStartInput,
     toolNameProvenance: 'authentic' | 'self-reported',
-  ) {
+  ): Promise<StagedPreToolPolicyEvaluator | undefined> {
     if (!input.agent) return undefined;
-    const { spec, revision } = await loadStablePreToolPolicySpec({
-      getStableRevision: () => this.getStableAgentConfigurationRevision(),
-      loadAgent: () => this.configLoader.loadAgent(input.agent!.slug),
-    });
+    let generation: PreToolPolicyGeneration;
+    try {
+      generation = await bindPreToolPolicyGeneration({
+        getStableRevision: () => this.getStableAgentConfigurationRevision(),
+        readLaunch: () => this.readExternalSessionLaunch(input),
+      });
+    } catch (error) {
+      // A start that raced a configuration change (or could not read its
+      // configuration) still refuses every tool, but is registered as
+      // replaced, so its next turn restarts and binds it. Throwing here left
+      // the adapter's deny-all policy with nothing registered: the session
+      // refused every call until it idled out.
+      this.logger?.warn?.(
+        'External session started unbound; it restarts at its next turn',
+        { threadId: input.threadId, error: errorMessage(error) },
+      );
+      generation = unboundPreToolPolicyGeneration({
+        name: input.agent.slug,
+        prompt: '',
+      });
+    }
+    this.preToolPolicyGenerations.register(input.threadId, generation);
+    // Rebuilt whenever the binding advances, so the approval guardian is
+    // never one built from a replaced app configuration.
+    const build = () =>
+      this.buildExternalPreToolPolicy(input, toolNameProvenance, generation);
+    let evaluate = build();
+    let builtAt = generation.revision();
+    return async (tool, invocation, options) => {
+      await generation.refresh();
+      if (generation.revision() !== builtAt) {
+        evaluate = build();
+        builtAt = generation.revision();
+      }
+      return evaluate(tool, invocation, options);
+    };
+  }
+
+  /**
+   * What this external session was launched with, read again from the
+   * current configuration: the Agent record, the resolved Agent definition
+   * from the same resolver its start used (tool servers, skills, grants),
+   * and the engine connection it runs on, from the same launch resolution
+   * the adapter used. Never logged or stored: only hashed.
+   */
+  private async readExternalSessionLaunch(
+    input: ProviderSessionStartInput,
+  ): Promise<PreToolPolicyLaunchRead> {
+    const slug = input.agent!.slug;
+    let spec: AgentSpec;
+    try {
+      spec = await this.configLoader.loadAgent(slug);
+    } catch (error) {
+      return error instanceof AgentConfigNotFoundError
+        ? { state: 'missing' }
+        : { state: 'unreadable' };
+    }
+    // The launch resolver lives on the orchestration service, which starts
+    // every session; without it nothing can be compared, so nothing passes.
+    if (!this.orchestrationService) return { state: 'unreadable' };
+    let agent: ProviderSessionStartInput['agent'];
+    try {
+      agent = await this.orchestrationService.resolveLaunchAgent(input);
+    } catch {
+      // The start gate refuses this launch now (a Project policy refusal,
+      // an Ask rule the engine cannot enforce): a fresh start would not run.
+      return { state: 'missing' };
+    }
+    // The resolver degrades to no definition when a read fails; a start
+    // would be refused, but nothing says the configuration changed.
+    if (!agent) return { state: 'unreadable' };
+    let connection: unknown;
+    try {
+      connection = await this.readExternalSessionConnection(input, agent);
+    } catch {
+      return { state: 'unreadable' };
+    }
+    if (connection === EXTERNAL_CONNECTION_REVOKED) return { state: 'missing' };
+    let settings: unknown;
+    try {
+      settings = await this.readExternalSessionSettings(input);
+    } catch {
+      // An invalid confined network policy refuses a confined start.
+      return { state: 'missing' };
+    }
+    return { state: 'read', spec, launch: { agent, connection, settings } };
+  }
+
+  /**
+   * Station settings a launch reads once and the engine keeps until it
+   * stops, so a change reaches a running session only by a restart:
+   * Claude's Artifact tool (`claudeArtifactsEnabled`), and, for a session
+   * started confined, the confined network policy its egress broker copied
+   * at start. New-chat defaults (approval mode, workspace isolation, the
+   * no-Project folder) are deliberately start-only: they choose how a new
+   * chat starts, not what a running one may do.
+   */
+  private async readExternalSessionSettings(
+    input: ProviderSessionStartInput,
+  ): Promise<unknown> {
+    const load = () => this.configLoader.loadAppConfig();
+    return {
+      ...(input.provider === 'claude'
+        ? { artifacts: (await load()).claudeArtifactsEnabled === true }
+        : {}),
+      ...(input.confinementPlan
+        ? { network: (await loadConfinedNetworkPlan(load)) ?? null }
+        : {}),
+    };
+  }
+
+  /**
+   * The engine connection an external session runs on, as its launch
+   * resolved it: Claude and Codex through the engine's connection settings
+   * and the model proxy connection they name (a revoked or disabled proxy
+   * refuses a launch); an ACP engine through its connection record. It is
+   * fingerprinted because the engine process keeps the credentials and
+   * routing it was launched with: a revoked connection must not keep running.
+   */
+  private async readExternalSessionConnection(
+    input: ProviderSessionStartInput,
+    agent: ProviderSessionStartInput['agent'],
+  ): Promise<unknown> {
+    if (input.provider === 'claude' || input.provider === 'codex') {
+      const config = await this.configLoader.loadAppConfig();
+      const connections = this.providerService.listProviderConnections();
+      const settings = config.agentConnections?.[input.provider];
+      try {
+        // Only what a launch binds: the connection config (environment,
+        // config home, default Skills, proxy choice), the proxy launch it
+        // resolves, and the active credential profile. Recovery bookkeeping
+        // (`outcome`, receipts, profile status) changes during an ordinary
+        // recovery cycle and binds nothing, so it would only restart
+        // sessions for no reason.
+        const registry = normalizeCredentialProfileRegistry(
+          settings?.credentialRecovery,
+        );
+        return {
+          config: settings?.config,
+          // The active profile and its record (its environment overlay),
+          // as the spawn resolves them.
+          activeProfile: registry.profiles.find(
+            (profile) => profile.ref === registry.activeProfileRef,
+          ),
+          activeProfileRef: registry.activeProfileRef,
+          launch: engineProxyLaunch(
+            input.provider,
+            settings?.config,
+            connections,
+          ),
+        };
+      } catch {
+        return EXTERNAL_CONNECTION_REVOKED;
+      }
+    }
+    if (isAcpFamilyEngine(input.provider)) {
+      const id =
+        typeof input.metadata?.connectionId === 'string'
+          ? input.metadata.connectionId
+          : isAcpResumeCursor(input.resumeCursor)
+            ? input.resumeCursor.connectionId
+            : undefined;
+      if (id === undefined) return null;
+      const config = await this.configLoader.loadACPConfig();
+      const record = config.connections.find(
+        (candidate) => candidate.id === id,
+      );
+      if (!record) return EXTERNAL_CONNECTION_REVOKED;
+      const { name: _name, icon: _icon, ...launched } = record;
+      return {
+        record: launched,
+        // The servers the adapter resolves itself at launch from this
+        // connection's `provideToolServers` (or `toolServerMode: 'add'`),
+        // through the same resolution the ACP adapter and OpenCode use.
+        toolServers: await acpLaunchToolServerDefinitions(
+          agent,
+          record,
+          (serverId) =>
+            this.configLoader.loadIntegration(serverId).catch(() => null),
+        ),
+      };
+    }
+    return null;
+  }
+
+  private buildExternalPreToolPolicy(
+    input: ProviderSessionStartInput,
+    toolNameProvenance: 'authentic' | 'self-reported',
+    generation: PreToolPolicyGeneration,
+  ): StagedPreToolPolicyEvaluator {
+    const spec = generation.spec;
     return createStagedPreToolPolicyEvaluator({
       spec,
       pullRequestWatchPolicy: this.pullRequestWatchPolicy,
@@ -1548,8 +1737,11 @@ export class StationRuntime {
           this.orchestrationEventStore,
         ),
       }),
-      isCurrentRuntimeGeneration: () =>
-        this.getStableAgentConfigurationRevision() === revision,
+      isCurrentRuntimeGeneration: () => {
+        const state = generation.state();
+        if (state === 'settling') return 'settling';
+        return state === 'current';
+      },
       resolveUnattendedGrant: this.resolveUnattendedGrant,
       toolNameMapping: this.toolNameMapping,
       isGranted: (tool) =>
@@ -4659,6 +4851,8 @@ export class StationRuntime {
           integrationSecretResolver: this.secretBindingAdministration,
           resolveAcpPreToolPolicy: (input) =>
             this.resolveExternalPreToolPolicy(input, 'self-reported'),
+          preToolPolicyReplaced: (threadId) =>
+            this.preToolPolicyGenerations.replaced(threadId),
           acpAgentTerminals: agentTerminalsFor({
             sessions: () => this.scopedTerminals.sessions,
             projectId: (slug) => {

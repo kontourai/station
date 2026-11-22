@@ -156,6 +156,8 @@ interface RuntimeInitializationContext {
   resolveAcpPreToolPolicy?: (
     input: ProviderSessionStartInput,
   ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
+  /** Whether an external session's own Agent changed after its policy was bound. */
+  preToolPolicyReplaced?: (threadId: string) => Promise<boolean>;
   /** #3994: an ACP agent's terminals as command terminal sessions. */
   acpAgentTerminals?: AcpAdapterOptions['agentTerminals'];
   toolNameReverseMapping: Map<string, string>;
@@ -254,6 +256,7 @@ export function createRuntimeInitializationDeps(
     resolveUnattendedGrant: context.resolveUnattendedGrant,
     integrationSecretResolver: context.integrationSecretResolver,
     resolveAcpPreToolPolicy: context.resolveAcpPreToolPolicy,
+    preToolPolicyReplaced: context.preToolPolicyReplaced,
     acpAgentTerminals: context.acpAgentTerminals,
     eventLog: context.eventLog,
     bedrockAdapter: context.bedrockAdapter,

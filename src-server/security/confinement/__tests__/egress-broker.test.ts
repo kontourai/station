@@ -316,6 +316,25 @@ describe('egress broker', () => {
     ]);
   });
 
+  // A running session keeps the egress policy its broker started with: the
+  // broker copies the list, and nothing re-reads `confinedNetwork`. So a
+  // narrowed policy reaches a running session only through a restart, which
+  // is why the external launch fingerprint holds the confined network
+  // setting (station-runtime.ts).
+  test('the allowed list is frozen when the broker starts', async () => {
+    const upstream = await standIn();
+    opened.push({ close: () => upstream.server.close() });
+    const allowedHosts = [parseEgressHostRule('allowed.example')!];
+    const started = await broker({ upstreamPort: upstream.port, allowedHosts });
+    allowedHosts.length = 0;
+    const reply = await exchange(
+      started.port,
+      'CONNECT allowed.example:443 HTTP/1.1\r\n\r\n',
+      'still',
+    );
+    expect(reply).toContain('upstream:still');
+  });
+
   test('a host that is not allowed gets 403 and a denied record; nothing is dialled', async () => {
     let dialled = 0;
     const started = await broker({
