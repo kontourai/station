@@ -2014,12 +2014,13 @@ test.describe('compatibility-aware reconnect', () => {
               const scan = page.getByRole('dialog', {
                 name: 'Scan a pairing code',
               });
+              // Headless Chromium has no camera, so the scanner gives way to
+              // code entry instead of a camera error.
+              await expect(scan.getByLabel('Pairing code')).toBeVisible();
               await expect(
                 scan.getByRole('button', { name: 'Scan code', exact: true }),
-              ).toHaveAttribute('aria-pressed', 'true');
-              await scan
-                .getByRole('button', { name: 'Enter manually', exact: true })
-                .tap();
+              ).toHaveCount(0);
+              await expect(scan.getByText(/Camera error/)).toHaveCount(0);
               await scan
                 .getByRole('button', { name: 'Back', exact: true })
                 .tap();
