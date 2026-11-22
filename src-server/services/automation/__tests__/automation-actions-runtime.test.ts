@@ -2026,6 +2026,13 @@ test('a retry acts under the rule as it is now, never the one its failed start r
   }));
   const retried = retryOf(w, first)();
   expect(retried.kind).toBe('retried');
+  // The retry itself records the current rule, not the failed start's.
+  expect(
+    retried.kind === 'retried' ? retried.intent.action.instructions : undefined,
+  ).toBe('Investigate with the new brief.');
+  expect(
+    retried.kind === 'retried' ? retried.intent.policyFingerprint : undefined,
+  ).not.toBe(first.policyFingerprint);
   await w.runtime.tick();
   await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
   expect(w.adapter.sends[0]?.input).toContain(
