@@ -123,7 +123,8 @@ describe('getConversationStats — orchestration fallback (station#1299 slice 1)
     );
 
     expect((data as any).notFound).toBe(true);
-    expect(data.totalTokens).toBe(0);
+    // Nothing reported a token count: absent, never a counted zero.
+    expect(data.totalTokens).toBeUndefined();
   });
 
   test.each([-1, Number.NaN, Number.POSITIVE_INFINITY])(
@@ -262,8 +263,49 @@ describe('getConversationStats — orchestration fallback (station#1299 slice 1)
       mockLogger,
     );
 
-    expect(data.totalTokens).toBe(0);
+    expect(data.totalTokens).toBeUndefined();
+    expect(data.estimatedCost).toBeUndefined();
     expect(data.turns).toBe(0);
+  });
+
+  test('a memory-store conversation whose model reported no usage has no token counts or cost', async () => {
+    // The record a Station-agent turn leaves when its model reports no usage
+    // (a local model connection): metadata without `stats`.
+    const adapter = {
+      getConversation: vi.fn().mockResolvedValue({
+        id: 'station:1',
+        resourceId: 'station',
+        userId: 'human:local:operator',
+        title: 'hello there',
+        metadata: { titleSource: 'prompt' },
+        createdAt: '2026-11-22T08:23:17.639Z',
+        updatedAt: '2026-11-22T08:23:18.323Z',
+      }),
+      getMessages: vi.fn().mockResolvedValue([]),
+    };
+
+    const data = await getConversationStats(
+      'default',
+      'station:1',
+      new Map([['default', adapter as any]]),
+      new Map(),
+      new Map(),
+      createConfigLoader('bedrock-model'),
+      appConfig,
+      undefined,
+      mockLogger,
+    );
+
+    for (const field of [
+      'inputTokens',
+      'outputTokens',
+      'totalTokens',
+      'estimatedCost',
+      'contextTokens',
+      'assistantMessageTokens',
+    ] as const)
+      expect(data[field], field).toBeUndefined();
+    expect(data).toMatchObject({ turns: 0, toolCalls: 0 });
   });
 
   test('a legacy memory-store conversation with real stats is unaffected by the fallback', async () => {

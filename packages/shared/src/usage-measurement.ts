@@ -1,4 +1,5 @@
 import {
+  type ConversationEngineUsage,
   type ConversationStatsResponse,
   reportsEngineTokens,
 } from '@kontourai/station-contracts/runtime';
@@ -24,16 +25,16 @@ import {
  * in the entry chunk (`scripts/ui-bundle-budget.json`). One home, imported
  * only by the surfaces that render — DRY without the eager weight.
  */
-export const UNREPORTED_MEASUREMENT_TEXT = '—';
+export const UNREPORTED_MEASUREMENT_TEXT = 'Not reported';
 
-/** `undefined` -> the shared dash; any reported number -> that number. */
+/** `undefined` -> "Not reported"; any reported number -> that number. */
 export function formatMeasuredTokens(value: number | undefined): string {
   return value === undefined
     ? UNREPORTED_MEASUREMENT_TEXT
     : value.toLocaleString();
 }
 
-/** `undefined` -> the shared dash; a reported `0` -> `$0.0000`, honestly. */
+/** `undefined` -> "Not reported"; a reported `0` -> `$0.0000`, honestly. */
 export function formatMeasuredCostUsd(value: number | undefined): string {
   return value === undefined
     ? UNREPORTED_MEASUREMENT_TEXT
@@ -178,4 +179,18 @@ export function conversationStatsMeasurementView(
       ? { contextPercent: stats.contextWindowPercentage }
       : {}),
   };
+}
+
+/**
+ * #5389: the engines whose token counts a conversation shows one by one, or
+ * `undefined` when it has a single token total. When more than one engine
+ * reported tokens the conversation-wide token fields are absent on purpose
+ * (each engine counts on its own scale), so a surface lists these rows
+ * instead, each with its own figures and no total across them.
+ */
+export function enginesReportingTokensSeparately(
+  stats: Pick<ConversationStatsResponse, 'engines'>,
+): ConversationEngineUsage[] | undefined {
+  const counted = stats.engines?.filter(reportsEngineTokens) ?? [];
+  return counted.length > 1 ? counted : undefined;
 }

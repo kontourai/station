@@ -3,6 +3,7 @@ import type {
   ConversationEngineUsage,
   ConversationReportedCost,
   ConversationStatsMeasurement,
+  ConversationStatsResponse,
 } from '@kontourai/station-contracts/runtime';
 import {
   calculateContextWindowPercentage,
@@ -82,16 +83,15 @@ export function buildEmptyConversationStatsView({
   mcpServerTokens: number;
   notFound?: boolean;
   contextWindowTokens?: number;
-}) {
+}): ConversationStatsResponse {
   const contextTokens = systemPromptTokens + mcpServerTokens;
+  // No turn recorded any usage here, so token counts and cost are absent
+  // ("not reported"), never a zero nobody measured. The context figures
+  // below are Station's own estimates of its prompt and tools.
   return {
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
     contextTokens,
     turns: 0,
     toolCalls: 0,
-    estimatedCost: 0,
     contextWindowPercentage: calculateContextWindowPercentage(
       contextTokens,
       contextWindowTokens,
@@ -100,11 +100,8 @@ export function buildEmptyConversationStatsView({
     systemPromptTokens,
     mcpServerTokens,
     userMessageTokens: 0,
-    assistantMessageTokens: 0,
     contextFilesTokens: 0,
-    // Station's own accounting is what this view represents: it covers
-    // every turn it ran, so its zeros are counted zeros.
-    measurement: { source: 'station-memory' as const },
+    measurement: { source: 'station-memory' },
     ...(notFound ? { notFound: true } : {}),
   };
 }

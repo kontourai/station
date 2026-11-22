@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   conversationStatsMeasurementView,
   describeUnreportedMeasurements,
+  enginesReportingTokensSeparately,
   formatMeasuredCostUsd,
   formatMeasuredTokens,
   UNREPORTED_MEASUREMENT_TEXT,
@@ -9,13 +10,15 @@ import {
 } from '../usage-measurement.js';
 
 describe('the one unreported-measurement representation (station#3201)', () => {
-  it('formats an unreported figure as the shared dash and a reported zero as zero', () => {
-    expect(formatMeasuredTokens(undefined)).toBe(UNREPORTED_MEASUREMENT_TEXT);
+  it('formats an unreported figure as "Not reported" and a reported zero as zero', () => {
+    expect(UNREPORTED_MEASUREMENT_TEXT).toBe('Not reported');
+    expect(formatMeasuredTokens(undefined)).toBe('Not reported');
     expect(formatMeasuredTokens(0)).toBe('0');
     expect(formatMeasuredTokens(1234)).toBe('1,234');
 
-    expect(formatMeasuredCostUsd(undefined)).toBe(UNREPORTED_MEASUREMENT_TEXT);
-    // A provider that reported zero cost says so; only absence dashes.
+    expect(formatMeasuredCostUsd(undefined)).toBe('Not reported');
+    // A provider that reported zero cost says so; only absence reads
+    // "Not reported".
     expect(formatMeasuredCostUsd(0)).toBe('$0.0000');
     expect(formatMeasuredCostUsd(0.0125)).toBe('$0.0125');
   });
@@ -165,5 +168,29 @@ describe('the one unreported-measurement representation (station#3201)', () => {
         }),
       ),
     ).toEqual(['token counts']);
+  });
+});
+
+describe('enginesReportingTokensSeparately (#5389)', () => {
+  const claude = {
+    provider: 'claude',
+    turns: 1,
+    toolCalls: 0,
+    inputTokens: 14,
+  };
+  const codex = { provider: 'codex', turns: 1, toolCalls: 0, totalTokens: 790 };
+  const acp = { provider: 'acp', turns: 1, toolCalls: 0 };
+
+  it('lists the engines that reported tokens when there are several', () => {
+    expect(
+      enginesReportingTokensSeparately({ engines: [claude, acp, codex] }),
+    ).toEqual([claude, codex]);
+  });
+
+  it('is undefined when the conversation has a single token total', () => {
+    expect(enginesReportingTokensSeparately({})).toBeUndefined();
+    expect(
+      enginesReportingTokensSeparately({ engines: [claude, acp] }),
+    ).toBeUndefined();
   });
 });

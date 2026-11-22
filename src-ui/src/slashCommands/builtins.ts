@@ -1,6 +1,7 @@
 import type { Skill } from '@kontourai/station-contracts/catalog';
 import { resolveSkillCommandName } from '@kontourai/station-contracts/skill-command';
 import { agentQueries } from '@kontourai/station-sdk';
+import { escapeHtml } from '../highlight/shared';
 import { runtimeCatalogSourceLabel } from '../utils/execution';
 import { agentCommandSkills } from '../utils/skill-command-catalog';
 import { describeStationFailure } from '../utils/stationFailure';
@@ -200,8 +201,8 @@ registerCommand(
       // payload ConversationStatsModal renders, so it goes through the same
       // shared derivations — a summed or "(uncached)" figure appears only
       // when the provider's declared inclusivity backs it, cache rows render
-      // only when reported, and an absent figure renders as a dash, never an
-      // invented zero (archive#3201). Dynamically imported to keep the
+      // only when reported, and an absent figure reads "Not reported", never
+      // an invented zero (archive#3201). Dynamically imported to keep the
       // shared usage modules out of the eager entry bundle.
       const [
         {
@@ -209,44 +210,70 @@ registerCommand(
           cacheInclusiveTotalTokens,
           providerPromptCacheInclusivity,
         },
-        { formatMeasuredCostUsd, formatMeasuredTokens },
+        {
+          enginesReportingTokensSeparately,
+          formatMeasuredCostUsd,
+          formatMeasuredTokens,
+        },
+        { engineDisplayLabel },
       ] = await Promise.all([
         import('@kontourai/station-shared/usage-fold'),
         import('@kontourai/station-shared/usage-measurement'),
+        import('@kontourai/station-contracts/engine-display'),
       ]);
       const usageProvider =
         stats.measurement?.source === 'engine-events'
           ? stats.measurement.provider
           : undefined;
-      const consumptionInLabel =
-        providerPromptCacheInclusivity(usageProvider) === 'disjoint'
-          ? 'In (uncached)'
-          : 'In';
-      const promptSideTotal = cacheInclusivePromptTokens(usageProvider, stats);
-      const cacheInclusiveTotal = cacheInclusiveTotalTokens(
-        usageProvider,
-        stats,
-      );
-      const consumptionRows = [
-        `${consumptionInLabel}: <strong>${formatMeasuredTokens(stats.inputTokens)}</strong>`,
-        ...(stats.cacheReadTokens !== undefined
-          ? [
-              `Cache read: <strong>${formatMeasuredTokens(stats.cacheReadTokens)}</strong>`,
-            ]
-          : []),
-        ...(stats.cacheWriteTokens !== undefined
-          ? [
-              `Cache write: <strong>${formatMeasuredTokens(stats.cacheWriteTokens)}</strong>`,
-            ]
-          : []),
-        ...(promptSideTotal !== undefined
-          ? [
-              `Prompt total: <strong>${promptSideTotal.toLocaleString()}</strong>`,
-            ]
-          : []),
-        `Out: <strong>${formatMeasuredTokens(stats.outputTokens)}</strong>`,
-        `Total: <strong>${formatMeasuredTokens(cacheInclusiveTotal ?? stats.totalTokens)}</strong>`,
-      ].join('<br/>\n              ');
+      const tokenRows = (
+        provider: string | undefined,
+        figures: Parameters<typeof cacheInclusiveTotalTokens>[1],
+      ) => {
+        const promptSideTotal = cacheInclusivePromptTokens(provider, figures);
+        const cacheInclusiveTotal = cacheInclusiveTotalTokens(
+          provider,
+          figures,
+        );
+        const inLabel =
+          providerPromptCacheInclusivity(provider) === 'disjoint'
+            ? 'In (uncached)'
+            : 'In';
+        return [
+          `${inLabel}: <strong>${formatMeasuredTokens(figures.inputTokens)}</strong>`,
+          ...(figures.cacheReadTokens !== undefined
+            ? [
+                `Cache read: <strong>${formatMeasuredTokens(figures.cacheReadTokens)}</strong>`,
+              ]
+            : []),
+          ...(figures.cacheWriteTokens !== undefined
+            ? [
+                `Cache write: <strong>${formatMeasuredTokens(figures.cacheWriteTokens)}</strong>`,
+              ]
+            : []),
+          ...(promptSideTotal !== undefined
+            ? [
+                `Prompt total: <strong>${promptSideTotal.toLocaleString()}</strong>`,
+              ]
+            : []),
+          `Out: <strong>${formatMeasuredTokens(figures.outputTokens)}</strong>`,
+          `Total: <strong>${formatMeasuredTokens(cacheInclusiveTotal ?? figures.totalTokens)}</strong>`,
+        ].join('<br/>\n              ');
+      };
+      // #5389: several engines reported tokens, each on its own scale, so the
+      // chat-wide token fields are absent and each engine gets its own rows.
+      const perEngineTokens = enginesReportingTokensSeparately(stats);
+      const consumptionNote = perEngineTokens
+        ? 'Each engine counts tokens its own way, so there is no total across engines'
+        : 'Tokens sent/received across all API calls';
+      const consumptionRows = perEngineTokens
+        ? perEngineTokens
+            .map(
+              (engine) =>
+                `<div style="margin-bottom: 8px;"><strong>${escapeHtml(engineDisplayLabel(engine.provider) ?? engine.provider)}</strong><br/>
+              ${tokenRows(engine.provider, engine)}</div>`,
+            )
+            .join('\n              ')
+        : tokenRows(usageProvider, stats);
 
       const html = `
       <div style="font-family: system-ui, -apple-system, sans-serif; font-size: 14px;">
@@ -260,7 +287,7 @@ registerCommand(
             Context Window Usage
           </summary>
           <div style="padding: 12px 8px;">
-            <span style="color: var(--text-muted);">${stats.contextTokens?.toLocaleString() || 0} tokens (all messages + system prompt + tools)</span><br/>
+            <span style="color: var(--text-muted);">${stats.contextTokens !== undefined ? `${stats.contextTokens.toLocaleString()} tokens (all messages + system prompt + tools)` : 'As the engine reported it'}</span><br/>
             <div style="background: var(--bg-tertiary); height: 8px; border-radius: 4px; margin-top: 8px; overflow: hidden;">
               <div style="background: var(--meter-low); height: 100%; width: ${stats.contextWindowPercentage}%;"></div>
             </div>
@@ -277,10 +304,10 @@ registerCommand(
           </summary>
           <div style="padding: 12px 8px;">
             <table style="width: 100%;">
-              <tr><td>System Prompt:</td><td style="text-align: right;">${stats.systemPromptTokens?.toLocaleString() || 0}</td></tr>
-              <tr><td>MCP Tools:</td><td style="text-align: right;">${stats.mcpServerTokens?.toLocaleString() || 0}</td></tr>
-              <tr><td>User Messages:</td><td style="text-align: right;">${stats.userMessageTokens?.toLocaleString() || 0}</td></tr>
-              <tr><td>Assistant Messages:</td><td style="text-align: right;">${stats.assistantMessageTokens?.toLocaleString() || 0}</td></tr>
+              <tr><td>System Prompt:</td><td style="text-align: right;">${formatMeasuredTokens(stats.systemPromptTokens)}</td></tr>
+              <tr><td>MCP Tools:</td><td style="text-align: right;">${formatMeasuredTokens(stats.mcpServerTokens)}</td></tr>
+              <tr><td>User Messages:</td><td style="text-align: right;">${formatMeasuredTokens(stats.userMessageTokens)}</td></tr>
+              <tr><td>Assistant Messages:</td><td style="text-align: right;">${formatMeasuredTokens(stats.assistantMessageTokens)}</td></tr>
             </table>
           </div>
         </details>
@@ -290,7 +317,7 @@ registerCommand(
             Total LLM Consumption
           </summary>
           <div style="padding: 12px 8px;">
-            <span style="color: var(--text-muted); font-size: 12px;">Tokens sent/received across all API calls</span><br/>
+            <span style="color: var(--text-muted); font-size: 12px;">${consumptionNote}</span><br/>
             <div style="margin-top: 8px;">
               ${consumptionRows}
             </div>
@@ -309,8 +336,8 @@ registerCommand(
             </div>
             <div>
               <strong>Cost</strong><br/>
-              Total: <strong>$${(stats.estimatedCost || 0).toFixed(4)}</strong><br/>
-              Per Turn: <strong>$${((stats.estimatedCost || 0) / (stats.turns || 1)).toFixed(4)}</strong>
+              Total: <strong>${formatMeasuredCostUsd(stats.estimatedCost)}</strong><br/>
+              Per Turn: <strong>${formatMeasuredCostUsd(stats.estimatedCost === undefined ? undefined : stats.estimatedCost / (stats.turns || 1))}</strong>
             </div>
           </div>
         </details>

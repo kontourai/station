@@ -14,7 +14,7 @@ vi.mock('@kontourai/station-sdk', () => ({
  * stats modal renders, under the same section heading — so it must apply the
  * same cache-honesty rules (archive#4196): summed and "(uncached)" figures
  * only when the provider's declared inclusivity backs them, cache rows only
- * when reported, dashes (never invented zeros) for absent figures.
+ * when reported, "Not reported" (never invented zeros) for absent figures.
  */
 describe('/stats cache-honest totals (station#4196)', () => {
   beforeEach(async () => {
@@ -102,7 +102,7 @@ describe('/stats cache-honest totals (station#4196)', () => {
     expect(html).not.toContain('4,400');
   });
 
-  test('an absent-cache session gets no invented cache rows and dashes for absent figures', async () => {
+  test('an absent-cache session gets no invented cache rows and "Not reported" for absent figures', async () => {
     const html = await renderStatsHtml({
       measurement: { source: 'engine-events', provider: 'claude' },
       inputTokens: 42,
@@ -114,10 +114,97 @@ describe('/stats cache-honest totals (station#4196)', () => {
     expect(html).not.toContain('Cache read');
     expect(html).not.toContain('Cache write');
     expect(html).not.toContain('Prompt total');
-    // Absent figures render as the shared dash, never an invented zero.
-    expect(html).toContain('Out: <strong>—</strong>');
-    expect(html).toContain('Total: <strong>—</strong>');
+    // Absent figures read "Not reported", never an invented zero.
+    expect(html).toContain('Out: <strong>Not reported</strong>');
+    expect(html).toContain('Total: <strong>Not reported</strong>');
     expect(html).not.toContain('Out: <strong>0</strong>');
     expect(html).not.toContain('Total: <strong>0</strong>');
+  });
+
+  test('a chat whose model reported no usage reads "Not reported", never $0.0000 or 0 (#5390)', async () => {
+    // The stats route's response for a Station-agent chat whose model
+    // reported no usage: no token, cost or context figures.
+    const html = await renderStatsHtml({
+      turns: 0,
+      toolCalls: 0,
+      conversationId: 'station:1',
+      modelId: '',
+      modelStats: {},
+      systemPromptTokens: 0,
+      mcpServerTokens: 26_238,
+      userMessageTokens: 3,
+      contextFilesTokens: 0,
+      measurement: { source: 'station-memory' },
+    });
+    expect(html).toContain('In: <strong>Not reported</strong>');
+    expect(html).toContain('Out: <strong>Not reported</strong>');
+    expect(html).toContain('Total: <strong>Not reported</strong>');
+    expect(html).toContain('Per Turn: <strong>Not reported</strong>');
+    expect(html).not.toContain('$0.0000');
+    expect(html).toContain(
+      'Assistant Messages:</td><td style="text-align: right;">Not reported',
+    );
+    // A reported zero stays zero.
+    expect(html).toContain(
+      'System Prompt:</td><td style="text-align: right;">0<',
+    );
+  });
+
+  test('several engines that reported tokens each get their own rows, with no total across them (#5389)', async () => {
+    // The stats route's response after Claude Code then Codex
+    // (`conversation-stats-engine-change.routes.test.ts`).
+    const html = await renderStatsHtml({
+      conversationId: 'conv',
+      modelId: 'codex-model',
+      turns: 4,
+      toolCalls: 0,
+      estimatedCost: 0.25,
+      modelStats: {},
+      measurement: { source: 'engine-events', provider: 'codex' },
+      engines: [
+        {
+          provider: 'claude',
+          turns: 2,
+          toolCalls: 0,
+          inputTokens: 14,
+          outputTokens: 11,
+          totalTokens: 25,
+          cacheReadTokens: 220,
+          cacheWriteTokens: 20,
+          estimatedCost: 0.25,
+        },
+        {
+          provider: 'codex',
+          turns: 2,
+          toolCalls: 0,
+          inputTokens: 700,
+          outputTokens: 90,
+          totalTokens: 790,
+          cacheReadTokens: 500,
+          modelId: 'codex-model',
+        },
+      ],
+    });
+    expect(html).toContain(
+      'Each engine counts tokens its own way, so there is no total across engines',
+    );
+    const claude = html.slice(
+      html.indexOf('<strong>Claude Code</strong>'),
+      html.indexOf('<strong>Codex</strong>'),
+    );
+    expect(claude).toContain('In (uncached): <strong>14</strong>');
+    expect(claude).toContain('Out: <strong>11</strong>');
+    expect(claude).toContain('Total: <strong>265</strong>');
+    const codex = html.slice(html.indexOf('<strong>Codex</strong>'));
+    expect(codex).toContain('In: <strong>700</strong>');
+    expect(codex).toContain('Total: <strong>790</strong>');
+    // The engines reported their tokens: nothing in the section says
+    // otherwise.
+    const consumption = html.slice(
+      html.indexOf('Total LLM Consumption'),
+      html.indexOf('Activity & Cost'),
+    );
+    expect(consumption).not.toContain('Not reported');
+    expect(html).toContain('Total: <strong>$0.2500</strong>');
   });
 });

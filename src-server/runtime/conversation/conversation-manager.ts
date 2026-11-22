@@ -374,12 +374,10 @@ export async function getConversationStats(
       record.metadata?.stats ? [record.metadata.stats] : [],
     ),
   ) || {
-    inputTokens: 0,
-    outputTokens: 0,
-    totalTokens: 0,
+    // No turn recorded stats on this conversation (a model that reports no
+    // usage): its token counts and cost were never reported, not zero.
     turns: 0,
     toolCalls: 0,
-    estimatedCost: 0,
   };
 
   const modelStats = combineLineageModelStats(
