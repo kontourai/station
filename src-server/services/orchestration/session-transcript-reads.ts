@@ -13,6 +13,7 @@ import type {
   SessionUsageAggregate,
 } from '@kontourai/station-shared/usage-fold';
 import {
+  foldLineageUsageEvents,
   foldUsageEvents,
   foldUsageObservationProjection,
   providerCostScope,
@@ -251,20 +252,21 @@ export class SessionTranscriptReads {
   }
 
   /**
-   * #3112: one conversation's usage across its execution Sessions, folded in
-   * lineage order as one event stream, so cumulative figures sum and
-   * "latest" figures (context occupancy, model) come from the newest turn.
-   * A Session the authority cannot read contributes nothing, as in the
-   * conversation message read.
+   * #3112: one conversation's usage across its execution Sessions, in
+   * lineage order. #5389: kept per engine (`foldLineageUsageEvents`), so an
+   * engine that reports a running total cannot replace what an earlier engine
+   * counted; "latest" figures (context occupancy, model) still come from the
+   * newest turn. A Session the authority cannot read contributes nothing, as
+   * in the conversation message read.
    */
   readConversationUsage(
     threadIds: readonly string[],
     authority: SessionReadScope,
   ): SessionUsageAggregate {
-    return foldUsageEvents(
+    return foldLineageUsageEvents(
       threadIds
         .filter((threadId) => this.deps.canReadSession(threadId, authority))
-        .flatMap((threadId) => this.deps.listUsageEventPayloads(threadId)),
+        .map((threadId) => this.deps.listUsageEventPayloads(threadId)),
       (dropped) => this.deps.reportDroppedUsageFigure(dropped),
     );
   }

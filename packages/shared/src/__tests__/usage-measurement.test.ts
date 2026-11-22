@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  conversationStatsMeasurementView,
   describeUnreportedMeasurements,
   formatMeasuredCostUsd,
   formatMeasuredTokens,
@@ -124,5 +125,34 @@ describe('the one unreported-measurement representation (station#3201)', () => {
         provider: 'acp',
       }),
     ).toEqual(['token counts', 'cost', 'context usage']);
+  });
+
+  it('does not call token counts unreported when two engines each reported their own (#5389)', () => {
+    const mixed = {
+      turns: 2,
+      toolCalls: 0,
+      estimatedCost: 0.25,
+      contextTokens: 900,
+      measurement: { source: 'engine-events' as const, provider: 'codex' },
+      engines: [
+        { provider: 'claude', turns: 1, toolCalls: 0, inputTokens: 14 },
+        { provider: 'codex', turns: 1, toolCalls: 0, totalTokens: 790 },
+      ],
+    };
+    expect(
+      describeUnreportedMeasurements(
+        conversationStatsMeasurementView(mixed),
+        () => 'Codex',
+      ),
+    ).toBeNull();
+    // An engine row without token figures does not stand in for them.
+    expect(
+      unreportedMeasurementClasses(
+        conversationStatsMeasurementView({
+          ...mixed,
+          engines: [{ provider: 'acp', turns: 2, toolCalls: 0 }],
+        }),
+      ),
+    ).toEqual(['token counts']);
   });
 });

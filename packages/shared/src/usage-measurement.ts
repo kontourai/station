@@ -68,6 +68,12 @@ export interface SessionMeasurementView {
    * without a token pair (Kiro's `context_usage`).
    */
   contextPercent?: number;
+  /**
+   * #5389: several engines reported token counts, each on its own scale, so
+   * the conversation has no single token total. Counts were reported, so the
+   * absent totals are not an unreported class.
+   */
+  tokensReportedPerEngine?: true;
 }
 
 /**
@@ -89,7 +95,8 @@ export function unreportedMeasurementClasses(
   if (
     view.inputTokens === undefined &&
     view.outputTokens === undefined &&
-    view.totalTokens === undefined
+    view.totalTokens === undefined &&
+    !view.tokensReportedPerEngine
   ) {
     classes.push('token counts');
   }
@@ -145,6 +152,7 @@ export function conversationStatsMeasurementView(
     | 'measurement'
     | 'reportedCosts'
     | 'contextWindowPercentage'
+    | 'engines'
   >,
 ): SessionMeasurementView {
   return {
@@ -158,6 +166,14 @@ export function conversationStatsMeasurementView(
       ? { reportedCostUnits: stats.reportedCosts.length }
       : {}),
     contextTokens: stats.contextTokens,
+    ...(stats.engines?.some(
+      (engine) =>
+        engine.inputTokens !== undefined ||
+        engine.outputTokens !== undefined ||
+        engine.totalTokens !== undefined,
+    )
+      ? { tokensReportedPerEngine: true as const }
+      : {}),
     // Without a token pair the percentage can only be the engine's own.
     ...(stats.contextTokens === undefined &&
     stats.contextWindowPercentage !== undefined

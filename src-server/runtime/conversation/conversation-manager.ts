@@ -4,8 +4,12 @@
  */
 
 import type { AppConfig } from '@kontourai/station-contracts/config';
-import { CONVERSATION_REPORTED_COST_UNITS_MAX } from '@kontourai/station-contracts/runtime';
 import {
+  CONVERSATION_REPORTED_COST_UNITS_MAX,
+  type ConversationEngineUsage,
+} from '@kontourai/station-contracts/runtime';
+import {
+  type EngineUsageAggregate,
   isValidContextObservation,
   type SessionUsageAggregate,
 } from '@kontourai/station-shared/usage-fold';
@@ -74,6 +78,24 @@ function usageAggregateToConversationStats(
     turns: aggregate.turns,
     toolCalls: aggregate.toolCalls,
     estimatedCost: aggregate.reportedCostUsd,
+    ...(aggregate.engines
+      ? { engines: aggregate.engines.map(engineUsageForWire) }
+      : {}),
+  };
+}
+
+/** #5389: one engine's figures under the stats wire's field names. */
+function engineUsageForWire({
+  reportedCostUsd,
+  lastModelId,
+  ...figures
+}: EngineUsageAggregate): ConversationEngineUsage {
+  return {
+    ...figures,
+    ...(reportedCostUsd !== undefined
+      ? { estimatedCost: reportedCostUsd }
+      : {}),
+    ...(lastModelId ? { modelId: lastModelId } : {}),
   };
 }
 
@@ -83,6 +105,8 @@ function hasUsageSignal(aggregate: SessionUsageAggregate): boolean {
     aggregate.turns > 0 ||
     aggregate.toolCalls > 0 ||
     (aggregate.totalTokens ?? 0) > 0 ||
+    // #5389: several engines' tokens have no conversation-wide total.
+    (aggregate.engines ?? []).some((engine) => (engine.totalTokens ?? 0) > 0) ||
     // A context observation counts whether or not the engine also reported
     // the window size — the window can be resolved from the model
     // inventory, so occupancy alone is still a real measurement.

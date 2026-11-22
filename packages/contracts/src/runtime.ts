@@ -148,8 +148,39 @@ export interface ConversationStatsResponse {
   assistantMessageTokens?: number;
   contextFilesTokens?: number;
   modelStats?: Record<string, ConversationModelStats>;
+  /**
+   * #5389: what each engine counted, in the order the engines first ran in
+   * the conversation (an `engine-events` view only). When more than one
+   * engine reported tokens, the conversation's own token figures above are
+   * absent: the engines count on different scales, so no single total
+   * exists. Turns,
+   * tool calls and costs above stay conversation-wide.
+   */
+  engines?: ConversationEngineUsage[];
   notFound?: true;
   measurement?: ConversationStatsMeasurement;
+}
+
+/**
+ * One engine's usage within a conversation, on that engine's own scale.
+ * Same absent-is-not-zero rule as {@link ConversationStatsResponse}.
+ */
+export interface ConversationEngineUsage {
+  /** The engine's provider id (`event.provider`). */
+  provider: string;
+  turns: number;
+  toolCalls: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  /** The engine's own USD figure. */
+  estimatedCost?: number;
+  /** The engine's costs in its own units, never converted. */
+  reportedCosts?: ConversationReportedCost[];
+  /** The latest model the engine's Sessions configured. */
+  modelId?: string;
 }
 
 export interface ConversationReportedCost {
@@ -300,6 +331,32 @@ function isConversationReportedCosts(value: unknown): boolean {
 const isFiniteNonnegative = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
+function isConversationEngineUsage(
+  value: unknown,
+): value is ConversationEngineUsage {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.provider === 'string' &&
+    value.provider.length > 0 &&
+    isFiniteNonnegative(value.turns) &&
+    isFiniteNonnegative(value.toolCalls) &&
+    [
+      'inputTokens',
+      'outputTokens',
+      'totalTokens',
+      'cacheReadTokens',
+      'cacheWriteTokens',
+      'estimatedCost',
+    ].every(
+      (key) => value[key] === undefined || isFiniteNonnegative(value[key]),
+    ) &&
+    (value.modelId === undefined || typeof value.modelId === 'string') &&
+    isConversationReportedCosts(value.reportedCosts) &&
+    (!Array.isArray(value.reportedCosts) ||
+      value.reportedCosts.length <= CONVERSATION_REPORTED_COST_UNITS_MAX)
+  );
+}
+
 function isConversationModelStats(
   value: unknown,
 ): value is ConversationModelStats {
@@ -362,6 +419,9 @@ export function parseConversationStatsResponse(
     (candidate.notFound !== undefined && candidate.notFound !== true) ||
     !isConversationStatsMeasurement(candidate.measurement) ||
     !isConversationReportedCosts(candidate.reportedCosts) ||
+    (candidate.engines !== undefined &&
+      (!Array.isArray(candidate.engines) ||
+        !candidate.engines.every(isConversationEngineUsage))) ||
     (candidate.modelStats !== undefined &&
       (!isRecord(candidate.modelStats) ||
         !Object.values(candidate.modelStats).every(isConversationModelStats)))
