@@ -1,0 +1,7 @@
+{
+  "revision": "c0eeea5ee41188c63199ea4c8fd702db3aa30408",
+
+  "notes": [
+    {"path":"docs/guides/feature-previews.md","note":"Only cites docs/user/settings.md#feature-previews; that section is unchanged by this edit (People and setup access paragraph only).","inputs":["docs/guides/feature-previews.md","docs/user/settings.md"]}
+  ]
+}

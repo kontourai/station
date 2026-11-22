@@ -828,8 +828,6 @@
 
     "src-ui/src/components/search/WorkspaceSearchPalette.tsx",
 
-    "src-ui/src/components/setup/ExistingSetupImportStepper.tsx",
-
     "src-ui/src/contexts/ApiBaseContext.tsx",
 
     "src-ui/src/contexts/KeyboardShortcutsContext.tsx",
@@ -1796,7 +1794,9 @@
 
     "src-server/services/orchestration/__tests__/engine-start-capacity-recovery.test.ts",
 
-    "src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts"
+    "src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts",
+
+    "src-ui/src/components/setup/CodexPromptImportDialog.tsx"
   ],
 
   "checks": [
