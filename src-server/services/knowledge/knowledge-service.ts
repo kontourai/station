@@ -351,7 +351,8 @@ export class KnowledgeService {
 
   /**
    * Index the project's directory. With no namespace named, the files go to
-   * the `code` namespace, which is registered on the project first: the
+   * the `code` namespace, which is registered on the project before the first
+   * file is written (not when there is nothing to write): the
    * project-wide document list, status counts and search read registered
    * namespaces only, so an unregistered `code` held every scanned file out of
    * sight while the scan reported them indexed.
@@ -362,15 +363,12 @@ export class KnowledgeService {
     includePatterns?: string[],
     excludePatterns?: string[],
     explicitNamespace?: string,
-  ): Promise<{ indexed: number; skipped: number }> {
+  ): Promise<{ indexed: number; alreadyIndexed: number; skipped: number }> {
     const namespace = explicitNamespace ?? DEFAULT_SCAN_NAMESPACE.id;
-    if (
+    const registerDefault =
       !explicitNamespace &&
       this.storageAdapter &&
-      !this.getNamespaceConfig(projectSlug, namespace)
-    ) {
-      await this.registerNamespace(projectSlug, DEFAULT_SCAN_NAMESPACE);
-    }
+      !this.getNamespaceConfig(projectSlug, namespace);
     return scanKnowledgeDirectories({
       projectSlug,
       namespace,
@@ -394,6 +392,12 @@ export class KnowledgeService {
         targetNamespace,
       ) =>
         this.uploadDocument(slug, filename, content, source, targetNamespace),
+      ...(registerDefault
+        ? {
+            prepareNamespace: () =>
+              this.registerNamespace(projectSlug, DEFAULT_SCAN_NAMESPACE),
+          }
+        : {}),
     });
   }
 

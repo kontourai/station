@@ -2554,7 +2554,9 @@ Fetches the namespace's `KnowledgeDocumentMeta[]` matching `filters`, such as
 ### `useKnowledgeScanMutation(projectSlug)`
 
 Requests the directory scan with optional extensions/include/exclude patterns
-and invalidates document/status queries. A completed file-store scan is not
+and invalidates document, status and namespace queries. The result counts
+`indexed` (new files), `alreadyIndexed` (paths already in the namespace, left
+as they were) and `skipped` (empty, oversized or failed files). A completed file-store scan is not
 proof that every root is indexed for semantic search; indexing has separate
 owners described in the [Knowledge guide](../guides/knowledge.md).
 

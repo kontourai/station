@@ -10,6 +10,7 @@ import type {
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { createLogger } from '../../utils/logger.js';
 import type { ProjectWorkspacePathOptions } from '../projects/project-workspace-path.js';
+import { KnowledgeDocumentExistsError } from './knowledge-documents.js';
 import {
   applyKnowledgeScanPatterns,
   collectKnowledgeFiles,
@@ -143,6 +144,7 @@ export async function scanKnowledgeDirectories({
   storageAdapter,
   getNamespaceConfig,
   uploadDocument,
+  prepareNamespace,
   workspacePathOptions,
 }: {
   projectSlug: string;
@@ -168,7 +170,9 @@ export async function scanKnowledgeDirectories({
     source: 'directory-scan',
     namespace: string,
   ): Promise<unknown>;
-}): Promise<{ indexed: number; skipped: number }> {
+  /** Runs once, before the first write, and only when there is a file to write. */
+  prepareNamespace?(): Promise<void>;
+}): Promise<{ indexed: number; alreadyIndexed: number; skipped: number }> {
   const scanPath = await resolveKnowledgeScanPath(
     projectSlug,
     namespace,
@@ -176,7 +180,8 @@ export async function scanKnowledgeDirectories({
     getNamespaceConfig,
     workspacePathOptions,
   );
-  if (!scanPath || !existsSync(scanPath)) return { indexed: 0, skipped: 0 };
+  if (!scanPath || !existsSync(scanPath))
+    return { indexed: 0, alreadyIndexed: 0, skipped: 0 };
 
   const allowedExtensions = extensions
     ? new Set(
@@ -197,7 +202,12 @@ export async function scanKnowledgeDirectories({
       ).length > 0,
   );
 
+  if (files.length > 0) await prepareNamespace?.();
+
   let indexed = 0;
+  // A path already in the namespace is left as it is: a scan adds files, it
+  // does not re-read or update ones it indexed before.
+  let alreadyIndexed = 0;
   let skipped = 0;
   for (const filePath of files) {
     try {
@@ -231,10 +241,14 @@ export async function scanKnowledgeDirectories({
       );
       indexed += 1;
     } catch (error) {
+      if (error instanceof KnowledgeDocumentExistsError) {
+        alreadyIndexed += 1;
+        continue;
+      }
       logger.debug('Failed to index file during directory scan', { error });
       skipped += 1;
     }
   }
 
-  return { indexed, skipped };
+  return { indexed, alreadyIndexed, skipped };
 }

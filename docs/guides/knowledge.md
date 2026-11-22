@@ -103,7 +103,18 @@ separate Project namespace with its existing documents. Unscoped document
 search considers registered RAG namespaces with indexed content. The same
 holds for the Project-wide document list and status counts, so a directory
 scan that names no namespace registers the `code` RAG namespace (labelled
-Code) before writing the Project's files into it.
+Code) before writing the Project's first file into it. A scan with nothing to
+write registers nothing.
+
+Registering `code` makes indexed Project files retrievable, as indexing
+promises. In each chat turn of that Project, Station searches the Project's
+RAG namespaces for the user's message and adds the best-matching chunks
+(at most four, above a minimum score) to the turn's context. Unscoped and
+cross-Project knowledge search include them too. Retrieval needs an embedding
+connection; without one, chats and search get nothing from them. A later scan
+adds new files only: a path already in the namespace is reported as already
+indexed and is not re-read, so an edited file keeps its earlier content until
+it is removed and indexed again.
 
 For a concrete example, [browse Station's repository graph](repository-knowledge-graph.md)
 or see [the captured Knowledge Library](../learn/walkthroughs.md#explore-repository-knowledge).
