@@ -81,7 +81,7 @@ import {
   useHttpConnectionConsent,
 } from './HttpConnectionConsent';
 import { QRDisplay } from './QRDisplay';
-import { QRScanner } from './QRScanner';
+import { hasCameraApi, hasVideoInput, QRScanner } from './QRScanner';
 import {
   defaultKeptScope,
   elevatedLabels,
@@ -299,7 +299,30 @@ export function JoinDevicePairingPanel({
     directConnectionId,
     accountBoundDeviceRequest?.clientInstanceId,
   ]);
-  const [mode, setMode] = useState<'direct' | 'scan' | 'manual'>(initialMode);
+  // The scanner is offered only where this browser has a camera. With no
+  // camera API at all, open straight on code entry. A browser with the API
+  // but no listed camera, or whose capture finds none, drops the scanner once
+  // that is known.
+  const [cameraUnavailable, setCameraUnavailable] = useState(
+    () => !hasCameraApi(),
+  );
+  const [mode, setMode] = useState<'direct' | 'scan' | 'manual'>(() =>
+    initialMode === 'scan' && cameraUnavailable ? 'manual' : initialMode,
+  );
+  const markCameraUnavailable = useCallback(() => {
+    setCameraUnavailable(true);
+    setMode((current) => (current === 'scan' ? 'manual' : current));
+  }, []);
+  useEffect(() => {
+    if (cameraUnavailable) return;
+    let current = true;
+    void hasVideoInput().then((found) => {
+      if (current && found === false) markCameraUnavailable();
+    });
+    return () => {
+      current = false;
+    };
+  }, [cameraUnavailable, markCameraUnavailable]);
   const [deviceName, setDeviceName] = useState(
     hostAppName ? 'This device' : 'This browser',
   );
@@ -377,6 +400,20 @@ export function JoinDevicePairingPanel({
   // An address the panel itself refused, shown on that field.
   const [addressError, setAddressError] = useState<string | null>(null);
   const addressErrorId = useId();
+  const manualEndpointRef = useRef<HTMLInputElement>(null);
+  const manualCodeRef = useRef<HTMLInputElement>(null);
+  // Code entry is the whole point of the manual form, so put the cursor in the
+  // first field still to fill: the address, or the code when the address is
+  // already known. Nothing moves when both are prefilled.
+  useEffect(() => {
+    if (mode !== 'manual') return;
+    const field = !manualEndpointRef.current?.value
+      ? manualEndpointRef.current
+      : !manualCodeRef.current?.value
+        ? manualCodeRef.current
+        : null;
+    field?.focus();
+  }, [mode]);
   const [requestingAccess, setRequestingAccess] = useState(false);
   const requestInFlight = useRef(false);
   // Set while the exchange is retrying something worth waiting out, so the
@@ -1033,7 +1070,7 @@ export function JoinDevicePairingPanel({
           style={inputStyle}
         />
       </label>
-      {mode !== 'direct' && (
+      {mode !== 'direct' && !cameraUnavailable && (
         <fieldset
           style={{ border: 0, display: 'grid', gap: 6, margin: 0, padding: 0 }}
         >
@@ -1157,6 +1194,7 @@ export function JoinDevicePairingPanel({
               setError(null);
               setMode('manual');
             }}
+            onUnavailable={markCameraUnavailable}
           />
         </div>
       ) : (
@@ -1177,6 +1215,7 @@ export function JoinDevicePairingPanel({
             Paste pairing code
           </button>
           <input
+            ref={manualEndpointRef}
             aria-label="Station server address"
             {...STATION_ADDRESS_INPUT_PROPS}
             enterKeyHint="next"
@@ -1202,6 +1241,7 @@ export function JoinDevicePairingPanel({
           )}
           <HttpConnectionConsent consent={httpConsent} />
           <input
+            ref={manualCodeRef}
             aria-label="Pairing code"
             autoCapitalize="characters"
             autoCorrect="off"

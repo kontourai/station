@@ -168,7 +168,44 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
+/**
+ * A browser camera as the scanner sees it: the capture API, the device list a
+ * browser exposes before permission, and a stream whose frames never arrive
+ * (jsdom has no media pipeline), so the scanner stays on "Starting camera…".
+ */
+function installCamera({
+  videoInputs = 1,
+  getUserMedia = vi.fn(
+    async () => ({ getTracks: () => [] }) as unknown as MediaStream,
+  ),
+}: {
+  videoInputs?: number;
+  getUserMedia?: () => Promise<MediaStream>;
+} = {}) {
+  const enumerateDevices = vi.fn(async () =>
+    Array.from({ length: videoInputs }, () => ({
+      kind: 'videoinput',
+      deviceId: '',
+      groupId: '',
+      label: '',
+    })),
+  );
+  Object.defineProperty(navigator, 'mediaDevices', {
+    configurable: true,
+    value: { getUserMedia, enumerateDevices },
+  });
+  vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+  vi.stubGlobal(
+    'requestAnimationFrame',
+    vi.fn(() => 1),
+  );
+  vi.stubGlobal('cancelAnimationFrame', vi.fn());
+  return { getUserMedia, enumerateDevices };
+}
+
 afterEach(() => {
+  Reflect.deleteProperty(navigator, 'mediaDevices');
+  vi.unstubAllGlobals();
   setNativePairingExchangeTransport();
   vi.restoreAllMocks();
   vi.useRealTimers();
@@ -333,6 +370,7 @@ describe('device pairing panels', () => {
       expiresAt: Date.now() + 60_000,
     });
     const onReviewDismissed = vi.fn();
+    installCamera();
     render(
       <JoinDevicePairingPanel
         initialPairingPayload={payload}
@@ -425,6 +463,7 @@ describe('device pairing panels', () => {
   });
 
   test('exposes the selected pairing method to assistive technology', () => {
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
 
     const scan = screen.getByRole('button', { name: 'Scan code' });
@@ -2575,6 +2614,7 @@ describe('device pairing panels', () => {
         }),
       );
     const onPaired = vi.fn();
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={onPaired} onCancel={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
@@ -2631,6 +2671,7 @@ describe('device pairing panels', () => {
         }),
       );
     const onPaired = vi.fn();
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={onPaired} onCancel={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
@@ -2701,6 +2742,7 @@ describe('device pairing panels', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       response({ error: 'offer_expired' }, 410),
     );
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
@@ -2725,6 +2767,7 @@ describe('device pairing panels', () => {
     // request" — a false statement about a Station that was never contacted
     // (station#3158 review).
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
@@ -2744,6 +2787,7 @@ describe('device pairing panels', () => {
   });
 
   test('manual HTTP entry requires an explicit exception for the exact origin', async () => {
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
     const address = screen.getByLabelText('Station server address');
@@ -2806,6 +2850,7 @@ describe('device pairing panels', () => {
         }),
       );
     const onPaired = vi.fn();
+    installCamera();
     render(<JoinDevicePairingPanel onPaired={onPaired} onCancel={vi.fn()} />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Enter manually' }));
@@ -4102,4 +4147,116 @@ test('a pairing code needs both fields, submits on Return, and names a bad addre
   } finally {
     fetchSpy.mockRestore();
   }
+});
+
+describe('pairing by code without a camera', () => {
+  test('opens on code entry with no camera API: field focused, no scanner, no camera error', () => {
+    expect(navigator.mediaDevices).toBeUndefined();
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+
+    const address = screen.getByLabelText('Station server address');
+    expect(document.activeElement).toBe(address);
+    expect(screen.getByLabelText('Pairing code')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
+    expect(screen.queryByText(/Camera error/)).toBeNull();
+    expect(screen.queryByText(/Camera scanning requires/)).toBeNull();
+    expect(document.querySelector('video')).toBeNull();
+  });
+
+  test('focuses the code field when the address is already known', () => {
+    render(
+      <JoinDevicePairingPanel
+        initialManualEndpoint="https://station.example.ts.net"
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    expect(document.activeElement).toBe(screen.getByLabelText('Pairing code'));
+    expect(screen.queryByText(/Camera error/)).toBeNull();
+  });
+
+  test('falls back to code entry when the browser lists no camera, without asking for one', async () => {
+    const { getUserMedia, enumerateDevices } = installCamera({
+      videoInputs: 0,
+    });
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+
+    const address = await screen.findByLabelText('Station server address');
+    expect(enumerateDevices).toHaveBeenCalled();
+    expect(document.activeElement).toBe(address);
+    expect(getUserMedia).not.toHaveBeenCalled();
+    expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
+    expect(screen.queryByText(/Camera error/)).toBeNull();
+  });
+
+  test('falls back to code entry when capture is unsupported, as a camera-less browser reports it', async () => {
+    installCamera({
+      getUserMedia: vi.fn(async () => {
+        throw Object.assign(new Error('Not supported'), {
+          name: 'NotSupportedError',
+        });
+      }),
+    });
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+
+    const address = await screen.findByLabelText('Station server address');
+    expect(document.activeElement).toBe(address);
+    expect(screen.queryByText(/Not supported/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
+  });
+
+  test('a code-entry panel stops offering the scanner once the browser lists no camera', async () => {
+    installCamera({ videoInputs: 0 });
+    render(
+      <JoinDevicePairingPanel
+        initialMode="manual"
+        onPaired={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull(),
+    );
+    expect(document.activeElement).toBe(
+      screen.getByLabelText('Station server address'),
+    );
+  });
+
+  test('mounts the scanner when the browser has a camera', async () => {
+    const { getUserMedia } = installCamera();
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+
+    expect(
+      screen
+        .getByRole('button', { name: 'Scan code' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+    expect(document.querySelector('video')).toBeTruthy();
+    expect(screen.getByText('Starting camera…')).toBeTruthy();
+    expect(screen.queryByLabelText('Pairing code')).toBeNull();
+  });
+
+  test('a camera that exists but is refused still says so, with a way to type the code', async () => {
+    installCamera({
+      getUserMedia: vi.fn(async () => {
+        throw Object.assign(new Error('denied'), { name: 'NotAllowedError' });
+      }),
+    });
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+
+    await screen.findByText(
+      'Camera permission denied. Please allow camera access.',
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Enter the pairing code manually' }),
+    );
+    expect(document.activeElement).toBe(
+      screen.getByLabelText('Station server address'),
+    );
+    // The camera exists, so scanning stays on offer.
+    expect(screen.getByRole('button', { name: 'Scan code' })).toBeTruthy();
+  });
 });

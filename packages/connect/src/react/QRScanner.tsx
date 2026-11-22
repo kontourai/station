@@ -12,7 +12,53 @@ export interface QRScannerProps {
    * grant camera access at all.
    */
   onManualEntry?: () => void;
+  /**
+   * Invoked instead of showing an error when this browser has no camera to
+   * scan with: no camera API, no video input, or a capture request the
+   * browser refuses as unsupported or finds no device for. A person who only
+   * meant to type a code should not meet a camera error. Without a handler
+   * the scanner shows the failure like any other.
+   */
+  onUnavailable?: () => void;
 }
+
+/**
+ * Whether this browser exposes a camera capture API at all. It is missing
+ * outside a secure context (plain HTTP on a LAN address) and in some shells.
+ */
+export function hasCameraApi(): boolean {
+  return (
+    typeof navigator !== 'undefined' &&
+    typeof navigator.mediaDevices?.getUserMedia === 'function'
+  );
+}
+
+/**
+ * Whether the browser lists a camera: true or false when it can say, null
+ * when it cannot (no device list, or the listing failed). Before permission
+ * is granted, browsers still list one entry per kind of device present, so an
+ * empty video list means there is no camera.
+ */
+export async function hasVideoInput(): Promise<boolean | null> {
+  if (!hasCameraApi()) return false;
+  if (typeof navigator.mediaDevices.enumerateDevices !== 'function') {
+    return null;
+  }
+  const devices = await navigator.mediaDevices
+    .enumerateDevices()
+    .catch(() => null);
+  return devices ? devices.some((d) => d.kind === 'videoinput') : null;
+}
+
+// Capture failures that mean "there is no camera to use here", as opposed to
+// a camera that exists but was refused or is busy (NotAllowedError,
+// NotReadableError, AbortError), which the scanner still reports.
+const NO_CAMERA_ERRORS = new Set([
+  'InsecureContext',
+  'NotFoundError',
+  'NotSupportedError',
+  'OverconstrainedError',
+]);
 
 /**
  * Opens the device camera and scans QR codes using jsqr.
@@ -33,6 +79,7 @@ function CameraScanner({
   onScan,
   onCancel,
   onManualEntry,
+  onUnavailable,
   onRetry,
 }: QRScannerProps & { onRetry: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -42,6 +89,7 @@ function CameraScanner({
   const completedRef = useRef(false);
   const onScanRef = useRef(onScan);
   const onCancelRef = useRef(onCancel);
+  const onUnavailableRef = useRef(onUnavailable);
   const [error, setError] = useState<string | null>(null);
   const [scanning, setScanning] = useState(true);
   // `scanning` flips true before getUserMedia resolves and the first frame
@@ -52,6 +100,7 @@ function CameraScanner({
 
   onScanRef.current = onScan;
   onCancelRef.current = onCancel;
+  onUnavailableRef.current = onUnavailable;
 
   const stopStream = useCallback(() => {
     cancelAnimationFrame(rafRef.current);
@@ -71,12 +120,21 @@ function CameraScanner({
 
     const startCamera = async () => {
       try {
-        if (!navigator.mediaDevices?.getUserMedia) {
+        if (!hasCameraApi()) {
           throw Object.assign(
             new Error('Camera requires a secure context (HTTPS or localhost).'),
             { name: 'InsecureContext' },
           );
         }
+        // Ask for the camera only when the browser lists one. When it cannot
+        // say, let capture decide.
+        if (onUnavailableRef.current && (await hasVideoInput()) === false) {
+          if (cancelled) return;
+          throw Object.assign(new Error('No camera found.'), {
+            name: 'NotFoundError',
+          });
+        }
+        if (cancelled) return;
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment' },
         });
@@ -93,6 +151,11 @@ function CameraScanner({
       } catch (err: any) {
         if (!cancelled) {
           stopStream();
+          if (onUnavailableRef.current && NO_CAMERA_ERRORS.has(err?.name)) {
+            completedRef.current = true;
+            onUnavailableRef.current();
+            return;
+          }
           setError(
             err.name === 'NotAllowedError'
               ? 'Camera permission denied. Please allow camera access.'
