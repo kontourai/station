@@ -2220,6 +2220,172 @@ describe('useActiveChatTranscript', () => {
     ]);
   });
 
+  test('a restart notice after a failed turn stays where the restart happened, above the turns that followed', async () => {
+    // Recovery publishes no abort for a turn its own `runtime.error` already
+    // ended, so the projection still holds that turn open when the notice
+    // arrives. The conversation then continues in a successor Session, and
+    // is interrupted again there.
+    const successor = 'thread-1:session:b';
+    const claude = (threadId: string, fields: Record<string, unknown>) => ({
+      provider: 'claude-code',
+      threadId,
+      ...fields,
+    });
+    const failure = (eventId: string, threadId: string, turnId: string) =>
+      event(
+        eventId,
+        'runtime.error',
+        claude(threadId, {
+          turnId,
+          message: 'Claude Code process exited with code 143',
+        }),
+      );
+    const notice = (
+      eventId: string,
+      threadId: string,
+      boundaryId: string,
+      turnId: string,
+    ) =>
+      event(
+        eventId,
+        'session.state-changed',
+        claude(threadId, {
+          sessionId: threadId,
+          from: 'running',
+          to: 'awaiting-approval',
+          reason: TURN_INTERRUPTED_MESSAGE,
+          sessionState: 'needs_input',
+          transitionReason: 'runtime_exit',
+          transitionSource: 'system_recovery',
+          interruptedTurnBoundary: {
+            boundaryId,
+            priorState: 'accepted',
+            providerTurnId: turnId,
+            ownerId: 'owner-1',
+            boundaryCreatedAt: '2026-08-09T00:00:01.000Z',
+            boundaryUpdatedAt: '2026-08-09T00:00:01.000Z',
+          },
+        }),
+      );
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 10,
+      hasMore: false,
+      sessionLineage: [{ sessionId: 'thread-1' }, { sessionId: successor }],
+      events: [
+        event(
+          'e1',
+          'turn.started',
+          claude('thread-1', { turnId: 'turn-1', prompt: 'Fix the build' }),
+        ),
+        failure('e2', 'thread-1', 'turn-1'),
+        notice('e3', 'thread-1', 'boundary-1', 'turn-1'),
+        event(
+          'e4',
+          'turn.started',
+          claude(successor, {
+            turnId: 'turn-2',
+            prompt: 'Are you still there?',
+          }),
+        ),
+        event(
+          'e5',
+          'content.text-delta',
+          claude(successor, {
+            turnId: 'turn-2',
+            delta: 'Yes, picking up again.',
+          }),
+        ),
+        event('e6', 'turn.completed', claude(successor, { turnId: 'turn-2' })),
+        event(
+          'e7',
+          'turn.started',
+          claude(successor, { turnId: 'turn-3', prompt: 'Run the tests' }),
+        ),
+        failure('e8', successor, 'turn-3'),
+        notice('e9', successor, 'boundary-3', 'turn-3'),
+        event(
+          'e10',
+          'turn.started',
+          claude(successor, { turnId: 'turn-4', prompt: 'And now?' }),
+        ),
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    const notices = (text: string | undefined) =>
+      text?.includes('[TURN_INTERRUPTED]') ? 'notice' : text;
+    expect(
+      result.current.messages.map((message) => [
+        message.role,
+        notices(message.content),
+        message.interruptedTurnBoundaryId,
+      ]),
+    ).toEqual([
+      ['user', 'Fix the build', undefined],
+      ['assistant', '⚠️ Claude Code process exited with code 143', undefined],
+      ['user', 'notice', 'boundary-1'],
+      ['user', 'Are you still there?', undefined],
+      ['assistant', 'Yes, picking up again.', undefined],
+      ['user', 'Run the tests', undefined],
+      ['assistant', '⚠️ Claude Code process exited with code 143', undefined],
+      ['user', 'notice', 'boundary-3'],
+      ['user', 'And now?', undefined],
+    ]);
+  });
+
+  test('a row without a usable time keeps its place after the row before it', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 5,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'First' }),
+        event('e2', 'turn.completed', {
+          turnId: 'turn-1',
+          outputText: 'First answer',
+        }),
+        // A marker whose date cannot be read projects with no timestamp.
+        {
+          ...event('e3', 'model.rerouted', {
+            fromModel: 'model-a',
+            toModel: 'model-b',
+            trigger: 'availability',
+            scope: 'session',
+          }),
+          event: {
+            ...event('e3', 'model.rerouted', {
+              fromModel: 'model-a',
+              toModel: 'model-b',
+              trigger: 'availability',
+              scope: 'session',
+            }).event,
+            createdAt: 'not a date',
+          },
+        },
+        event('e4', 'turn.started', { turnId: 'turn-2', prompt: 'Second' }),
+        event('e5', 'turn.completed', {
+          turnId: 'turn-2',
+          outputText: 'Second answer',
+        }),
+      ],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    const rows = result.current.messages.map((message) =>
+      message.role === 'system' || message.contentParts?.[0]?.type !== 'text'
+        ? 'marker'
+        : message.content,
+    );
+    expect(rows.indexOf('marker')).toBe(rows.indexOf('First answer') + 1);
+    expect(rows.indexOf('Second')).toBeGreaterThan(rows.indexOf('marker'));
+  });
+
   test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
     fetchWindow.mockResolvedValueOnce({
       protocolVersion: 1,

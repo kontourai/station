@@ -1692,6 +1692,37 @@ describe('projectRuntimeEventsToMessages', () => {
       },
     );
 
+    it('stamps the banner with its own time when it closes a turn a runtime error left open', () => {
+      const messages = projectRuntimeEventsToMessages([
+        ev({ method: 'turn.started', turnId: 'dead', prompt: 'go' }),
+        ev({
+          method: 'runtime.error',
+          turnId: 'dead',
+          message: 'Claude Code process exited',
+        }),
+        ev({
+          method: 'session.state-changed',
+          sessionId: 't1',
+          from: 'running',
+          to: 'awaiting-approval',
+          createdAt: '2026-06-27T00:05:00.000Z',
+          interruptedTurnBoundary: {
+            boundaryId: 'boundary-dead',
+            priorState: 'accepted',
+            providerTurnId: 'dead',
+            ownerId: 'owner-1',
+            boundaryCreatedAt: '2026-06-27T00:00:00.000Z',
+            boundaryUpdatedAt: '2026-06-27T00:00:00.000Z',
+          },
+        } as Partial<CanonicalRuntimeEvent> & { method: string }),
+      ]);
+      const banner = messages.at(-1);
+      expect(banner?.metadata?.interruptedTurnBoundaryId).toBe('boundary-dead');
+      expect(banner?.metadata?.timestamp).toBe(
+        Date.parse('2026-06-27T00:05:00.000Z'),
+      );
+    });
+
     it('renders the banner when interruptedTurnBoundary is present', () => {
       const messages = projectRuntimeEventsToMessages([
         ev({
