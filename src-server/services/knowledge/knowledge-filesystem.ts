@@ -204,51 +204,43 @@ export async function scanKnowledgeDirectories({
 
   if (files.length > 0) await prepareNamespace?.();
 
-  let indexed = 0;
-  // A path already in the namespace is left as it is: a scan adds files, it
-  // does not re-read or update ones it indexed before.
-  let alreadyIndexed = 0;
-  let skipped = 0;
+  const counts = { indexed: 0, alreadyIndexed: 0, skipped: 0 };
   for (const filePath of files) {
-    try {
-      // Size first: an empty or oversized file is skipped without its bytes
-      // ever being read into memory. `lstat`, so a file swapped for a link
-      // since the walk is not read through either.
-      const info = await lstat(filePath);
-      if (
-        !info.isFile() ||
-        info.size === 0 ||
-        info.size > MAX_SCANNED_FILE_BYTES
-      ) {
-        skipped += 1;
-        continue;
-      }
-      const content = await readFile(filePath, 'utf-8');
-      if (
-        content.length === 0 ||
-        content.length > MAX_SCANNED_DOCUMENT_CHARACTERS
-      ) {
-        skipped += 1;
-        continue;
-      }
-      const relativePath = relative(scanPath, filePath);
-      await uploadDocument(
-        projectSlug,
-        relativePath,
-        content,
-        'directory-scan',
-        namespace,
-      );
-      indexed += 1;
-    } catch (error) {
-      if (error instanceof KnowledgeDocumentExistsError) {
-        alreadyIndexed += 1;
-        continue;
-      }
-      logger.debug('Failed to index file during directory scan', { error });
-      skipped += 1;
-    }
+    const outcome = await indexScannedFile(filePath, scanPath, (path, text) =>
+      uploadDocument(projectSlug, path, text, 'directory-scan', namespace),
+    );
+    counts[outcome] += 1;
   }
+  return counts;
+}
 
-  return { indexed, alreadyIndexed, skipped };
+/**
+ * One file of a directory scan. A path already in the namespace is left as it
+ * is: a scan adds files, it does not re-read or update ones it indexed before.
+ */
+async function indexScannedFile(
+  filePath: string,
+  scanPath: string,
+  upload: (relativePath: string, content: string) => Promise<unknown>,
+): Promise<'indexed' | 'alreadyIndexed' | 'skipped'> {
+  try {
+    // Size first: an empty or oversized file is skipped without its bytes
+    // ever being read into memory. `lstat`, so a file swapped for a link
+    // since the walk is not read through either.
+    const info = await lstat(filePath);
+    if (!info.isFile() || info.size === 0 || info.size > MAX_SCANNED_FILE_BYTES)
+      return 'skipped';
+    const content = await readFile(filePath, 'utf-8');
+    if (
+      content.length === 0 ||
+      content.length > MAX_SCANNED_DOCUMENT_CHARACTERS
+    )
+      return 'skipped';
+    await upload(relative(scanPath, filePath), content);
+    return 'indexed';
+  } catch (error) {
+    if (error instanceof KnowledgeDocumentExistsError) return 'alreadyIndexed';
+    logger.debug('Failed to index file during directory scan', { error });
+    return 'skipped';
+  }
 }
