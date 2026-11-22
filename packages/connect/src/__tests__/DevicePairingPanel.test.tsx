@@ -4253,7 +4253,8 @@ describe('pairing by code without a camera', () => {
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
 
     const address = await screen.findByLabelText('Station server address');
-    expect(document.activeElement).toBe(address);
+    // The field renders one commit before the effect that focuses it.
+    await waitFor(() => expect(document.activeElement).toBe(address));
     expect(screen.queryByText(/not found|Camera error/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
     // The camera API exists, so no secure-connection reason is given.
@@ -4272,7 +4273,8 @@ describe('pairing by code without a camera', () => {
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
 
     const address = await screen.findByLabelText('Station server address');
-    expect(document.activeElement).toBe(address);
+    // The field renders one commit before the effect that focuses it.
+    await waitFor(() => expect(document.activeElement).toBe(address));
     expect(screen.queryByText(/Not supported/)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
   });
@@ -4292,8 +4294,10 @@ describe('pairing by code without a camera', () => {
 
     expect(enumerateDevices).not.toHaveBeenCalled();
     expect(screen.getByRole('button', { name: 'Scan code' })).toBeTruthy();
-    expect(document.activeElement).toBe(
-      screen.getByLabelText('Station server address'),
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByLabelText('Station server address'),
+      ),
     );
   });
 
@@ -4326,8 +4330,10 @@ describe('pairing by code without a camera', () => {
     fireEvent.click(
       screen.getByRole('button', { name: 'Enter the pairing code manually' }),
     );
-    expect(document.activeElement).toBe(
-      screen.getByLabelText('Station server address'),
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByLabelText('Station server address'),
+      ),
     );
     // The camera exists, so scanning stays on offer and needs no reason.
     expect(screen.getByRole('button', { name: 'Scan code' })).toBeTruthy();
