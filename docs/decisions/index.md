@@ -21,6 +21,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [device-agent-control](./device-agent-control.md) | current | Bound agents control host-qualified device live surfaces through the shared lease |
 | [ended-task-resume](./ended-task-resume.md) | needs-decision | Resuming ended tracker-backed Tasks after GitHub follow-ups |
 | [engine-credential-provider](./engine-credential-provider.md) | current | Issue engine credentials only through a typed, scoped, reviewed provider |
+| [first-release-ui](./first-release-ui.md) | current | Station's first-release screens follow one agreed structure and one user vocabulary |
 | [html-replies](./html-replies.md) | current | Contain agent-authored HTML in a page-only sandbox |
 | [managed-policy](./managed-policy.md) | current | A machine-level managed policy that Station loads at startup and fails closed on |
 | [mcp-app-transcript-previews](./mcp-app-transcript-previews.md) | current | Display recorded MCP app results in chat without granting session actions |

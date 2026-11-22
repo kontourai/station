@@ -38,14 +38,11 @@ const draft: ProjectChatComposerDraft = {
   message: 'Read the `plugin-authoring` topic.',
 };
 
-function renderDraft(
-  override: {
-    slug: string;
-    name: string;
-    composerDraft?: ProjectChatComposerDraft;
-  },
-  forkMode?: { kind: 'fork'; preferredAgentSlug: string },
-) {
+function renderDraft(override: {
+  slug: string;
+  name: string;
+  composerDraft?: ProjectChatComposerDraft;
+}) {
   const noop = vi.fn();
   render(
     <DockStartComposer
@@ -55,7 +52,6 @@ function renderDraft(
       newChatProjectOverride={override}
       onSelect={noop}
       onClose={noop}
-      forkMode={forkMode}
     />,
   );
 }
@@ -80,17 +76,8 @@ test('a project chat request carrying a composer draft reaches the picker as a v
   });
 });
 
-test('no draft, or a fork, offers no draft item', async () => {
+test('no draft offers no draft item', async () => {
   renderDraft({ slug: 'pulse', name: 'Pulse' });
-  await screen.findByText('new chat picker');
-  expect(newChatProps.at(-1)!.draftContext).toBeUndefined();
-  cleanup();
-  newChatProps.length = 0;
-
-  renderDraft(
-    { slug: 'pulse', name: 'Pulse', composerDraft: draft },
-    { kind: 'fork', preferredAgentSlug: 'assistant' },
-  );
   await screen.findByText('new chat picker');
   expect(newChatProps.at(-1)!.draftContext).toBeUndefined();
 });

@@ -7780,6 +7780,18 @@ export class OrchestrationService {
     return this.forkContexts.transcript(id, authority);
   }
 
+  /** See `ConversationLineage.readConversationForkSource`. */
+  async readConversationForkSource(
+    conversationId: string,
+    authority: SessionReadScope,
+  ): ReturnType<ConversationLineage['readConversationForkSource']> {
+    this.initialize();
+    return this.conversationLineage.readConversationForkSource(
+      conversationId,
+      authority,
+    );
+  }
+
   readForkConversation(id: string, authority: SessionReadScope) {
     this.initialize();
     const reference = this.forkContexts.reference(id, authority);

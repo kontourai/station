@@ -52,6 +52,7 @@ import type {
   TurnDeliveryInspection,
 } from '@kontourai/station-contracts/orchestration';
 import {
+  CONVERSATION_HANDOFF_REFUSAL_CODES,
   type ConversationInboxQueuedReceipt,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type OrchestrationQuoteSource,
@@ -3698,6 +3699,11 @@ export function createOrchestrationRoutes(
             : // The caller's view of the Agent is stale: a conflict with the
               // current binding, not malformed input.
               errorCode(error) === EXECUTION_ENGINE_CHANGED_CODE ||
+                // An earlier handoff awaits its target Session: a conflict
+                // with the conversation's state, as the handoff routes
+                // answer it, not malformed input.
+                errorCode(error) ===
+                  CONVERSATION_HANDOFF_REFUSAL_CODES.awaitingTarget ||
                 // Another attempt still holds the key: a conflict to retry,
                 // as the inbox's own in-flight refusal answers it.
                 errorCode(error) === CLIENT_TURN_IN_FLIGHT_CODE ||

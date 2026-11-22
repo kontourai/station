@@ -46,7 +46,6 @@ function seedStoredBoundary(): void {
 
 function DockBoundaryHook() {
   useConversationBoundaryDialogs({
-    agents: [],
     apiBase: API_BASE,
     activeSession: {
       id: 'session-1',

@@ -1,0 +1,17 @@
+{
+  "revision": "56b37ae836e30a30c088cef90b484d201b39bdc1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Last change to this file was Biome formatting and import ordering only (style commit f1767cfae63); no behavior or cited claim changed.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

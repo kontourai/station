@@ -167,7 +167,6 @@ function Pane({
   continueOnStation?: (result: unknown, title?: string) => void;
 }) {
   const dialogs = useConversationBoundaryDialogs({
-    agents: agents as never,
     apiBase: 'http://station.test',
     activeSession: active,
     allSessions: sessions,
@@ -189,6 +188,7 @@ function Pane({
       invalidate={vi.fn()}
       showToast={vi.fn()}
       refetchOrchestrationSessions={vi.fn() as never}
+      onFork={vi.fn()}
       {...(continueOnStation ? { continueOnStation } : {})}
     />
   );

@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AgentData } from '../../contexts/AgentsContext';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useOutboundQueueSnapshot } from '../../hooks/useOutboundQueueSnapshot';
 import type { ChatSession, FileAttachment } from '../../types';
 import {
@@ -7,7 +6,6 @@ import {
   isSessionExecutionActive,
 } from '../../utils/execution';
 import type { SelectableModel } from '../../utils/modelCapabilities';
-import { agentRunnability } from '../agent-runnability';
 import {
   type ContextBoundaryAuthority,
   observeContextBoundary,
@@ -30,18 +28,15 @@ export interface ForkFollowUp {
  * and the fork attempt's abort/generation bookkeeping all read the same
  * active session.
  *
- * `ConversationBoundaryDialogs` renders the handoff and context-reset
- * dialogs from this object; the fork members are consumed by the dock's
- * `ChatDockModalStack` and its transcript fork affordance.
+ * `ConversationBoundaryDialogs` renders the handoff, fork and context-reset
+ * dialogs from this object; the dock's `runFork` drives the fork members.
  */
 export function useConversationBoundaryDialogs({
-  agents,
   apiBase,
   activeSession,
   allSessions,
   contextBoundaryAuthority,
 }: {
-  agents: AgentData[];
   apiBase: string;
   activeSession: ChatSession | null;
   allSessions: ChatSession[];
@@ -73,12 +68,16 @@ export function useConversationBoundaryDialogs({
     providerId?: string;
     providerType?: string;
     sourceSessionId?: string;
-    idempotencyKey: string;
     /**
      * #4406: what the fork does once open — Regenerate sends the message
      * again, Edit and resend puts it in the composer.
      */
     followUp?: ForkFollowUp;
+    /**
+     * Regenerate / Edit and resend with a runnable Agent: the fork runs
+     * without the dialog, which appears only if it fails.
+     */
+    quiet?: boolean;
   } | null>(null);
   const [forkOperation, setForkOperation] = useState<{
     pending: boolean;
@@ -93,16 +92,6 @@ export function useConversationBoundaryDialogs({
     setForkOperation({ pending: false, error: null });
     setForkSource(null);
   }, []);
-  const forkEligibleAgents = useMemo(() => {
-    if (!forkSource) return agents;
-    return agents
-      .filter((agent) => agentRunnability(agent).runnable)
-      .sort((left, right) => {
-        if (left.slug === forkSource.agentSlug) return -1;
-        if (right.slug === forkSource.agentSlug) return 1;
-        return 0;
-      });
-  }, [agents, forkSource]);
   const [contextResetSource, setContextResetSource] = useState<{
     id: string;
   } | null>(null);
@@ -248,7 +237,6 @@ export function useConversationBoundaryDialogs({
     forkAbortRef,
     forkGenerationRef,
     cancelFork,
-    forkEligibleAgents,
     contextResetSource,
     setContextResetSource,
     contextBoundaryAuthority,

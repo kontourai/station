@@ -12,11 +12,12 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ConversationContextBoundaryPolicy } from '@kontourai/station-contracts/conversation-context-boundary';
 import { CONVERSATION_INTENT_SUMMARY_MAX_ITEMS } from '@kontourai/station-contracts/conversation-intent-summary';
-import type {
-  ConversationListItem,
-  ConversationOpenResolution,
-  ConversationReadState,
-  ConversationReadStateUnavailable,
+import {
+  CONVERSATION_FORK_REFUSAL_CODES,
+  type ConversationListItem,
+  type ConversationOpenResolution,
+  type ConversationReadState,
+  type ConversationReadStateUnavailable,
 } from '@kontourai/station-contracts/orchestration';
 import {
   CONVERSATION_IMPORT_DELETED_CODE,
@@ -30,7 +31,6 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
-import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { conversationToThread } from '@kontourai/station-shared/thread-projection';
 import type { SessionUsageAggregate } from '@kontourai/station-shared/usage-fold';
 import { type Context, Hono } from 'hono';
@@ -214,6 +214,15 @@ function parseConversationIdSegment(value: string): string | null {
 const regenerateTitleSchema = z
   .object({ replaceManualTitle: z.boolean().optional() })
   .strict();
+
+function forkRefusal(
+  c: Context,
+  status: 400 | 403 | 404 | 409,
+  code: ConversationForkContextError['code'],
+  error: string,
+) {
+  return c.json({ success: false, code, error }, status);
+}
 
 function conversationRouteFailure(
   c: Context,
@@ -415,6 +424,19 @@ interface SessionMessageReader {
     messageCount: number;
     mutable: false;
   } | null>;
+  /**
+   * The source transcript a fork cuts at its branch point, read the way a
+   * handoff reads the history it carries (`ConversationLineage
+   * .readConversationForkSource`). Null when absent or not wholly readable.
+   */
+  readConversationForkSource?(
+    conversationId: string,
+    authority: SessionReadAuthority,
+  ): Promise<{
+    messages: ConversationMessage[];
+    title?: string;
+    projectSlug?: string;
+  } | null>;
   /** Bounded, authority-checked runtime facts for derived-summary revision. */
   readConversationEventWindow?(
     conversationId: string,
@@ -456,144 +478,6 @@ interface SessionMessageReader {
     engine?: string;
     agentSlug?: string;
   }>;
-}
-
-const FORK_WINDOW_MAX_PAGES = 16;
-const FORK_WINDOW_MAX_EVENTS = 3_200;
-const FORK_WINDOW_MAX_BYTES = 2 * 1024 * 1024;
-const FORK_WINDOW_MAX_MS = 2_000;
-const FORK_WINDOW_MAX_CURSOR_LENGTH = 512;
-type ForkConversationWindow = NonNullable<
-  Awaited<
-    ReturnType<NonNullable<SessionMessageReader['readConversationEventWindow']>>
-  >
->;
-
-export async function readCompleteForkConversationWindow(
-  reader: SessionMessageReader,
-  conversationId: string,
-  authority: SessionReadAuthority,
-): Promise<
-  | { status: 'not-found' }
-  | { status: 'incomplete'; reason: string }
-  | {
-      status: 'complete';
-      window: ForkConversationWindow;
-    }
-> {
-  const startedAt = Date.now();
-  const seenCursors = new Set<string>();
-  let cursor: string | undefined;
-  let firstWindow: ForkConversationWindow | null = null;
-  const combinedEvents: Array<
-    NonNullable<ForkConversationWindow['events']>[number]
-  > = [];
-  let eventCount = 0;
-  let byteCount = 0;
-  const readPage = async () => {
-    const remaining = FORK_WINDOW_MAX_MS - (Date.now() - startedAt);
-    if (remaining <= 0) throw new Error('conversation history read timed out');
-    const controller = new AbortController();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try {
-      return await Promise.race([
-        reader.readConversationEventWindow?.(conversationId, {
-          cursor,
-          turnLimit: 200,
-          authority,
-          signal: controller.signal,
-        }),
-        new Promise<never>((_resolve, reject) => {
-          timer = setTimeout(() => {
-            controller.abort();
-            reject(new Error('conversation history read timed out'));
-          }, remaining);
-        }),
-      ]);
-    } finally {
-      if (timer) clearTimeout(timer);
-    }
-  };
-  for (let page = 0; page < FORK_WINDOW_MAX_PAGES; page += 1) {
-    let window: ForkConversationWindow | null | undefined;
-    try {
-      window = await readPage();
-    } catch (error) {
-      return {
-        status: 'incomplete',
-        reason:
-          error instanceof Error && error.message.includes('timed out')
-            ? 'conversation history read timed out'
-            : 'conversation page read failed',
-      };
-    }
-    if (!window) {
-      return page === 0
-        ? { status: 'not-found' }
-        : { status: 'incomplete', reason: 'conversation page unavailable' };
-    }
-    if (!Array.isArray(window.events))
-      return { status: 'incomplete', reason: 'malformed conversation page' };
-    eventCount += window.events.length;
-    byteCount += Buffer.byteLength(JSON.stringify(window.events), 'utf8');
-    if (
-      eventCount > FORK_WINDOW_MAX_EVENTS ||
-      byteCount > FORK_WINDOW_MAX_BYTES ||
-      Date.now() - startedAt > FORK_WINDOW_MAX_MS
-    )
-      return {
-        status: 'incomplete',
-        reason: 'conversation history exceeds fork limits',
-      };
-    firstWindow ??= window;
-    combinedEvents.push(...window.events);
-    if (!window.hasMore) {
-      const deduplicated = new Map<
-        string,
-        NonNullable<ForkConversationWindow['events']>[number]
-      >();
-      for (const item of combinedEvents) {
-        if (!deduplicated.has(item.event.eventId))
-          deduplicated.set(item.event.eventId, item);
-      }
-      const sequenceOwners = new Map<number, string>();
-      for (const item of deduplicated.values()) {
-        if (
-          typeof item.sequence !== 'number' ||
-          !Number.isSafeInteger(item.sequence)
-        )
-          return {
-            status: 'incomplete',
-            reason: 'conversation event sequence is malformed',
-          };
-        const owner = sequenceOwners.get(item.sequence);
-        if (owner && owner !== item.event.eventId)
-          return {
-            status: 'incomplete',
-            reason: 'conversation event sequence conflicts',
-          };
-        sequenceOwners.set(item.sequence, item.event.eventId);
-      }
-      const ordered = [...deduplicated.values()].sort(
-        (left, right) => (left.sequence as number) - (right.sequence as number),
-      );
-      return {
-        status: 'complete',
-        window: { ...firstWindow, ...window, events: ordered },
-      };
-    }
-    const nextCursor = (window as { nextCursor?: unknown }).nextCursor;
-    if (
-      typeof nextCursor !== 'string' ||
-      nextCursor.length < 1 ||
-      nextCursor.length > FORK_WINDOW_MAX_CURSOR_LENGTH ||
-      seenCursors.has(nextCursor)
-    )
-      return { status: 'incomplete', reason: 'conversation cursor stalled' };
-    seenCursors.add(nextCursor);
-    cursor = nextCursor;
-  }
-  return { status: 'incomplete', reason: 'conversation page limit reached' };
 }
 
 const conversationHistoryPageQuerySchema = z.object({
@@ -1156,7 +1040,12 @@ export function createConversationRoutes(
 
   app.post(
     '/:slug/conversations/:conversationId/fork',
-    validate(forkConversationSchema),
+    validate(forkConversationSchema, {
+      refusal: () => ({
+        code: CONVERSATION_FORK_REFUSAL_CODES.invalidRequest,
+        error: 'Invalid fork request',
+      }),
+    }),
     async (c) => {
       try {
         let sourceAgent: string;
@@ -1181,18 +1070,22 @@ export function createConversationRoutes(
           if (typeof rawTarget !== 'string') throw new Error('invalid target');
           targetAgent = agentId(rawTarget);
         } catch {
-          return c.json(
-            { success: false, error: 'Invalid Agent identity' },
+          return forkRefusal(
+            c,
             400,
+            CONVERSATION_FORK_REFUSAL_CODES.invalidRequest,
+            'Invalid Agent identity',
           );
         }
         const sourceConversationId = parseConversationIdSegment(
           param(c, 'conversationId'),
         );
         if (!sourceConversationId) {
-          return c.json(
-            { success: false, error: 'Invalid conversation identity' },
+          return forkRefusal(
+            c,
             400,
+            CONVERSATION_FORK_REFUSAL_CODES.invalidRequest,
+            'Invalid conversation identity',
           );
         }
         // The source is a conversation the caller's scope admits (Project
@@ -1225,30 +1118,33 @@ export function createConversationRoutes(
           ? await isKnownAgent(sourceAgent)
           : true;
         if (!resolvedSource) {
-          return c.json(
-            { success: false, error: 'Source agent not found' },
+          return forkRefusal(
+            c,
             404,
+            CONVERSATION_FORK_REFUSAL_CODES.sourceNotFound,
+            'Source agent not found',
           );
         }
         const resolvedTarget = isKnownAgent
           ? await isKnownAgent(targetAgent)
           : true;
         if (!targetAgent || !eventStore || !resolvedTarget) {
-          return c.json(
-            { success: false, error: 'Target agent not found' },
+          return forkRefusal(
+            c,
             404,
+            CONVERSATION_FORK_REFUSAL_CODES.targetUnavailable,
+            'Target agent not found',
           );
         }
         let authority: SessionReadAuthority;
         try {
           authority = resolveForkReadAuthority?.(c) ?? authorityFor(c.req.raw);
         } catch {
-          return c.json(
-            {
-              success: false,
-              error: 'Fork caller identity could not be resolved',
-            },
+          return forkRefusal(
+            c,
             403,
+            CONVERSATION_FORK_REFUSAL_CODES.callerUnresolved,
+            'Fork caller identity could not be resolved',
           );
         }
         const actionOperationActor = actionOperationActorForRequest(
@@ -1281,7 +1177,8 @@ export function createConversationRoutes(
               })
             )
               throw new ConversationForkContextError(
-                'The fork key already names another request or a deleted fork.',
+                'The fork key already names another request or a deleted fork. Start the fork again as a new request.',
+                CONVERSATION_FORK_REFUSAL_CODES.idempotencyConflict,
               );
             const saved = eventStore.readConversationForkContextSnapshot(
               previous.targetConversationId,
@@ -1311,65 +1208,89 @@ export function createConversationRoutes(
         const sourceRecord = sourceAdapter
           ? await sourceAdapter.getConversation(sourceConversationId)
           : null;
-        const conversationWindowRead =
-          sourceRecord || !sessionMessageReader?.readConversationEventWindow
-            ? { status: 'not-found' as const }
-            : await readCompleteForkConversationWindow(
-                sessionMessageReader,
-                sourceConversationId,
-                authority,
-              );
-        if (conversationWindowRead.status === 'incomplete') {
-          return c.json(
-            {
-              success: false,
-              error: `Conversation history is incomplete: ${conversationWindowRead.reason}. Retry after history is available.`,
-            },
-            409,
+        // An orchestration conversation's history is read the way a handoff
+        // reads it: whole Sessions, authorized as one, with no page budget
+        // that a long or tool-heavy conversation can outgrow. It is read
+        // first even when the Agent also keeps a stored record (the Station
+        // agent does): the runtime turns are the ones a branch point names,
+        // and the stored copy does not carry their turn identities. Only a
+        // conversation with no readable runtime turns falls back to the
+        // stored record.
+        let lineageSource: Awaited<
+          ReturnType<
+            NonNullable<SessionMessageReader['readConversationForkSource']>
+          >
+        > = null;
+        if (sessionMessageReader?.readConversationForkSource) {
+          // The same Session bound every conversation read holds (422).
+          boundedConversationSessionIds(
+            sessionMessageReader,
+            sourceConversationId,
           );
+          try {
+            const read = await sessionMessageReader.readConversationForkSource(
+              sourceConversationId,
+              authority,
+            );
+            lineageSource = read?.messages.length ? read : null;
+          } catch (error) {
+            if (error instanceof ConversationForkContextError)
+              return forkRefusal(c, 409, error.code, error.message);
+            logger.warn('Fork source history could not be read', {
+              conversationId: sourceConversationId,
+              error: errorMessage(error).slice(0, 500),
+            });
+            return forkRefusal(
+              c,
+              409,
+              CONVERSATION_FORK_REFUSAL_CODES.historyUnavailable,
+              'The conversation history could not be read. Try again; if it keeps failing, reopen the conversation first.',
+            );
+          }
         }
-        const conversationWindow =
-          conversationWindowRead.status === 'complete'
-            ? conversationWindowRead.window
-            : null;
         const sourceSession =
-          sourceRecord || conversationWindow
+          sourceRecord || lineageSource
             ? null
             : await sessionMessageReader?.readSessionConversation(
                 sourceConversationId,
                 authority,
               );
+        // The stored record names its owner only when the history read falls
+        // back to it. A runtime history read is owned turn by turn: a chat
+        // continued with another Agent keeps the first Agent's record while
+        // later Sessions belong to others, so the selected turn's Session
+        // Agent below is the owner check there.
         let recordedSourceAgent: string | undefined;
-        const storedResourceId = (
-          sourceRecord as {
-            resourceId?: unknown;
-          } | null
-        )?.resourceId;
+        const storedResourceId = lineageSource
+          ? undefined
+          : (
+              sourceRecord as {
+                resourceId?: unknown;
+              } | null
+            )?.resourceId;
         if (typeof storedResourceId === 'string') {
           try {
             recordedSourceAgent = publicAgentIdFromRuntimeKey(storedResourceId);
           } catch {
-            return c.json(
-              {
-                success: false,
-                error: 'Source agent does not own conversation',
-              },
+            return forkRefusal(
+              c,
               409,
+              CONVERSATION_FORK_REFUSAL_CODES.sourceAgentMismatch,
+              'Source agent does not own conversation. Fork it from the Agent it belongs to.',
             );
           }
         }
         if (recordedSourceAgent && recordedSourceAgent !== sourceAgent) {
-          return c.json(
-            { success: false, error: 'Source agent does not own conversation' },
+          return forkRefusal(
+            c,
             409,
+            CONVERSATION_FORK_REFUSAL_CODES.sourceAgentMismatch,
+            'Source agent does not own conversation. Fork it from the Agent it belongs to.',
           );
         }
-        const messageRead = conversationWindow?.events
+        const messageRead = lineageSource
           ? {
-              messages: projectRuntimeEventsToMessages(
-                conversationWindow.events.map((item) => item.event),
-                { stableIds: true },
-              ),
+              messages: lineageSource.messages,
               source: 'orchestration' as const,
             }
           : await readConversationMessages(
@@ -1380,12 +1301,14 @@ export function createConversationRoutes(
             );
         const { messages, source: messageSource } = messageRead;
         if (
-          (!sourceRecord && !conversationWindow && !sourceSession) ||
+          (!sourceRecord && !lineageSource && !sourceSession) ||
           messages.length === 0
         ) {
-          return c.json(
-            { success: false, error: 'Conversation not found' },
+          return forkRefusal(
+            c,
             404,
+            CONVERSATION_FORK_REFUSAL_CODES.sourceNotFound,
+            'Conversation not found',
           );
         }
         const slice = selectForkTranscriptSlice(
@@ -1396,47 +1319,44 @@ export function createConversationRoutes(
           },
         );
         if (!slice) {
-          return c.json(
-            {
-              success: false,
-              error:
-                'Fork from a completed assistant turn. The selected turn is not complete.',
-            },
+          return forkRefusal(
+            c,
             409,
+            CONVERSATION_FORK_REFUSAL_CODES.turnIncomplete,
+            'Fork from a completed assistant turn. The selected turn is not complete.',
           );
         }
         if (messageSource === 'orchestration') {
-          if (!slice.sourceSessionId) {
-            return c.json(
-              { success: false, error: 'Selected turn Session is unavailable' },
+          const selectedSession = slice.sourceSessionId
+            ? await sessionMessageReader?.readSessionConversation(
+                slice.sourceSessionId,
+                authority,
+              )
+            : undefined;
+          if (!selectedSession?.agentSlug) {
+            return forkRefusal(
+              c,
               409,
+              CONVERSATION_FORK_REFUSAL_CODES.historyUnavailable,
+              'The Session that answered the selected turn is unavailable, so its Agent cannot be confirmed. Fork from a later turn.',
             );
           }
-          const selectedSession =
-            await sessionMessageReader?.readSessionConversation(
-              slice.sourceSessionId,
-              authority,
-            );
-          if (
-            !selectedSession?.agentSlug ||
-            selectedSession.agentSlug !== sourceAgent
-          ) {
-            return c.json(
-              {
-                success: false,
-                error: 'Source agent does not own selected turn',
-              },
+          if (selectedSession.agentSlug !== sourceAgent) {
+            return forkRefusal(
+              c,
               409,
+              CONVERSATION_FORK_REFUSAL_CODES.sourceAgentMismatch,
+              'Source agent does not own selected turn. Fork it from the Agent that answered it.',
             );
           }
         }
         const sourceTitle =
           sourceRecord?.title ??
-          conversationWindow?.session?.displayTitle ??
+          lineageSource?.title ??
           sourceSession?.title ??
           'Previous conversation';
         const sourceProjectSlug =
-          conversationWindow?.session?.projectSlug ??
+          lineageSource?.projectSlug ??
           sourceSession?.projectSlug ??
           (typeof sourceRecord?.metadata?.projectSlug === 'string'
             ? sourceRecord.metadata.projectSlug
@@ -1447,9 +1367,11 @@ export function createConversationRoutes(
             ? resolvedTarget.project
             : undefined;
         if (ownedTargetProject && targetProjectSlug !== ownedTargetProject) {
-          return c.json(
-            { success: false, error: 'Target agent not found' },
+          return forkRefusal(
+            c,
             404,
+            CONVERSATION_FORK_REFUSAL_CODES.targetUnavailable,
+            'Target agent not found',
           );
         }
         const targetRefused = refuseOutOfScopeTarget(targetProjectSlug);
@@ -1469,23 +1391,29 @@ export function createConversationRoutes(
                 project: target.project,
               })
             ) {
-              return c.json(
-                { success: false, error: 'Target agent not found' },
+              return forkRefusal(
+                c,
                 404,
+                CONVERSATION_FORK_REFUSAL_CODES.targetUnavailable,
+                'Target agent not available in this Project',
               );
             }
           } catch {
-            return c.json(
-              { success: false, error: 'Target agent not found' },
+            return forkRefusal(
+              c,
               404,
+              CONVERSATION_FORK_REFUSAL_CODES.targetUnavailable,
+              'Target agent not available in this Project',
             );
           }
         }
         const targetAdapter = getAdapter(runtimeAgentKey(targetAgent));
         if (!targetAdapter) {
-          return c.json(
-            { success: false, error: 'Target agent not found' },
+          return forkRefusal(
+            c,
             404,
+            CONVERSATION_FORK_REFUSAL_CODES.targetUnavailable,
+            'Target agent not found',
           );
         }
         const targetConversationId = idempotencyKey
@@ -1551,6 +1479,10 @@ export function createConversationRoutes(
           actionOperationActor,
         );
       } catch (error: unknown) {
+        // Every fork-context refusal message is a fixed sentence written for
+        // the person, so the fork route answers it as written.
+        if (error instanceof ConversationForkContextError)
+          return forkRefusal(c, 409, error.code, error.message);
         return conversationRouteFailure(
           c,
           logger,

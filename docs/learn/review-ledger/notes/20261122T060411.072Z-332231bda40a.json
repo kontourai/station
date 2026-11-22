@@ -1,0 +1,13 @@
+{
+  "revision": "959bd9062151f8ed40228ccdee6b53aa7778997a",
+
+  "notes": [
+    {"path":"docs/design/README.md","note":"Only the generated design index changed: npm run docs:index added the eleven first-release design files with the titles from their first headings.","inputs":["docs/design/README.md"]},
+
+    {"path":"docs/plans/README.md","note":"Only the generated plan index changed: npm run docs:index added first-release-ui.md with its first heading.","inputs":["docs/plans/README.md"]},
+
+    {"path":"docs/guides/ui-copy.md","note":"Checked the RETIRED_USER_TERMS paragraph against scripts/noun-consistency-gate.mjs: the six earlier entries remain, the first-release phrases follow them, every new entry is pending, and the single words named as left out are absent from the table. The ratchet table row for the gate is unchanged and still accurate.","inputs":["docs/guides/ui-copy.md","scripts/noun-consistency-gate.mjs"]},
+
+    {"path":"src-ui/AGENTS.md","note":"The ui-copy.md change only extends the RETIRED_USER_TERMS paragraph; the routing to the UI copy guide and the rules src-ui/AGENTS.md states about it are unchanged.","inputs":["src-ui/AGENTS.md","docs/guides/ui-copy.md"]}
+  ]
+}

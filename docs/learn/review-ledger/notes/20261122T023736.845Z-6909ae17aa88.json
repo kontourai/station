@@ -1,0 +1,7 @@
+{
+  "revision": "082e7caabce1b447a57cb4e15a4088a1ef98e68d",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"NewChatModal lost only its fork mode (fork banner, preferred-agent selection and source-model default); the New chat start surface this capture shows renders the same, so the image stays accurate.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/modals/NewChatModal.tsx"]}
+  ]
+}

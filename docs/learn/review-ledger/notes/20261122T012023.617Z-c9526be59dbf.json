@@ -1,0 +1,7 @@
+{
+  "revision": "68d8bc403f08de0c1371a676eb48fbf9a82193c0",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Fork source read change: fork now reads runtime lineage through readConversationForkSource (the handoff carried-history read) before any stored record, text-only copy past the 2 MB fork-context bound, and CONVERSATION_FORK_REFUSAL_CODES on every fork-route 4xx. Edited this page's fork claims to match; other claims untouched by this change.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts","packages/contracts/src/orchestration.ts","packages/contracts/src/provider-failure.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-transcript-reads.ts"]}
+  ]
+}

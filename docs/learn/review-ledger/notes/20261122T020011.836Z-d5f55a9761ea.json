@@ -1,0 +1,7 @@
+{
+  "revision": "10d7f69e2990a9cbfdb2486cfffc0c3e696da913",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Added CONVERSATION_HANDOFF_REFUSAL_CODES to the orchestration row and the nine fork plus four handoff codes to the failure-kind table, matching PROVIDER_FAILURE_KINDS and the pinned wire test.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts","packages/contracts/src/orchestration.ts","packages/contracts/src/provider-failure.ts","src-server/routes/orchestration/orchestration.ts"]}
+  ]
+}

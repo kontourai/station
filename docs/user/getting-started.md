@@ -743,7 +743,10 @@ shows as a chip above the text box; tap it to leave it out. With no message,
 send. With a message, Station sends your message, a blank line, then the
 context.
 
-**Fork from here** is not a new start: it keeps its own Agent list.
+**Fork from here** is not a new start. It opens a small picker, the same one
+**Continue with another agent** uses: choose the Agent (the current one is
+selected) and model, then **Fork with …** opens a new chat from that answer
+and leaves this chat as it is.
 
 To try a message again, use its actions. On an answer, **Regenerate** forks
 the chat just before the message that asked for it and sends that message

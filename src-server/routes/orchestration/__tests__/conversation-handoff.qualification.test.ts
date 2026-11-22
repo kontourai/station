@@ -10,6 +10,7 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import {
   CONVERSATION_HANDOFF_CARRIED_FIELDS,
+  CONVERSATION_HANDOFF_REFUSAL_CODES,
   CONVERSATION_HANDOFF_RESET_FIELDS,
 } from '@kontourai/station-contracts/orchestration';
 import {
@@ -90,6 +91,16 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       target: CODEX,
       nativeReturn: false,
       preserveProfile: false,
+    },
+    {
+      label:
+        'Handoff refusals against the conversation state carry stable codes',
+      staged: true,
+      source: CLAUDE,
+      target: CODEX,
+      nativeReturn: false,
+      preserveProfile: false,
+      refusalCodes: true,
     },
     {
       label: 'Codex to Claude Code',
@@ -241,6 +252,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         | 'turn.aborted'
         | undefined,
       rebindBeforeDispatch = false,
+      refusalCodes = false,
     }) => {
       const targetProfileId = preserveProfile ? source.agent : target.agent;
       const targetRef = preserveProfile
@@ -681,6 +693,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         });
         expect(stale.status).toBe(409);
         expect(await stale.json()).toMatchObject({
+          code: CONVERSATION_HANDOFF_REFUSAL_CODES.sessionChanged,
           error: expect.stringContaining('The current Session changed'),
         });
         expect(store.conversationSessions(conversationId)).toHaveLength(1);
@@ -723,6 +736,89 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         expect(store.conversationSessions(conversationId)).toHaveLength(1);
         expect(targetAdapter.starts).toHaveLength(0);
         inbox.cancel(conversationId, 'queued-for-source', queuedAt + 1);
+        if (refusalCodes) {
+          try {
+            // A context change reserved and not yet sent: a staged handoff
+            // naming the reserved Session still meets it.
+            await service.reserveConversationContextBoundary(
+              conversationId,
+              INTERNAL_SESSION_READ_SCOPE,
+              {
+                policy: 'continue-from-history',
+                idempotencyKey: 'pending-context-change',
+                expectedCurrentSessionId: conversationId,
+                actorId: OWNER,
+              },
+            );
+            const reservedTail = store
+              .conversationSessions(conversationId)
+              .at(-1)!.sessionId;
+            expect(reservedTail).not.toBe(conversationId);
+            const pending = await post(handoffPath, {
+              ...handoffBody,
+              idempotencyKey: 'handoff-during-context-change',
+              stagedHandoff: {
+                ...handoffBody.stagedHandoff,
+                expectedCurrentSessionId: reservedTail,
+              },
+            });
+            expect(pending.status, await pending.clone().text()).toBe(409);
+            expect(await pending.json()).toMatchObject({
+              code: CONVERSATION_HANDOFF_REFUSAL_CODES.contextChangePending,
+            });
+            // A handoff reserved at that change and not started yet.
+            await service.prepareConversationHandoff(
+              conversationId,
+              INTERNAL_SESSION_READ_SCOPE,
+              {
+                agentId: target.agent,
+                provider: target.provider,
+                environmentId: ENVIRONMENT,
+                connectionId: target.connectionId,
+                idempotencyKey: 'reserved-first',
+                messageDigest: 'a'.repeat(64),
+              },
+            );
+            const plainPath = `/api/orchestration/conversations/${encodeURIComponent(conversationId)}/handoff`;
+            const plainBody = {
+              message: 'Continue on the other engine.',
+              target: { environment: { kind: 'current' }, agent: target.agent },
+            };
+            const reused = await post(plainPath, {
+              ...plainBody,
+              idempotencyKey: 'reserved-first',
+            });
+            expect(reused.status, await reused.clone().text()).toBe(409);
+            expect(await reused.json()).toMatchObject({
+              code: CONVERSATION_HANDOFF_REFUSAL_CODES.idempotencyConflict,
+            });
+            const second = await post(plainPath, {
+              ...plainBody,
+              idempotencyKey: 'second-handoff',
+            });
+            expect(second.status, await second.clone().text()).toBe(409);
+            expect(await second.json()).toMatchObject({
+              code: CONVERSATION_HANDOFF_REFUSAL_CODES.awaitingTarget,
+            });
+            // An ordinary send to the reserved target, not through the
+            // handoff, meets the same reservation on `/chat`.
+            const ordinary = await post('/api/orchestration/chat', {
+              conversationId,
+              clientTurnId: 'ordinary-after-reservation',
+              message: 'An ordinary follow-up.',
+              target: { environment: { kind: 'current' }, agent: target.agent },
+            });
+            expect(ordinary.status, await ordinary.clone().text()).toBe(409);
+            expect(await ordinary.json()).toMatchObject({
+              code: CONVERSATION_HANDOFF_REFUSAL_CODES.awaitingTarget,
+            });
+            expect(targetAdapter.starts).toHaveLength(0);
+          } finally {
+            await service.shutdown();
+            store.close();
+          }
+          return;
+        }
       }
       targetAdapter.failNextTranscriptSeed = failFirstHandoffSeed !== undefined;
       if (failFirstHandoffSeed)
