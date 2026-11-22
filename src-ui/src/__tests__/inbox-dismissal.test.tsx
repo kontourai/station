@@ -12,8 +12,13 @@ import { ChatDockInboxPanel } from '../components/chat-dock/ChatDockInboxPanel';
 import { InboxDismissUndo } from '../components/chat-dock/inbox-dismissals';
 import { useInboxNeedsYouCount } from '../components/chat-dock/useInboxGroups';
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
+import { UndoableActionShortcut } from '../components/undo/UndoableActionShortcut';
 import { ActiveChatsStore } from '../contexts/active-chats-store';
-import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import {
+  findShortcutConflicts,
+  KeyboardShortcutsProvider,
+  useShortcutRegistry,
+} from '../contexts/KeyboardShortcutsContext';
 import { ToastProvider, toastStore } from '../contexts/ToastContext';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
@@ -45,6 +50,15 @@ const thread: HomeWorkItem = {
   updatedAt: NOW - 1000,
 };
 
+let registeredShortcuts: ReturnType<
+  ReturnType<typeof useShortcutRegistry>['getAllShortcuts']
+> = [];
+
+function RegistryProbe() {
+  registeredShortcuts = useShortcutRegistry().getAllShortcuts();
+  return null;
+}
+
 function Harness({
   items,
   facts,
@@ -57,20 +71,23 @@ function Harness({
     <ToastProvider>
       <KeyboardShortcutsProvider>
         <InboxDismissUndo>
-          <output aria-label="Needs you count">{count}</output>
-          <ChatDockInboxPanel
-            items={items}
-            workFacts={facts}
-            now={NOW}
-            activeChatSessionId={null}
-            openChatSessionIds={[]}
-            onFocusChat={vi.fn()}
-            onOpenConversation={vi.fn()}
-            onOpenSession={vi.fn()}
-            onCloseChat={vi.fn()}
-            onOpenHistory={vi.fn()}
-          />
-          <NotificationContainer />
+          <UndoableActionShortcut>
+            <RegistryProbe />
+            <output aria-label="Needs you count">{count}</output>
+            <ChatDockInboxPanel
+              items={items}
+              workFacts={facts}
+              now={NOW}
+              activeChatSessionId={null}
+              openChatSessionIds={[]}
+              onFocusChat={vi.fn()}
+              onOpenConversation={vi.fn()}
+              onOpenSession={vi.fn()}
+              onCloseChat={vi.fn()}
+              onOpenHistory={vi.fn()}
+            />
+            <NotificationContainer />
+          </UndoableActionShortcut>
         </InboxDismissUndo>
       </KeyboardShortcutsProvider>
     </ToastProvider>
@@ -401,7 +418,7 @@ describe('inbox dismissal through the rendered panel', () => {
 
   it('a toast that cannot show does not report a saved dismissal as failed', () => {
     render(<Harness items={[thread]} />);
-    const show = vi.spyOn(toastStore, 'show').mockImplementation(() => {
+    const upsert = vi.spyOn(toastStore, 'upsert').mockImplementation(() => {
       throw new TypeError('crypto.randomUUID is not a function');
     });
     try {
@@ -412,13 +429,31 @@ describe('inbox dismissal through the rendered panel', () => {
       expect(
         screen.queryByText('Could not save dismissal. Try again.'),
       ).toBeNull();
-      // Undo stays reachable without the toast.
-      fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
-      expect(
-        screen.getByRole('button', { name: /^Review the inbox\b/ }),
-      ).toBeTruthy();
     } finally {
-      show.mockRestore();
+      upsert.mockRestore();
     }
+  });
+
+  it('registers Cmd+Z once: the dismissal shares the app undo command instead of binding its own', () => {
+    render(<Harness items={[thread]} />);
+    const undoChord = registeredShortcuts.filter(
+      (shortcut) =>
+        shortcut.key.toLowerCase() === 'z' &&
+        [...shortcut.modifiers].join('+') === 'cmd',
+    );
+    expect(undoChord.map((shortcut) => shortcut.id)).toEqual([
+      'app.undoLastAction',
+    ]);
+    expect(findShortcutConflicts(registeredShortcuts)).toEqual([]);
+  });
+
+  it('Cmd+Z restores the dismissal, then does nothing once the notice has gone', () => {
+    render(<Harness items={[thread]} />);
+    dismiss();
+    act(() => toastStore.clear());
+    fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+    expect(
+      screen.queryByRole('button', { name: /^Review the inbox\b/ }),
+    ).toBeNull();
   });
 });

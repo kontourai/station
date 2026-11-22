@@ -79,25 +79,20 @@ composition. During a turn, the shortcut uses the composer's selected Queue or
 Steer mode. The same keys start a chat from the Home, Project page and New chat
 composers. This preference is included in device-settings export/import.
 
-## Restore a dismissed conversation
-
-After dismissing an inbox conversation, choose **Undo** in the toast or press
-**⌘Z** on macOS / **Ctrl+Z** on Windows and Linux. **Undo inbox dismissal** can
-be rebound in Keyboard shortcuts. The command declines inside text fields,
-contenteditable editors, CodeMirror and terminals, preserving their own Undo.
-Dismissal does not stop work or delete conversation history. The same Undo
-reverses **Hide** on a third-party session with Open and Settled inbox on.
-
 ## Undo the last action
 
-After an action that offers **Undo** in a notice (currently deleting a Board or
-moving it into a Project), press **⌘Z** on macOS or **Ctrl+Z** on Windows and
-Linux to undo the most recent one. **Undo last action** can be rebound in
-Keyboard shortcuts. Like **Undo inbox dismissal**, which shares the default
-key, it declines inside text fields, contenteditable editors, CodeMirror and
-terminals, and does nothing when no notice is waiting. When both have
-something to undo, each press undoes one of them; choose **Undo** in a notice
-to pick which. If an Undo can no longer apply, the notice says why.
+After an action that offers **Undo** in a notice, press **⌘Z** on macOS or
+**Ctrl+Z** on Windows and Linux to undo the most recent one. This covers
+deleting a Board, moving it into a Project, dismissing an inbox conversation and
+hiding a third-party session. **Undo last action** is the only command on that
+key and can be rebound in Keyboard shortcuts. It declines inside text fields,
+contenteditable editors, CodeMirror and terminals, preserving their own Undo,
+and does nothing when no notice is waiting. Each press undoes one action,
+newest first; choose **Undo** in a notice to pick which. If an Undo can no
+longer apply, the notice says why.
+
+Dismissal does not stop work or delete conversation history. Changing Station
+closes the dismissal notice, so its Undo is not offered for another Station.
 
 ## Dispatch and limits
 
