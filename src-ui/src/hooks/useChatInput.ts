@@ -285,7 +285,7 @@ export function useChatInput({
           }),
         autocomplete: {
           openModel,
-          openNewChat: onOpenNewChat || (() => {}),
+          openNewChat: onOpenNewChat,
           closeCommand,
           closeAll,
         },
