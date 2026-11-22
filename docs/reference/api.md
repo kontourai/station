@@ -2946,6 +2946,10 @@ reads the history it carries
 so a long or tool-heavy conversation forks like a short one. It falls back to
 this read only when the conversation has no readable runtime turns, such as one
 that exists only as an Agent's stored record.
+The selected turn must have been answered by the source Agent named in the
+path, read from that turn's Session, so a chat continued with other Agents
+forks from each Agent's own answers. A stored record's owner decides only on
+the fallback.
 Its saved copy keeps each message whole when it fits the 2 MB fork-context
 bound and keeps only the text otherwise. Every 4xx refusal from the fork route
 carries a `code` from `CONVERSATION_FORK_REFUSAL_CODES`
