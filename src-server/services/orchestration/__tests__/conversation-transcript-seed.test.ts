@@ -723,13 +723,10 @@ describe('the seed ends before the new request', () => {
   test('a request after a seed ending in an assistant reply is not part of that reply', () => {
     const seed = buildTranscriptSeed({
       heading: 'Continued from a previous conversation.',
-      ...transcriptSeedSource([
-        { role: 'user', content: 'First question.' } as ConversationMessage,
-        {
-          role: 'assistant',
-          content: 'You said: First question.',
-        } as ConversationMessage,
-      ]),
+      entries: [
+        { role: 'user', text: 'First question.' },
+        { role: 'assistant', text: 'You said: First question.' },
+      ],
     });
     // The literal, beside the constant, so a reworded marker is a decision.
     expect(TRANSCRIPT_SEED_END).toBe(

@@ -142,8 +142,8 @@ describe('fork and handoff deliver the transcript seed across engine families', 
       service,
       () => true,
     );
-    const known = (id: string): id is Engine =>
-      (ENGINES as readonly string[]).includes(id);
+    const known = (id: string): id is AgentName =>
+      id === STATION_AGENT || (ENGINES as readonly string[]).includes(id);
     const connectionEngine = (id: string) =>
       ENGINES.find((engine) => engineConnectionId(engine) === id);
     const deps: ExecutionTargetExecutionDependencies = {
@@ -154,8 +154,7 @@ describe('fork and handoff deliver the transcript seed across engine families', 
         environmentName: 'Matrix qualification',
       }),
       getAgent: async (_access, id) => {
-        if (id !== STATION_AGENT && !known(id))
-          throw new Error(`Unexpected execution Agent ${id}.`);
+        if (!known(id)) throw new Error(`Unexpected execution Agent ${id}.`);
         return {
           slug: id,
           available: true,
