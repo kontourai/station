@@ -65,14 +65,14 @@ const NATIVE_THREAD_METADATA_KEY: ReadonlyMap<string, string> = new Map([
  *
  * - A provider that reports a running total (`CUMULATIVE_USAGE_PROVIDERS`)
  *   continues a run only on the same native thread: the Session's first
- *   recorded thread id equals the run's last one. Codex writes its
+ *   recorded thread id equals an earlier run's last one. Codex writes its
  *   `nativeResumeIdentity: 'matched'` marker only when the thread it opened is
  *   the cursor's (the same id it records as `codexThreadId`), so a real
  *   resume always shows as equal ids. A different thread (a fresh context,
  *   another connection, a refused or dead cursor) starts a new run whose
  *   totals add to the engine's earlier runs. A Session that records no thread
- *   id (history written before the adapter recorded one) also starts a new
- *   run. Like a Claude Code process start without `nativeSessionResumed`,
+ *   id (a failed start, or history from before this repository's reset)
+ *   also starts a new run. Like a Claude Code process start without `nativeSessionResumed`,
  *   absence is read as "not resumed": the error direction is a total that is
  *   visibly too high, never a running total silently replacing spend.
  * - Every other provider continues the run of the Session before it when that
@@ -110,6 +110,9 @@ export function foldLineageUsageEvents(
     let run: (typeof runs)[number] | undefined;
     let threads: string[] = [];
     if (CUMULATIVE_USAGE_PROVIDERS.has(provider)) {
+      // Thread ids come from NATIVE_THREAD_METADATA_KEY; a cumulative
+      // provider with no key there records none, so each of its Sessions
+      // starts a run and every Session sums (the fail-safe direction).
       threads = nativeThreads(events, provider);
       const first = threads[0];
       if (first !== undefined)
@@ -192,7 +195,13 @@ export function foldLineageUsageEvents(
   return aggregate;
 }
 
-/** The native thread ids a Session recorded, in order, without repeats. */
+/**
+ * The native thread ids a Session recorded, in order, without repeats. One
+ * Session recording two ids is unreachable while native-session ownership
+ * refuses a resume that opened a different thread (`codex-adapter.ts`); were
+ * it to happen, the Session's own fold would still assign the second thread's
+ * total over the first's, so that usage would be dropped there.
+ */
 function nativeThreads(
   events: readonly CanonicalRuntimeEvent[],
   provider: string,

@@ -62,7 +62,7 @@ interface CodexRunningTotal {
 
 /** What the adapter recorded when the Session's engine started. */
 interface Start {
-  /** Codex's `codexThreadId`; absent in history written before it. */
+  /** Codex's `codexThreadId`; absent after a failed start or in old history. */
   codexThreadId?: string;
   /** Codex's `nativeResumeIdentity: 'matched'`. */
   codexResumed?: boolean;
@@ -404,8 +404,8 @@ describe('GET /:slug/conversations/:conversationId/stats after an engine change 
 
   test('a Codex successor that recorded no thread id is counted as a fresh thread', async () => {
     const f = fixture();
-    // History written before the adapter recorded `codexThreadId`. Absent
-    // is read as not resumed: a total that is visibly too high, never a
+    // A Session that recorded no thread id (a failed start, or history from
+    // before this repository's reset). Absent is read as not resumed: a total that is visibly too high, never a
     // running total replacing what was counted.
     f.session(CONVERSATION, 'codex').codexTurn({
       input: 300,

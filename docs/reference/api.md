@@ -3060,8 +3060,8 @@ records, and context occupancy comes from the newest one. Without a stored
 record, the orchestration usage fold runs over every authorized Session's
 events in lineage order, kept per engine (#5389). An engine that reports a
 running total (Codex) continues a run of Sessions only on the same native
-thread: a Session whose first recorded `codexThreadId` equals the run's last
-one continues its total, and any other Session, including one that recorded
+thread: a Session whose first recorded `codexThreadId` equals an earlier
+run's last one continues that run's total, and any other Session, including one that recorded
 no thread id, adds a new total to that engine's earlier ones. Other engines
 continue the run of the Session before them when it ran the same engine;
 their tokens add per turn, and their cost continues only after a recorded
