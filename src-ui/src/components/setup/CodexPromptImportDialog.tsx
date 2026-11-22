@@ -261,11 +261,13 @@ function CodexPromptImportBody({ onClose }: { onClose: () => void }) {
               const target = targets[entry.id] ?? '';
               const nameProblem = !checked
                 ? undefined
-                : !isStationSkillName(target)
-                  ? 'Choose a name without slashes.'
-                  : duplicateName(target)
-                    ? 'Another selected prompt uses this name.'
-                    : undefined;
+                : target.trim() === ''
+                  ? 'Type a name, or untick to skip this prompt.'
+                  : !isStationSkillName(target)
+                    ? 'Choose a name without slashes or "..".'
+                    : duplicateName(target)
+                      ? 'Another selected prompt uses this name.'
+                      : undefined;
               const messageId = `codex-import-message-${entry.id}`;
               return (
                 <li key={entry.id} className="codex-import__row">

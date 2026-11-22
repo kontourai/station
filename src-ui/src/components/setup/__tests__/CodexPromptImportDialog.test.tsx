@@ -173,6 +173,9 @@ describe('CodexPromptImportDialog', () => {
 
     fireEvent.change(rename, { target: { value: '' } });
     expect(
+      within(dialog).getByText('Type a name, or untick to skip this prompt.'),
+    ).toBeTruthy();
+    expect(
       (
         within(dialog).getByRole('checkbox', {
           name: 'changelog',
