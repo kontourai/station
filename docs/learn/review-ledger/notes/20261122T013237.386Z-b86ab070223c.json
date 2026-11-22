@@ -1,0 +1,9 @@
+{
+  "revision": "11fb9b2e82a5c67eff0974d100c90e9ca8ba6876",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"The manifest change classifies the new Play readback child-process suite as process-heavy. This page's manifest and process-heavy scheduling claims are unchanged and still accurate.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"The manifest change classifies the new Play readback child-process suite as process-heavy. This page's manifest and process-heavy scheduling claims are unchanged and still accurate.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

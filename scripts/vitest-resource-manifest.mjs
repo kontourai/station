@@ -178,6 +178,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/thread-content-backfill.test.ts',
   // Reads the real tracked/untracked Git inventory and scans the UI AST corpus.
   'scripts/__tests__/conversation-boundary-gate.test.ts',
+  // Runs the real Play readback CLI as short-lived Node children (one against
+  // a loopback STS stand-in that never answers); the only wall-clock bound is
+  // a 45 s kill for a child that would otherwise never exit.
+  'scripts/__tests__/query-google-play-release.process.test.ts',
   // Two owned loopback runtime listeners with real Device grants and live streams.
   'src-server/runtime/__tests__/peer-chat-tunnel-boundary.test.ts',
   // Spawns short-lived fake-Chromium shell scripts through the production

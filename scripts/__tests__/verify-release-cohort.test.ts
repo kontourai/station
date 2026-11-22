@@ -18,6 +18,7 @@ import {
   finalPlatformStates,
   ghAttestationArgs,
   observeGithubDesktopRelease,
+  observeGooglePlayAdapter,
   parseAndroidManifestIdentity,
   parseGithubReleaseObservation,
   parseGithubTagReference,
@@ -820,5 +821,43 @@ describe('protected verifier verifies only the platforms that published (#1774)'
     expect(() =>
       requiredArtifactPaths(macosOnly, unadmitted, ['macos']),
     ).toThrow('unadmitted platform ios');
+  });
+});
+
+describe('Google Play adapter run under the verifier limit', () => {
+  const android = {
+    packageName: 'io.kontourai.station.nightly',
+    versionCode: 242800,
+    versionName: '0.1.3-nightly.2428',
+  };
+
+  test('a child that outlives the limit is reported as unfinished with its stderr lines', () => {
+    const retryLine =
+      'Google Play cohort verification failed: read-track local deadline elapsed (attempt 1 of 3); retrying in 2000 ms from a new edit';
+    const code = `process.stderr.write(${JSON.stringify(`${retryLine}\n`)}); setTimeout(() => {}, 30000);`;
+    const run = ((command: string, _args: string[], options: object) =>
+      spawnSync(command, ['-e', code], options)) as unknown as typeof spawnSync;
+    let message = '';
+    try {
+      observeGooglePlayAdapter(android, run, { limitMs: 1_500 });
+    } catch (error) {
+      message = (error as Error).message;
+    }
+    expect(message).toContain(
+      'Google Play observation adapter did not finish within 1500 ms',
+    );
+    expect(message).toContain(retryLine);
+    expect(message).not.toContain('could not start');
+  });
+
+  test('a child that cannot start keeps the could-not-start message', () => {
+    const run = (() => ({
+      error: new Error('spawn node ENOENT'),
+      status: null,
+      stderr: 'ignored',
+    })) as unknown as typeof spawnSync;
+    expect(() => observeGooglePlayAdapter(android, run)).toThrow(
+      'release cohort verification failed: Google Play observation adapter could not start: spawn node ENOENT',
+    );
   });
 });
