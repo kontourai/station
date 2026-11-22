@@ -13,7 +13,7 @@ import { userFacingErrorMessage } from '../../utils/errorText';
  */
 const REFUSAL_COPY: Readonly<Record<string, string>> = {
   [CONVERSATION_FORK_REFUSAL_CODES.historyUnavailable]:
-    'Station couldn’t read this chat’s history just now. Try again.',
+    'Station couldn’t read this chat’s history. Try again.',
   [CONVERSATION_FORK_REFUSAL_CODES.historyTooLarge]:
     'This chat is too long to fork. Start a new chat and reference this one instead.',
   [CONVERSATION_FORK_REFUSAL_CODES.turnIncomplete]:
