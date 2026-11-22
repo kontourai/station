@@ -306,9 +306,63 @@ test('a lost POST response is reconciled by reading the retained request, and an
   expect(screen.queryByText(/Operation:/)).toBeNull();
 });
 
-test('failure exposes an explicit retry under the original request ID', async () => {
-  let record: RepositoryAcquisition | undefined;
+test('a refused source keeps the form with the reason beside the URL and never reads or polls an operation', async () => {
+  // The exact body the acquisition route sends for a source it refuses.
+  const reason =
+    'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.';
   const calls: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push(`${init?.method ?? 'GET'} ${url}`);
+      if (
+        init?.method === 'POST' &&
+        url.endsWith('/api/projects/repository-acquisitions')
+      )
+        return Response.json(
+          {
+            success: false,
+            error: reason,
+            details: { formErrors: [reason], fieldErrors: {} },
+          },
+          { status: 400 },
+        );
+      throw new Error(`Unexpected fixture request: ${url}`);
+    }),
+  );
+  const view = mount();
+  fireEvent.change(screen.getByLabelText('Repository URL'), {
+    target: { value: 'not a url' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Acquire repository' }));
+  const alert = await screen.findByText(reason);
+  const field = screen.getByLabelText('Repository URL');
+  expect(field).toHaveProperty('value', 'not a url');
+  expect(field.getAttribute('aria-invalid')).toBe('true');
+  expect(field.getAttribute('aria-describedby')).toBe(alert.id);
+  expect(screen.queryByText(/Operation:/)).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Check operation' })).toBeNull();
+  expect(
+    screen.getByRole('button', { name: 'Acquire repository' }),
+  ).toBeTruthy();
+  // Nothing was recorded, so nothing is retained to reopen or poll.
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(calls).toEqual([
+    'POST http://station.test/api/projects/repository-acquisitions',
+  ]);
+  expect(Object.keys(sessionStorage)).toEqual([]);
+  await waitFor(() =>
+    expect(view.onBusyChange).toHaveBeenLastCalledWith(false),
+  );
+  fireEvent.change(screen.getByLabelText('Repository URL'), {
+    target: { value: 'git@github.com:org/research.git' },
+  });
+  expect(screen.queryByText(reason)).toBeNull();
+});
+
+test('a recorded failed clone returns to the form with its source and reason, and trying again starts a new operation', async () => {
+  const records = new Map<string, RepositoryAcquisition>();
+  const posts: RepositoryAcquisitionRequest[] = [];
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string, init?: RequestInit) => {
@@ -316,58 +370,55 @@ test('failure exposes an explicit retry under the original request ID', async ()
         init?.method === 'POST' &&
         url.endsWith('/api/projects/repository-acquisitions')
       ) {
-        calls.push(url);
-        record = {
-          ...ready(JSON.parse(String(init.body))),
-          phase: 'failed',
-          resolvedCommit: undefined,
-          error: 'Access refused.',
-        };
+        const request = JSON.parse(String(init.body));
+        posts.push(request);
+        const record: RepositoryAcquisition =
+          posts.length === 1
+            ? {
+                ...ready(request),
+                phase: 'failed',
+                resolvedCommit: undefined,
+                canonicalRemote: undefined,
+                error: 'Access refused.',
+              }
+            : ready(request);
+        records.set(request.requestId, record);
         return Response.json({ success: true, data: record });
       }
-      if (
-        record &&
-        init?.method === 'POST' &&
-        url.endsWith(
-          `/api/projects/repository-acquisitions/${record.request.requestId}/retry`,
-        )
-      ) {
-        calls.push(url);
-        record = {
-          ...ready(record.request),
-          attempt: 2,
-          checkoutPath: '/host/owned/checkout-2',
-        };
-        return Response.json({ success: true, data: record });
-      }
-      if (
-        record &&
-        url.endsWith(
-          `/api/projects/repository-acquisitions/${record.request.requestId}`,
-        )
-      )
+      const id = decodeURIComponent(url.split('/').pop() ?? '');
+      const record = records.get(id);
+      if (init?.method !== 'POST' && record)
         return Response.json({ success: true, data: record });
       throw new Error(`Unexpected fixture request: ${url}`);
     }),
   );
   const view = mount();
   enterSource();
-  await screen.findByText('Access refused.');
-  expect(calls).toHaveLength(1);
-  fireEvent.click(
-    screen.getByRole('button', { name: 'More acquisition actions' }),
+  const alert = await screen.findByText('Access refused.');
+  const field = screen.getByLabelText('Repository URL');
+  expect(field).toHaveProperty('value', 'git@github.com:org/research.git');
+  expect(screen.getByLabelText('Branch or tag (optional)')).toHaveProperty(
+    'value',
+    'release',
   );
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Retry acquisition' }));
+  expect(field.getAttribute('aria-describedby')).toBe(alert.id);
+  expect(screen.queryByText(/Operation:/)).toBeNull();
+  expect(Object.keys(sessionStorage)).toEqual([]);
+  fireEvent.click(screen.getByRole('button', { name: 'Acquire repository' }));
   await screen.findByRole('button', { name: 'Use this checkout' });
+  expect(posts).toHaveLength(2);
+  expect(posts[1]?.requestId).not.toBe(posts[0]?.requestId);
+  expect(posts[1]).toMatchObject({
+    sourceUrl: 'git@github.com:org/research.git',
+    sourceRef: 'release',
+  });
+  expect(screen.queryByText('Access refused.')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Use this checkout' }));
-  await waitFor(() =>
-    expect(view.onUseCheckout).toHaveBeenCalledWith(
-      '/host/owned/checkout-2',
-      'research',
-      record?.request.requestId,
-    ),
+  expect(view.onUseCheckout).toHaveBeenCalledWith(
+    '/host/owned/checkout-1',
+    'research',
+    posts[1]?.requestId,
   );
-  expect(calls).toHaveLength(2);
 });
 
 test('cancellation during acquisition retains the operation and never offers its checkout or an implicit retry', async () => {

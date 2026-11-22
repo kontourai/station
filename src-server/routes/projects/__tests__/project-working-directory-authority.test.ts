@@ -495,16 +495,44 @@ test('repository acquisition uses operator Git authority and returns one durable
     { ...request, sourceRef: 'other' },
   );
   expect(changed.status).toBe(409);
+  const invalidId = randomUUID();
   const invalid = await f.send(
     f.operator.credential,
     'POST',
     '/repository-acquisitions',
     {
-      requestId: randomUUID(),
+      requestId: invalidId,
       sourceUrl: 'https://token@example.test/repo.git',
     },
   );
   expect(invalid.status).toBe(400);
+  // The refusal names the rule the source broke, in the validation-reasons
+  // shape the New Project form shows beside the URL, and records nothing.
+  const reason =
+    'Use an HTTPS or SSH repository URL without embedded credentials, query or fragment.';
+  expect(invalid.body).toMatchObject({
+    success: false,
+    error: reason,
+    details: { formErrors: [reason] },
+  });
+  const malformed = await f.send(
+    f.operator.credential,
+    'POST',
+    '/repository-acquisitions',
+    { requestId: randomUUID(), sourceUrl: 'not a url' },
+  );
+  expect(malformed.status).toBe(400);
+  expect(malformed.body).toMatchObject({
+    error:
+      'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.',
+  });
+  const unrecorded = await f.send(
+    f.operator.credential,
+    'GET',
+    `/repository-acquisitions/${invalidId}`,
+    {},
+  );
+  expect(unrecorded.status).toBe(404);
 });
 
 test('Project creation revalidates the acquisition and persists server-owned provenance', async () => {

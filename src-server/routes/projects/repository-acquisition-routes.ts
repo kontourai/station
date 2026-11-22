@@ -228,15 +228,25 @@ function failure(c: Context, error: unknown) {
       409,
     );
   }
-  if (
-    error instanceof z.ZodError ||
-    error instanceof RepositoryAcquisitionInputError
-  ) {
+  if (error instanceof RepositoryAcquisitionInputError) {
+    // The service's input messages are written for the person who typed the
+    // source; `details` uses the validation-reasons shape clients already show.
+    return c.json(
+      {
+        success: false,
+        error: error.message,
+        details: { formErrors: [error.message], fieldErrors: {} },
+      },
+      400,
+    );
+  }
+  if (error instanceof z.ZodError) {
     return c.json(
       {
         success: false,
         error:
           'Repository source or request ID is invalid. Use an HTTPS or SSH URL without embedded credentials, or an absolute local mirror path.',
+        details: error.flatten(),
       },
       400,
     );

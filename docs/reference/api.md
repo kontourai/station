@@ -590,7 +590,9 @@ when the device can run commands.
 The response is `{success:true,data}` where `data.phase` is `acquiring`, `ready`,
 `failed` or `cancelled`. A ready receipt includes `checkoutPath`, `canonicalRemote` and
 `resolvedCommit`. Failed acquisition is a recorded domain result, returned with
-HTTP 200 and a fixed safe explanation. Invalid input is 400, reuse of an ID for
+HTTP 200 and a fixed safe explanation. Invalid input is 400 and records nothing;
+its `error` names the rule the source broke, repeated in `details.formErrors`
+for clients that show validation reasons. Reuse of an ID for
 a different source/ref is 409, and unavailable storage is 503.
 
 `GET /api/projects/repository-acquisitions/:id` reads the receipt (404 when

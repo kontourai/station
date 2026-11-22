@@ -7,9 +7,10 @@ import {
   mutateJson,
   readEnvelopeOrThrow,
 } from '@kontourai/station-sdk';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useActiveStationName } from '../../hooks/useActiveStationName';
 import { userFacingErrorMessage } from '../../utils/errorText';
@@ -45,6 +46,14 @@ function retainedId(key: string) {
   }
 }
 
+/**
+ * A 400 is refused before the server records anything, so there is no
+ * operation to read or poll: the reason belongs beside the URL instead.
+ */
+function refusedBeforeRecording(error: unknown) {
+  return error instanceof StationHttpError && error.status === 400;
+}
+
 function RepositorySourceControls({
   scope,
   onUseCheckout,
@@ -65,7 +74,9 @@ function RepositorySourceControls({
   const [sourceRef, setSourceRef] = useState('');
   const [subdirectory, setSubdirectory] = useState('');
   const [storageError, setStorageError] = useState(false);
+  const [sourceFailure, setSourceFailure] = useState('');
   const sourceId = useId();
+  const sourceFailureId = useId();
   const refId = useId();
   const subdirectoryId = useId();
   const client = useQueryClient();
@@ -104,6 +115,11 @@ function RepositorySourceControls({
         ],
         data,
       ),
+    onError: (error) => {
+      if (!refusedBeforeRecording(error)) return;
+      setSourceFailure(userFacingErrorMessage(error));
+      forgetOperation();
+    },
   });
   const cancel = useMutation({
     retry: false,
@@ -198,9 +214,32 @@ function RepositorySourceControls({
     );
     return () => onBusyChange(false);
   }, [acquire.isPending, cancel.data?.phase, reuse.isPending, onBusyChange]);
+  const record = operation.data;
+  const forgetOperation = useCallback(() => {
+    try {
+      sessionStorage.removeItem(storageKey);
+    } catch {
+      setStorageError(true);
+    }
+    setRequestId('');
+  }, [storageKey]);
+  // A recorded failed clone returns to the form with the same source filled
+  // in, so the person can correct it; a new attempt is a new operation.
+  useEffect(() => {
+    if (record?.phase !== 'failed' || acquire.isPending) return;
+    setSourceUrl(record.request.sourceUrl);
+    setSourceRef(record.request.sourceRef ?? '');
+    setSubdirectory(record.request.subdirectory ?? '');
+    setSourceFailure(
+      record.error ??
+        'The repository could not be cloned. Check the URL and access.',
+    );
+    forgetOperation();
+  }, [record, acquire.isPending, forgetOperation]);
 
   function begin() {
     cancel.reset();
+    setSourceFailure('');
     const id = randomCorrelationId();
     // Retain identity before dispatch so a lost response can be inspected.
     try {
@@ -221,18 +260,12 @@ function RepositorySourceControls({
     });
   }
   function clear() {
-    try {
-      sessionStorage.removeItem(storageKey);
-    } catch {
-      setStorageError(true);
-    }
-    setRequestId('');
+    forgetOperation();
     acquire.reset();
     cancel.reset();
     reuse.reset();
     setReuseSearch(null);
   }
-  const record = operation.data;
   const controls = (
     <>
       <p className="editor-hint">
@@ -255,10 +288,20 @@ function RepositorySourceControls({
             className="editor-input"
             id={sourceId}
             value={sourceUrl}
-            onChange={(event) => setSourceUrl(event.target.value)}
+            onChange={(event) => {
+              setSourceUrl(event.target.value);
+              setSourceFailure('');
+            }}
             placeholder="https://github.com/owner/repository.git"
             autoComplete="off"
+            aria-invalid={sourceFailure ? true : undefined}
+            aria-describedby={sourceFailure ? sourceFailureId : undefined}
           />
+          {sourceFailure && (
+            <p className="editor-error" id={sourceFailureId} role="alert">
+              {sourceFailure}
+            </p>
+          )}
           <label className="editor-label" htmlFor={refId}>
             Branch or tag (optional)
           </label>
@@ -386,7 +429,6 @@ function RepositorySourceControls({
               </Button>
             </>
           )}
-          {record?.phase === 'failed' && <p role="alert">{record.error}</p>}
           {record?.phase === 'cancelled' && (
             <p role="status">
               Acquisition cancelled. Existing files are preserved. An in-flight
@@ -429,9 +471,7 @@ function RepositorySourceControls({
                     },
                   ]
                 : []),
-              ...(acquire.isPending ||
-              record?.phase === 'acquiring' ||
-              record?.phase === 'failed'
+              ...(acquire.isPending || record?.phase === 'acquiring'
                 ? [
                     {
                       key: 'cancel',
@@ -460,11 +500,13 @@ function RepositorySourceControls({
           result after closing this form.
         </p>
       )}
-      {record?.phase !== 'ready' && (acquire.error || operation.error) && (
-        <p role="alert">
-          {userFacingErrorMessage(acquire.error ?? operation.error)}
-        </p>
-      )}
+      {requestId &&
+        record?.phase !== 'ready' &&
+        (acquire.error || operation.error) && (
+          <p role="alert">
+            {userFacingErrorMessage(acquire.error ?? operation.error)}
+          </p>
+        )}
     </>
   );
   return expanded ? (

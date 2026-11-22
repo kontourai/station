@@ -86,9 +86,11 @@ function validateSource(
       'Repository source contains control characters.',
     );
   if (isLocalGitSource(source)) {
+    // Anything without a scheme or host reads as a local path here, including
+    // a mistyped URL, so the reason names both accepted forms.
     if (!isAbsolute(source))
       throw new RepositoryAcquisitionInputError(
-        'A local mirror must use an absolute path.',
+        'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.',
       );
   } else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(source)) {
     let url: URL;
