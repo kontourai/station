@@ -299,7 +299,9 @@ async function defaultAuthFactory() {
  * A new ADC client and access token for every attempt, as one time-limited
  * stage: google-auth-library fetches the subject token, exchanges it at STS
  * and impersonates inside the first token request, with no signal of its
- * own. A fresh client per attempt matters because a client de-duplicates
+ * own (GoogleAuth#getClient does the same when it has to look up a project
+ * id, which is why the limit covers all three phases). A fresh client per
+ * attempt matters because a client de-duplicates
  * token refreshes, so a retry on the same client would wait on the same
  * stalled exchange.
  */
