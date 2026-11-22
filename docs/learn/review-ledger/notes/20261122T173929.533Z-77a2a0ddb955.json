@@ -1,0 +1,15 @@
+{
+  "revision": "fbefd43834d3a9ca94e47e8d232b0edfdb82668f",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Save is now available for a saved OpenAI-compatible connection with no address once Enabled is cleared, and the header shows the turn-on sentence. Checked citing pages: walkthroughs and agent-smoke-confidence describe the Models page and test evidence, not this rule; connections.md was updated. The two captures show an Ollama connection and the Engines tab, unaffected.","inputs":["src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Save is now available for a saved OpenAI-compatible connection with no address once Enabled is cleared, and the header shows the turn-on sentence. Checked citing pages: walkthroughs and agent-smoke-confidence describe the Models page and test evidence, not this rule; connections.md was updated. The two captures show an Ollama connection and the Engines tab, unaffected.","inputs":["src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Save is now available for a saved OpenAI-compatible connection with no address once Enabled is cleared, and the header shows the turn-on sentence. Checked citing pages: walkthroughs and agent-smoke-confidence describe the Models page and test evidence, not this rule; connections.md was updated. The two captures show an Ollama connection and the Engines tab, unaffected.","inputs":["src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Save is now available for a saved OpenAI-compatible connection with no address once Enabled is cleared, and the header shows the turn-on sentence. Checked citing pages: walkthroughs and agent-smoke-confidence describe the Models page and test evidence, not this rule; connections.md was updated. The two captures show an Ollama connection and the Engines tab, unaffected.","inputs":["src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Save is now available for a saved OpenAI-compatible connection with no address once Enabled is cleared, and the header shows the turn-on sentence. Checked citing pages: walkthroughs and agent-smoke-confidence describe the Models page and test evidence, not this rule; connections.md was updated. The two captures show an Ollama connection and the Engines tab, unaffected.","inputs":["src-ui/src/views/ProviderSettingsView.tsx"]}
+  ]
+}
