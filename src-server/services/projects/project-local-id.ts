@@ -18,6 +18,17 @@ export interface ProjectIdentityLookup {
  * An exact id match wins over a slug match, so a slug that equals another
  * Project's id cannot make the answer depend on list order.
  */
+export function localProjectIdFor(
+  projects: ProjectIdentityLookup,
+  identity: string,
+): string | undefined {
+  const listed = projects.listProjects();
+  return (
+    listed.find((project) => project.id === identity)?.id ??
+    listed.find((project) => project.slug === identity)?.id
+  );
+}
+
 /**
  * The slug of the Project `identity` (an id or a slug) names, if any, with
  * the same precedence as {@link localProjectIdFor}.
@@ -30,16 +41,5 @@ export function projectSlugFor(
   return (
     listed.find((project) => project.id === identity)?.slug ??
     listed.find((project) => project.slug === identity)?.slug
-  );
-}
-
-export function localProjectIdFor(
-  projects: ProjectIdentityLookup,
-  identity: string,
-): string | undefined {
-  const listed = projects.listProjects();
-  return (
-    listed.find((project) => project.id === identity)?.id ??
-    listed.find((project) => project.slug === identity)?.id
   );
 }
