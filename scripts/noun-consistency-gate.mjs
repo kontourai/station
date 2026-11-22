@@ -227,6 +227,8 @@ export const RETIRED_USER_TERMS = Object.freeze([
     pattern: /\bmodel connections?\b/i,
     pending: true,
   },
+  // Also matches the network sense ("connect through a proxy"); the slice
+  // that enables it decides each such use.
   {
     term: 'Connect through',
     use: 'Runs through',

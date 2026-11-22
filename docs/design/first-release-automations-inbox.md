@@ -8,7 +8,7 @@ Automations get a readable list and one page per automation, and the Inbox repla
 
 ## What is wrong today
 
-- Automations has a pause, but nobody can find it. Clicking the status cell ("on") toggles it, but it looks like a status label, and the capture missed it.
+- Automations has a pause, but nobody can find it. Clicking the status cell ("on") toggles it, but it looks like a status label, so it is easy to miss.
 - The page opens on scheduler internals ("SCHEDULER Healthy / Last tick just now / JOBS / SUCCESS RATE / TOTAL RUNS"). None of them answer what runs next or whether the last run worked. On a phone the four tiles fill the first screen.
 - Three tabs split one question. List, Calendar (a week of "None scheduled") and Executions ("Executions appear after an automation runs") are three views of "what runs when, and did it work". No run links to the chat it ran in.
 - The form is technical and its defaults are risky. Name is a slug (lowercase and hyphens only), the schedule has two rows of mode tabs, and a one-time run defaults to now with "Delete the job after it runs" ticked. The Edit dialog has no Name field. On a phone the form scrolls inside a window about 340px tall.
@@ -96,10 +96,10 @@ On a phone: A full-screen sheet with Cancel and Create pinned at the bottom. Tod
 2. **Presets replace the two rows of mode tabs: Every day, Weekdays, Weekly, Every few hours, Once, Custom.** Today's form has "Calendar / Exact interval / One time", then "Every / Weekly / Cron". Custom opens the existing cron editor, and presets map to the existing schedule kinds. _(layout, new screen state; slice 5.15)_
 3. **A read-back sentence plus the next three dates.** Kept from today's preview, which works well. _(layout; slice 5.15)_
 4. **An agent picker, with engine and model shown read-only.** _(layout; slice 5.15)_
-5. **"Where results go": Its own chat, or A new task in a project.** "This chat" is added when the form opens from a chat. The project option is behind a feature preview today and should graduate with this page. _(layout; slice 5.15)_
+5. **"Where results go": Its own chat, or A new task in a project.** "This chat" is added when the form opens from a chat. The project option is behind a feature preview today. It ships only if a project schedule can be edited and deleted from Automations, which this slice settles first; otherwise the first release offers "Its own chat" only. _(layout, backend check first; slice 5.15)_
 6. **Name moves last and takes plain words, suggested from the instructions.** Today the name is a slug, and the Edit dialog has no Name field. This needs a display name separate from the slug. Until then, generate the slug from the name and keep it hidden. _(server work; slice 5.15)_
 7. **Not on the form for v1: Retries and Retry delay, "Station engine, output file", the GitHub pull request monitor fields, and "Run with".** They are technical, and the first two apply only to file runs. _(layout; slice 5.15)_
-8. **"Once" defaults to tomorrow at 9:00 AM, and "Remove it after it runs" is unticked. Not drawn.** Today a one-time run defaults to now with "Delete the job after it runs" ticked. _(copy; slice 0.18)_
+8. **"Once" defaults to tomorrow at 9:00 AM, and "Remove it after it runs" is unticked. No screen is specified for it.** Today a one-time run defaults to now with "Delete the job after it runs" ticked. _(copy; slice 0.18)_
 
 ### `automations-inbox-05` Automation that paused itself
 
@@ -154,7 +154,7 @@ On a phone: The same page in one column.
 7. **An automation failure says what failed and offers one step ("Sign in to Codex").** Today a failed-turn notification shows raw text about provider connections needing an application default. _(layout; slice 4.14)_
 8. **Raw server text is translated: "Couldn't start: two providers are turned on and neither is the default.", with "Choose a default".** Today the page shows raw server text. The mapping is new copy per failure code. "Choose a default" goes to Customize › Providers. _(copy; slice 0.17)_
 9. **Done, plus a flag, plus "Check".** It follows the Tasks board rule. _(layout; slice 0.16)_
-10. **A row ⋯ menu.** It opens the menu drawn on the row actions screen. _(layout; slice 4.13)_
+10. **A row ⋯ menu.** It opens the menu specified on the row actions screen. _(layout; slice 4.13)_
 11. **The gear opens Settings › Notifications.** The separate "Notification settings" link and "Dismiss eligible items" button are removed. _(layout; slice 4.14)_
 12. **One row per chat. The duplicate "Session failed" and "Turn Failed" pair collapses into one Failed row.** Today one failed run appears twice on the Notifications page. _(new screen state; slice 4.13)_
 
@@ -191,9 +191,9 @@ On a phone: The same sheet.
 | "Run with" (scheduler provider select) | Hide for the first release | Shown only when more than one exists. It is internal. |
 | GitHub pull request monitor fields on the form | Hide for the first release | Hidden for v1. They take millisecond values and secret-binding ids, which is feature preview territory. |
 | GitHub event automations | Hide for the first release | Hidden for v1. They stay behind their feature preview. Owner decision. |
-| Per-run limits for scheduled automations | Hide for the first release | Later, not v1 (drawn only on the later-version screen). New server work. Owner decision. |
+| Per-run limits for scheduled automations | Hide for the first release | Later, not v1 (specified only on the screen recorded for a later release). New server work. Owner decision. |
 | Agent check-backs | Keep | They stay in their own chat, not on Automations. They belong to one chat. |
-| Project schedules (run as a Task) | Turn on by default | Graduate the preview with this page. "A new task in a project" is the useful second target. |
+| Project schedules (run as a Task) | Turn on by default | Graduate the preview with this page only if a project schedule can be edited and deleted from Automations, which slice 5.15 settles first. Otherwise the first release offers "Its own chat" only. |
 | notifyStart | Remove | Removed from the contract. It is ignored today, a dead field. |
 | Bell and popover | Simplify | Kept, with Needs you and updates, answerable in place. |
 | Notifications page | Keep | Kept as "Inbox". |
@@ -231,13 +231,13 @@ On a phone: The same sheet.
 | Automation page route | new screen state |  |
 | Run linking to its turn in a dedicated chat | new screen state | Needs a backend check: anchoring by the run's client turn id. |
 | "Paused itself" versus paused by you | server work | Store a disable reason. The repeated-failure path already knows it. |
-| Per-run limit for scheduled jobs (later, not v1) | server work | Drawn only on the later-version screen. Reuses the existing budget type, plus new UI. |
+| Per-run limit for scheduled jobs (later, not v1) | server work | Specified only on the screen recorded for a later release. Reuses the existing budget type, plus new UI. |
 | "Last run used" meters (later, not v1) | server work | New server data: usage recorded by turn. Needs a backend check. |
 | Display name and rename | server work | New server data. |
 | Form presets and read-back | layout | Also new UI state. |
 | Proposal card restyle | layout |  |
 | "Edit first" on the proposal | new screen state |  |
-| Proposal running as its own chat with another agent | chat tool | Extend the "propose a job" tool with a dedicated target. Not drawn, and needed only if wanted. The card shows the real behaviour. |
+| Proposal running as its own chat with another agent | chat tool | Extend the "propose a job" tool with a dedicated target. No screen is specified, and it is needed only if wanted. The card shows the real behaviour. |
 | Delete keeps the chat | backend check first | Confirm that deleting a job keeps its conversation. |
 | Agents adding, enabling and running jobs directly | backend check first | Confirm which chat agents get these tools. Only the proposal path was verified. |
 | Inbox rename, tabs, removing chips and dates | copy | Also layout. |
@@ -252,9 +252,9 @@ On a phone: The same sheet.
 
 ## Decisions taken during design
 
-- "Mark done" replaces Settle, Dismiss and Hide everywhere, and "Close" belongs to the open chat. Accepted. The chat menus change to match.
-- Per-run limits for scheduled automations are later. They are removed from the automation page, form and failing screens, and drawn only on the later-version screen.
+- "Mark done" replaces Settle, Dismiss and Hide everywhere, and "Close" belongs to the open chat. The chat menus change to match.
+- Per-run limits for scheduled automations are later. They are removed from the automation page, form and failing screens, and specified only on the screen recorded for a later release.
 - GitHub event automations are hidden for v1.
 - The Inbox is reached from the bell and the palette only. There is no sidebar row.
-- A budget limit is real and enforced only for GitHub event rules and pull request monitors, not for the scheduled automations on this page. The per-run limit is drawn as new work. The chat path that could be verified is "propose a job", and its approved job runs in the proposing chat. The card shows that instead of a separately chosen agent.
-- The chat design drew "Settle, Mark done, keep in Recent", which needed its own explanation line to say what the word does. Use "Mark done". "Close" belongs to the open chat, not the inbox row.
+- A budget limit is real and enforced only for GitHub event rules and pull request monitors, not for the scheduled automations on this page. The per-run limit is recorded as new work. The chat path that could be verified is "propose a job", and its approved job runs in the proposing chat. The card shows that instead of a separately chosen agent.
+- Considered: "Settle, Mark done, keep in Recent" in the chat menus, which needed its own explanation line to say what the word does. Use "Mark done". "Close" belongs to the open chat, not the inbox row.

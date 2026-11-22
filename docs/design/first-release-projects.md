@@ -49,7 +49,7 @@ On a phone: A bottom sheet. The three source choices stack until one is picked, 
 
 1. **One name field with the icon badge beside it. The separate icon sub-form is gone.** Today an optional emoji opens a whole panel. _(layout; slice 3.1)_
 2. **"Where does the work live?" offers three equal choices: Start empty, A folder, Clone from Git.** Today's Blank vs "From a repository" then split again into Git vs folder. The folder case is the common one and sat two levels deep. _(layout; slice 3.1)_
-3. **No Starter layout and no Browse all. Every project opens with Chats and Tasks.** Users met "layout" before they had a project. We need to check that built-in views can exist without a per-project apply. _(layout, backend check first; slice 3.1)_
+3. **No Starter layout and no Browse all. Every project opens with Chats and Tasks.** Users met "layout" before they had a project. Backend check: built-in views can exist without a per-project apply. _(layout, backend check first; slice 3.1)_
 4. **"More options" holds the description and Runs on.** It already holds them. "Default environment" is renamed to the Home page's "Runs on". _(copy; slice 3.1)_
 5. **Create is always labelled "Create project". The foot hint says what opens.** Today the button renders empty while pending. _(copy; slice 3.1)_
 
@@ -68,19 +68,19 @@ On a phone: The source tiles collapse to three icon buttons. Autocomplete is nar
 On a phone: The same sheet, with the error block below the URL. It is the longest sheet.
 
 1. **"Clone from: GitHub · GitLab · URL" chips.** Replaces "Choose a repository source" and "Provider". It frees "provider" for model providers. _(copy; slice 3.1)_
-2. **A malformed URL is caught before any request ("That doesn't look like a Git URL", not drawn).** Nothing checks the URL today. This is UI only. _(new screen state; slice 3.1)_
+2. **A malformed URL is caught before any request ("That doesn't look like a Git URL"; no screen is specified).** Nothing checks the URL today. This is UI only. _(new screen state; slice 3.1)_
 3. **A failure stays on the form, attached to the URL, with a plain reason, "Use a folder instead" and "Details".** The operation id lives under Details. Today the form is replaced by "Operation: <uuid>" and polls a 404, and Retry is hidden in a menu. Mapping the 400 error to a plain reason needs a backend check. _(new screen state, backend check first; slice 3.1)_
 4. **The footer says "Nothing was created" and the primary button is "Try again".** Today you cannot tell whether a project exists. _(copy; slice 3.1)_
 
 ### `projects-04` New project, creating
 
-On a phone: No separate render. It is the same sheet as New project.
+On a phone: No separate phone layout is specified. It is the same sheet as New project.
 
 1. **The header names the project and the source.** _(copy; slice 3.2)_
 2. **Four steps: Check the repository, Clone (spinner and elapsed time), Create the project, Set up Chats and Tasks.** This turns two hidden requests into visible progress. Today the button renders empty. _(new screen state; slice 3.2)_
 3. **"Cancel clone" uses the existing cancel action. There is no Close button while setup runs.** Today a bad Git URL replaces the form with an operation id and polls forever, with no way out. _(layout; slice 3.2)_
 4. **The hint says "Keep this window open until setup finishes. If it closes early, New project offers to finish the setup next time."** Creation is driven by the browser today, and the saved recovery reopens the dialog. _(copy; slice 3.2)_
-5. **Not drawn: "Close this window, Station keeps going."** It needs the server to run the whole sequence (acquire, create, views) as one tracked operation, with the project appearing in the sidebar when done. _(server work, new screen state; slice 3.2)_
+5. **Not specified for the first release: "Close this window, Station keeps going."** It needs the server to run the whole sequence (acquire, create, views) as one tracked operation, with the project appearing in the sidebar when done. _(server work, new screen state; slice 3.2)_
 
 ### `projects-05` New project, recovery
 
@@ -143,7 +143,7 @@ On a phone: A segmented lane picker with counts, one lane at a time (swipe). The
 
 ### `projects-11` Add view menu
 
-On a phone: The view tabs scroll. "+" is hidden on phone, and adding views is a desktop task (not rendered).
+On a phone: The view tabs scroll. "+" is hidden on phone, and adding views is a desktop task (no phone layout is specified).
 
 1. **"+" on the view tabs opens "Views in Acme Web": Chats, Tasks, then "Add one of your apps" and "Find apps with a project view".** Release desk shows this project only, Knowledge Docs and Enterprise are offered, and Daily brief is greyed ("Not for projects"). It is the same menu as in Apps. Reordering and hiding views moved to Settings › Views. Today Add Layout offers Session Board, which fails with "Layout not found", and offers Coding and Tasks as if optional. Review and Session Board are not offered. _(new screen state; slice 3.9)_
 
@@ -243,8 +243,8 @@ On a phone: This screen is phone only.
 | --- | --- | --- |
 | New Project three-way source, name from folder or repo | new screen state | Also layout. |
 | No starter layout; Chats and Tasks always present | backend check first | New server data, or a default apply on create. Confirm built-in views can exist without a per-project apply. |
-| One Create that sequences clone, create, views with a step list | new screen state | Drawn as true today: the window must stay open. |
-| "Close the window, Station keeps going" | server work | The server runs acquire, create and views as one operation. Not drawn. Also a new UI state. |
+| One Create that sequences clone, create, views with a step list | new screen state | Specified as true today: the window must stay open. |
+| "Close the window, Station keeps going" | server work | The server runs acquire, create and views as one operation. No screen is specified. Also a new UI state. |
 | Git URL pre-check and plain failure reason | backend check first | New UI state plus mapping the server error. Confirm what the 400 body carries. |
 | "Start empty": where the empty workspace lives | backend check first | Confirm whether a project can have no folder. The change is copy. |
 | Uncommitted change count | server work | New git status count. Needs a backend check. |
@@ -265,10 +265,10 @@ On a phone: This screen is phone only.
 
 ## Decisions taken during design
 
-- A per-project provider + account is real only for Station's own engine. For Claude Code and Codex it is shown read-only with a link to Customize › Engines. Accepted.
-- The code inventory suggested moving Starter layout into More options. The designer removed it outright. Accepted.
-- The Review layout is removed for v1 because it renders broken. Accepted.
+- A per-project provider + account is real only for Station's own engine. For Claude Code and Codex it is shown read-only with a link to Customize › Engines.
+- Considered: moving Starter layout into More options. Chosen: removing it, because people met "layout" before they had a project.
+- The Review layout is removed for v1 because it renders broken.
 - "You can close this window, Station keeps going" was removed from the creating screen because creation is driven by the browser today. Keeping it going after the window closes is listed as new work.
 - The phone and emulator pane is hidden for v1. "Device" now means something that signs in to Station, and the pane needs hardware most first users will not have.
 - The Boards screens were removed. Today's boards are one built-in kind of app, made with chat.
-- Project settings › Views was described without a screen. It is now drawn.
+- Project settings › Views has its own screen in this record.

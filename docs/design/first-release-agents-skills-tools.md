@@ -25,7 +25,7 @@ Agents, Skills and Tools become items in the Customize page. An agent is one obj
 - Customize › Skills has two tabs. Your skills is a list beside a detail view, with chips All, Written by you, Added from Browse, From apps, Has a command. Browse is the shared catalogue filtered to skills, shown in place. Apps › Discover is the full catalogue.
 - "New skill" offers Write one, Import a .md file, Import from Codex… and Browse published skills. The Commands tab goes away, and the command word is a field on the skill.
 - Customize › Tools shows a list with honest status and "Used by", a server page, and one "Add tool server" dialog with "From the list" (the same catalogue filtered to tool servers) and "Your own".
-- The relationship is drawn once, on the agent's Overview ("What PR reviewer is made of"). The agent's Skills and Tools tabs are the only places a skill or tool is attached to an agent. The Skills and Tools pages link back through "Used by".
+- The relationship is shown once, on the agent's Overview ("What PR reviewer is made of"). The agent's Skills and Tools tabs are the only places a skill or tool is attached to an agent. The Skills and Tools pages link back through "Used by".
 - Chat can create and edit agents (with an approval card) and propose tool servers. It navigates to the setup and the person completes the secret step.
 
 ## Before and after
@@ -72,7 +72,7 @@ On a phone: A pushed page with "Add tool server" pinned at the bottom. The "Keep
 
 On a phone: A pushed page with "Add skill" pinned at the bottom.
 
-1. **Skills are rows with origin tags and run counts labelled "all agents".** Run counts are Station-wide, so they are not drawn as per-agent. "Add skill" here picks from existing skills, and writing a new one happens in Customize › Skills. _(layout; slice 5.3)_
+1. **Skills are rows with origin tags and run counts labelled "all agents".** Run counts are Station-wide, so they are not shown as per-agent. "Add skill" here picks from existing skills, and writing a new one happens in Customize › Skills. _(layout; slice 5.3)_
 2. **"Every agent also gets commit-style".** It makes visible that a skill can be offered to every agent. _(layout; slice 5.3)_
 3. **Explicit Save and Discard with an unsaved count.** Today there is one Save for a 2,900px form. _(layout; slice 5.3)_
 
@@ -80,7 +80,7 @@ On a phone: A pushed page with "Add skill" pinned at the bottom.
 
 On a phone: A full-screen step with the primary action pinned at the bottom. Required-field errors use the visible red pattern, not today's silently disabled button.
 
-1. **Only Name is required. "What should it do?" is optional, with "Draft it for me".** We need to confirm that creating an agent accepts empty instructions, since the seeded Station agent has an empty prompt. _(backend check first; slice 5.4)_
+1. **Only Name is required. "What should it do?" is optional, with "Draft it for me".** Backend check: creating an agent accepts empty instructions, since the seeded Station agent has an empty prompt. _(backend check first; slice 5.4)_
 2. **"Runs on: Same as new chats", with a Change button.** This depends on a saved default, which does not exist today. Until then, prefill from the first runnable agent. _(server work, new screen state; slice 5.4)_
 3. **"Start from: Blank / Copy an agent" replaces the three starting cards.** _(layout; slice 5.4)_
 4. **"Runs on › Change" opens the provider and account picker from Customize › Engines, and the model picker, plus "Use the engine's account".** An agent can pin its own account, unlike the engine setting, which changes every chat. _(layout; slice 5.4)_
@@ -185,7 +185,7 @@ On a phone: The same, with the waiting line wrapping.
 | Import .md | Keep | Under "New skill". |
 | Registry › Skills | Simplify | Becomes Customize › Skills › Browse. One catalogue, entered from where you are. |
 | Registry › Integrations | Simplify | Becomes Customize › Tools › Add tool server › From the list. One catalogue, filtered in place. |
-| Registry › Agents and Agents › Browse | Remove | Removed for v1. It is empty beside "Manage sources (6)", and agents arrive inside apps. The owner accepted this. |
+| Registry › Agents and Agents › Browse | Remove | Removed for v1. On a fresh install it is empty beside "Manage sources (6)", and agents arrive inside apps. |
 | Registry › Plugins, Layouts and Kits | Simplify | Out of scope here. Apps › Discover owns them. |
 | Registry sources | Keep | Behind "Sources…" in Skills › Browse and Add tool server. |
 | Tools tab | Keep | Now the Customize › Tools page. |
@@ -225,8 +225,7 @@ On a phone: The same, with the waiting line wrapping.
 
 ## Decisions taken during design
 
-- One Agent object and no Bots. Accepted: Station has no per-agent memory, and scheduling is already Automations.
-- No Browse tab in Agents for v1, and the tool-server catalogue stays inside Add tool server. Accepted.
-- Accepted.
-- Creating an agent from a name alone needs the server to accept empty instructions. Tagged as an assumption to confirm.
+- One Agent object and no Bots, because Station has no per-agent memory, and scheduling is already Automations.
+- No Browse tab in Agents for v1, and the tool-server catalogue stays inside Add tool server.
+- Creating an agent from a name alone needs the server to accept empty instructions. That is a backend check for slice 5.4.
 - Agents, Skills and Tools are items in the Customize page. The agent page's own sections became tabs, because two left lists left the content about 650px wide.

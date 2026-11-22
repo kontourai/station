@@ -94,6 +94,13 @@ enforces it. Single words that design also retires (Connections, Plugins,
 Layout, Basis, Settle) are not listed, because they keep legitimate uses the
 gate cannot tell apart.
 
+The gate reads only `.tsx` files under `src-ui/src` and
+`packages/sdk/src/components`, plus the two settings registries in
+`packages/contracts`. Enabling an entry does not cover copy in
+`packages/connect`, in `.ts` copy modules such as
+`packages/contracts/src/pairing-copy.ts`, or in server tool text, so a change
+that retires a word also searches those for it.
+
 ### Fixing a failure
 
 Rewrite the copy or the CSS. Don't regenerate a baseline to absorb new

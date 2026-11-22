@@ -71,6 +71,13 @@ each change amends its record in the same pull request:
   Connections, device pairing, Plugin and Integration, placement (Layout,
   Workspace view), settlement, Notifications and Inbox, chat inventory and
   Basis, and Profile entries change with the slice that changes each word.
+  The Task lanes entry changes with `packages/contracts/src/task-lane.ts`
+  (slice 3.7), the rule against bare "Station" for one instance is checked by
+  the Station page slices (2.1 to 2.3), and the `#general` coordinator entry
+  changes when `#general` leaves the sidebar (slice 3.3).
+- `packages/contracts/src/pairing-copy.ts`: its test asserts the glossary's
+  pairing rules, so it changes with the device pairing wording (slices 2.3 and
+  2.6).
 - [Shell ownership and boards](../design/shell-ownership-and-boards.md): rows
   above Projects and pinned Customize items reverse the rejected "global views
   band" alternative and the footer placement (slices 1.5 and 1.6); removing
@@ -79,15 +86,32 @@ each change amends its record in the same pull request:
   for people, with the Projects slices that rename them (from slice 3.3).
 - [Module map](../architecture/module-map.md): the DestinationRegistry rule
   that a Customize row cannot also be a sidebar entry (slice 1.6).
-- [Connections overhaul](../design/connections-overhaul.md) is superseded,
-  and the finite readiness labels in
-  [Connections onboarding](../design/connections-onboarding.md) change (slice
-  1.2 and the Customize slices).
+- [Connections overhaul](../design/connections-overhaul.md) is superseded when
+  slice 1.2 lands, and the finite readiness labels in
+  [Connections onboarding](../design/connections-onboarding.md) change with the
+  Customize slices. That record's section 1 rule stays: detection is a
+  suggestion, never a configuration action. The first-run "what Station
+  found" list keeps it, because each row's fix is an explicit add by the
+  person (slice 1.7).
+- [Connections](../guides/connections.md), the pages under
+  [`docs/user/`](../user/) and the generated shipped manual
+  ([station-docs](../reference/station-docs.md), regenerated with
+  `npm run docs:mcp:generate`) change with the slices that rename
+  Connections, its tabs and its nouns (1.2 and the Phase 2 slices).
+- [Registry sources detected by structure](registry-sources-detected-by-structure.md):
+  where its detected kind "integrations" is shown to people, the word becomes
+  tool servers (slice 5.7).
 - [Telemetry tiers](telemetry-tiers.md), "Usage sharing presentation": the
   first-run dialog becomes a dismissible card that keeps the shown-notice and
-  explicit-action rules (slice 1.8).
+  explicit-action rules (slice 1.8). The
+  [privacy policy working copy](../privacy-policy.md) and the public privacy
+  page it maps to are reviewed in the same slice.
 - [Settings architecture](../design/settings-architecture.md) section 4.1:
   one save behaviour across Settings and project settings replaces batched
   Save and Discard (slices 5.17 and 3.10).
+- [Feature previews](../guides/feature-previews.md) and
+  [Settings launch triage](../design/settings-launch-triage.md): turning a
+  preview on for everyone means graduating it, which deletes its binding once
+  the evidence bar is met (slice 5.23).
 - [Custom appearance](custom-appearance.md): the Appearance page moves into
   Settings, and the agent guide's "/appearance" changes with it (slice 5.19).

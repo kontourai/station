@@ -9,18 +9,18 @@ Home becomes the only first-run screen, with no wizard, and connecting a phone t
 ## What is wrong today
 
 - Five first-run mechanisms overlap on one Home: a setup launcher card, a Finish setup dialog, a three-step tour, a re-entry card, and engine setup inside New Chat. The launcher hides whenever any engine is ready, so the path differs from machine to machine.
-- The wizard pre-checks 8 engines with "Connect and set up X" rows. In code, "Set up" means creating an Agent for that engine. That is housekeeping that a person cannot decide.
+- On a fresh install with eight engines found, the wizard pre-checks all 8 with "Connect and set up X" rows. In code, "Set up" means creating an Agent for that engine. That is housekeeping that a person cannot decide.
 - The wizard dead-ends. "Set up 8" stays on step 1, two engines fail with "could not be set up. Try again in a moment" and no reason, and "Continue without them" closes the wizard instead of moving on.
-- The default model drifts during setup, from muse-wonder to Grok 4.7 to openrouter/Inkling. Nothing stores a default. The composer takes the first runnable agent.
+- The default model changes during setup as each engine becomes ready. Nothing stores a default. The composer takes the first runnable agent.
 - "Choose what powers Station" is technical and opaque. It shows seven identical rows saying "Can operate Station", and it sets the engine that runs Station's own agent.
 - "About you" is cramped and does little. Its own note says it only affects Station's own engine.
-- The Finish setup card promises a Usage sharing step that the capture never saw. The disclosure appears only while it is outstanding, and a server started from a terminal prints the notice to its log and records it as shown. Browser users of a terminal-launched server never see it in the app.
+- The Finish setup card promises a Usage sharing step that a fresh install launched from a terminal never shows. The disclosure appears only while it is outstanding, and a server started from a terminal prints the notice to its log and records it as shown. Browser users of a terminal-launched server never see it in the app.
 - The unpaired screen offers 5 routes plus a sample workspace with its own tour. Pair with a code opens on a red "Camera error: Not supported". Pairing by code adds the device on the host while the device shows nothing. Request access fails with "This Station does not allow access requests from this app address", and the only remedy today is a command-line flag.
 
 ## Agreed structure
 
 - Home is the first-run surface. There is no wizard, no tour, no launcher card and no re-entry card.
-- Home shows the composer plus a short list of what Station found on the computer. Each row carries its own one-step fix.
+- Home shows the composer plus a short list of what Station found on the computer. Each row offers one step the person takes, such as Add or Sign in. Nothing found is configured until the person adds it.
 - Customize › Overview, and the "what can run now" table at the top of Customize › Engines, is where setup lives afterwards.
 - Station saves a Default for new chats: the first signed-in engine, in fixed order (Claude Code, Codex, then the others), using that engine's current model. It never changes because another engine becomes ready.
 - Every detected and ready engine appears in the picker. Its Agent is created the first time the engine is used, not as a ticked batch.
@@ -34,7 +34,7 @@ Home becomes the only first-run screen, with no wizard, and connecting a phone t
 
 | Task | Today | Agreed |
 | --- | --- | --- |
-| First message, an engine installed and signed in | About 8 to 9 decisions over 6+ screens. Skipping setup gives 0 decisions but a wrong default (Grok or OpenRouter). | 0 required (type, then Start), 1 optional (usage sharing) |
+| First message, an engine installed and signed in | About 8 to 9 decisions over 6+ screens. Skipping setup gives 0 decisions but a wrong default (whichever engine became ready first). | 0 required (type, then Start), 1 optional (usage sharing) |
 | First message, installed but none signed in | About 4 to 5 decisions and 5+ clicks, and the composer is left behind (reasoned from code) | 1 (approve the sign-in in the browser), and the message is kept |
 | First message, nothing installed | About 3+ decisions plus manual terminal work, with about 15 install commands listed and no engine suggested (reasoned from code) | 1 choice plus install and sign-in, all from Home |
 | Pair a phone | 5 routes. The code route ends in a camera error, then a dead end. Request access fails with an address error. | 1 primary route: scan the QR, 0 decisions. Typing the code is the fallback. |
@@ -74,7 +74,7 @@ On a phone: Same order. The hint sits under the 44px Start button.
 
 On a phone: A bottom sheet with a grab handle, a 44px close and a 44px Cancel.
 
-1. **The waiting state names what happens and closes by itself.** Delegated CLI login with status verification exists, but it is written for added profiles. We need to confirm the same path signs in the default account. _(new screen state, backend check first; slice 1.9)_
+1. **The waiting state names what happens and closes by itself.** Delegated CLI login with status verification exists, but it is written for added profiles. Backend check: the same path signs in the default account. _(new screen state, backend check first; slice 1.9)_
 2. **A terminal fallback, `claude auth login`, then an automatic re-check.** There is no dead end if the browser hand-off fails. _(layout; slice 1.9)_
 3. **The footer says "Your message is kept".** It ties back to the Sign in and start button. _(copy; slice 1.9)_
 
@@ -101,7 +101,7 @@ On a phone: Avatars are hidden and the approval buttons are 44px and full width.
 1. **The agent reads setup state with the existing engine-setup tool.** The tool exists but sits behind the "Guided engine setup" preview and a personal host. _(layout; not in the first release)_
 2. **A "Your step" card: the person completes the sign-in. The agent never handles it and only navigates to the right screen.** This is the backed pattern of proposing and navigating. _(layout; not in the first release)_
 3. **A "Change the default for new chats" proposal, with Before and After.** Needs a new tool that sets the default, plus the saved default itself. _(chat tool, server work; not in the first release)_
-4. **The limit is drawn honestly. Chat only works once some engine runs Station's agent. The header shows "Station · running on Codex".** With nothing installed there is no agent to talk to, so the screens carry that state. _(copy; not in the first release)_
+4. **The limit is shown honestly. Chat only works once some engine runs Station's agent. The header shows "Station · running on Codex".** With nothing installed there is no agent to talk to, so the screens carry that state. _(copy; not in the first release)_
 
 ### `first-run-08` Import Codex prompts as skills
 
@@ -118,7 +118,7 @@ On a phone: A sticky 48px Connect button, a 10-box code field (one text input), 
 
 1. **One primary route: scan the QR with the phone's own camera. The link carries the pairing offer and the existing deep-link exchange does the rest.** Today Pair with a code opens on a camera error. The in-app camera is never the first thing shown. _(layout; slice 2.6)_
 2. **A typed code plus address is the fallback.** A code alone cannot locate a Station, and today the address is hidden under "Enter manually". _(layout; slice 2.6)_
-3. **"Ask for access" moves to a secondary row.** Today Request access failed in the capture with "This Station does not allow access requests from this app address." _(layout; slice 2.6)_
+3. **"Ask for access" moves to a secondary row.** On a fresh install, Request access failed with "This Station does not allow access requests from this app address." _(layout; slice 2.6)_
 4. **The sample workspace is a single text link, in the native phone app only, and without its tour.** It exists for App Store review. It is useless in a desktop browser. _(layout; slice 2.6)_
 
 ### `first-run-10` Checking the address
@@ -185,9 +185,9 @@ On a phone: The "Found Studio Mac…" sentence wraps as one sentence.
 
 ## Decisions taken during design
 
-- My brief asked for importing an existing Claude Code or Codex setup. Only Codex prompts can be imported today, as skills. The screen offers exactly that, under Skills.
-- Setup from chat cannot help when no engine is installed, because there is no agent to talk to. No chat screen is drawn for that state.
-- The first draft said usage sharing is on and nobody is told. Corrected: a disclosure step exists, and it is skipped when the server was started from a terminal, which records the notice as shown. The proposal shows the choice once in the app.
-- The usage-sharing card shows the real current setting selected instead of nothing selected. Accepted: showing no selection while sharing is on would be dishonest.
+- Considered: importing an existing Claude Code or Codex setup. Chosen: importing Codex prompts as skills, under Skills, because only those can be imported today.
+- Setup from chat cannot help when no engine is installed, because there is no agent to talk to. No chat screen is specified for that state.
+- A usage sharing disclosure step exists today, but it is skipped when the server was started from a terminal, which records the notice as shown. The design shows the choice once in the app.
+- The usage-sharing card shows the real current setting selected instead of nothing selected. Showing no selection while sharing is on would be dishonest.
 - Home shows one card under the composer at a time: the usage-sharing choice first, then a tip about apps.
-- The host's connect-a-device dialog was drawn in two areas. The Station page's version is the only one now.
+- The host's connect-a-device dialog is specified once, on the Station page.

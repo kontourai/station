@@ -184,9 +184,10 @@ On a phone: The same transcript with a bottom sheet for the review.
 
 ## Decisions taken during design
 
-- The first proposal kept the fixed-template Boards and hid Layouts and the Apps library. The owner asked for the opposite: apps as custom screens on Station's core. Apps is now the word people see, and plugin is the packaging word.
-- Today's boards stay as one built-in kind of app, made with chat from six fixed section kinds. Accepted.
-- No Pin in an app's row menu: every installed app is already in the sidebar. Accepted.
-- Library and Updates are tabs beside Discover. Accepted.
-- App code runs inside Station's window with your access today. The designer recommends no apps from outside sources in v1 until that is enforced. Listed as a decision for the owner.
+- Considered: keeping the fixed-template Boards and hiding Layouts and the Apps library. Chosen: apps as custom screens on Station's core, at the owner's request. Apps is now the word people see, and plugin is the packaging word.
+- Today's boards stay as one built-in kind of app, made with chat from six fixed section kinds.
+- No Pin in an app's row menu: every installed app is already in the sidebar.
+- Library and Updates are tabs beside Discover.
+- Apps from sources other than Station are not in the first release. App code runs inside Station's window with your access today, and nothing yet limits it to the permissions it declared.
+- An app's place in the sidebar is per person in the first release. Shared apps exist only as storage today.
 - Release desk and Research notes are invented examples. Enterprise, Knowledge Docs, Coding and Session activity are real examples from the repository.

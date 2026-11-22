@@ -61,7 +61,7 @@ On a phone: Account blocks become one column: name, then each meter at full widt
 3. **Footer copy: switching affects every Claude Code chat, and Claude reports the numbers.** Existing behaviour, now stated. _(copy; slice 2.12)_
 4. **Models show the canonical name first and the engine's own id small.** Needs a new model catalogue on the server. _(server work; not in the first release)_
 5. **"When an account runs out: Ask me / Automatically".** Surfaces the existing opt-in recovery, off by default, as a visible setting. _(new screen state; slice 2.12)_
-6. **No budget control is drawn.** None exists. Budgets would be new server work and are kept out of v1 screens. _(unclassified; slice 2.12)_
+6. **No budget control is specified.** None exists. Budgets would be new server work and are kept out of v1 screens. _(unclassified; slice 2.12)_
 
 ### `customize-04` Proxy provider
 
@@ -80,7 +80,7 @@ On a phone: Rows are labelled (Kind · Used by · Size).
 
 1. **Models are listed with their kind (Chat or Embedding) and what uses each.** Model role is the only other classification. _(layout; slice 2.12)_
 2. **Canonical name without version ("Qwen Coder", "Llama", "Gemma"), the Ollama tag and the quantization as an attribute.** Embedding models Station does not recognise, such as nomic-embed-text, appear as Unrecognised. _(server work; not in the first release)_
-3. **Model sizes.** Ollama reports sizes. We have not confirmed that Station stores them. _(backend check first; slice 2.12)_
+3. **Model sizes.** Ollama reports sizes. Backend check: whether Station stores them. _(backend check first; slice 2.12)_
 4. **Usage tiles: tokens, "Free · runs locally", and pieces indexed.** Tokens are existing data with a new UI. Indexed counts come from the existing knowledge status. _(new screen state; slice 2.12)_
 
 ### `customize-06` Provider needs attention
@@ -146,7 +146,7 @@ On a phone: Selects stack and the feature list is one column.
 3. **The in-use account's limits.** The existing account overview, moved up. _(layout; slice 2.9)_
 4. **An "About Claude Code · 5 of 6 features · 2 safety notes" disclosure with a feature checklist and two plain safety sentences.** The content comes from Station's own capability summary. Recovery and durability stay one click deeper. _(layout; slice 2.9)_
 5. **A details aside: version, sign-in owner, models, last check, and where it is the default.** _(layout; slice 2.9)_
-6. **No list of which agent new chats start on is drawn on the engine page.** The owner decided against it. _(unclassified; slice 2.9)_
+6. **No list of which agent new chats start on is shown on the engine page.** The owner decided against it. _(unclassified; slice 2.9)_
 
 ### `customize-12b` Engine route picker
 
@@ -223,7 +223,7 @@ On a phone: A real bottom sheet over a dimmed composer, titled "Model", with a c
 | Capability summary | Keep | Reshaped as "About · N of M features · K safety notes". |
 | Recovery and delivery details | Keep | One level deeper. Expert detail. |
 | Add engine catalogue | Simplify | Found, install six, show more, custom. It is 6000px today. |
-| Install offers without installing | Keep | Inherited from the earlier audit's keep list. |
+| Install offers without installing | Keep | It works: Station offers the install command without running it. |
 | Knowledge tab | Simplify | One status page with no add button. Setup is in four places and the add button goes to Settings. |
 | Developer › Memory | Hide for the first release | An operator concern. |
 | Integration status strip | Hide for the first release | A preview. It is not reachable today. |
@@ -231,7 +231,7 @@ On a phone: A real bottom sheet over a dimmed composer, titled "Model", with a c
 | Budgets and spend caps | Hide for the first release | None exist. A proposal only, not in v1. |
 | The /connections redirect | Remove | Replaced by the Customize landing, which answers "what can run". |
 | Computers tab | Simplify | Moves to the Station page. Four relationships under one noun today. |
-| Pair a device and Connect a Station | Keep | Real flows, now on the Station page. |
+| Pair a device and Connect a Station | Keep, renamed | Real flows, now on the Station page as "Connect a device" and Connect a Station. |
 | SSH computers and broker or relay routes | Hide for the first release | Hidden for v1 behind a flag. They are native-only and not demonstrable. |
 | Tools tab | Keep | Covered in the Agents, Skills and Tools area. |
 
@@ -262,9 +262,9 @@ On a phone: A real bottom sheet over a dimmed composer, titled "Model", with a c
 
 ## Decisions taken during design
 
-- Providers are drawn as two groups, and "Account" is used only for sign-ins. Accepted: accounts exist today only for engine sign-ins; an API-key provider holds one key.
-- Station's own engine has no single "Runs through". It picks a provider per model, so its page lists its providers. Accepted.
-- Budgets are not drawn. Accepted: nothing stores or enforces a money budget today.
+- Providers are shown as two groups, and "Account" is used only for sign-ins, because accounts exist today only for engine sign-ins; an API-key provider holds one key.
+- Station's own engine has no single "Runs through". It picks a provider per model, so its page lists its providers.
+- Budgets are not specified, because nothing stores or enforces a money budget today.
 - Usage left needs admin permission and a live call to the provider. People without that permission see "Visible to the Station admin".
-- Add engine first said Station only shows the install command. Corrected to today's behaviour: Station runs the official installer after you confirm, with the command as a fallback.
-- Usage by model: I first ruled that proxied usage counts toward the model it was named as. The code check showed Station does not reliably know the model per turn for outside engines. Final rule: by-model totals only for Station's own engine; usage on outside engines, including through a proxy, is grouped by engine and provider and always counted.
+- Add engine matches today's behaviour: Station runs the official installer after you confirm, with the command as a fallback.
+- Usage by model: considered counting proxied usage toward the model it was named as. Station does not reliably know the model per turn for outside engines, so the rule is: by-model totals only for Station's own engine; usage on outside engines, including through a proxy, is grouped by engine and provider and always counted.

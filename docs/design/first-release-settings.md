@@ -8,7 +8,7 @@ Settings is regrouped by who a setting affects, Developer becomes a Settings gro
 
 ## What is wrong today
 
-- Settings has 10 pages and about 105 rows. General alone mixes four owners: approvals, the default model, agent instructions and the Review guide model. Advanced holds nine unrelated sections, including 58 visible preview toggles, in one 6000px scroll.
+- Settings has 10 pages and about 105 rows. General alone mixes four owners: approvals, the default model, agent instructions and the Review guide model. Advanced holds nine unrelated sections, including, on a fresh install, 58 visible preview toggles in one 6000px scroll.
 - Appearance has two homes: a Settings › Appearance stub that links out, and the /appearance page. There is no header theme toggle.
 - Notifications lists "Station local UI", "(2)" … "(8)" as identical device rows with identical controls.
 - The 61 feature previews are all off except one. About a quarter gate finished-looking product, and operator diagnostics sit beside user features with the same chrome.
@@ -126,7 +126,7 @@ On a phone: As the previous screen.
 
 1. **An appearance proposal card shows the change as before and after, with Apply, Preview and Discard.** This card exists today. The step line reads "Drafted a new look". _(layout; not in the first release)_
 2. **"Opened Settings › Feature previews", with Private memory highlighted.** The agent cannot toggle previews. _(layout; not in the first release)_
-3. **Not drawn: a tool for proposing a feature preview change.** It would let the agent show a one-tap approval card here instead of navigating. _(chat tool; not in the first release)_
+3. **Not specified: a tool for proposing a feature preview change.** It would let the agent show a one-tap approval card here instead of navigating. _(chat tool; not in the first release)_
 
 ## Feature calls
 
@@ -198,7 +198,7 @@ On a phone: As the previous screen.
 | Continue unattended work after restart | Remove | Merged into Continue after restart. |
 | Browser experience | Remove | Merged into Browser extras. |
 | Browser artifacts | Remove | Merged into Browser extras. |
-| 3 preview ids not seen in the capture | Hide for the first release | 58 of 61 previews were visible. The 3 unseen ids need a backend check and are likely UI-only flags. |
+| 3 preview ids not visible on a fresh install | Hide for the first release | 58 of 61 previews were visible on a fresh install. The 3 unseen ids need a backend check and are likely UI-only flags. |
 | Usage by model | Keep | New for Station's own engine. Outside engines are grouped by engine and provider. |
 
 ## New work
@@ -219,8 +219,8 @@ On a phone: As the previous screen.
 
 ## Decisions taken during design
 
-- No header theme toggle is added. Accepted.
-- "Advanced" is dropped as a Settings page. Accepted: it had become the dumping ground.
+- No header theme toggle is added.
+- "Advanced" is dropped as a Settings page, because it had become the dumping ground.
 - Developer mode stays per account, as the product labels it today.
 - The Plugins screens were removed. Apps replaces them.
 - Where two design passes disagreed on a feature preview, the one that read the feature's code won: Task review, Memory, Pause and project Schedules stay hidden; Brief and Archive are turned on.

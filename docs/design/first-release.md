@@ -4,11 +4,13 @@ Status: agreed design; delivery in progress under [#5386](https://github.com/kon
 
 This record and its area files are the specification the build is checked against. Each area file lists its screens and, for each screen, the numbered changes a slice must deliver. The delivery sequence is in [the execution plan](../plans/first-release-ui.md). The owner agreed this design on 2026-11-21.
 
+Counts and quoted text under each area's "What is wrong today" were observed on a fresh install of `main` on 2026-11-21. They describe that install, not every installation.
+
 ## Areas
 
 | Area | Screens | Numbered changes |
 | --- | --- | --- |
-| [Navigation, Home and Customize](first-release-navigation.md) | 9 | 24 |
+| [Navigation, Home and Customize](first-release-navigation.md) | 7 | 22 |
 | [Station: devices, people and other Stations](first-release-station.md) | 10 | 25 |
 | [First run and connecting a device](first-release-first-run.md) | 13 | 41 |
 | [Customize: engines, providers and knowledge](first-release-customize.md) | 19 | 87 |
@@ -61,7 +63,7 @@ This record and its area files are the specification the build is checked agains
 - Automations show the next seven days, each automation's recent runs, and a labelled Pause. A run links to its chat.
 - The inbox has one row per thing with one status. **Mark done** replaces Settle, Dismiss and Hide.
 - Settings is a grouped list with search that finds individual settings. About 27 rows move to the area that owns them.
-- Of 61 feature previews: turn 11 on by default, keep 10 visible, leave 28 off or behind Developer mode, delete 5. The other 7 are sub-options or were not visible in the capture.
+- Of 61 feature previews: turn 11 on by default, keep 10 visible, leave 28 off or behind Developer mode, delete 5. The other 7 are sub-options or were not visible on a fresh install.
 
 ## Vocabulary
 
@@ -75,10 +77,10 @@ This record and its area files are the specification the build is checked agains
 - The thing you select and meter is provider + account: "Claude subscription · Personal Max". The account part is hidden when there is only one.
 - A provider is who you connect to and pay, not who made the model. Bedrock and OpenRouter serve other makers' models.
 - A proxy such as CLIProxy is a provider with a visible Proxy tag. Its real accounts live inside the proxy, so Station shows no usage left for it and says why.
-- Accounts are real today only for Claude Code, Codex and Muse sign-ins. An API-key provider holds one key, so Providers is drawn as two groups: Subscriptions, and Keys and local models.
+- Accounts are real today only for Claude Code, Codex and Muse sign-ins. An API-key provider holds one key, so Providers is shown as two groups: Subscriptions, and Keys and local models.
 - API format (OpenAI-compatible, Anthropic-compatible) is an attribute, never a noun. It appears in the custom-endpoint flow and as the reason a pairing is unavailable.
 - One default account per provider. Switching accounts automatically stays an explicit setting that is off by default, as it is today.
-- There are no money budgets anywhere today, so none are drawn.
+- There are no money budgets anywhere today, so none are specified.
 - Usage by model is shown only for Station's own engine, where the model for each turn is known. Usage on outside engines, including through a proxy, is grouped by engine and provider and always counted.
 
 ## Words that change
@@ -113,6 +115,7 @@ This record and its area files are the specification the build is checked agains
 ## How the design is kept
 
 - A slice cites the screens and change numbers it delivers. Its pull request shows a screenshot from a running build beside the agreed render, on desktop and phone.
+- The agreed renders are not kept in this repository. Each slice's pull request attaches the ones it delivers.
 - If building shows a change is wrong, the area file is amended in the same pull request with the reason.
 - A change marked "backend check first" names an assumption the slice must confirm before building.
 - Changes marked "not in the first release" are recorded so later work starts from the agreed design.

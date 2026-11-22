@@ -43,16 +43,12 @@ A quiet sidebar with one labelled Customize page replaces the footer dialog, and
 
 ## Screens
 
-### `navigation-00` Check: today's Engines screen rebuilt
-
-1. **Today's Engines screen rebuilt as a mock, side by side with the real one.** This proves the mock screens match the product: same fonts, same colours, same page frame, within a few pixels. Brand logos are monogram tiles, and the list offset differs by about 4px. _(unclassified; not in the first release)_
-
 ### `navigation-06` Home with work in progress
 
 On a phone: The menu button opens the drawer. The composer wraps so the engine picker and Start get their own row.
 
-1. **Only Home and Automations sit above Projects.** The owner found the first proposal, which listed every destination, too noisy. _(layout; slice 1.5)_
-2. **An APPS section replaces Boards: one row per installed app, each with its own icon, then Discover.** Apps are the word people see. The app names drawn are placeholders. _(layout, copy; slice 1.5)_
+1. **Only Home and Automations sit above Projects.** A sidebar listing every destination was considered and rejected as too noisy. _(layout; slice 1.5)_
+2. **An APPS section replaces Boards: one row per installed app, each with its own icon, then Discover.** Apps are the word people see. The app names shown are placeholders. _(layout, copy; slice 1.5)_
 3. **Customize is labelled and pinned above Settings, with a dot when anything inside needs attention.** Today Customize is an unlabelled footer icon, and nothing inside it can raise attention. _(layout, new screen state; slice 1.5)_
 
 ### `navigation-07` Fresh Home
@@ -89,10 +85,6 @@ On a phone: This screen is phone only.
 
 1. **The drawer has the same structure as the desktop sidebar. Customize and Settings are pinned to its bottom.** Today the phone drawer's footer is four unlabelled icons, and Agents, Skills and Connections are three taps from Home. _(layout; slice 1.5)_
 
-### `navigation-12` Comparison: first proposal and quiet sidebar
-
-1. **The same Home with the first proposal's sidebar on the left and the quiet sidebar on the right, plus 1:1 sidebar crops.** The quiet sidebar was chosen on three conditions: Customize is a page, its dot rolls up only real failures, and any item can be pinned. _(unclassified; not in the first release)_
-
 ### `navigation-22` Command palette
 
 On a phone: A bottom sheet at 86% height, one column, with 44px rows. The footer is hidden.
@@ -108,7 +100,7 @@ On a phone: A bottom sheet at 86% height, one column, with 44px rows. The footer
 
 | Feature | Call | Reason |
 | --- | --- | --- |
-| Sidebar navigation | Simplify | Quiet: Home, Automations, Projects, Apps, Customize and Settings. The first proposal listed every destination. |
+| Sidebar navigation | Simplify | Quiet: Home, Automations, Projects, Apps, Customize and Settings. Listing every destination was considered and rejected. |
 | Customize dialog | Simplify | Becomes a page with its own URL, a grouped left list and an attention dot. |
 | Registry as its own page | Remove | Installable things are Apps, found through Discover. |
 | "Apps" section label | Simplify | Now means installed apps, one row each, with Discover below. |
@@ -139,7 +131,7 @@ On a phone: A bottom sheet at 86% height, one column, with 44px rows. The footer
 
 ## Decisions taken during design
 
-- The first proposal listed every destination in the sidebar. The owner preferred a quiet sidebar with one Customize entry. Both were drawn side by side, and the quiet sidebar was chosen on three conditions: Customize is a real page, its dot reports only recorded failures, and any item can be pinned.
+- Considered: listing every destination in the sidebar. Chosen: a quiet sidebar with one Customize entry, because the full list was too noisy, on three conditions: Customize is a real page, its dot reports only recorded failures, and any item can be pinned.
 - With a Customize page, a Connections page inside it would be a third level of navigation. Connections no longer exists as a destination; its parts are items in Customize.
 - Automations stays in the sidebar. It is daily work, not setup.
 - There is no header theme toggle today. Theme lives in Settings › Appearance, with the existing keyboard shortcut and palette command.

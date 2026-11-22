@@ -9,10 +9,10 @@ One Details panel with Setup, Usage and Work tabs replaces four separate chat su
 ## What is wrong today
 
 - Three surfaces answer "what is this chat?" in three places: the dock's "THIS CHAT" aside, the Conversation Statistics modal, and the Basis or "Chat inventory" dialog. Each has its own entry point.
-- Stats is a ten-section wall of label and value rows, with a helper subtitle under each heading and no visual. On the audit engine it printed In: 0 / Out: 0 / Total: 0 for figures the engine never reported. It has no answer for "what's left", because the account's 5-hour and 7-day figures show only on the engine page. The slash command posts its result into the transcript as a message. After an engine switch the stats total is wrong, by-model is empty for outside-engine chats, and the context figure stays stale until the first usage report from the new engine.
+- Stats is a ten-section wall of label and value rows, with a helper subtitle under each heading and no visual. On an engine that does not report usage it prints In: 0 / Out: 0 / Total: 0 for figures the engine never reported. It has no answer for "what's left", because the account's 5-hour and 7-day figures show only on the engine page. The slash command posts its result into the transcript as a message. After an engine switch the stats total is wrong, by-model is empty for outside-engine chats, and the context figure stays stale until the first usage report from the new engine.
 - Chat inventory leads with metadata, not results. It has eleven groups in a two-column browser, three "At a glance" tiles that say "Not captured, count unavailable", and Outputs as the sixth group. Its copy explains authorization.
 - The Basis chip is on every answer and almost always says nothing. With no published assessment, which is the normal case, it opens "Unassessed" plus a gap paragraph and the same inventory. Its vocabulary (Surface assessment, not-captured, Session) is internal.
-- "Chat settings" holds display and device preferences: 131 words and 14 prose lines, with Session goal and Summarize as the only per-chat items. The chat's real setup (agent, model, effort, approvals, folder) is scattered over composer pills and the aside.
+- "Chat settings" holds display and device preferences (on a fresh install, 131 words and 14 prose lines), with Session goal and Summarize as the only per-chat items. The chat's real setup (agent, model, effort, approvals, folder) is scattered over composer pills and the aside.
 - The same action has different names in different places: "Fork from here…" vs "Branch from this answer", "New chat from this message", "Attach to Task" vs "Add to Task", "Close chat" vs "Dismiss from inbox" vs "Hide from inbox", "History" vs "Browse turns". Stats opens from the ring, a phone sheet and a slash command.
 - Four look-alike undo actions have no stated difference. Two slash commands do not do what they say: /clear and /new only empty the message list on screen and post "Conversation cleared". The agent's memory and the transcript on the server are untouched, and /new does not start a chat.
 - Chat-level actions live in the composer ("Continue with another agent…", "Reset agent context…"), and the dock's ⋯ menu mixes layout actions with chat actions. The palette has 35 navigation and global rows and nothing scoped to the open chat.
@@ -97,7 +97,7 @@ On a phone: Same as the Usage tab: a pushed screen with full-width meters.
 On a phone: Same as the Usage tab.
 
 1. **The stat strip keeps what is reported (Turns 6, Tool calls 22) and says "Not reported" in place for tokens.** The panel leads with real numbers, so it is not an empty wall. Which engines report turns and tool calls but no tokens needs a backend check. Goose is only an example. _(layout, backend check first; slice 4.2)_
-2. **"Not reported by Goose": dashed chips for Context size, Tokens, Models, Cost and Account limits.** One glance shows what is missing. No meters are drawn for missing data, and the ring is absent in the composer, as today. _(new screen state; slice 4.2)_
+2. **"Not reported by Goose": dashed chips for Context size, Tokens, Models, Cost and Account limits.** One glance shows what is missing. No meters are shown for missing data, and the ring is absent in the composer, as today. _(new screen state; slice 4.2)_
 3. **A tool-call outcome strip.** It comes from the inventory's Execution group, which is backed even when usage is not. _(layout; slice 4.2)_
 
 ### `chat-05` Usage tab, no stats at all
@@ -165,7 +165,7 @@ On a phone: A pushed screen with the same tabs.
 
 1. **Runs on: Codex · GPT · Medium. Account "ChatGPT subscription", read-only, "Same for every Codex chat".** _(layout; slice 4.1)_
 2. **A Goal with a status pill ("Paused"), the objective, and a "Token budget 64K of 200K" meter, with "Codex enforces the budget."** Station passes the budget to Codex and Codex reports the tokens used. Station enforces nothing itself. What Codex does at the limit beyond setting that status is an assumption to confirm, so the screen does not say "stops". At the limit the pill reads "Budget reached". _(layout, backend check first; slice 4.1)_
-3. **Actions are "Edit" and "Clear" only.** A goal set from Station is stored paused, and resume is unsupported today, so there is no Resume button. We need to check what changes when activation ships. _(backend check first; slice 4.1)_
+3. **Actions are "Edit" and "Clear" only.** A goal set from Station is stored paused, and resume is unsupported today, so there is no Resume button. Backend check: what changes when activation ships. _(backend check first; slice 4.1)_
 
 ### `chat-11` Model picker in Setup
 
@@ -369,7 +369,7 @@ On a phone: Same content in one column.
 | Copy chat ID and Copy folder path | Simplify | Now a "Copy" submenu with Chat ID and Folder path. |
 | Copy session ID | Hide for the first release | Developer mode only. |
 | Delegated-task origin (disabled row) | Simplify | Becomes a header subtitle "from <parent chat>". |
-| Coordinator actions | Keep | Unchanged. We need to check the exact set. |
+| Coordinator actions | Keep | Unchanged. Backend check: the exact set. |
 | New chat (header, inbox, sidebar) | Keep | The inbox button is removed. |
 | Refresh inbox | Remove | The inbox is live. |
 | Move to Left, Right or Bottom, Add pane…, Restore size, Full screen, Switch to a pane | Remove | Removed from the chat menu. They become dock layout controls on the dock handle or window controls. |
@@ -398,7 +398,7 @@ On a phone: Same content in one column.
 | Close chat | Keep | Stays as "Close chat" ⌘W, on the open chat only. It is no longer on the inbox row. |
 | Open chat (inbox row) | Keep | The first item in the row menu, as in the inbox design. |
 | Restore to inbox | Simplify | Was "Restore to inbox". Now "Reopen" on a done item, merged into Reopen. |
-| Discard unsent draft and Discard draft | Simplify | Was two names. Now "Discard draft", with undo. We need to check whether undo exists. |
+| Discard unsent draft and Discard draft | Simplify | Was two names. Now "Discard draft", with undo. Backend check: whether undo exists. |
 
 ## New work
 
@@ -447,10 +447,10 @@ On a phone: Same content in one column.
 
 ## Decisions taken during design
 
-- No engine lets you change the account for one chat; the account in use applies to every chat on that engine. Setup shows it read-only with a link to Customize › Engines. Accepted.
-- The facts file grouped `/clear` with resetting the agent. Reading the code showed `/clear` and `/new` only empty the message list on screen. Decided: `/clear` is removed, `/new` really starts a new chat, and `/fresh` opens the reset dialog.
+- No engine lets you change the account for one chat; the account in use applies to every chat on that engine. Setup shows it read-only with a link to Customize › Engines.
+- Considered: treating `/clear` as resetting the agent. The code shows `/clear` and `/new` only empty the message list on screen. Decided: `/clear` is removed, `/new` really starts a new chat, and `/fresh` opens the reset dialog.
 - Today's stats show 0 for figures the engine never reported. That is listed as a defect: an unreported figure reads "Not reported".
-- Only Codex has a goal with a token budget, and Codex enforces it. The Goal section was removed from the Claude Code screen and drawn on a Codex chat instead.
-- "Chat inventory" becomes the Work tab and "Basis" becomes "About this answer", with a chip only on assessed answers. Both change glossary terms, so both are listed as decisions for the owner.
-- A model change on one engine does not start a new stretch; one total stays honest. Accepted.
+- Only Codex has a goal with a token budget, and Codex enforces it. The Goal section is specified on a Codex chat, not on Claude Code.
+- "Chat inventory" becomes the Work tab and "Basis" becomes "About this answer", with a chip only on assessed answers. Both change glossary terms. Decided by the owner on 2026-11-21; the slices that rename them (4.7 and 4.8) amend the glossary.
+- A model change on one engine does not start a new stretch; one total stays honest.
 - By model is dropped for outside engines, not promised. Claude Code may record the model it launched with, so even new data would give approximate bars.

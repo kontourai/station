@@ -159,8 +159,6 @@ Done when: Every v1 screen is delivered and the preview list is the agreed one.
 
 | Screen and changes | Why it waits |
 | --- | --- |
-| `navigation-00` 1 | Reference screen that checks the rendering against today's product; nothing to build. |
-| `navigation-12` 1 | Comparison screen used to choose the quiet sidebar; nothing to build. |
 | `first-run-07` 1, 2, 3, 4 | Setup from chat needs the chat setup tools (set the default engine, propose a route), which are later. Guided engine setup itself graduates in 5.23. |
 | `customize-17` 1, 2, 3, 4 | Chat setup tools: an add-a-provider proposal tool is new and later. |
 | `customize-18` 1, 2, 3 | Chat setup tools: the secure key dialog opened from chat follows the proposal tool. |
