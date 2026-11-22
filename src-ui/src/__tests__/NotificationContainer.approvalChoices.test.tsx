@@ -274,6 +274,41 @@ describe('chat-14: the approval toast offers Allow once, Deny and one menu of se
     expect(resolveOrchestrationRequest).not.toHaveBeenCalled();
   });
 
+  test("the menu's Escape is marked handled, so a listener running after it can leave it alone", async () => {
+    const card = openRequest(claudeBash([rule('npm ls *')]));
+    fireEvent.click(within(card).getByRole('button', { name: MENU }));
+    const [first] = await screen.findAllByRole('menuitem');
+    const press = new KeyboardEvent('keydown', {
+      key: 'Escape',
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      first.dispatchEvent(press);
+    });
+    expect(press.defaultPrevented).toBe(true);
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+  });
+
+  test('the queue leaves an Escape something already handled, even with no menu open', () => {
+    openRequest(claudeBash([rule('npm ls *')]));
+    const queue = screen.getByRole('button', { name: '1 pending approval' });
+    fireEvent.click(queue);
+    expect(queue.getAttribute('aria-expanded')).toBe('true');
+    // Window capture runs before the queue's document listener: stands in
+    // for a menu whose listener ran first and has already closed.
+    const handledFirst = (event: KeyboardEvent) => event.preventDefault();
+    window.addEventListener('keydown', handledFirst, true);
+    try {
+      fireEvent.keyDown(document.body, { key: 'Escape' });
+    } finally {
+      window.removeEventListener('keydown', handledFirst, true);
+    }
+    expect(queue.getAttribute('aria-expanded')).toBe('true');
+    fireEvent.keyDown(document.body, { key: 'Escape' });
+    expect(queue.getAttribute('aria-expanded')).toBe('false');
+  });
+
   test.each([
     ['Allow once', claudeBash([rule('npm ls *')]), 'accept', undefined],
     ['Deny', claudeBash([rule('npm ls *')]), 'decline', undefined],

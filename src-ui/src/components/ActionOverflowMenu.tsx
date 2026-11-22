@@ -298,6 +298,10 @@ export function ActionOverflowMenu({
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      // Marked handled as well as stopped: another capture listener on
+      // `document` (the approval queue's) still runs for this event, and
+      // reads `defaultPrevented` to leave it to the menu, in either order.
+      event.preventDefault();
       event.stopPropagation();
       setOpen(false);
       ownRef.current?.focus();

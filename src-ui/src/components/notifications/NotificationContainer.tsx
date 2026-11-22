@@ -594,7 +594,14 @@ export function NotificationContainer() {
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || openToastMenus.current > 0) return;
+      // An open menu handles this Escape: it marks it handled, and the count
+      // covers the moment before its listener has run.
+      if (
+        event.key !== 'Escape' ||
+        event.defaultPrevented ||
+        openToastMenus.current > 0
+      )
+        return;
       event.preventDefault();
       event.stopPropagation();
       closeApprovalQueue();
