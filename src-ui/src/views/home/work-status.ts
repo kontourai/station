@@ -283,21 +283,24 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
     case 'Completed':
       // A turn that completed at the engine's output limit is over, but its
       // reply is incomplete: worth a look, never "Done".
-      if (facts?.cutOff)
-        return {
-          rung: 'cutOff',
-          lane: 'finished',
-          tone: 'caution',
-          word: SESSION_STATUS_WORDS.cutOff,
-        };
+      // Either way a read result of a resumable delegation returns to open
+      // work, as Done does.
       return {
-        rung: 'done',
+        ...(facts?.cutOff
+          ? {
+              rung: 'cutOff' as const,
+              tone: 'caution' as const,
+              word: SESSION_STATUS_WORDS.cutOff,
+            }
+          : {
+              rung: 'done' as const,
+              tone: 'neutral' as const,
+              word: SESSION_STATUS_WORDS.done,
+            }),
         lane:
           facts?.resumableDelegationResult && item.unread === false
             ? 'idle'
             : 'finished',
-        tone: 'neutral',
-        word: SESSION_STATUS_WORDS.done,
       };
     default:
       return {

@@ -128,6 +128,20 @@ describe('the status ladder, from real server summaries', () => {
     expect(statusOf(TURN_COMPLETED).line).toBe('Done');
   });
 
+  it('a read, cut-off result of a resumable delegation returns to open work, as Done does', () => {
+    const row = rowFor(TURN_CUT_OFF);
+    const read = { ...row.item, unread: false };
+    const facts = { ...row.facts, resumableDelegationResult: true as const };
+    expect(workStatus(read, NOW, facts)).toMatchObject({
+      rung: 'cutOff',
+      lane: 'idle',
+      word: 'Cut off',
+    });
+    expect(workStatus({ ...read, unread: true }, NOW, facts).lane).toBe(
+      'finished',
+    );
+  });
+
   it('a running row with a pending approval reads as needs-approval, never as running', () => {
     // The turn really is still open on this summary; the shared attention
     // fold files it as awaiting anyway, and the row follows.
