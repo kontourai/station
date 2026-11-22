@@ -229,6 +229,16 @@ export async function dispatchSlashCommand(
     cleanup();
     return true;
   }
+  // /new opens an empty New chat. Text typed after it would be lost with the
+  // cleared composer, so the line stays as typed and nothing runs.
+  if (cmd === 'new' && args.length > 0) {
+    addEphemeralMessage(sessionId, {
+      role: 'system',
+      content: '/new takes no text.',
+    });
+    context.autocomplete.closeAll();
+    return true;
+  }
   const handler = getCommand(cmd);
   if (handler) {
     cleanup();
@@ -248,6 +258,19 @@ export async function dispatchSlashCommand(
       autocomplete: context.autocomplete,
     });
 
+    return true;
+  }
+
+  // /clear was a Station command that only emptied the list on screen. It is
+  // gone, and must not reach an engine either: Claude Code would clear its
+  // own context while the transcript still shows everything, and Codex would
+  // take it as an ordinary message.
+  if (cmd === 'clear') {
+    addEphemeralMessage(sessionId, {
+      role: 'system',
+      content: '/clear isn’t a Station command. Use /new for a new chat.',
+    });
+    cleanup();
     return true;
   }
 

@@ -11,10 +11,14 @@ import { getAllCommands } from '../registry';
 
 /**
  * /new starts a new chat through the surface's New chat action. /clear,
- * which only emptied the message list on screen, is gone: on an engine that
- * does not forward unknown commands it answers Unknown command.
+ * which only emptied the message list on screen, is gone, and is answered
+ * here on every engine instead of being forwarded.
  */
-function run(command: string, openNewChat: (() => void) | undefined) {
+function run(
+  command: string,
+  openNewChat: (() => void) | undefined,
+  provider = 'ollama',
+) {
   const addEphemeralMessage = vi.fn();
   const updateChat = vi.fn();
   const result = dispatchSlashCommand(
@@ -30,7 +34,7 @@ function run(command: string, openNewChat: (() => void) | undefined) {
     },
     {
       apiBase: 'http://127.0.0.1:1',
-      chatState: { provider: 'ollama', agentSlug: 'station' } as never,
+      chatState: { provider, agentSlug: 'station' } as never,
       agents: [] as never,
       updateChat: updateChat as never,
       addEphemeralMessage: addEphemeralMessage as never,
@@ -69,6 +73,51 @@ describe('/new and /clear', () => {
     );
   });
 
+  // Claude and Codex chats forward unknown commands to the engine as a turn.
+  // /clear must not go: Claude Code would clear its own context while the
+  // transcript still shows everything, and Codex would take it as a message.
+  test.each(['claude', 'codex'])(
+    '/clear in a %s chat is answered here, never sent to the engine',
+    async (provider) => {
+      const openNewChat = vi.fn();
+      const { result, addEphemeralMessage } = run(
+        '/clear',
+        openNewChat,
+        provider,
+      );
+      await expect(result).resolves.toBe(true);
+      expect(openNewChat).not.toHaveBeenCalled();
+      expect(addEphemeralMessage).toHaveBeenCalledWith('session-1', {
+        role: 'system',
+        content: '/clear isn’t a Station command. Use /new for a new chat.',
+      });
+    },
+  );
+
+  test('an unknown command in a claude chat still goes to the engine', async () => {
+    await expect(run('/compact-now', vi.fn(), 'claude').result).resolves.toBe(
+      '/compact-now',
+    );
+  });
+
+  test('/new with text keeps the line as typed and opens nothing', async () => {
+    const openNewChat = vi.fn();
+    const { result, addEphemeralMessage, updateChat } = run(
+      '/new fix the login bug',
+      openNewChat,
+    );
+    await expect(result).resolves.toBe(true);
+    expect(openNewChat).not.toHaveBeenCalled();
+    expect(updateChat).not.toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({ input: '' }),
+    );
+    expect(addEphemeralMessage).toHaveBeenCalledWith('session-1', {
+      role: 'system',
+      content: '/new takes no text.',
+    });
+  });
+
   test('/clear is not registered', async () => {
     expect(getAllCommands()).toContain('new');
     expect(getAllCommands()).not.toContain('clear');
@@ -83,11 +132,9 @@ describe('/new and /clear', () => {
       'session-1',
       expect.objectContaining({ messages: [] }),
     );
-    expect(addEphemeralMessage).toHaveBeenCalledWith(
-      'session-1',
-      expect.objectContaining({
-        content: expect.stringContaining('Unknown command: /clear'),
-      }),
-    );
+    expect(addEphemeralMessage).toHaveBeenCalledWith('session-1', {
+      role: 'system',
+      content: '/clear isn’t a Station command. Use /new for a new chat.',
+    });
   });
 });
