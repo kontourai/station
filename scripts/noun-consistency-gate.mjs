@@ -212,6 +212,107 @@ export const RETIRED_USER_TERMS = Object.freeze([
     pattern: /\bcredential entr(?:y|ies)\b/i,
     pending: true,
   },
+  // Retired by the first-release design (docs/design/first-release.md, "Words
+  // that change"; epic #5386). Each stays pending until the slice that
+  // removes its last uses lands and deletes the flag. Only distinctive
+  // phrases are listed: single words the design also retires (Connections,
+  // Plugins, Registry, Layout, Profile, Basis, Settle, Dismiss, Hide, Revoke,
+  // READY, Integration, MCP server) keep legitimate uses this
+  // case-insensitive mechanism cannot tell apart.
+  // Customize and Station areas (first-release-customize.md,
+  // first-release-station.md, first-release-first-run.md).
+  {
+    term: 'model connection',
+    use: 'provider',
+    pattern: /\bmodel connections?\b/i,
+    pending: true,
+  },
+  {
+    term: 'Connect through',
+    use: 'Runs through',
+    pattern: /\bconnect through\b/i,
+    pending: true,
+  },
+  {
+    term: 'Pair a device',
+    use: 'Connect a device',
+    pattern: /\bpair (?:a |this |another |your )?(?:device|phone)s?\b/i,
+    pending: true,
+  },
+  // Projects area (first-release-projects.md).
+  {
+    term: 'Workspace view',
+    use: 'view',
+    pattern: /\bworkspace views?\b/i,
+    pending: true,
+  },
+  {
+    term: 'Starter layout',
+    use: 'view',
+    pattern: /\bstarter layouts?\b/i,
+    pending: true,
+  },
+  {
+    term: 'Files and connections',
+    use: 'Files',
+    pattern: /\bfiles (?:&|&amp;|and) connections\b/i,
+    pending: true,
+  },
+  // Chat area (first-release-chat.md).
+  {
+    term: 'Conversation stats',
+    use: 'Usage',
+    pattern: /\bconversation stat(?:s|istics)\b/i,
+    pending: true,
+  },
+  {
+    term: 'Chat inventory',
+    use: 'Work',
+    pattern: /\bchat inventory\b/i,
+    pending: true,
+  },
+  {
+    term: 'Chat settings',
+    use: 'Setup',
+    pattern: /\bchat settings\b/i,
+    pending: true,
+  },
+  {
+    term: 'Fork from here',
+    use: 'New chat from here',
+    pattern: /\bfork from here\b/i,
+    pending: true,
+  },
+  {
+    term: 'Branch from this answer',
+    use: 'New chat from here',
+    pattern: /\bbranch from this answer\b/i,
+    pending: true,
+  },
+  {
+    term: 'New chat from this message',
+    use: 'New chat from here',
+    pattern: /\bnew chat from this message\b/i,
+    pending: true,
+  },
+  {
+    term: 'Rewind conversation',
+    use: 'Rewind chat to here',
+    pattern: /\brewind conversation\b/i,
+    pending: true,
+  },
+  {
+    term: 'Restore workspace',
+    use: 'Restore files to here',
+    pattern: /\brestore workspace\b/i,
+    pending: true,
+  },
+  {
+    term: 'Reset agent context',
+    use: 'Start fresh context',
+    pattern: /\breset agent context\b/i,
+    pending: true,
+  },
 ]);
 
 /** The retired user-facing terms the gate enforces today. */
