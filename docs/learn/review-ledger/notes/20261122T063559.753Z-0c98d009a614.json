@@ -1,0 +1,7 @@
+{
+  "revision": "ed86b1fd40ab3d263c682358fff4f37ac18718a8",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Rechecked after removing the device-list check: onUnavailable fires only for a missing camera API or a not-found class capture error; the panel opens on code entry without mounting the scanner when there is no API.","inputs":["docs/reference/connect.md","packages/connect/src/react/DevicePairingPanel.tsx","packages/connect/src/react/QRScanner.tsx"]}
+  ]
+}

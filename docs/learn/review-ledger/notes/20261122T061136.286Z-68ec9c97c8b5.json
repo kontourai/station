@@ -1,0 +1,7 @@
+{
+  "revision": "6e5db01edeac4b13532a43f6d6247b5c4061615a",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"No claims about camera scanning or the join panel's pairing method; the no-camera change to DevicePairingPanel does not affect operator access, passkeys or API routes.","inputs":["docs/reference/api.md","packages/connect/src/react/DevicePairingPanel.tsx"]}
+  ]
+}

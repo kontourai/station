@@ -25,6 +25,7 @@ export type {
   SyncStatus,
 } from './core/ConnectionSupervisor';
 export { ConnectionSupervisor } from './core/ConnectionSupervisor';
+export { hasCameraApi } from './core/cameraSupport';
 export type {
   ConnectionCandidateDiscoveryResult,
   ConnectionCandidateProviderResult,
