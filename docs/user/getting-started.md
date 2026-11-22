@@ -664,10 +664,12 @@ not interrupted for that Project's finished turns.
 
 Choosing on a chip starts nothing, and Station remembers it. An Agent is
 remembered only once it can start, and for each project and for **No project** on this browser and
-Station access, and the Model for each Agent. The project is remembered as the
-chat dock's project for new chats, the same setting the dock's project
-switcher changes, so Home and the dock always open on the same choices.
-**No project** clears it.
+Station access, and the Model for each Agent. Home always starts in
+**No project**, and the project you pick on its chip holds until you reload the
+page; opening a Project elsewhere never changes it. The pick is also written
+as the chat dock's project for new chats, the same setting the dock's project
+switcher changes, so the dock's own new chat opens where you just chose.
+**No project** clears that setting.
 Runtime options such as reasoning effort stay with the Model choice for this
 browser tab only; they are not remembered after it. A choice you make stays on
 both surfaces for this browser tab, even if another chat later runs on a
