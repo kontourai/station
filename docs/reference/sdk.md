@@ -6032,9 +6032,11 @@ own these stages.
 ## Package lifecycle results
 
 `listPlugins` also reports optional `installationReadiness`: `ready`,
-`activating` (this server is still activating the plugin, and it settles on its
-own: offer no recovery), `pending` (with `recovery: "review"`: the activation
-was stopped), or `unavailable`. Absence preserves compatibility
+`pending` (with `recovery: "review"`: the plugin is not active), or `unavailable`.
+A row also carries `activationInFlight: true` while this server is still
+activating the plugin: it settles on its own, so offer no recovery and read the
+list again until the flag is gone, for no longer than the activation deadline
+plus a margin (the Plugins view stops at 15 seconds). Absence preserves compatibility
 with older servers; it is not a new readiness proof. Keep pending rows visible,
 but do not load their bundles or enable their actions. The server sets
 `hasBundle: false` until readiness is established. Project Pane availability

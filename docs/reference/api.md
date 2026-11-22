@@ -5513,7 +5513,7 @@ returns 202 with `success: false` and `configurationActivation` (status
 The activation is not continuing: the plugin is not active, and its
 `installationReadiness` reads `pending` with `recovery: "review"` until a
 person recovers it (a list read made while the install request is still open
-reads `activating`). A receipt stopped at the deadline also carries
+also carries `activationInFlight: true` on the row, and the readiness still reads `pending`, so a client that predates the flag reads it as before). A receipt stopped at the deadline also carries
 `deadlineMs`. Changes that finish on the reconciliation rail (a removal, a
 legacy git update) carry `recovery: "none"`. It is
 not complete solely because the HTTP request was accepted. Clients read these
