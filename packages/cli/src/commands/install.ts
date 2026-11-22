@@ -309,10 +309,17 @@ function describeInstall(
   return lines;
 }
 
-/** The plugin's list row, or undefined when the inventory cannot be read: the server stays the authority on what it accepts. */
+/**
+ * The plugin's list row, or undefined when the inventory cannot be read: the
+ * server stays the authority on what it accepts. Rejected rows carry neither
+ * readiness nor the activating flag.
+ */
 async function readPluginRow(apiBase: string, name: string) {
   try {
-    return (await listPlugins(apiBase)).find((row) => row.name === name);
+    const row = (await listPlugins(apiBase)).find(
+      (entry) => entry.name === name,
+    );
+    return row && 'installationReadiness' in row ? row : undefined;
   } catch {
     return undefined;
   }
@@ -363,11 +370,7 @@ export async function install(
         version: previewed.manifest?.version ?? '',
       };
     }
-    if (
-      row &&
-      'installationReadiness' in row &&
-      row.installationReadiness?.state === 'pending'
-    )
+    if (row?.installationReadiness?.state === 'pending')
       throw new Error(
         `${previewedName} is already installed but not active. Run \`station plugin recover ${previewedName}\` to activate it, or pass --reinstall to install another copy of its code. Nothing was installed.`,
       );
