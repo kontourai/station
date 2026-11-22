@@ -269,4 +269,42 @@ describe('an unconfirmed delivery is a flag, not a lane (#5398)', () => {
     });
     expect(facts.get(items[0]!.id)?.unconfirmedDelivery).toHaveLength(1);
   });
+  for (const surface of ['home', 'dock'] as const) {
+    it(`${surface}: after a mixed Check, an older chat's message Station never received puts the row under Needs you`, () => {
+      // What the outbox leaves after Check answered "not received" for the
+      // older chat's message (it becomes not sent) and "started" for the
+      // reopened chat's (removed): the reopened chat wins the merged row, but
+      // the conversation still owes the person a resend.
+      const { items, facts } = rows(
+        {
+          [CONVERSATION]: unconfirmedChat({
+            outboundQueuedTurns: [
+              {
+                clientTurnId: 'turn-unconfirmed',
+                content: 'Say hello in one short line.',
+                createdAt: NOW - 110_000,
+                status: 'failed',
+                lastError: 'Station did not receive it.',
+              },
+            ],
+          }),
+          'station:1795332999999': {
+            ...createDefaultChatState(),
+            agentSlug: 'station',
+            title: 'Say hello in one short line.',
+            conversationId: CONVERSATION,
+            createdAt: NOW - 10_000,
+            status: 'idle',
+          },
+        },
+        [completed],
+        surface,
+      );
+      expect(items).toHaveLength(1);
+      expect(workStatus(items[0]!, NOW, facts.get(items[0]!.id))).toMatchObject(
+        { word: 'Queued to send', lane: 'needsYou' },
+      );
+      expect(facts.get(items[0]!.id)?.unconfirmedDelivery).toBeUndefined();
+    });
+  }
 });

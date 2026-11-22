@@ -1339,6 +1339,22 @@ export function buildActiveChatTaskItems({
         ...(chat.projectSlug ? { projectSlug: chat.projectSlug } : {}),
       };
     });
+  // #5398: two chats can hold one conversation (a reopen mints a new chat
+  // key), and the fold below keeps only one of them. A message waiting to be
+  // sent, or not sent, in ANY of them is owed to the person, so the kept row
+  // reads Needs attention even when the newer chat holds nothing.
+  const queuedToSend = new Set(
+    Object.entries(chats)
+      .filter(([, chat]) => chatQueuedToSend(chat))
+      .map(([id]) => id),
+  );
+  const conversationsQueued = new Set(
+    items
+      .filter(
+        (item) => item.chatSessionId && queuedToSend.has(item.chatSessionId),
+      )
+      .map((item) => item.id),
+  );
   // A handoff replaces the execution Session while retaining one durable
   // Conversation. Every consumer of this adapter must therefore see the
   // newest child identity, never an arbitrary predecessor map entry.
@@ -1369,6 +1385,19 @@ export function buildActiveChatTaskItems({
       }, new Map<string, MergeItem>())
       .values(),
   ]
-    .map(({ currentSessionId: _currentSessionId, ...item }) => item)
+    .map(({ currentSessionId: _currentSessionId, ...item }) => {
+      if (
+        !conversationsQueued.has(item.id) ||
+        item.lifecycleLabel === 'Needs attention'
+      )
+        return item;
+      // Both are bound to the label they came with (Running, Failed).
+      const {
+        activeReason: _activeReason,
+        failureNotice: _failureNotice,
+        ...rest
+      } = item;
+      return { ...rest, lifecycleLabel: 'Needs attention' as const };
+    })
     .sort(compareTaskRecency);
 }

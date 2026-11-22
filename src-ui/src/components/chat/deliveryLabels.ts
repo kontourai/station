@@ -55,3 +55,59 @@ export function deliveryCheckResult(
     ? 'Station still can’t confirm it.'
     : null;
 }
+
+/** One Check answer's weight for the inbox row: most serious first. */
+const CHECK_ANSWER_ORDER = [
+  'not-received',
+  'cannot-confirm',
+  'received',
+  'started',
+] as const;
+type CheckAnswer = (typeof CHECK_ANSWER_ORDER)[number];
+
+function checkAnswer(outcome: TurnDeliveryOutcome | undefined): CheckAnswer {
+  if (outcome === 'not-received' || outcome === 'started') return outcome;
+  if (outcome === 'received' || outcome === 'queued') return 'received';
+  return 'cannot-confirm';
+}
+
+/** Where to act when the row's Check cannot settle a message itself. */
+const OPEN_TO_DISCARD = 'Open the chat to discard it.';
+
+function oneOrMany(count: number) {
+  return count === 1 ? 'it' : 'them';
+}
+
+/**
+ * What one inbox-row Check found across the messages it asked about (#5398),
+ * oldest first. One kind of answer reads as the message note's sentence for
+ * the newest message. Differing answers name the most serious one, with its
+ * count, and where to act, so a message Station never received is never
+ * hidden behind another one's good news. `remaining` counts the messages
+ * left unchecked.
+ */
+export function inboxCheckResult(
+  outcomes: readonly (TurnDeliveryOutcome | undefined)[],
+  remaining = 0,
+): string | null {
+  const answers = outcomes.map(checkAnswer);
+  const worst = CHECK_ANSWER_ORDER.find((answer) => answers.includes(answer));
+  if (!worst) return null;
+  const count = answers.filter((answer) => answer === worst).length;
+  const total = answers.length;
+  let sentence: string | null;
+  if (count === total) {
+    sentence = deliveryCheckResult(outcomes.at(-1));
+    if (worst === 'cannot-confirm' && outcomes.at(-1) !== undefined)
+      sentence = `${sentence} ${OPEN_TO_DISCARD}`;
+  } else if (worst === 'not-received') {
+    sentence = `Station did not receive ${count} of ${total} messages. Open the chat to send ${oneOrMany(count)} again.`;
+  } else if (worst === 'cannot-confirm') {
+    sentence = `Station still can’t confirm ${count} of ${total} messages. Open the chat to discard ${oneOrMany(count)}.`;
+  } else {
+    sentence = `Station has ${count} of ${total} messages. The agent has not started ${oneOrMany(count)} yet.`;
+  }
+  return remaining > 0
+    ? `${sentence ?? ''} ${remaining} more to check in the chat.`.trim()
+    : sentence;
+}

@@ -246,9 +246,13 @@ export function buildWorkFacts({
     string,
     { chatSessionId: string; clientTurnId: string; createdAt: number }[]
   >();
+  // A send waiting, or not sent, in any of those chats is the row's owed
+  // "Queued to send", like its Needs attention label (`buildActiveChatTaskItems`).
+  const queuedRows = new Set<string>();
   for (const [chatSessionId, chat] of Object.entries(chats)) {
     const turns = unconfirmedOutboundTurns(chat);
-    if (turns.length === 0) continue;
+    const queued = chatQueuedToSend(chat);
+    if (turns.length === 0 && !queued) continue;
     const rowIds = new Set([
       chatSessionId,
       conversationStateKey(
@@ -257,6 +261,8 @@ export function buildWorkFacts({
       ),
     ]);
     for (const rowId of rowIds) {
+      if (queued) queuedRows.add(rowId);
+      if (turns.length === 0) continue;
       const held = unconfirmedByRow.get(rowId) ?? [];
       held.push(...turns.map((turn) => ({ chatSessionId, ...turn })));
       unconfirmedByRow.set(rowId, held);
@@ -340,11 +346,19 @@ export function buildWorkFacts({
           chat ? chatAttentionKind(chat) : undefined,
         ),
         moreUrgentAttention(
-          item.kind === 'task' && answerTaskIds.has(item.id)
-            ? 'answer'
-            : undefined,
-          item.kind === 'task' && blockedTaskIds.has(item.id)
-            ? 'blocked'
+          moreUrgentAttention(
+            item.kind === 'task' && answerTaskIds.has(item.id)
+              ? 'answer'
+              : undefined,
+            item.kind === 'task' && blockedTaskIds.has(item.id)
+              ? 'blocked'
+              : undefined,
+          ),
+          item.kind !== 'remote-session' &&
+            (queuedRows.has(item.id) ||
+              (item.chatSessionId !== undefined &&
+                queuedRows.has(item.chatSessionId)))
+            ? 'queued'
             : undefined,
         ),
       );

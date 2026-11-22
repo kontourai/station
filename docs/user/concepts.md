@@ -324,7 +324,7 @@ the browser checks its original message key before retrying. A queued answer
 keeps those checks running; a started answer confirms delivery and removes the
 retry notice. After three consecutive failed delivery reads, automatic checks
 pause. The message stays saved and reads **May have reached the agent**. Its
-chat keeps the status its turn gives it, and the inbox row adds **Last message
+inbox row keeps the status its conversation gives it and adds **Last message
 may not have arrived** with **Check**. **Check** asks once and shows the result; it
 does not resend. If Station confirms it never received the message, **Retry**
 sends it using the same key. **More delivery actions → Copy message** preserves its text for recovery.
