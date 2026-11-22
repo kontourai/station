@@ -480,4 +480,33 @@ describe('CodexPromptImportDialog', () => {
       within(result).queryByRole('button', { name: 'Undo import' }),
     ).toBeNull();
   });
+
+  test('an item refused because the skills changed says so, not that the prompt changed', () => {
+    hooks.apply.mockImplementation((_input, options: Callbacks<unknown>) =>
+      options.onSuccess?.({
+        ...receipt,
+        retryable: false,
+        items: [
+          {
+            sourceId: 'review',
+            reviewedTarget: 'review-pr',
+            state: 'failed',
+            outcome: 'failed',
+            reasonCode: 'source-namespace-changed',
+            rollback: { state: 'failed', retryable: false },
+          },
+        ],
+      }),
+    );
+    const dialog = renderDialog();
+    fireEvent.click(
+      within(dialog).getByRole('checkbox', { name: 'review-pr' }),
+    );
+    fireEvent.click(button(dialog, 'Import 1 skill'));
+    expect(
+      within(screen.getByRole('dialog')).getByText(
+        'Your skills changed while this was open. Close and import again.',
+      ),
+    ).toBeTruthy();
+  });
 });

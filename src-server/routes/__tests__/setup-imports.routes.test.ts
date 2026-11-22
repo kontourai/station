@@ -380,4 +380,109 @@ describe('setup import routes', () => {
     ).toEqual(['plain.md']);
     expect(preview.excluded['unsafe-name']).toBe(2);
   });
+
+  /** Preview, bind the given targets, and apply, the way the dialog does. */
+  async function importWith(
+    post: (path: string, body?: unknown) => Promise<any>,
+    choose: (entry: {
+      id: string;
+      name: string;
+      skillName: string;
+    }) => string | undefined,
+    between?: () => Promise<unknown>,
+  ) {
+    const preview = await post('/previews', { sourceId: 'codex-prompts' });
+    const review = await post(`/previews/${preview.id}/targets`, {
+      items: preview.entries.map(
+        (entry: { id: string; name: string; skillName: string }) => {
+          const targetName = choose(entry);
+          return targetName
+            ? { id: entry.id, action: 'import', targetName }
+            : { id: entry.id, action: 'skip' };
+        },
+      ),
+    });
+    await between?.();
+    return post(`/previews/${preview.id}/apply`, {
+      witnessId: review.witness.id,
+    });
+  }
+
+  test('two prompts that derive one name both import when the second is renamed, and undo removes both', async () => {
+    const { codex, project, service, post, skillExists } =
+      await realImportApp();
+    writeFileSync(join(codex, 'prompts', 'review pr.md'), 'First prompt.');
+    writeFileSync(join(codex, 'prompts', 'review-pr.md'), 'Second prompt.');
+    await service.createLocalSkill(
+      { name: 'mine', body: 'The person’s own skill.' },
+      project,
+    );
+
+    const receipt = await importWith(post, (entry) =>
+      entry.name === 'review pr.md' ? 'review-pr' : 'review-pr-codex',
+    );
+    expect(
+      receipt.items.map(
+        (item: {
+          reviewedTarget: string;
+          outcome: string;
+          reasonCode?: string;
+        }) => [item.reviewedTarget, item.outcome, item.reasonCode],
+      ),
+    ).toEqual(
+      expect.arrayContaining([
+        ['review-pr', 'imported', 'imported'],
+        ['review-pr-codex', 'imported', 'imported'],
+      ]),
+    );
+    expect(skillExists('review-pr')).toBe(true);
+    expect(skillExists('review-pr-codex')).toBe(true);
+
+    const undone = await post(`/receipts/${receipt.id}/rollback`);
+    expect(undone.rolledBackAt).toEqual(expect.any(String));
+    expect(skillExists('review-pr')).toBe(false);
+    expect(skillExists('review-pr-codex')).toBe(false);
+    expect(skillExists('mine')).toBe(true);
+  });
+
+  test('a skill someone else creates under the source name between review and apply still refuses the item', async () => {
+    const { codex, project, service, post, skillExists } =
+      await realImportApp();
+    writeFileSync(join(codex, 'prompts', 'review.md'), 'Review prompt.');
+
+    const receipt = await importWith(
+      post,
+      () => 'review-imported',
+      () =>
+        service.createLocalSkill(
+          { name: 'review', body: 'Made by someone else meanwhile.' },
+          project,
+        ),
+    );
+    expect(receipt.items).toEqual([
+      expect.objectContaining({
+        reviewedTarget: 'review-imported',
+        outcome: 'failed',
+        reasonCode: 'source-namespace-changed',
+      }),
+    ]);
+    expect(skillExists('review-imported')).toBe(false);
+  });
+
+  test('two items of one run that target the same name: the second is refused as target-not-absent', async () => {
+    const { codex, post, skillExists } = await realImportApp();
+    writeFileSync(join(codex, 'prompts', 'alpha.md'), 'Alpha.');
+    writeFileSync(join(codex, 'prompts', 'beta.md'), 'Beta.');
+
+    const receipt = await importWith(post, () => 'same');
+    const outcomes = receipt.items.map(
+      (item: { outcome: string; reasonCode?: string }) =>
+        `${item.outcome}:${item.reasonCode}`,
+    );
+    expect(outcomes.sort()).toEqual([
+      'failed:target-not-absent',
+      'imported:imported',
+    ]);
+    expect(skillExists('same')).toBe(true);
+  });
 });

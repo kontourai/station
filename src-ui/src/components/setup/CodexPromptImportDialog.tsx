@@ -50,8 +50,9 @@ function notImportedReason(item: ExistingSetupImportOutcome): string {
     case 'target-not-absent':
     case 'target-conflict':
       return 'A skill with this name already exists.';
-    case 'source-changed':
     case 'source-namespace-changed':
+      return 'Your skills changed while this was open. Close and import again.';
+    case 'source-changed':
     case 'source-invalid':
       return 'The Codex prompt changed. Close and import again.';
     default:

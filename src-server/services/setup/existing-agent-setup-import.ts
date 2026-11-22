@@ -725,6 +725,10 @@ export class ExistingAgentSetupImportModule {
       return current;
     });
     await this.reconcileReceipt(receipt.id);
+    // Skills this run has created so far. They are this import's own work,
+    // not a change to the namespace the person reviewed, so the collision
+    // check below reads them as they were at review time: absent.
+    const createdThisRun = new Set<string>();
     for (const binding of claimedPreview.entries) {
       const intent = intents.get(binding.id)!;
       if (intent.action === 'skip') {
@@ -748,8 +752,13 @@ export class ExistingAgentSetupImportModule {
       }
       // The preview is also bound to the target namespace: accepting a newly
       // appeared (or disappeared) collision would turn a reviewed decision
-      // into a different write.
-      if (this.skillService.hasSkill(binding.skillName) !== binding.collision) {
+      // into a different write. A skill an earlier item of this run created
+      // (two prompts that both derive one name, the second renamed) is not
+      // such a change.
+      const sourceNamePresent =
+        this.skillService.hasSkill(binding.skillName) &&
+        !createdThisRun.has(binding.skillName);
+      if (sourceNamePresent !== binding.collision) {
         await this.failEffect(
           receipt.id,
           binding.id,
@@ -796,6 +805,7 @@ export class ExistingAgentSetupImportModule {
           await this.failEffect(receipt.id, binding.id, 'target-conflict');
           continue;
         }
+        createdThisRun.add(name);
         const target = {
           name,
           digest: await this.skillService.localSkillRevision(
