@@ -15,6 +15,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { StationControlCaller } from '../../../tools/station-control-shared.js';
 import { stationControlCallerPrincipal } from '../../../tools/station-control-shared.js';
@@ -69,6 +70,20 @@ function statusSessions(
 
 type Handler = (params: Record<string, unknown>) => unknown;
 
+/**
+ * The page's document as the fake browser holds it: its URL, its origin and
+ * the unique id of its page-world script context. A navigation replaces all
+ * three; a context id never comes back.
+ */
+interface FakeDocument {
+  url: string;
+  /** The origin the browser reports; 'null' is opaque (reported as "://"). */
+  origin: string;
+  /** What the page's own `self.origin` answers, if it has overridden it. */
+  selfOrigin?: string;
+  context: string | undefined;
+}
+
 function fakeHost() {
   const handlers = new Map<string, Handler>();
   const sent: Array<{ method: string; params: Record<string, unknown> }> = [];
@@ -79,11 +94,54 @@ function fakeHost() {
         params: Record<string, unknown>,
       ) => undefined | Promise<void>)
     | undefined;
+  const page: FakeDocument = {
+    url: 'http://127.0.0.1:4000/',
+    origin: 'http://127.0.0.1:4000',
+    context: 'ctx-1',
+  };
+  /** Page-world scripts that ran, and the document each ran in. */
+  const ran: Array<{ expression: unknown; url: string; origin: string }> = [];
+  /**
+   * A page-world `Runtime.evaluate` as Chromium answers it: bound to a
+   * context that is gone, it fails; otherwise it runs in the current
+   * document. Station's own read (sent `silent`) is evaluated against the
+   * document's URL and origin, so what it answers is decided by its logic,
+   * not by matching its text. A page script is answered by the test's
+   * `Runtime.evaluate` handler and recorded as run.
+   */
+  const pageWorld = (p: Record<string, unknown>) => {
+    if (p.uniqueContextId !== undefined && p.uniqueContextId !== page.context)
+      throw new CdpProtocolError(
+        'Runtime.evaluate',
+        -32000,
+        'uniqueContextId not found',
+      );
+    if (p.silent === true) {
+      try {
+        const value: unknown = runInNewContext(String(p.expression), {
+          location: {
+            href: page.url,
+            protocol: new URL(page.url).protocol,
+          },
+          self: { origin: page.selfOrigin ?? page.origin },
+        });
+        return { result: { type: typeof value, value } };
+      } catch (error) {
+        return { exceptionDetails: { text: String(error) } };
+      }
+    }
+    ran.push({ expression: p.expression, url: page.url, origin: page.origin });
+    return undefined;
+  };
   const cdp: CdpTransport = {
     async send<R>(method: string, params?: object) {
       const p = (params ?? {}) as Record<string, unknown>;
       sent.push({ method, params: p });
       await beforeSend?.(method, p);
+      if (method === 'Runtime.evaluate' && p.contextId === undefined) {
+        const answer = pageWorld(p);
+        if (answer) return answer as R;
+      }
       const handler = handlers.get(method);
       return (handler ? handler(p) : {}) as R;
     },
@@ -103,10 +161,23 @@ function fakeHost() {
     cdp: () => cdp,
     closeTarget: async () => {},
     onExit: () => () => {},
+    mainWorld: (targetId) => (targetId === 'T1' ? page.context : undefined),
+    mainWorldOrigin: (targetId, uniqueId) =>
+      targetId === 'T1' && uniqueId === page.context
+        ? page.origin === 'null'
+          ? '://'
+          : page.origin
+        : undefined,
   };
   return {
     host,
     sent,
+    page,
+    ran,
+    /** A navigation: a new document, with a new script context. */
+    navigatePage(next: Omit<FakeDocument, 'context'>) {
+      Object.assign(page, next, { context: `${page.context}+` });
+    },
     /** Backend node id of the focused element, as the page reports it. */
     focused: 42,
     handle(method: string, handler: Handler) {
@@ -1684,6 +1755,8 @@ describe('BrowserAutomation: D4 evaluation', () => {
       holder = entry.lease.snapshot().holder;
       expect(p.includeCommandLineAPI).toBeUndefined();
       expect(p.contextId).toBeUndefined();
+      // Bound to the context the blank-page check read.
+      expect(p.uniqueContextId).toBe('ctx-1');
       expect(p.timeout).toBe(5_000);
       return { result: { type: 'string', value: 'x'.repeat(200_000) } };
     });
@@ -1697,6 +1770,224 @@ describe('BrowserAutomation: D4 evaluation', () => {
     expect(Buffer.byteLength(value, 'utf8')).toBeLessThanOrEqual(65_536);
     expect(Buffer.byteLength(value, 'utf8')).toBeGreaterThan(65_000);
     expect(holder).toMatchObject({ kind: 'agent' });
+  });
+
+  /** A harness with evaluation allowed on one open session. */
+  async function evaluating(options: { stepDeadlineMs?: number } = {}) {
+    const h = await harness(options);
+    pageBasics(h.fake);
+    const session = await h.open();
+    const authority = await authorityFor();
+    h.settings.setBrowserEvaluate('alpha', true, 'operator');
+    h.fake.handle('Runtime.evaluate', () => ({
+      result: { type: 'string', value: 'ran' },
+    }));
+    const evaluate = (expression = 'document.body.append(frame)') =>
+      h.automation.evaluate(authority, session.browserSessionId, {
+        expression,
+      });
+    const history = () =>
+      h.sessions.getSession(session.browserSessionId)!.history.entries;
+    return { ...h, evaluate, history };
+  }
+
+  test('on a site-less blank page (about:blank, opaque origin): refused, recorded, and the script never runs', async () => {
+    const h = await evaluating();
+    h.fake.navigatePage({ url: 'about:blank', origin: 'null' });
+    const result = await h.evaluate();
+    expect(result).toMatchObject({ ok: false, code: 'browser-refused' });
+    expect((result as { message: string }).message).toMatch(
+      /no page loaded.*browser_navigate/,
+    );
+    const evaluations = h.fake.sent.filter(
+      (s) => s.method === 'Runtime.evaluate',
+    );
+    expect(evaluations).toHaveLength(1);
+    expect(evaluations[0].params).toMatchObject({
+      uniqueContextId: 'ctx-1+',
+      silent: true,
+    });
+    expect(h.fake.ran).toEqual([]);
+    expect(h.history().at(-1)).toMatchObject({
+      kind: 'agent-refused',
+      detail: 'browser-refused',
+    });
+    expect(h.history().some((e) => e.kind === 'script-evaluated')).toBe(false);
+  });
+
+  test('an about:blank that kept its opener page origin, and a page whose origin reads "null", stay evaluable', async () => {
+    const h = await evaluating();
+    // A page that navigated itself to about:blank inherits its origin.
+    h.fake.navigatePage({
+      url: 'about:blank',
+      origin: 'http://127.0.0.1:4000',
+    });
+    expect(await h.evaluate()).toMatchObject({ ok: true, value: '"ran"' });
+    // A real page that redefines self.origin as "null" is still a page.
+    h.fake.navigatePage({ url: 'http://127.0.0.1:4000/x', origin: 'null' });
+    expect(await h.evaluate()).toMatchObject({ ok: true, value: '"ran"' });
+    expect(h.fake.ran.map((r) => r.url)).toEqual([
+      'about:blank',
+      'http://127.0.0.1:4000/x',
+    ]);
+  });
+
+  test.each(['about:blank#x', 'about:blank?x', 'about:blank?x#y'])(
+    'a site-less %s page is refused like about:blank, and the script never runs',
+    async (url) => {
+      const h = await evaluating();
+      h.fake.navigatePage({ url, origin: 'null' });
+      expect(await h.evaluate()).toMatchObject({
+        ok: false,
+        code: 'browser-refused',
+      });
+      expect(h.fake.ran).toEqual([]);
+    },
+  );
+
+  test('a blank page that overrides self.origin is still decided by the origin the browser reported', async () => {
+    const h = await evaluating();
+    h.fake.navigatePage({
+      url: 'about:blank',
+      origin: 'null',
+      selfOrigin: 'http://127.0.0.1:4000',
+    });
+    expect(await h.evaluate()).toMatchObject({
+      ok: false,
+      code: 'browser-refused',
+    });
+    expect(h.fake.ran).toEqual([]);
+  });
+
+  test('an about: page whose origin the browser did not report is refused (fails closed)', async () => {
+    const h = await evaluating();
+    h.fake.navigatePage({
+      url: 'about:blank',
+      origin: 'http://127.0.0.1:4000',
+    });
+    h.fake.host.mainWorldOrigin = () => undefined;
+    expect(await h.evaluate()).toMatchObject({
+      ok: false,
+      code: 'browser-refused',
+    });
+    expect(h.fake.ran).toEqual([]);
+  });
+
+  test('an ordinary https page with a normal origin is not refused', async () => {
+    const h = await evaluating();
+    h.fake.navigatePage({
+      url: 'https://example.test/',
+      origin: 'https://example.test',
+    });
+    expect(await h.evaluate()).toMatchObject({ ok: true, value: '"ran"' });
+    expect(h.fake.ran.map((r) => r.url)).toEqual(['https://example.test/']);
+  });
+
+  test('a navigation to a blank page between the check and the script: the script never runs in the new document', async () => {
+    const h = await evaluating();
+    // A person's address bar (or Back, or the page) lands on about:blank
+    // after the check answered and before the script reaches the page.
+    h.fake.onSend((method, p) => {
+      if (
+        method === 'Runtime.evaluate' &&
+        p.contextId === undefined &&
+        p.silent !== true
+      )
+        h.fake.navigatePage({ url: 'about:blank', origin: 'null' });
+      return undefined;
+    });
+    const result = await h.evaluate();
+    expect(result).toMatchObject({ ok: false, code: 'browser-error' });
+    expect((result as { message: string }).message).toMatch(
+      /navigated before the script ran, so it did not run/,
+    );
+    const run = h.fake.sent.filter(
+      (s) => s.method === 'Runtime.evaluate' && s.params.silent !== true,
+    );
+    expect(run.map((s) => s.params.uniqueContextId)).toEqual(['ctx-1']);
+    expect(h.fake.ran).toEqual([]);
+    expect(h.history().some((e) => e.kind === 'script-evaluated')).toBe(false);
+  });
+
+  test('a page navigating away while the script runs is reported as such and recorded as run', async () => {
+    const h = await evaluating();
+    h.fake.handle('Runtime.evaluate', () => {
+      throw new CdpProtocolError(
+        'Runtime.evaluate',
+        -32000,
+        'Inspected target navigated or closed',
+      );
+    });
+    const result = await h.evaluate();
+    expect(result).toMatchObject({ ok: false, code: 'browser-error' });
+    expect((result as { message: string }).message).toMatch(
+      /navigated while the script was running/,
+    );
+    expect(h.history().at(-1)).toMatchObject({ kind: 'script-evaluated' });
+  });
+
+  test('a blank-page check that does not answer false refuses (fails closed)', async () => {
+    const h = await evaluating();
+    // The check throws inside the page: no answer.
+    Object.defineProperty(h.fake.page, 'url', {
+      get() {
+        throw new Error('no answer');
+      },
+    });
+    expect(await h.evaluate('1')).toMatchObject({
+      ok: false,
+      code: 'browser-refused',
+    });
+    expect(h.fake.ran).toEqual([]);
+  });
+
+  test('a blank-page check the browser fails (protocol error) refuses, and the script never runs', async () => {
+    const h = await evaluating();
+    h.fake.onSend((method, p) => {
+      if (method === 'Runtime.evaluate' && p.silent === true)
+        throw new CdpProtocolError(
+          'Runtime.evaluate',
+          -32603,
+          'Internal error',
+        );
+      return undefined;
+    });
+    const result = await h.evaluate('1');
+    expect(result).toMatchObject({ ok: false });
+    expect(h.fake.ran).toEqual([]);
+    expect(
+      h.fake.sent.filter(
+        (s) => s.method === 'Runtime.evaluate' && s.params.silent !== true,
+      ),
+    ).toHaveLength(0);
+  });
+
+  test('a blank-page check that never answers times out, refuses, and the script never runs', async () => {
+    const h = await evaluating({ stepDeadlineMs: 20 });
+    h.fake.onSend((method, p) =>
+      method === 'Runtime.evaluate' && p.silent === true
+        ? new Promise<void>(() => {})
+        : undefined,
+    );
+    expect(await h.evaluate('1')).toMatchObject({ ok: false, code: 'timeout' });
+    expect(h.fake.ran).toEqual([]);
+    expect(
+      h.fake.sent.filter(
+        (s) => s.method === 'Runtime.evaluate' && s.params.silent !== true,
+      ),
+    ).toHaveLength(0);
+  });
+
+  test('a page with no page-world context yet (between documents) refuses without evaluating', async () => {
+    const h = await evaluating();
+    h.fake.page.context = undefined;
+    expect(await h.evaluate('1')).toMatchObject({
+      ok: false,
+      code: 'browser-error',
+    });
+    expect(
+      h.fake.sent.filter((s) => s.method === 'Runtime.evaluate'),
+    ).toHaveLength(0);
   });
 
   test("another Project's permission does not carry over", async () => {

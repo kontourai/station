@@ -98,6 +98,12 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
   // entire 18-case file completed in 28s alone. Keep other bootstrap-heavy
   // Vitest files out of this lifecycle/cleanup measurement.
   'src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts',
+  // Launches a REAL installed Chrome/Edge through the Browser pane registry
+  // to prove an agent's browser_evaluate on a blank tab is refused before it
+  // can abort Chrome 158 (and every tab with it). In this group, hosted full
+  // regression binds Playwright's pinned Chrome for Testing 158 as
+  // `google-chrome`; elsewhere the version-gated case skips, naming why.
+  'src-server/services/browser/__tests__/browser-blank-tab-evaluate.real.test.ts',
 ]);
 
 export const CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES = Object.freeze([

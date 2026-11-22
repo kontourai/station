@@ -1,0 +1,29 @@
+{
+  "revision": "8d0e4dc3932c3f218a8e946f17af99097c40a6a1",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Only the browser_evaluate tool description gained 'Refused on a blank tab (about:blank); open a page first.' No citing page quotes that description; tool names, arguments and approvals are unchanged.","inputs":["src-server/tools/station-control-browser-tools.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Only the browser_evaluate tool description gained 'Refused on a blank tab (about:blank); open a page first.' No citing page quotes that description; tool names, arguments and approvals are unchanged.","inputs":["src-server/tools/station-control-browser-tools.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Only the browser_evaluate tool description gained 'Refused on a blank tab (about:blank); open a page first.' No citing page quotes that description; tool names, arguments and approvals are unchanged.","inputs":["src-server/tools/station-control-browser-tools.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Only the browser_evaluate tool description gained 'Refused on a blank tab (about:blank); open a page first.' No citing page quotes that description; tool names, arguments and approvals are unchanged.","inputs":["src-server/tools/station-control-browser-tools.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Only the browser_evaluate tool description gained 'Refused on a blank tab (about:blank); open a page first.' No citing page quotes that description; tool names, arguments and approvals are unchanged.","inputs":["src-server/tools/station-control-browser-tools.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Only the browser_evaluate tool description gained 'Refused on a blank tab (about:blank); open a page first.' No citing page quotes that description; tool names, arguments and approvals are unchanged.","inputs":["src-server/tools/station-control-browser-tools.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Only the browser_evaluate tool description gained 'Refused on a blank tab (about:blank); open a page first.' No citing page quotes that description; tool names, arguments and approvals are unchanged.","inputs":["src-server/tools/station-control-browser-tools.ts"]},
+
+    {"path":"docs/design/verified-action-replay.md","note":"Only the browser_evaluate tool description gained 'Refused on a blank tab (about:blank); open a page first.' No citing page quotes that description; tool names, arguments and approvals are unchanged.","inputs":["src-server/tools/station-control-browser-tools.ts"]},
+
+    {"path":"docs/glossary.md","note":"Only the browser_evaluate tool description gained 'Refused on a blank tab (about:blank); open a page first.' No citing page quotes that description; tool names, arguments and approvals are unchanged.","inputs":["src-server/tools/station-control-browser-tools.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Only the browser_evaluate tool description gained 'Refused on a blank tab (about:blank); open a page first.' No citing page quotes that description; tool names, arguments and approvals are unchanged.","inputs":["src-server/tools/station-control-browser-tools.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Only the browser_evaluate tool description gained 'Refused on a blank tab (about:blank); open a page first.' No citing page quotes that description; tool names, arguments and approvals are unchanged.","inputs":["src-server/tools/station-control-browser-tools.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Only the browser_evaluate tool description gained 'Refused on a blank tab (about:blank); open a page first.' No citing page quotes that description; tool names, arguments and approvals are unchanged.","inputs":["src-server/tools/station-control-browser-tools.ts"]}
+  ]
+}
