@@ -1080,7 +1080,7 @@ describe('external engine pre-tool policy generation', () => {
         },
         { userId: 'owner' },
       ),
-    ).rejects.toThrow(/still running work started under the old configuration/);
+    ).rejects.toThrow(/settings changed while the chat was still working/);
     expect(w.stops).toEqual([]);
     expect(w.starts).toHaveLength(1);
 
