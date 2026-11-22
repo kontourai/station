@@ -110,12 +110,26 @@ export function scheduleEquals(
     return left.everyMs === right.everyMs;
   }
   if (left.kind === 'at' && right.kind === 'at') {
+    // The scheduler removes a one-time job only when this is true, so an
+    // absent flag and `false` are the same schedule.
     return (
       left.timeMs === right.timeMs &&
-      left.deleteAfterRun === right.deleteAfterRun
+      (left.deleteAfterRun ?? false) === (right.deleteAfterRun ?? false)
     );
   }
   return false;
+}
+
+/**
+ * When a new one-time run happens unless the person picks a time: tomorrow at
+ * 9:00 AM local. A default an hour from now ran before most people had read
+ * the form back.
+ */
+export function tomorrowMorning(now = Date.now()): number {
+  const date = new Date(now);
+  date.setDate(date.getDate() + 1);
+  date.setHours(9, 0, 0, 0);
+  return date.getTime();
 }
 
 export function datetimeLocalValue(timeMs: number): string {

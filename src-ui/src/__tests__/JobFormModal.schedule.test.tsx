@@ -38,6 +38,8 @@ const editMutate = vi.fn();
 const mutationState = vi.hoisted(() => ({
   addError: null as unknown,
   editError: null as unknown,
+  /** Jobs the host already has, as the jobs list answers. */
+  jobs: [] as { name: string }[],
 }));
 
 /** The host's `scheduledConversationTarget` answer; `undefined` is unanswered. */
@@ -64,6 +66,7 @@ vi.mock('../hooks/useScheduler', () => ({
     error: mutationState.editError,
   }),
   usePreviewSchedule: () => ({ data: [], isLoading: false }),
+  useSchedulerJobs: () => ({ data: mutationState.jobs }),
 }));
 
 /**
@@ -96,6 +99,7 @@ describe('JobFormModal schedule compatibility', () => {
     editMutate.mockReset();
     mutationState.addError = null;
     mutationState.editError = null;
+    mutationState.jobs = [];
     agentCatalog.agents = [
       { slug: 'station', name: 'Station' } as EnrichedAgentProjection,
     ];
@@ -207,7 +211,7 @@ describe('JobFormModal schedule compatibility', () => {
     expect(submitted.schedule).toEqual({
       kind: 'at',
       timeMs: new Date('2030-01-02T03:04').getTime(),
-      deleteAfterRun: true,
+      deleteAfterRun: false,
     });
   });
 
@@ -259,7 +263,7 @@ describe('JobFormModal schedule compatibility', () => {
     render(<JobFormModal job={job} onClose={vi.fn()} />);
     fireEvent.click(
       screen.getByRole('checkbox', {
-        name: 'Delete the job after it runs',
+        name: 'Remove it after it runs',
       }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
@@ -482,10 +486,10 @@ describe('JobFormModal schedule compatibility', () => {
     ).toBe(true);
   });
 
-  test('refuses a name that the form reports as invalid', () => {
+  test('refuses a blank name', () => {
     render(<JobFormModal onClose={vi.fn()} />);
     fireEvent.change(screen.getByLabelText('Name'), {
-      target: { value: 'Daily briefing' },
+      target: { value: '   ' },
     });
     fireEvent.change(screen.getByLabelText('Instructions'), {
       target: { value: 'Summarize my day' },
@@ -494,6 +498,109 @@ describe('JobFormModal schedule compatibility', () => {
     expect(submit).toHaveProperty('disabled', true);
     fireEvent.click(submit);
     expect(addMutate).not.toHaveBeenCalled();
+  });
+
+  test('saves a plain-words name as the display name, with a hidden slug', () => {
+    mutationState.jobs = [{ name: 'daily-briefing' }];
+    render(<JobFormModal onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: ' Daily briefing ' },
+    });
+    fireEvent.change(screen.getByLabelText('Instructions'), {
+      target: { value: 'Summarize my day' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create automation' }));
+
+    // The slug is unused: another automation already has `daily-briefing`.
+    expect(addMutate.mock.calls[0]?.[0]).toMatchObject({
+      name: 'daily-briefing-2',
+      displayName: 'Daily briefing',
+    });
+  });
+
+  test('"Once" defaults to tomorrow at 9:00 AM and keeps the automation', () => {
+    render(<JobFormModal onClose={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: 'One time' }));
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(9, 0, 0, 0);
+    const runAt = screen.getByLabelText('Run once at') as HTMLInputElement;
+    expect(new Date(runAt.value).getTime()).toBe(tomorrow.getTime());
+    expect(runAt.value.endsWith('T09:00')).toBe(true);
+    const remove = screen.getByRole('checkbox', {
+      name: 'Remove it after it runs',
+    }) as HTMLInputElement;
+    expect(remove.checked).toBe(false);
+
+    fireEvent.change(screen.getByLabelText('Name'), {
+      target: { value: 'Renew the certificate' },
+    });
+    fireEvent.change(screen.getByLabelText('Instructions'), {
+      target: { value: 'Renew it' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Create automation' }));
+    expect(addMutate.mock.calls[0]?.[0].schedule).toEqual({
+      kind: 'at',
+      timeMs: tomorrow.getTime(),
+      deleteAfterRun: false,
+    });
+  });
+
+  test('Edit has a Name field that renames the automation and keeps its slug', () => {
+    render(
+      <JobFormModal
+        job={{
+          name: 'repo-digest',
+          displayName: 'Repo digest',
+          provider: 'built-in',
+          cron: '0 9 * * *',
+          prompt: 'Summarize',
+          agent: 'station',
+          enabled: true,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(
+      screen.getByRole('dialog', { name: 'Edit: Repo digest' }),
+    ).toBeTruthy();
+    const name = screen.getByLabelText('Name') as HTMLInputElement;
+    expect(name.value).toBe('Repo digest');
+    fireEvent.change(name, { target: { value: 'Morning repo digest' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+
+    expect(editMutate).toHaveBeenCalledWith(
+      { target: 'repo-digest', displayName: 'Morning repo digest' },
+      expect.any(Object),
+    );
+  });
+
+  test('Edit shows a job with no display name by its slug and sends no rename', () => {
+    render(
+      <JobFormModal
+        job={{
+          name: 'older-job',
+          provider: 'built-in',
+          cron: '0 9 * * *',
+          prompt: 'Summarize',
+          agent: 'station',
+          enabled: true,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect((screen.getByLabelText('Name') as HTMLInputElement).value).toBe(
+      'older-job',
+    );
+    fireEvent.change(screen.getByLabelText('Instructions'), {
+      target: { value: 'Summarize more' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    expect(editMutate).toHaveBeenCalledWith(
+      { target: 'older-job', prompt: 'Summarize more' },
+      expect.any(Object),
+    );
   });
 
   test('cannot submit the previous schedule after all weekdays are deselected', () => {

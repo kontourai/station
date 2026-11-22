@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { PageFrameActions } from '../components/page-frame';
 import { JobDetail } from '../components/scheduler';
+import { jobLabel } from '../components/scheduler/jobName';
 import { ErrorState, SkeletonBlock } from '../components/state';
 import { Tabs, tabElementId, tabPanelElementId } from '../components/Tabs';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
@@ -119,7 +120,10 @@ export function ScheduleView() {
     toggle,
     filterText,
     setFilterText,
-  } = useSortableTable(enrichedJobs, 'lastRun', 'desc', ['name']);
+  } = useSortableTable(enrichedJobs, 'lastRun', 'desc', [
+    'name',
+    'displayName',
+  ]);
   const qualifiedRun = parseQualifiedScheduleRun(runTarget);
   const exactRun = useMemo(
     () => (runTarget ? runs.find((run) => run.runId === runTarget) : undefined),
@@ -304,6 +308,7 @@ export function ScheduleView() {
             ) : pane === 'executions' ? (
               <ScheduleExecutions
                 runs={runs}
+                jobs={jobs}
                 loading={runsLoading}
                 unavailable={runsError}
                 selectedId={selectedReceipt}
@@ -336,7 +341,7 @@ export function ScheduleView() {
                     onDelete={(job) => {
                       setConfirmAction({
                         title: 'Delete job',
-                        message: `Delete job "${job.name}"? This cannot be undone.`,
+                        message: `Delete job "${jobLabel(job)}"? This cannot be undone.`,
                         variant: 'danger',
                         onConfirm: () => {
                           deleteJob.mutate(job.name);
@@ -349,7 +354,7 @@ export function ScheduleView() {
                       schedulerJobDialogStore.open({
                         authority,
                         prefill: {
-                          name: `${job.name}-copy`,
+                          name: `${jobLabel(job)} copy`,
                           cron: job.cron,
                           schedule: job.schedule,
                           prompt: job.prompt,
@@ -367,7 +372,7 @@ export function ScheduleView() {
                       if (running) {
                         setConfirmAction({
                           title: 'Cancel Running Job',
-                          message: `Disabling '${job.name}' will cancel the currently running job. Continue?`,
+                          message: `Disabling '${jobLabel(job)}' will cancel the currently running job. Continue?`,
                           variant: 'warning',
                           onConfirm: () => {
                             toggleJob.mutate({

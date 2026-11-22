@@ -97,9 +97,9 @@ On a phone: A full-screen sheet with Cancel and Create pinned at the bottom. Tod
 3. **A read-back sentence plus the next three dates.** Kept from today's preview, which works well. _(layout; slice 5.15)_
 4. **An agent picker, with engine and model shown read-only.** _(layout; slice 5.15)_
 5. **"Where results go": Its own chat, or A new task in a project.** "This chat" is added when the form opens from a chat. The project option is behind a feature preview today. It ships only if a project schedule can be edited and deleted from Automations, which this slice settles first; otherwise the first release offers "Its own chat" only. _(layout, backend check first; slice 5.15)_
-6. **Name moves last and takes plain words, suggested from the instructions.** Today the name is a slug, and the Edit dialog has no Name field. This needs a display name separate from the slug. Until then, generate the slug from the name and keep it hidden. _(server work; slice 5.15)_
+6. **Name moves last and takes plain words, suggested from the instructions.** Slice 0.18 added the display name: a job stores `displayName` beside its slug, the form generates the slug from the name and keeps it hidden, and Edit has a Name field that renames without changing the slug or its runs. Moving the field last and suggesting it from the instructions remain. _(layout; slice 5.15)_
 7. **Not on the form for v1: Retries and Retry delay, "Station engine, output file", the GitHub pull request monitor fields, and "Run with".** They are technical, and the first two apply only to file runs. _(layout; slice 5.15)_
-8. **"Once" defaults to tomorrow at 9:00 AM, and "Remove it after it runs" is unticked. No screen is specified for it.** Today a one-time run defaults to now with "Delete the job after it runs" ticked. _(copy; slice 0.18)_
+8. **"Once" defaults to tomorrow at 9:00 AM, and "Remove it after it runs" is unticked. No screen is specified for it.** Before slice 0.18 a one-time run defaulted to an hour from now with "Delete the job after it runs" ticked. Until the presets of change 2 land, the default applies to today's "One time" tab. _(copy; slice 0.18)_
 
 ### `automations-inbox-05` Automation that paused itself
 

@@ -8,6 +8,7 @@ import { test } from './helpers/fixture-audit';
 
 type ScheduleJobRecord = {
   name: string;
+  displayName?: string;
   provider: string;
   cron: string;
   // The server serves the discriminated object, not the legacy string:
@@ -175,6 +176,7 @@ async function seedScheduleCrudApi(page: Page) {
       }
       const job = makeJob({
         name: body.name,
+        ...(body.displayName ? { displayName: body.displayName } : {}),
         provider: body.provider ?? 'built-in',
         cron: body.cron ?? '* * * * *',
         prompt: body.prompt ?? '',
@@ -459,21 +461,16 @@ test.describe('Schedule Page', () => {
     await expect(
       duplicateDialog.locator('.agent-picker__trigger'),
     ).toContainText('Codex');
-    await duplicateDialog
-      .getByPlaceholder('my-daily-briefing')
-      .fill('daily-report');
-    await duplicateDialog
-      .getByRole('button', { name: 'Create automation', exact: true })
-      .click();
-    await expect(duplicateDialog.getByRole('alert')).toHaveText(
-      "Job 'daily-report' already exists",
+    await expect(duplicateDialog.getByLabel('Name')).toHaveValue(
+      'daily-report copy',
     );
     await duplicateDialog.getByRole('button', { name: 'Cancel' }).click();
 
     await page
       .getByRole('button', { name: 'New automation', exact: true })
       .click();
-    await page.getByPlaceholder('my-daily-briefing').fill('weekly-brief');
+    // Plain words; the hidden slug `weekly-brief` is what routes and runs use.
+    await page.getByPlaceholder('Daily briefing').fill('Weekly brief');
     await page
       .getByPlaceholder('What should the agent do?')
       .fill('Summarize weekly work');
@@ -483,13 +480,13 @@ test.describe('Schedule Page', () => {
       .click();
     await expect(page.getByTestId('job-row-weekly-brief')).toBeVisible();
 
-    await page.getByRole('button', { name: 'Edit weekly-brief' }).click();
+    await page.getByRole('button', { name: 'Edit Weekly brief' }).click();
     await page
       .getByPlaceholder('What should the agent do?')
       .fill('Summarize weekly work and risks');
     await expect(
       page
-        .getByRole('dialog', { name: 'Edit: weekly-brief' })
+        .getByRole('dialog', { name: 'Edit: Weekly brief' })
         .locator('.schedule__cron-time'),
     ).not.toHaveText('...');
     // archive#947: this Enter-submit was lost in ~2 of every 20 standalone runs — the
@@ -512,7 +509,7 @@ test.describe('Schedule Page', () => {
     // zero-element locator passes — so this whole Enter-submit assertion was
     // asserting nothing.
     const editDialog = page.getByRole('dialog', {
-      name: 'Edit: weekly-brief',
+      name: 'Edit: Weekly brief',
     });
     const saveChanges = page.getByRole('button', { name: 'Save Changes' });
     await expect(async () => {
@@ -525,7 +522,7 @@ test.describe('Schedule Page', () => {
       page.getByText('Summarize weekly work and risks'),
     ).toBeVisible();
 
-    await page.getByRole('button', { name: 'Run weekly-brief' }).click();
+    await page.getByRole('button', { name: 'Run Weekly brief' }).click();
     await expect.poll(() => runCalls).toEqual(['weekly-brief']);
 
     await page.getByTestId('job-row-weekly-brief').locator('td').nth(2).click();
@@ -539,9 +536,9 @@ test.describe('Schedule Page', () => {
       page.getByTestId('job-row-weekly-brief').getByText('on', { exact: true }),
     ).toBeVisible();
 
-    await page.getByRole('button', { name: 'Duplicate weekly-brief' }).click();
-    await expect(page.getByPlaceholder('my-daily-briefing')).toHaveValue(
-      'weekly-brief-copy',
+    await page.getByRole('button', { name: 'Duplicate Weekly brief' }).click();
+    await expect(page.getByPlaceholder('Daily briefing')).toHaveValue(
+      'Weekly brief copy',
     );
     await page
       .getByRole('button', { name: 'Create automation', exact: true })
@@ -549,10 +546,10 @@ test.describe('Schedule Page', () => {
     await expect(page.getByTestId('job-row-weekly-brief-copy')).toBeVisible();
 
     await page
-      .getByRole('button', { name: 'Delete weekly-brief-copy' })
+      .getByRole('button', { name: 'Delete Weekly brief copy' })
       .click();
     await expect(page.getByRole('alertdialog')).toContainText(
-      'Delete job "weekly-brief-copy"?',
+      'Delete job "Weekly brief copy"?',
     );
     await page
       .getByRole('alertdialog')
