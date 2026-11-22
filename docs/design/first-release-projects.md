@@ -14,7 +14,7 @@ A project becomes one page with Overview, Chats, Tasks and Files tabs, creating 
 - One project has two homes. The project page has Overview, Room, Tasks, Files and connections, and Settings. The layouts (Coding, Tasks) replace that page entirely. New chat lives only in Coding, and it asks about the wrong project.
 - The sidebar row has no menu, only a hover drag handle, and keyboard reorder did nothing. The Room contradicts itself: the sidebar shows #general while the Overview says "The room has not been opened yet".
 - Project settings has 14 rail items (20 with previews), with near-duplicates and dead ends. Model, Models and effort, New chats and Agents all set what a new chat uses. Workspace, Chat workspace and Sources overlap. Schedules is blank because its rail item is never filtered. Pull requests tells a git project to add a repository when the repo has no remote. Save models are mixed.
-- The same family of things is called Layout, Workspace view, Starter layout, Board, Apps and Pane. Review renders in a column about 140px wide. Session Board is offered but returns "Layout not found". The Flow console has no inbound link.
+- The same family of things is called Layout, Workspace view, Starter layout, Board, Apps and Pane. Review renders in a column about 140px wide. Session Board is offered on a project with no Builder run, where it opens an empty board. The Flow console has no inbound link.
 - Task status contradicts itself: one chat shows as "Delivery unconfirmed" under Needs you and "Done" under Just finished. Share is disabled with no visible reason. Boards are called "Apps", "+" creates an inline "Untitled Board" before you choose anything, and a template opens a full editor before any dashboard.
 
 ## Agreed structure
@@ -145,7 +145,7 @@ On a phone: A segmented lane picker with counts, one lane at a time (swipe). The
 
 On a phone: The view tabs scroll. "+" is hidden on phone, and adding views is a desktop task (no phone layout is specified).
 
-1. **"+" on the view tabs opens "Views in Acme Web": Chats, Tasks, then "Add one of your apps" and "Find apps with a project view".** Release desk shows this project only, Knowledge Docs and Enterprise are offered, and Daily brief is greyed ("Not for projects"). It is the same menu as in Apps. Reordering and hiding views moved to Settings › Views. Today Add Layout offers Session Board, which fails with "Layout not found", and offers Coding and Tasks as if optional. Review and Session Board are not offered. _(new screen state; slice 3.9)_
+1. **"+" on the view tabs opens "Views in Acme Web": Chats, Tasks, then "Add one of your apps" and "Find apps with a project view".** Release desk shows this project only, Knowledge Docs and Enterprise are offered, and Daily brief is greyed ("Not for projects"). It is the same menu as in Apps. Reordering and hiding views moved to Settings › Views. Today Add Layout offers Session Board, which stays empty without a Builder run, and offers Coding and Tasks as if optional. Review and Session Board are not offered. _(new screen state; slice 3.9)_
 
 ### `projects-12` Task page
 
@@ -212,7 +212,7 @@ On a phone: This screen is phone only.
 | Models and effort section | Remove | It has a hard-coded engine list and a free-text model box. Effort folds into Chat defaults once it is a real per-model setting. |
 | Project Usage | Hide for the first release | Token rollups are real, but cost is unpriced except for Bedrock. Usage belongs in Customize › Providers first. |
 | Project coordinator | Hide for the first release | A large subsystem with almost no tests. It lives in #general, which v1 hides. |
-| Pause and Archive | Turn on by default | Graduate Archive only and keep Pause hidden. Archive solves sidebar clutter. Fix the held banner and Archived toggle, which show even with the preview off. |
+| Pause and Archive | Turn on by default | Graduate Archive only and keep Pause hidden. Archive solves sidebar clutter. The preview gates only starting a hold. A held Project's chats refuse turns and its schedules wait with the preview off too, so the held banner, Resume, Unarchive and the Archived toggle always show for a hold that exists. |
 | Project Schedules | Hide for the first release | Rows cannot be edited or deleted after creation. Fix the rail item that shows with the preview off, which causes the blank page. Project-scoped automation belongs in Automations with a project filter. |
 | Apps library | Remove | Superseded by the Apps destination (Discover, Library and Updates). Apps appear in projects through "+ Add view". |
 | Starter layout and Browse all in New Project | Remove | Chats and Tasks are always there. Apps are added later as views from the plus. |

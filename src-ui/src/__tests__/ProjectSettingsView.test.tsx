@@ -1028,6 +1028,22 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
   });
 
+  test('the Schedules item shows only while the project-schedules preview is on', () => {
+    const off = renderProjectSettings('basic-info');
+    expect(screen.queryByRole('link', { name: 'Schedules' })).toBeNull();
+    expect(
+      Array.from(
+        screen
+          .getByLabelText('Project settings section')
+          .querySelectorAll('option'),
+      ).map((option) => option.textContent),
+    ).not.toContain('Schedules');
+    off.unmount();
+    sdkMocks.previews = [{ id: 'project-schedules', enabled: true }];
+    renderProjectSettings('basic-info');
+    expect(screen.getByRole('link', { name: 'Schedules' })).toBeTruthy();
+  });
+
   test('section picker shows one topic and keeps hidden project drafts mounted', () => {
     renderProjectSettings('basic-info');
     fireEvent.change(screen.getByRole('textbox', { name: 'Name *' }), {
