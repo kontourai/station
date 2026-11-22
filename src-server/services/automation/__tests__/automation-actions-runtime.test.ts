@@ -22,8 +22,8 @@ import type {
   ProviderSessionStartInput,
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
-import { currentUnattendedPrincipal } from '../../../runtime/agents/unattended-principal-context.js';
 import { createAutomationRoutes } from '../../../routes/operations/automations.js';
+import { currentUnattendedPrincipal } from '../../../runtime/agents/unattended-principal-context.js';
 import { createAutomationActionsRuntime } from '../../../runtime/automation-actions-runtime.js';
 import { installManagedApprovalCeiling } from '../../../security/managed-approval-ceiling.js';
 import {
@@ -1485,7 +1485,6 @@ test('retry-episode on an exhausted episode allows exactly one more attempt (#45
       ledger: w.ledger,
       read: () => w.store.read(),
       taskStatus: (taskId) => w.graph.readTaskView(taskId)?.status,
-    taskStatus: (taskId) => w.graph.readTaskView(taskId)?.status,
       ruleId: first.ruleId,
       episodeId: first.episodeId,
       now: Date.now(),

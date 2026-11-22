@@ -51,7 +51,9 @@ vi.mock('../runtime-route-support.js', () => ({
     attentionProjection: runtimeSupport.service,
     webPushService: runtimeSupport.service,
     webPushEnabled: true,
-    automationPreview: { select: (branches: { enabled(): unknown }) => branches.enabled() },
+    automationPreview: {
+      select: (branches: { enabled(): unknown }) => branches.enabled(),
+    },
     automationStore: {
       read: () => ({ sources: [], rules: [] }),
     },
@@ -149,7 +151,9 @@ function runtimeContext(app: Hono, homeDir: string) {
       taskGraphService: {
         listTasks: () => [],
         readTaskView: (taskId: string) =>
-          taskId === 'task-1' ? { id: taskId, status: tasks.status } : undefined,
+          taskId === 'task-1'
+            ? { id: taskId, status: tasks.status }
+            : undefined,
       },
     },
     {
