@@ -651,6 +651,10 @@
       "exempt": "person-only",
       "reason": "Preview yields the permission set/digest a person approves; agents must not echo it into an install."
     },
+    "plugin recover": {
+      "exempt": "person-only",
+      "reason": "Recovery takes a person's decision on the recovery review (POST /api/plugins/:name/recover is person-only); an agent must not approve it."
+    },
     "plugin recovery-backups": {
       "exempt": "person-only",
       "reason": "Recovery inventory includes operator-local paths and is restricted to the operator."

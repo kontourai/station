@@ -294,6 +294,7 @@ function harness(
   previewOptions: {
     requireRestrictedWebRtc?: boolean;
     faviconEnabled?: () => boolean;
+    popupAdoptionTimeoutMs?: number;
   } = {},
 ) {
   const fake = fakeTransport(respond, hooks);
@@ -358,6 +359,12 @@ describe('launch arguments and environment', () => {
     expect(args.some((arg) => arg.startsWith('--remote-debugging-port'))).toBe(
       false,
     );
+    // Sandboxed frames keep their own process. Turning that off would avoid
+    // Chrome 158's blank-page abort, but it removes a process boundary around
+    // untrusted content; the agent evaluate guard handles the abort instead.
+    expect(
+      args.filter((arg) => /IsolateSandboxedIframes|site-isolation/i.test(arg)),
+    ).toEqual([]);
   });
 
   test('refuses to build a launch without a loopback egress proxy', () => {
@@ -698,6 +705,172 @@ describe('ChromiumServerHost with a fake browser', () => {
     ).rejects.toThrow();
   });
 
+  test("an adopted popup's held document request continues before the setup that needs its document", async () => {
+    // Chromium does not answer Page.enable on a popup while the popup's own
+    // document request is held paused; it answers once that request is let
+    // through. Waiting on Page.enable before continuing it deadlocked.
+    let continued!: () => void;
+    const requestContinued = new Promise<void>((r) => {
+      continued = r;
+    });
+    const { host, profileDir, emit, calls } = harness((call) => {
+      if (
+        call.method === 'Fetch.continueRequest' &&
+        (call.params as { requestId?: string }).requestId === 'pop-request'
+      )
+        continued();
+      if (call.method === 'Page.enable' && call.sessionId === 'S-POP')
+        return requestContinued.then(() => ({}));
+      return {};
+    });
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    const adopted = vi.fn(() => true);
+    host.onPopup(adopted);
+    const closed = vi.fn();
+    host.onTargetClosed(closed);
+    emit('Target.targetCreated', {
+      targetInfo: { targetId: 'POP', type: 'page', url: '', openerId: 'T1' },
+    });
+    emit('Fetch.requestPaused', {
+      requestId: 'pop-request',
+      request: { url: 'https://example.com/pop' },
+      resourceType: 'Document',
+      frameId: 'POP',
+    });
+    await vi.waitFor(
+      () =>
+        expect(calls).toContainEqual({
+          method: 'Emulation.setDeviceMetricsOverride',
+          params: { ...VIEWPORT, mobile: false },
+          sessionId: 'S-POP',
+        }),
+      { timeout: 2_000 },
+    );
+    expect(adopted).toHaveBeenCalledExactlyOnceWith(
+      'T1',
+      { targetId: 'POP', cdpSessionId: 'S-POP' },
+      'https://example.com/pop',
+    );
+    // Setup finished (above) only because the request was let go first.
+    expect(calls).toContainEqual({
+      method: 'Fetch.continueRequest',
+      params: { requestId: 'pop-request' },
+      sessionId: undefined,
+    });
+    expect(calls).not.toContainEqual({
+      method: 'Target.closeTarget',
+      params: { targetId: 'POP' },
+      sessionId: undefined,
+    });
+    expect(closed).not.toHaveBeenCalled();
+  });
+
+  test('an adopted popup that is closed is not folded or adopted again by its late events', async () => {
+    const { host, profileDir, emit, calls } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    const adopted = vi.fn(() => true);
+    host.onPopup(adopted);
+    emit('Target.targetCreated', {
+      targetInfo: { targetId: 'GONE', type: 'page', url: '', openerId: 'T1' },
+    });
+    emit('Fetch.requestPaused', {
+      requestId: 'gone-request',
+      request: { url: 'https://example.com/gone' },
+      resourceType: 'Document',
+      frameId: 'GONE',
+    });
+    await vi.waitFor(() => expect(adopted).toHaveBeenCalledTimes(1));
+    await flush();
+    await host.closeTarget('GONE');
+    // Chromium still reports the closing target, with its opener and URL.
+    emit('Target.targetInfoChanged', {
+      targetInfo: {
+        targetId: 'GONE',
+        type: 'page',
+        url: 'https://example.com/gone',
+        openerId: 'T1',
+      },
+    });
+    await flush();
+    expect(adopted).toHaveBeenCalledTimes(1);
+    expect(calls.filter((c) => c.method === 'Page.navigate')).toEqual([]);
+    expect(
+      calls.filter((c) => c.method === 'Target.attachToTarget').length,
+    ).toBe(2);
+  });
+
+  for (const stall of ['attach', 'setup'] as const)
+    test(`a popup whose ${stall} never answers is closed, its request failed or let go, and its tab slot released`, async () => {
+      const never = new Promise<void>(() => {});
+      const { host, profileDir, emit, calls } = harness(
+        (call) =>
+          stall === 'setup' &&
+          call.method === 'Page.enable' &&
+          call.sessionId === 'S-STUCK'
+            ? never
+            : {},
+        stall === 'attach'
+          ? {
+              beforeAttach: () => {
+                attaching += 1;
+                return attaching > 1 ? never : Promise.resolve();
+              },
+            }
+          : {},
+        { popupAdoptionTimeoutMs: 100 },
+      );
+      let attaching = 0;
+      await host.openTarget({ profileDir, viewport: VIEWPORT });
+      host.onPopup(() => true);
+      emit('Target.targetCreated', {
+        targetInfo: {
+          targetId: 'STUCK',
+          type: 'page',
+          url: '',
+          openerId: 'T1',
+        },
+      });
+      emit('Fetch.requestPaused', {
+        requestId: 'stuck-request',
+        request: { url: 'https://example.com/stuck' },
+        resourceType: 'Document',
+        frameId: 'STUCK',
+      });
+      await vi.waitFor(
+        () =>
+          expect(calls).toContainEqual({
+            method: 'Target.closeTarget',
+            params: { targetId: 'STUCK' },
+            sessionId: undefined,
+          }),
+        { timeout: 2_000 },
+      );
+      // Refused before admission: the held request is failed, never loaded.
+      if (stall === 'attach')
+        expect(calls).toContainEqual({
+          method: 'Fetch.failRequest',
+          params: {
+            requestId: 'stuck-request',
+            errorReason: 'BlockedByClient',
+          },
+          sessionId: undefined,
+        });
+      // The slot is released: an untracked page is no longer kept waiting
+      // behind an adoption that will never finish.
+      emit('Target.targetCreated', {
+        targetInfo: { targetId: 'STRAY', type: 'page', url: 'about:blank' },
+      });
+      await vi.waitFor(
+        () =>
+          expect(calls).toContainEqual({
+            method: 'Target.closeTarget',
+            params: { targetId: 'STRAY' },
+            sessionId: undefined,
+          }),
+        { timeout: 3_000 },
+      );
+    });
+
   test('a popup finishing attachment after its opener closes is refused and its request fails', async () => {
     let unblock = () => {};
     let hold = false;
@@ -807,6 +980,50 @@ describe('ChromiumServerHost with a fake browser', () => {
       targetId: 'X',
       url: 'view-source:https://a.example/',
     });
+  });
+
+  test('the closing set is bounded: the 257th entry evicts the first, whose late events stay ignored while it is also destroyed', async () => {
+    const { host, profileDir, emit, calls } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    for (let i = 0; i < 257; i += 1) await host.closeTarget(`C${i}`);
+    // C0 was evicted from `closing`; the browser then reports it destroyed.
+    emit('Target.targetDestroyed', { targetId: 'C0' });
+    const late = (id: string) =>
+      emit('Target.targetInfoChanged', {
+        targetInfo: { targetId: id, type: 'page', url: 'about:blank' },
+      });
+    late('C0'); // evicted from closing, held by destroyed: ignored
+    late('C1'); // still in closing: ignored
+    late('C256'); // the 257th entry: in closing, ignored
+    await new Promise((r) => setTimeout(r, 1_100));
+    const closes = (id: string) =>
+      calls.filter(
+        (c) =>
+          c.method === 'Target.closeTarget' &&
+          (c.params as { targetId?: string }).targetId === id,
+      ).length;
+    // Each was closed once by closeTarget above; none again.
+    for (const id of ['C0', 'C1', 'C256']) expect(closes(id)).toBe(1);
+  });
+
+  test('an id evicted from both the closing and destroyed sets is treated as an unknown page by a late event', async () => {
+    const { host, profileDir, emit, calls } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    for (let i = 0; i < 257; i += 1) await host.closeTarget(`C${i}`);
+    // C0 was evicted from `closing` and was never reported destroyed.
+    for (const id of ['C0', 'C1'])
+      emit('Target.targetInfoChanged', {
+        targetInfo: { targetId: id, type: 'page', url: 'about:blank' },
+      });
+    await new Promise((r) => setTimeout(r, 1_100));
+    const closes = (id: string) =>
+      calls.filter(
+        (c) =>
+          c.method === 'Target.closeTarget' &&
+          (c.params as { targetId?: string }).targetId === id,
+      ).length;
+    expect(closes('C0')).toBe(2); // the first close, then the untracked policy
+    expect(closes('C1')).toBe(1); // still remembered: ignored
   });
 
   test('a target already destroyed is not closed again when its info arrives late', async () => {

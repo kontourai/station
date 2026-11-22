@@ -1686,6 +1686,16 @@ export const CONVERSATION_HANDOFF_REFUSAL_CODES = Object.freeze({
 export type ConversationHandoffRefusalCode =
   (typeof CONVERSATION_HANDOFF_REFUSAL_CODES)[keyof typeof CONVERSATION_HANDOFF_REFUSAL_CODES];
 
+/**
+ * A turn refused because what its Session's engine was launched with (its
+ * Agent, tool servers or engine connection) changed while the engine was
+ * still running work started under the old configuration. Sending again
+ * once that work ends restarts the Session in place under the current
+ * configuration.
+ */
+export const SESSION_CONFIGURATION_REPLACED_CODE =
+  'session_configuration_replaced';
+
 export const CONVERSATION_HANDOFF_RESET_FIELDS = Object.freeze([
   'providerNativeCursor',
   'toolState',

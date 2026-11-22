@@ -57,6 +57,122 @@ export interface PluginInstallResult {
   tools?: Array<{ id: string; status: string }>;
   dependencies?: Array<{ id: string; status: string; error?: string }>;
   permissions?: PluginInstallPermissionStatus;
+  /**
+   * Present (as `pending`) only on a `202` whose change was saved but not
+   * applied to the runtime. See {@link PluginLifecycleUnapplied}.
+   */
+  configurationActivation?: {
+    status: 'applied' | 'pending';
+    reason?: string;
+    /**
+     * Set by servers that know which it is. `required`: a plugin activation
+     * that did not complete; nothing resumes it, so the plugin is inactive
+     * until a person recovers it. `none`: the runtime finishes applying the
+     * change on its own.
+     */
+    recovery?: 'required' | 'none';
+    /** When the pass was stopped at its deadline, that deadline. */
+    deadlineMs?: number;
+  };
+}
+
+/**
+ * Why a saved plugin lifecycle change is not applied.
+ *
+ * `activation`: the change was saved, but its runtime pass did not complete
+ * (it outran the server's deadline, or failed after saving). Its `recovery`
+ * says what follows: `required` (a plugin activation; the plugin is NOT
+ * active and its `installationReadiness` reads `pending` with
+ * `recovery: 'review'` until a person runs recovery) or `none` (the runtime
+ * finishes on its own, as for a removal).
+ * `projection`: the selection was recorded but the catalog projection was
+ * not; reloading plugins reconciles it.
+ */
+export type PluginLifecycleUnapplied =
+  | {
+      kind: 'activation';
+      /**
+       * From the receipt's `recovery`. `unknown` is a server that predates
+       * the field: it cannot say, so a reader must not claim either way and
+       * defers to the plugin's `installationReadiness`.
+       */
+      recovery: 'required' | 'none' | 'unknown';
+      deadlineMs?: number;
+      reason?: string;
+    }
+  | { kind: 'projection'; reason?: string };
+
+/**
+ * The one reading of a plugin lifecycle response body that says "saved, but
+ * not applied". The server sends that as `202` with `success: false`, which a
+ * caller that only checks `success` misreads as a failure.
+ */
+export function pluginLifecycleUnapplied(
+  body: unknown,
+): PluginLifecycleUnapplied | undefined {
+  if (!body || typeof body !== 'object' || Array.isArray(body))
+    return undefined;
+  const result = body as Record<string, unknown>;
+  if (result.success !== false) return undefined;
+  const activation = result.configurationActivation as
+    | Record<string, unknown>
+    | undefined;
+  if (activation && activation.status === 'pending')
+    return {
+      kind: 'activation',
+      recovery:
+        activation.recovery === 'required' || activation.recovery === 'none'
+          ? activation.recovery
+          : 'unknown',
+      ...(typeof activation.deadlineMs === 'number' &&
+      Number.isFinite(activation.deadlineMs) &&
+      activation.deadlineMs > 0
+        ? { deadlineMs: activation.deadlineMs }
+        : {}),
+      ...(typeof activation.reason === 'string'
+        ? { reason: activation.reason }
+        : {}),
+    };
+  const lifecycle = result.lifecycle as Record<string, unknown> | undefined;
+  if (lifecycle && lifecycle.status === 'pending')
+    return {
+      kind: 'projection',
+      ...(typeof result.error === 'string' ? { reason: result.error } : {}),
+    };
+  return undefined;
+}
+
+/**
+ * A receipt's `deadlineMs` as people read it: whole seconds, never "0".
+ */
+export function describeActivationDeadline(deadlineMs: number): string {
+  const seconds = Math.max(1, Math.round(deadlineMs / 1000));
+  return `${seconds} second${seconds === 1 ? '' : 's'}`;
+}
+
+/**
+ * How a caller reads a plugin install, registry install, update, removal or
+ * recovery response: `applied` is a 2xx with `success: true`; `saved` is the
+ * designed `202` above; everything else is `refused` and carries its own
+ * error.
+ */
+export function readPluginLifecycleResponse(
+  status: number,
+  body: unknown,
+):
+  | { state: 'applied' }
+  | { state: 'saved'; unapplied: PluginLifecycleUnapplied }
+  | { state: 'refused' } {
+  if (
+    status >= 200 &&
+    status < 300 &&
+    body !== null &&
+    typeof body === 'object' &&
+    (body as { success?: unknown }).success === true
+  )
+    return { state: 'applied' };
+  const unapplied = status === 202 ? pluginLifecycleUnapplied(body) : undefined;
+  return unapplied ? { state: 'saved', unapplied } : { state: 'refused' };
 }
 
 /**
@@ -355,7 +471,14 @@ export interface PluginInstallationRevision {
   readonly origin?: string;
 }
 
-/** Server-observed runtime readiness, independent of install/consent completion. */
+/**
+ * Server-observed runtime readiness, independent of install/consent completion.
+ *
+ * `pending` means the plugin is not active. Whether this server is still
+ * activating it, so the install request that owns it will settle on its own,
+ * is the installed-plugin row's `activationInFlight`, a sibling field: a
+ * client that predates it reads such a row as `pending`, as before.
+ */
 export type PluginInstallationReadiness =
   | { readonly state: 'ready' }
   | { readonly state: 'pending'; readonly recovery: 'review' }

@@ -1017,6 +1017,13 @@ function codexMessageInput(
   ];
 }
 
+/** A bound-tool refusal whose reason the model is given as the result. */
+class CodexBoundToolReasonedRefusal extends Error {
+  constructor(readonly reason: string) {
+    super('bound-tool-refused');
+  }
+}
+
 export class CodexAdapter implements ProviderAdapterShape {
   readonly adoptionLifecycle = 'reported' as const;
   readonly provider = 'codex' as const;
@@ -2540,12 +2547,21 @@ export class CodexAdapter implements ProviderAdapterShape {
       record.closeBoundTools = boundTools?.close;
       record.boundChannelCurrent = boundTools ? bindingCurrent : undefined;
       let boundPolicy: StagedPreToolPolicyEvaluator | undefined;
-      if (boundTools && this.options.resolveBoundToolPolicy) {
+      // Resolved for every Agent session, bound tools or not, and kept on the
+      // record: holding it keeps the session's launch binding, so a change to
+      // its Agent or integrations restarts it at the next turn. Only bound
+      // tools are decided by it.
+      if (input.agent && this.options.resolveBoundToolPolicy) {
         try {
-          boundPolicy = await this.options.resolveBoundToolPolicy(input);
+          record.launchPolicy =
+            await this.options.resolveBoundToolPolicy(input);
         } catch {
-          boundPolicy = undefined;
+          record.launchPolicy = undefined;
         }
+        if (boundTools)
+          boundPolicy = record.launchPolicy as
+            | StagedPreToolPolicyEvaluator
+            | undefined;
       }
       // Every station-control tool (devices included) is held to the
       // Agent's selection again here; browser tools follow `browserTools`.
@@ -2723,7 +2739,7 @@ export class CodexAdapter implements ProviderAdapterShape {
             callId: payload.callId,
             name: payload.tool,
           };
-          return channel.invoke(
+          const invoked = channel.invoke(
             call,
             (current) => {
               if (boundTools.expired())
@@ -2753,6 +2769,17 @@ export class CodexAdapter implements ProviderAdapterShape {
             },
             () => !record.cancelledBoundRequests?.has(rpcKey),
           );
+          // A replaced-configuration refusal reaches the model as the tool's
+          // result: a JSON-RPC error reaches it only as a bare failure, with
+          // nothing it can act on.
+          return invoked.catch((error: unknown) => {
+            if (error instanceof CodexBoundToolReasonedRefusal)
+              return {
+                success: false,
+                contentItems: [{ type: 'inputText', text: error.reason }],
+              };
+            throw error;
+          });
         };
         const close = record.closeBoundTools;
         record.closeBoundTools = async () => {
@@ -4111,7 +4138,12 @@ export class CodexAdapter implements ProviderAdapterShape {
     } catch {
       return false;
     }
-    if (!current() || decision.behavior === 'deny') return false;
+    if (!current()) return false;
+    if (decision.behavior === 'deny') {
+      if (decision.staleGeneration || decision.generationSettling)
+        throw new CodexBoundToolReasonedRefusal(decision.denial.reason);
+      return false;
+    }
     if (decision.behavior === 'allow') return true;
     // Full access answers what Station's policy leaves open (`defer`); a
     // required ask (a tool that changes authority) still reaches a person.

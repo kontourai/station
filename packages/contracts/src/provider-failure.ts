@@ -23,6 +23,7 @@ import {
   CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   CONVERSATION_HANDOFF_REFUSAL_CODES,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+  SESSION_CONFIGURATION_REPLACED_CODE,
 } from './orchestration.js';
 import {
   CONVERSATION_IMPORT_DELETED_CODE,
@@ -221,6 +222,9 @@ export const PROVIDER_FAILURE_KINDS = {
   [CONVERSATION_HANDOFF_REFUSAL_CODES.awaitingTarget]: 'conflict',
   [CONVERSATION_HANDOFF_REFUSAL_CODES.sessionChanged]: 'conflict',
   [CONVERSATION_HANDOFF_REFUSAL_CODES.contextChangePending]: 'conflict',
+  // A replaced Session still runs work from before the change; sending again
+  // once it ends restarts the Session.
+  [SESSION_CONFIGURATION_REPLACED_CODE]: 'busy',
   // Continuing a conversation on a paired Station: the paired Station refused
   // the import outright (not retryable as sent), refused this Station's
   // credential, or takes imports only from a Station paired as a Station.

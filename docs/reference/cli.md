@@ -4464,6 +4464,43 @@ station plugin install ./path/to/local-plugin
 station plugin install https://github.com/org/plugin.git --skip=agent:plugin:chat
 ```
 
+When Station saves the plugin but its runtime activation does not finish (a
+`202` whose receipt says `recovery: "required"`), `station plugin install`,
+`station plugin update` and `station registry install` print `⚠️ Installed …,
+but … so it is not active.` (or `Updated …`) and **exit 2**, so a script does
+not continue as if the plugin were active. Station does not retry the
+activation: recover it with `station plugin recover <name>` or **Recover
+plugin** in Plugins; do not install it again. `station plugin install` refuses
+a plugin that already reads Needs recovery, installing nothing, unless you pass
+`--reinstall` to install another copy on purpose. A plugin the server is still
+activating (its row carries `activationInFlight`) is not stopped: `station
+plugin install` and `station plugin recover` say it is still activating, to
+check again shortly, change nothing and exit 0. A change the receipt says
+Station finishes on its own (`recovery: "none"`, such as a legacy git update)
+prints that it finishes in the background and exits 0, and `station plugin
+remove` reports a removal saved this way as removed, exit 0. A receipt from an
+older Station without `recovery` exits 2 and says to check the plugin's row. A
+`202` without the saved marker is still an error.
+
+### `plugin recover <name>`
+
+Recover an installed plugin that reads **Needs recovery**, as **Recover
+plugin** does in Plugins, for example on a headless home server.
+
+```
+station plugin recover <name> [--yes]
+```
+
+It reads the recovery review and prints what it found: the retained contents
+digest, the registry claim, the permissions it requires and the ones awaiting
+approval, and each retained dependency. Then it asks for your decision; a
+non-interactive run is refused unless `--yes` approves what was printed.
+It sends exactly the reviewed revisions. Recovery uses the retained code and
+data and downloads nothing. When it activates the plugin, any trusted
+permissions it still needs are listed for the separate host approval in
+Plugins. When the activation does not finish within the activation limit, it
+says so and exits 2: a retry may work, or remove the plugin.
+
 ### `plugin preview <source>`
 
 Validate a plugin and display its contents without installing it. Shows components, permissions, dependencies, and any conflicts with already-installed plugins.

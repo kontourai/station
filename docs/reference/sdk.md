@@ -3707,6 +3707,32 @@ host-owned approval are separate checks; an arbitrary Station credential is
 not sufficient for every lifecycle operation. A recorded trusted grant also
 does not prove runtime activation: inspect reconciliation and current status.
 
+An install whose runtime activation does not complete (it outruns the
+server's deadline, or fails after saving) is saved but not active, and nothing
+activates it on its own. The server answers HTTP `202` with `success: false`
+and `configurationActivation.status: "pending"`, whose `reason` says to recover
+the plugin (or, rarely, `lifecycle.status: "pending"` when the selection is
+recorded but not yet listed). The mutation resolves with that result rather
+than rejecting, and refreshes the plugin queries. Read it with
+`pluginLifecycleUnapplied(result)` from `@kontourai/station-contracts/plugin`,
+which returns `{ kind: 'activation' }` or `{ kind: 'projection' }`, or
+`undefined` for an applied install. The plugin's row then reads
+`installationReadiness: { state: "pending", recovery: "review" }` until a person
+completes [retained plugin recovery](#retained-plugin-recovery). Do not replay
+the install. Its trusted permissions stay in `pendingConsent`, but their host
+approval refuses a plugin that is not ready, so ask for them after recovery.
+The activation kind also carries the receipt's `recovery`: `required` for a
+plugin activation nothing resumes, `none` when Station finishes on its own (a
+removal, or a legacy git update), and `unknown` for a server that predates the
+field, where the plugin's `installationReadiness` decides. Branch on it, not on
+the reason text. `usePluginUpdateMutation` resolves a saved update the same
+way. `usePluginRemoveMutation` resolves a saved removal too;
+a removal activates nothing, so Station's next reconciliation finishes
+unloading it without any action. `requestPluginRegistryInstallAction(id,
+'install')` reads the registry install the same way.
+`readPluginLifecycleResponse(status, body)` is the HTTP-level reading these
+clients share: `applied`, `saved` (with `unapplied`), or `refused`.
+
 ```tsx
 const { mutate } = usePluginInstallMutation();
 mutate({
@@ -3793,15 +3819,16 @@ const result = await recoverPlugin(apiBase, name, {
     })),
   },
 }, requestOptions);
-// A 202 receipt with configurationActivation.status === 'pending' is retained
-// work awaiting activation. It is not completed installation or a retry signal.
+// A 202 receipt with configurationActivation.status === 'pending' means the
+// recovery was saved but did not activate the plugin; it still needs recovery.
+// It is not a completed installation or an automatic retry signal.
 ```
 
 Recovery continues retained bytes and their data scope; it does not fetch missing
 dependencies or adopt unrelated installations. A changed selection/decision yields
 HTTP 409; unavailable grant evidence can yield 503. Surface the error and require
-a fresh preview and decision. `PluginRecoveryResult` preserves the existing
-`PluginInstallResult` plus the acceptance-time `configurationActivation` receipt.
+a fresh preview and decision. `PluginRecoveryResult` is `PluginInstallResult`,
+whose optional `configurationActivation` is the acceptance-time receipt.
 The mutation disables retries and refreshes plugin, recovery, layout, Agent, and
 Project queries after an accepted response, including pending activation. A network
 failure does not prove that the server had no effect; inspect current state before
@@ -6004,8 +6031,12 @@ own these stages.
 
 ## Package lifecycle results
 
-`listPlugins` also reports optional `installationReadiness`: `ready`, `pending`
-(with `recovery: "review"`), or `unavailable`. Absence preserves compatibility
+`listPlugins` also reports optional `installationReadiness`: `ready`,
+`pending` (with `recovery: "review"`: the plugin is not active), or `unavailable`.
+A row also carries `activationInFlight: true` while this server is still
+activating the plugin: it settles on its own, so offer no recovery and read the
+list again until the flag is gone, for no longer than the activation deadline
+plus a margin (the Plugins view stops at 15 seconds). Absence preserves compatibility
 with older servers; it is not a new readiness proof. Keep pending rows visible,
 but do not load their bundles or enable their actions. The server sets
 `hasBundle: false` until readiness is established. Project Pane availability

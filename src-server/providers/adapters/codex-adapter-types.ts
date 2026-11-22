@@ -102,6 +102,13 @@ export interface CodexSessionRecord extends CodexUsageLimitState {
   boundChannelClosed?: boolean;
   boundChannelCurrent?: () => boolean;
   closeBoundTools?: () => Promise<void>;
+  /**
+   * The session's Station pre-tool policy, held for the engine's life even
+   * without bound tools: Station reads its launch binding to restart a
+   * session whose integrations or Agent changed at its next turn. Codex's
+   * own MCP calls never pass through it.
+   */
+  launchPolicy?: unknown;
   boundToolApprovals?: Map<
     string,
     {

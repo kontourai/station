@@ -2305,7 +2305,11 @@ reserved only when the current session cannot take the turn:
 - it was explicitly closed (terminal `completed`);
 - its engine binding is `closed`, `dead`, or `error`;
 - the engine cannot apply a requested model switch per turn;
-- an explicit handoff or a context boundary asks for one.
+- an explicit handoff or a context boundary asks for one;
+- what an external engine was launched with (its Agent, tool servers or
+  connection) was replaced and the engine cannot resume; the old engine is
+  then stopped. A resumable one is instead parked by the turn's dispatch and
+  restarted in place under the current configuration.
 
 The conversation-open read reports that decision for the next ordinary turn
 without reserving anything (`nextTurnStartsSession`, from

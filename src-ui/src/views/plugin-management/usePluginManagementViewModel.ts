@@ -3,6 +3,7 @@ import {
   PLUGIN_PROPOSAL_QUERY_KEY,
   type PluginLifecycleProposal,
   type PluginLocalSourceStatus,
+  pluginLifecycleUnapplied,
 } from '@kontourai/station-contracts/plugin';
 import {
   type PluginProviderDetail,
@@ -32,6 +33,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useProjects } from '../../contexts/ProjectsContext';
+import { useToast } from '../../contexts/ToastContext';
 import { usePermissions } from '../../core/PermissionManager';
 import { pluginRegistry } from '../../core/PluginRegistry';
 import {
@@ -51,23 +53,17 @@ import {
 } from './types';
 import {
   buildPluginListItems,
+  consentFailureMessage,
   filterPlugins,
   pluginSelectionId,
   slugifyProjectName,
   soleLayoutTargetProject,
   toggleSetValue,
+  unappliedMessage,
+  unappliedTone,
 } from './view-utils';
 
-export function consentFailureMessage(
-  pluginName: string,
-  pending: Array<{ tier: string }>,
-) {
-  if (pending.some((permission) => permission.tier === 'trusted')) {
-    return `${pluginName} is installed but requires host approval before it is ready. Open Plugins, select it, and choose Review Permissions when you're ready.`;
-  }
-
-  return `${pluginName} was installed, but required permissions were not approved.`;
-}
+export { consentFailureMessage } from './view-utils';
 
 /**
  * What a DECLINED install left behind (archive#4288): nothing, and the
@@ -98,6 +94,9 @@ export function usePluginManagementViewModel() {
   const { setLayout, updateParams } = useNavigation();
   const queryClient = useQueryClient();
   const { requestConsent, requestInstallConsent } = usePermissions();
+  // Optional: a removal's outcome is a toast, which reads at phone width
+  // too, where the empty list hides the detail pane's message.
+  const toast = useToast(true);
   const { projects } = useProjects();
   const {
     selectedId: selectedPlugin,
@@ -395,6 +394,7 @@ export function usePluginManagementViewModel() {
   async function install(
     skipList?: string[],
     dataPolicy: 'preserve' | 'retain-and-reset' = 'preserve',
+    options?: { installAgainWhileInactive?: boolean },
   ) {
     const source = installSource.trim();
     if (!source) return;
@@ -450,6 +450,34 @@ export function usePluginManagementViewModel() {
       reinstall && reinstall.pluginName === basis.manifest?.name
         ? reinstall
         : null;
+    // A plugin already installed but not active (Needs recovery) is
+    // recovered, not installed again: another install adds another copy of
+    // its code and asks for consent again. Installing again stays possible,
+    // explicitly, for a source that changed since.
+    const inactive = plugins.find(
+      (plugin) =>
+        !isRejectedPlugin(plugin) &&
+        plugin.name === basis.manifest?.name &&
+        plugin.installationReadiness?.state === 'pending' &&
+        !plugin.activationInFlight,
+    );
+    if (inactive && !reinstalling && !options?.installAgainWhileInactive) {
+      setShowInstallModal(false);
+      selectPlugin(inactive.name);
+      setMessage({
+        type: 'warning',
+        text: `${displayName} is already installed but not active. Recover it to activate it; installing it again adds another copy of its code.`,
+        action: {
+          label: 'Install again anyway',
+          invoke: () => {
+            void install(skipList, dataPolicy, {
+              installAgainWhileInactive: true,
+            });
+          },
+        },
+      });
+      return;
+    }
     const pendingConsent = [
       ...basis.permissions.pendingConsent,
       ...(basis.dependencies ?? []).flatMap((dependency) =>
@@ -534,6 +562,28 @@ export function usePluginManagementViewModel() {
           setShowInstallModal(false);
           if (reinstalling) setReinstall(null);
           if (proposalId) setActiveProposal(null);
+          const unapplied = pluginLifecycleUnapplied(data);
+          if (unapplied) {
+            // Installed but not active. Trusted permissions stay owed, but
+            // their host review refuses a plugin that is not active, so
+            // asking now would take a yes that cannot be recorded; the row's
+            // permissions ask once recovery activates it.
+            setInstallSource('');
+            const installedName =
+              data.plugin?.displayName || data.plugin?.name || displayName;
+            setMessage({
+              type: unappliedTone(unapplied),
+              text: unappliedMessage('installed', installedName, unapplied),
+            });
+            if (data.plugin?.name) selectPlugin(data.plugin.name);
+            // The server's own instruction for an unlisted selection; a
+            // reload replays nothing the person approved.
+            if (unapplied.kind === 'projection') {
+              await reloadPluginsMutation.mutateAsync().catch(() => {});
+              await reloadClientPluginRegistry();
+            }
+            return;
+          }
           const installedPlugin = data.plugin;
           if (!installedPlugin) {
             setMessage({
@@ -733,6 +783,23 @@ export function usePluginManagementViewModel() {
     setMessage(null);
     updateMutation.mutate(proposalId ? { name, proposalId } : name, {
       onSuccess: (data) => {
+        const unapplied = pluginLifecycleUnapplied(data);
+        if (unapplied) {
+          // Saved, not applied. The receipt's `recovery` says whether the
+          // row now needs recovery; open it either way.
+          setMessage({
+            type: unappliedTone(unapplied),
+            text: unappliedMessage(
+              'updated',
+              data.plugin?.name || name,
+              unapplied,
+            ),
+          });
+          selectPlugin(data.plugin?.name || name);
+          if (unapplied.kind === 'projection')
+            void reloadPluginsMutation.mutateAsync().catch(() => {});
+          return;
+        }
         setMessage({
           type: 'success',
           text: `Updated ${data.plugin?.name || name} to v${data.plugin?.version}`,
@@ -765,13 +832,32 @@ export function usePluginManagementViewModel() {
     if (activeProposal?.kind === 'remove') setActiveProposal(null);
     removeMutation.mutate(proposalId ? { name, proposalId } : name, {
       onSuccess: async (result) => {
-        setMessage({
+        // Short on purpose: the toast sits over the top of a phone's list and
+        // must stay within two lines at 320px so it covers no control.
+        const kept = result.lifecycle?.reclamation === 'not-proven';
+        // A removal activates nothing, so a saved removal whose runtime reload
+        // did not finish is completed by Station's next reconciliation.
+        const unloading = Boolean(pluginLifecycleUnapplied(result));
+        const removed: PluginMessage = {
           type: 'success',
-          text:
-            result.lifecycle?.reclamation === 'not-proven'
-              ? `Removed ${name} from Station. Its stored data and code are retained.`
+          text: unloading
+            ? kept
+              ? `Removed ${name}, still unloading. Data and code kept.`
+              : `Removed ${name}. It finishes unloading in the background.`
+            : kept
+              ? `Removed ${name}. Its data and code are retained.`
               : `Removed ${name}.`,
-        });
+        };
+        if (toast) {
+          setMessage(null);
+          toast.showToast(
+            removed.text,
+            undefined,
+            undefined,
+            undefined,
+            'success',
+          );
+        } else setMessage(removed);
         deselectPlugin();
         await reloadClientPluginRegistry();
       },
@@ -993,6 +1079,8 @@ export function usePluginManagementViewModel() {
     layoutAssignment,
     loadingProviderDetails,
     message,
+    /** A recovery outcome outlives its panel, so the view keeps it. */
+    setMessage,
     plugins,
     previewData,
     previewMutation,

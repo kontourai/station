@@ -285,7 +285,59 @@ legacy SSE approval transport. Canonical orchestration clients instead read
 The [staged evaluator](../../src-server/runtime/agents/pre-tool-policy.ts)
 can allow, deny, or request an interactive decision. It checks current runtime
 generation, delegation and configuration protection before grants; the approval
-guardian can also decide a call. The following is the interactive branch, not
+guardian can also decide a call.
+
+The runtime-generation check refuses a call decided by policy that has since
+been replaced. On Station's engine, an Agent's hooks are replaced when that
+Agent is rebuilt, and its next turn uses the rebuilt Agent. An external engine
+(Claude Code, Codex, OpenCode and other ACP engines) keeps the policy it was
+started with for the whole session, together with the grants and tool servers
+its engine process was launched with. A
+[policy generation](../../src-server/runtime/agents/pre-tool-policy-generation.ts)
+therefore re-reads what the session was launched with when any configuration
+change lands: its Agent record, the Agent definition resolved the way a start
+resolves it (each tool server's definition, whether it exists and is enabled,
+its disabled tools, Project default tool servers, skills and grants), the
+tool servers an ACP or OpenCode connection provides by itself
+(`provideToolServers`, also kept beside the Agent's own with
+`mcpMode: 'add'`), and the engine connection it runs on (Claude and Codex
+connection config with their model proxy connection and active credential
+profile, or the ACP connection record). Recovery bookkeeping, probe
+timestamps and the order of tool-name lists do not count. A probe that finds
+a new tool does count when the session was given that server's tool list
+(its Agent or integration selects or disables tools by name). If all of that is
+unchanged, the session keeps running, whatever else changed. If any of it
+changed, or the Agent was deleted, every later call in that session is
+refused. The conversation's next message then restarts the engine in place
+from its resume cursor under the current configuration, or, for an engine
+that cannot resume, starts a successor session and stops the old engine if
+it is idle. A
+session still running work it started under the old configuration refuses
+that message until the work ends, so a conversation never has two engines.
+While a change is still being applied, or the configuration cannot be read,
+a call is refused with a request to retry it.
+
+Codex's own MCP calls never pass through this evaluator, on any build: it
+decides only Station's bound dynamic tools (browser and device tools, and the
+Station Control tools a session serves on that channel). A bound call refused
+because the configuration was replaced returns the refusal's text to the
+model as the tool's result, so the model can tell the person what happened. A Codex Agent session
+still holds a launch binding, so when its Agent or integrations change, its
+next turn restarts it under the current configuration; until then it keeps
+calling the tools it was launched with, for the rest of the turn in
+progress too.
+
+The launch also binds Claude's Artifact tool setting and, for a session
+started confined, the confined network policy its egress broker copied at
+start; changing either replaces such a session. New-chat defaults (approval
+mode, workspace isolation, the no-Project folder) apply to the next chat
+only. A session that started while a change was still being applied
+refuses its tools and restarts at its next turn. Known limit: nothing in the
+conversation shows that a session was replaced until its next message
+restarts it. Known limit: a predecessor still running work when its
+successor starts is not stopped, since stopping it would kill that work; it
+stays resident with its tools refused until the idle sweep parks it (never,
+with idle parking turned off). The following is the interactive branch, not
 every possible tool outcome:
 
 1. `beforeToolCall` invokes the staged policy with the current invocation.

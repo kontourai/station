@@ -5519,9 +5519,18 @@ scope and other admission rules still apply.
 The successful result carries plugin/tools/dependencies and permission state.
 `permissions.dependencies` reports the installed transitive graph's remaining
 approval needs, not merely the preview's requirements. Older responses can omit
-it, which means unknown. A persisted install awaiting activation returns 202
-with `success: false` and `configurationActivation`, or a pending lifecycle
-receipt. It is not complete solely because the HTTP request was accepted.
+it, which means unknown. An install saved without completing its activation
+returns 202 with `success: false` and `configurationActivation` (status
+`pending`) whose `recovery` is `"required"`, or a pending lifecycle receipt.
+The activation is not continuing: the plugin is not active, and its
+`installationReadiness` reads `pending` with `recovery: "review"` until a
+person recovers it (a list read made while the install request is still open
+also carries `activationInFlight: true` on the row, and the readiness still reads `pending`, so a client that predates the flag reads it as before). A receipt stopped at the deadline also carries
+`deadlineMs`. Changes that finish on the reconciliation rail (a removal, a
+legacy git update) carry `recovery: "none"`. It is
+not complete solely because the HTTP request was accepted. Clients read these
+responses with `readPluginLifecycleResponse` from
+`@kontourai/station-contracts/plugin`.
 
 Consent echoes the preview's `gitMetadata`. When an open install proposal names
 the source, or Station previously installed it without its git metadata, and the
@@ -5571,7 +5580,8 @@ retained code with `dataPolicy: "preserve"`; this is not an in-place `git pull`
 of its selected bytes. Its update path supplies no new operator consent, so
 changes requiring a preview decision must be completed through preview/install.
 Missing update source or managed update refusal returns 409; pending lifecycle
-or activation returns 202. A managed update answers install trust refusals as
+or activation returns 202, and as for install, an update saved without
+completing its activation leaves the plugin inactive until recovered. A managed update answers install trust refusals as
 install does: 409 `plugin-install-trust-refused` or `plugin-trust-record-newer`,
 and 503 `plugin-trust-records-unavailable`. A registry update answers registry
 refusals as install does too, such as 409 `agent-catalog-ambiguous` or 503
@@ -5594,8 +5604,10 @@ contains the current identity, compensation, and activation branches.
 installed manifest identity, withdraws owned contributions/grants, and reconciles
 runtime state while preserving conversation memory. Managed package removal
 retains code/data for its lifecycle owner; it is not immediate disk reclamation.
-A pending activation returns 202 with `success: false` and its receipt. Inspect
-the outcome before retrying or declaring cleanup complete.
+A pending activation returns 202 with `success: false` and its receipt: the
+removal is saved and the runtime finishes unloading the plugin on its next
+reconciliation. Inspect the outcome before retrying or declaring cleanup
+complete.
 
 ### Serve Plugin Bundle (JS)
 
