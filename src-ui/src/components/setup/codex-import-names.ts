@@ -2,8 +2,9 @@
  * Name planning for the Codex import dialog: which rows need a new name, the
  * first free name to suggest, and what is wrong with a name the person typed.
  *
- * Names are compared without regard to case, because a skill is a folder and
- * a Mac's file system treats `Changelog` and `changelog` as the same folder.
+ * Names are compared without regard to case or Unicode composition, because
+ * a skill is a folder and a Mac's file system treats `Changelog` and
+ * `changelog`, or a composed and a decomposed `é`, as the same folder.
  */
 import {
   isSafeSkillName,
@@ -26,7 +27,7 @@ interface ImportEntry {
   collision: boolean;
 }
 
-const fold = (name: string) => name.toLowerCase();
+const fold = (name: string) => name.normalize('NFC').toLowerCase();
 
 function firstFreeName(base: string, taken: ReadonlySet<string>): string {
   for (let index = 1; ; index += 1) {
