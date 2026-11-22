@@ -71,6 +71,7 @@ function majorVersion(executable: string): number | undefined {
   const probe = spawnSync(executable, ['--version'], {
     encoding: 'utf8',
     timeout: 30_000,
+    windowsHide: true,
   });
   const match = /(\d+)\.\d+\.\d+\.\d+/.exec(probe.stdout ?? '');
   return match ? Number(match[1]) : undefined;
