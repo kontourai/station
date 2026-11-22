@@ -34,28 +34,31 @@ const archived = {
 describe.each([
   ['off', []],
   ['on', [{ id: 'project-pause-archive', enabled: true }]],
-])('ProjectHeldBanner with the pause-and-archive preview %s', (_label, previews) => {
-  beforeEach(() => {
-    sdkMocks.previews = previews;
-    sdkMocks.mutate.mockReset();
-  });
+])(
+  'ProjectHeldBanner with the pause-and-archive preview %s',
+  (_label, previews) => {
+    beforeEach(() => {
+      sdkMocks.previews = previews;
+      sdkMocks.mutate.mockReset();
+    });
 
-  test('a paused Project says so and Resume lifts the hold', () => {
-    render(<ProjectHeldBanner slug="atlas" lifecycle={paused} />);
-    expect(screen.getByRole('status').textContent).toContain('Paused.');
-    fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
-    expect(sdkMocks.mutate).toHaveBeenCalledWith('resume');
-  });
+    test('a paused Project says so and Resume lifts the hold', () => {
+      render(<ProjectHeldBanner slug="atlas" lifecycle={paused} />);
+      expect(screen.getByRole('status').textContent).toContain('Paused.');
+      fireEvent.click(screen.getByRole('button', { name: 'Resume' }));
+      expect(sdkMocks.mutate).toHaveBeenCalledWith('resume');
+    });
 
-  test('an archived Project says so and Unarchive lifts the hold', () => {
-    render(<ProjectHeldBanner slug="atlas" lifecycle={archived} />);
-    expect(screen.getByRole('status').textContent).toContain('Archived.');
-    fireEvent.click(screen.getByRole('button', { name: 'Unarchive' }));
-    expect(sdkMocks.mutate).toHaveBeenCalledWith('unarchive');
-  });
+    test('an archived Project says so and Unarchive lifts the hold', () => {
+      render(<ProjectHeldBanner slug="atlas" lifecycle={archived} />);
+      expect(screen.getByRole('status').textContent).toContain('Archived.');
+      fireEvent.click(screen.getByRole('button', { name: 'Unarchive' }));
+      expect(sdkMocks.mutate).toHaveBeenCalledWith('unarchive');
+    });
 
-  test('a Project that is not held shows no banner', () => {
-    render(<ProjectHeldBanner slug="atlas" lifecycle={undefined} />);
-    expect(screen.queryByRole('status')).toBeNull();
-  });
-});
+    test('a Project that is not held shows no banner', () => {
+      render(<ProjectHeldBanner slug="atlas" lifecycle={undefined} />);
+      expect(screen.queryByRole('status')).toBeNull();
+    });
+  },
+);

@@ -458,23 +458,26 @@ describe('ProjectSidebar Boards section mounts (#2062)', () => {
 describe.each([
   ['off', []],
   ['on', [{ id: 'project-pause-archive', enabled: true }]],
-])('ProjectSidebar archived projects with the pause-and-archive preview %s', (_label, previews) => {
-  test('an archived Project waits behind the Archived toggle, which reveals it', () => {
-    resetState();
-    featurePreviews.push(...previews);
-    projects.push({ id: 'p1', slug: 'station', name: 'Station' }, {
-      id: 'p2',
-      slug: 'ferry',
-      name: 'Ferry',
-      lifecycle: { state: 'archived', changedAt: '2026-11-16T09:00:00Z' },
-    } as (typeof projects)[number]);
-    renderSidebar(<ProjectSidebar />);
-    expect(screen.getByRole('button', { name: 'Station' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Ferry' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Archived (1)' }));
-    expect(screen.getByRole('button', { name: 'Ferry' })).toBeTruthy();
-  });
-});
+])(
+  'ProjectSidebar archived projects with the pause-and-archive preview %s',
+  (_label, previews) => {
+    test('an archived Project waits behind the Archived toggle, which reveals it', () => {
+      resetState();
+      featurePreviews.push(...previews);
+      projects.push({ id: 'p1', slug: 'station', name: 'Station' }, {
+        id: 'p2',
+        slug: 'ferry',
+        name: 'Ferry',
+        lifecycle: { state: 'archived', changedAt: '2026-11-16T09:00:00Z' },
+      } as (typeof projects)[number]);
+      renderSidebar(<ProjectSidebar />);
+      expect(screen.getByRole('button', { name: 'Station' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Ferry' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Archived (1)' }));
+      expect(screen.getByRole('button', { name: 'Ferry' })).toBeTruthy();
+    });
+  },
+);
 
 describe('ProjectSidebar panel order (#2059)', () => {
   const panelRowLabels = () =>
