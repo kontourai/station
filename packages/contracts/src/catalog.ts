@@ -219,14 +219,14 @@ export interface RegistryItem {
  * Where an app's screen can open: as a screen of its own, as a view inside a
  * project, or as a pane beside other work.
  */
-export type RegistryAppPlacement = 'screen' | 'project-view' | 'pane';
+type RegistryAppPlacement = 'screen' | 'project-view' | 'pane';
 
 /**
  * What an app works with. Each is read from a manifest declaration: agents,
  * chat capabilities and prompt actions; knowledge namespaces; panes that need
  * a task; and panes or layouts that need a project's files.
  */
-export type RegistryAppWorksWith =
+type RegistryAppWorksWith =
   | 'chats-and-agents'
   | 'knowledge'
   | 'tasks'
@@ -363,7 +363,7 @@ export function parseRegistryAppFacts(value: unknown): RegistryAppFacts | null {
 }
 
 /** The manifest fields {@link deriveRegistryAppFacts} reads. */
-export interface RegistryAppManifest {
+interface RegistryAppManifest {
   capabilities?: readonly string[];
   permissions?: readonly string[];
   agents?: readonly unknown[];
