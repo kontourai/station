@@ -254,6 +254,7 @@ export async function bootstrapRuntimeDefaultAgent(
     // for an agent the external engine now owns would let chat streams
     // register requesters against an instance no agent consults.
     context.agentHooksMap?.delete('default');
+    context.agentFixedTokens?.delete('default');
     context.agentMetadataMap.set('default', {
       slug: 'default',
       name: STATION_AGENT_DISPLAY_NAME,
@@ -289,6 +290,7 @@ export async function bootstrapRuntimeDefaultAgent(
     context.memoryAdapters.delete('default');
     context.agentMetadataMap.delete('default');
     context.agentHooksMap?.delete('default');
+    context.agentFixedTokens?.delete('default');
     context.logger.info(
       'Default agent not registered because no launchable model is configured.',
     );

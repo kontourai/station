@@ -432,6 +432,9 @@ describe('bootstrapRuntimeDefaultAgent', () => {
     const agentTools = new Map([['default', [{ name: 'stale-tool' }]]]);
     const memoryAdapters = new Map([['default', { stale: true }]]);
     const agentMetadataMap = new Map([['default', { slug: 'default' }]]);
+    const agentFixedTokens = new Map([
+      ['default', { systemPromptTokens: 199, mcpServerTokens: 9 }],
+    ]);
 
     const agents = await bootstrapRuntimeDefaultAgent({
       appConfig: {} as any,
@@ -452,9 +455,11 @@ describe('bootstrapRuntimeDefaultAgent', () => {
       agentTools,
       memoryAdapters: memoryAdapters as any,
       agentMetadataMap,
+      agentFixedTokens,
     });
 
     expect(agents).toEqual({});
+    expect(agentFixedTokens.has('default')).toBe(false);
     expect(activeAgents.has('default')).toBe(false);
     expect(agentTools.has('default')).toBe(false);
     expect(memoryAdapters.has('default')).toBe(false);
@@ -488,6 +493,9 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
     const memoryAdapters = new Map([['default', { stale: true }]]);
     const agentMetadataMap = new Map();
     const agentHooksMap = new Map([['default', { stale: true } as any]]);
+    const agentFixedTokens = new Map([
+      ['default', { systemPromptTokens: 199, mcpServerTokens: 9 }],
+    ]);
     const createModel = vi.fn(async () => ({ id: 'model-1' }));
     const framework = {
       createTempAgent: vi.fn(async () => fixtureAgent()),
@@ -500,6 +508,7 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
       memoryAdapters,
       agentMetadataMap,
       agentHooksMap,
+      agentFixedTokens,
       createModel,
       framework,
       logger,
@@ -524,6 +533,7 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
           memoryAdapters: memoryAdapters as any,
           agentMetadataMap,
           agentHooksMap,
+          agentFixedTokens,
           ...overrides,
         }),
     };
@@ -549,6 +559,8 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
     expect(scenario.agentTools.has('default')).toBe(false);
     expect(scenario.memoryAdapters.has('default')).toBe(false);
     expect(scenario.agentHooksMap.has('default')).toBe(false);
+    // #5390: nor a prompt estimate for an instance that no longer exists.
+    expect(scenario.agentFixedTokens.has('default')).toBe(false);
     expect(scenario.agentMetadataMap.get('default')).toEqual(
       expect.objectContaining({
         slug: 'default',

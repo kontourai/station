@@ -345,7 +345,7 @@ describe('GET /:slug/conversations/:conversationId/stats after an engine change 
 
     const after = await f.stats();
     expect(after.contextTokens).toBe(130);
-    expect(after.modelId).not.toBe('codex-model');
+    expect(after.modelId).toBe('');
     expect(after.contextWindowPercentage).toBeUndefined();
   });
 

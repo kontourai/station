@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runWithAgentTurn } from '@kontourai/agent-runtime';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -464,6 +465,38 @@ describe('createAgentHooks — turns a model reported no usage for (#5390)', () 
     expect(stats.estimatedCost).toBeNull();
     // Nothing was reported, so the last message is not re-written.
     expect(adapter.removeLastMessage).not.toHaveBeenCalled();
+  });
+
+  test('a durable turn replayed under one invocation id is folded into the stats once', async () => {
+    // A durable runtime can run the turn-end hook again for the same
+    // invocation (a resumed turn); the receipt must keep it from counting twice.
+    const adapter = statsAdapter();
+    const hooks = createAgentHooks(
+      createDeps({
+        appConfig: { defaultModel: 'scripted-echo' },
+        configLoader: { loadAgent: vi.fn().mockResolvedValue({}) },
+        memoryAdapters: new Map([['default', adapter]]),
+      }),
+    );
+    const lease = { key: { invocationId: 'invocation-1' } } as any;
+    const end = () =>
+      runWithAgentTurn(lease, () =>
+        hooks.afterInvocation!({
+          invocation: turn,
+          usage: { promptTokens: 4, completionTokens: 2 },
+          toolCallCount: 1,
+        }),
+      );
+
+    await end();
+    await end();
+
+    expect(adapter.stats()).toMatchObject({
+      turns: 1,
+      toolCalls: 1,
+      inputTokens: 4,
+      outputTokens: 2,
+    });
   });
 
   test('a failed turn with nothing reported records nothing', async () => {

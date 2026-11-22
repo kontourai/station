@@ -300,13 +300,14 @@ export async function getConversationStats(
       throw new Error('Conversation usage aggregate was invalid');
     }
     if (!hasUsageSignal(aggregate)) return undefined;
-    const effectiveModelId = aggregate.lastModelId || modelId;
-    // The window is resolved for the model the newest engine reported. After
-    // an engine change, an engine that reported no model has no window here:
-    // the agent's configured model need not be the model that engine runs.
+    // The model is the one the newest engine reported. After an engine
+    // change, an engine that reported no model has none here (and so no
+    // window): the agent's configured model need not be the model that
+    // engine runs.
     const windowModelId =
       aggregate.lastModelId ??
       ((aggregate.engines?.length ?? 0) > 1 ? undefined : modelId);
+    const effectiveModelId = windowModelId ?? '';
     const reportedContextWindowTokens = isValidContextObservation(
       aggregate.contextTokens,
       aggregate.contextWindowTokens,
