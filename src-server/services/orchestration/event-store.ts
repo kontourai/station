@@ -4156,6 +4156,34 @@ export class EventStore {
     return { status: 'found', decisions, delegations, partialDelegations };
   }
 
+  /**
+   * How much history these Sessions hold, without loading it: their event
+   * count and the stored bytes of their events and out-of-line content
+   * (`octet_length()` takes each payload's size from its row header without
+   * decoding it). A whole-history read checks this before it loads and
+   * resolves every payload.
+   */
+  readSessionsHistoryFootprint(threadIds: readonly string[]): {
+    events: number;
+    bytes: number;
+  } {
+    let events = 0;
+    let bytes = 0;
+    for (const threadId of new Set(threadIds)) {
+      const row = this.readStatement(
+        `SELECT COUNT(*) AS events, COALESCE(SUM(octet_length(payload)), 0) AS bytes
+         FROM orchestration_events WHERE thread_id = ?`,
+      ).get(threadId) as { events: number; bytes: number };
+      const spilled = this.readStatement(
+        `SELECT COALESCE(SUM(bytes), 0) AS bytes
+         FROM orchestration_event_content WHERE thread_id = ?`,
+      ).get(threadId) as { bytes: number };
+      events += row.events;
+      bytes += row.bytes + spilled.bytes;
+    }
+    return { events, bytes };
+  }
+
   readSessionInventoryHighWater(threadId: string): number {
     return (
       (

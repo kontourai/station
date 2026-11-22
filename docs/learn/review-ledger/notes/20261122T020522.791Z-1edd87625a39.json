@@ -1,0 +1,9 @@
+{
+  "revision": "8d861da1494bb0518bd049acf9b2c419a87383ef",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Added a staged scenario row probing each handoff refusal code through the routes; module-map claims citing this qualification still hold.","inputs":["src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Added a staged scenario row probing each handoff refusal code through the routes; module-map claims citing this qualification still hold.","inputs":["src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts"]}
+  ]
+}

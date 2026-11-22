@@ -127,7 +127,6 @@ describe('useOutboundQueueSnapshot', () => {
     const view = renderHook(
       ({ activeSession }: { activeSession: ChatSession }) =>
         useConversationBoundaryDialogs({
-          agents: [],
           apiBase: 'http://station.test',
           activeSession,
           allSessions: [],

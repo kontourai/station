@@ -303,7 +303,6 @@ describe('ConversationHandoffDialog', () => {
       .mockResolvedValueOnce({ handoff: overrideReceipt });
     function Composer() {
       const dialogs = useConversationBoundaryDialogs({
-        agents: [profile, binding],
         apiBase: 'http://station.test',
         activeSession: session,
         allSessions: [session],
@@ -512,7 +511,6 @@ describe('ConversationHandoffDialog', () => {
     // dialog's `blockedReason` for the active conversation.
     function Composer() {
       const dialogs = useConversationBoundaryDialogs({
-        agents: [profile, binding],
         apiBase: 'http://station.test',
         activeSession: session,
         allSessions: [session],

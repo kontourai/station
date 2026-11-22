@@ -1,0 +1,29 @@
+{
+  "revision": "d398771d9b0949670eb34b549e7da538e8253822",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rewrote the Header/Leaving bullets and added a Fork bullet: Fork from here (and Regenerate / Edit and resend) now opens ConversationForkDialog built on AgentModelChoice, shared with Switch agent; the New chat draft no longer has a fork mode (NewChatModal mode prop and DockStartComposer forkMode removed). Checked against ChatDock openForkDraft/runFork, ConversationBoundaryDialogs and the fork dialog tests. Switch agent paragraph now names the shared picker; its other claims (draft as first message, catch-up turn, Details, disabled reasons) were checked unchanged in ConversationHandoffDialog.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ConversationHandoffDialog.test.tsx","src-ui/src/__tests__/NewChatModalEngineChips.test.tsx","src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx","src-ui/src/components/chat-dock/DockStartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Replaced the 'Fork from here keeps its own Agent list' line with the shared small picker description (current Agent selected, model, Fork with ...). Regenerate / Edit and resend claims checked unchanged against resendFromMessage, which still forks before the message and runs the message's Agent directly when it can run. New chat start claims are unaffected: only the fork mode left NewChatModal.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"NewChatModal lost only its fork mode. The cited fork route, Station Control fork scope and lineage paragraphs describe server behavior and do not reference the New chat draft; checked that no claim here names the fork draft.","inputs":["docs/architecture/module-map.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"NewChatModal changed only by removing its fork mode (banner, preferred-agent selection, source-model default). The onboarding claims (connect an engine, setup return, Continue without them) are on the start path, which is unchanged; the fork mentions here are engine SDK helpers, not the UI.","inputs":["docs/design/connections-onboarding.md","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"ChatDock change is limited to the fork path (dialog instead of New chat draft) and refusal copy; no claim here about pane relationships, focus or regions depends on it.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"ChatDock no longer opens the New chat draft for a fork. Checked the draft and placement claims (pending opens cannot replace a later New chat draft, collapsed bar 'fork D1' is a design decision label, not conversation forks); none depends on the fork draft.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"The fork dialog uses the existing ResponsiveDialogSurface and ResponsiveSurfaceActions, like Switch agent; phone rendering checked live at 412px. No claim here changes.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"ChatDock now sends the fork idempotency key per source turn and target Agent (forkAttemptKey) and shows refusal copy keyed by CONVERSATION_FORK_REFUSAL_CODES; the documented fork route request and refusal-code claims are unchanged by this UI change.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"ChatDock change touches only the fork dialog path; no configuration key or default described here changed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"ConversationHandoffDialog now renders its Agent list and model field through AgentModelChoice and maps refusals through conversationRefusalCopy. The handoff:<idempotencyKey> clientTurnId claim was verified live (turn.started carried handoff:57da27d9...). No request shape changed.","inputs":["docs/reference/session-api.md","src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"ChatDock's fork path change does not alter any concept described here (conversations, sessions, forks as separate conversations remain as stated).","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"ChatDock change is limited to the fork dialog and refusal copy; the projectless chat draft handoff for boards still uses the New chat draft, unchanged.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

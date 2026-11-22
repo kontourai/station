@@ -59,6 +59,16 @@ bounded replay. An explicit fork creates a separate Conversation. A handoff
 while the current Session still has a turn running, or has not settled, is
 refused (`409`) with `code: "conversation_handoff_predecessor_busy"`
 (`CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE`).
+The handoff routes refuse a request that conflicts with the conversation's
+state with `409` and a code from `CONVERSATION_HANDOFF_REFUSAL_CODES`:
+`conversation_handoff_idempotency_conflict` (the key already names a different
+target or message), `conversation_handoff_awaiting_target` (an earlier handoff
+is reserved and its target Session has not started),
+`conversation_handoff_session_changed` (a staged handoff named a Session the
+conversation has moved past) and `conversation_handoff_context_change_pending`
+(a staged handoff met an unsent context change). An ordinary `/chat` send that
+meets a reserved handoff is refused the same way, `409` with
+`conversation_handoff_awaiting_target`.
 
 An ordinary follow-up is refused while the native return's seed-bearing turn
 has no observed completion, including a failed or uncertain turn. Acceptance of

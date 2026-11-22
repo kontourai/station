@@ -1,0 +1,15 @@
+{
+  "revision": "13483c4f23ed6cc521785732b1b65a8da58be452",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked citing pages (module map, agent-runtime CONTEXT, session-api, monument docs): readConversationForkSource now checks the SQL footprint after authorization and refuses past FORK_SOURCE_MAX_EVENTS/BYTES; the shared authorization helper now only checks readability, with carried-history reads unchanged. Module map updated; other claims unchanged.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked citing pages (module map, agent-runtime CONTEXT, session-api, monument docs): readConversationForkSource now checks the SQL footprint after authorization and refuses past FORK_SOURCE_MAX_EVENTS/BYTES; the shared authorization helper now only checks readability, with carried-history reads unchanged. Module map updated; other claims unchanged.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked citing pages (module map, agent-runtime CONTEXT, session-api, monument docs): readConversationForkSource now checks the SQL footprint after authorization and refuses past FORK_SOURCE_MAX_EVENTS/BYTES; the shared authorization helper now only checks readability, with carried-history reads unchanged. Module map updated; other claims unchanged.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked citing pages (module map, agent-runtime CONTEXT, session-api, monument docs): readConversationForkSource now checks the SQL footprint after authorization and refuses past FORK_SOURCE_MAX_EVENTS/BYTES; the shared authorization helper now only checks readability, with carried-history reads unchanged. Module map updated; other claims unchanged.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked citing pages (module map, agent-runtime CONTEXT, session-api, monument docs): readConversationForkSource now checks the SQL footprint after authorization and refuses past FORK_SOURCE_MAX_EVENTS/BYTES; the shared authorization helper now only checks readability, with carried-history reads unchanged. Module map updated; other claims unchanged.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]}
+  ]
+}

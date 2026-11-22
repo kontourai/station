@@ -1,0 +1,15 @@
+{
+  "revision": "8d861da1494bb0518bd049acf9b2c419a87383ef",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Added CONVERSATION_HANDOFF_REFUSAL_CODES beside the predecessor-busy code; documented in the contracts orchestration row and session-api. Pages citing other orchestration contract shapes are unaffected.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Added CONVERSATION_HANDOFF_REFUSAL_CODES beside the predecessor-busy code; documented in the contracts orchestration row and session-api. Pages citing other orchestration contract shapes are unaffected.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Added CONVERSATION_HANDOFF_REFUSAL_CODES beside the predecessor-busy code; documented in the contracts orchestration row and session-api. Pages citing other orchestration contract shapes are unaffected.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Added CONVERSATION_HANDOFF_REFUSAL_CODES beside the predecessor-busy code; documented in the contracts orchestration row and session-api. Pages citing other orchestration contract shapes are unaffected.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added CONVERSATION_HANDOFF_REFUSAL_CODES beside the predecessor-busy code; documented in the contracts orchestration row and session-api. Pages citing other orchestration contract shapes are unaffected.","inputs":["packages/contracts/src/orchestration.ts"]}
+  ]
+}

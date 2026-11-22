@@ -29,17 +29,33 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
   /** How a scripted seed failure ends its turn: an engine error, or a stop. */
   seedFailureMethod: 'runtime.error' | 'turn.aborted' = 'runtime.error';
   announceNativeIdentityDuringTurn = false;
+  /**
+   * A tool-heavy, streamed answer: each turn writes this many tool calls
+   * (started and completed, each with `toolOutputBytes` of output) and text
+   * deltas before it completes, as a real engine's turn does.
+   */
+  turnShape: { toolCalls: number; toolOutputBytes: number; deltas: number } = {
+    toolCalls: 0,
+    toolOutputBytes: 0,
+    deltas: 0,
+  };
   private readonly nativeIds = new Map<string, string>();
   private readonly sessions = new Map<string, ProviderSession>();
 
   constructor(
-    readonly provider: 'claude' | 'codex',
+    /** Any engine id; `claude` and `codex` keep their display names. */
+    readonly provider: string,
     readonly nativeReturn = false,
     private readonly ownership?: NativeSessionOwnership,
     private readonly turnOrdinalOffset = 0,
   ) {
     this.metadata = {
-      displayName: provider === 'claude' ? 'Claude Code' : 'Codex',
+      displayName:
+        provider === 'claude'
+          ? 'Claude Code'
+          : provider === 'codex'
+            ? 'Codex'
+            : provider,
       description: 'Terminal cross-Agent qualification adapter',
       capabilities: ['agent-runtime'],
       ...(nativeReturn
@@ -203,6 +219,35 @@ export class TerminalHandoffAdapter implements ProviderAdapterShape {
       );
       return { threadId: input.threadId, turnId };
     }
+    for (let call = 0; call < this.turnShape.toolCalls; call++) {
+      const tool = {
+        ...base,
+        itemId: `${turnId}:tool-${call}`,
+        toolCallId: `${turnId}:call-${call}`,
+        toolName: 'read_file',
+      };
+      this.events.push({
+        ...tool,
+        eventId: `${turnId}:tool-${call}:started`,
+        method: 'tool.started',
+        arguments: { path: `src/file-${call}.ts` },
+      });
+      this.events.push({
+        ...tool,
+        eventId: `${turnId}:tool-${call}:completed`,
+        method: 'tool.completed',
+        status: 'success',
+        output: `${call}:`.padEnd(this.turnShape.toolOutputBytes, 'o'),
+      });
+    }
+    for (let delta = 0; delta < this.turnShape.deltas; delta++)
+      this.events.push({
+        ...base,
+        eventId: `${turnId}:delta-${delta}`,
+        method: 'content.text-delta',
+        itemId: `${turnId}:text`,
+        delta: `chunk ${delta} `,
+      });
     const token =
       /HANDOFF-CARRY-[0-9]+/.exec(
         `${input.ambientContext ?? ''}\n${input.input}`,

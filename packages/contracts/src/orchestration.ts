@@ -1666,6 +1666,27 @@ export const CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE =
   'conversation_handoff_predecessor_busy';
 
 /**
+ * Machine codes on a refused Agent/engine handoff beside
+ * {@link CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE}. Each names a state of the
+ * conversation the request conflicts with, so none is worth retrying as sent.
+ */
+export const CONVERSATION_HANDOFF_REFUSAL_CODES = Object.freeze({
+  /** The idempotency key already names a different target or message. */
+  idempotencyConflict: 'conversation_handoff_idempotency_conflict',
+  /**
+   * An earlier handoff is reserved and its target Session has not started;
+   * that handoff must start (or be withdrawn) before another turn or handoff.
+   */
+  awaitingTarget: 'conversation_handoff_awaiting_target',
+  /** A staged handoff named a current Session the conversation has moved past. */
+  sessionChanged: 'conversation_handoff_session_changed',
+  /** A staged handoff met a context change that has not been sent yet. */
+  contextChangePending: 'conversation_handoff_context_change_pending',
+} as const);
+export type ConversationHandoffRefusalCode =
+  (typeof CONVERSATION_HANDOFF_REFUSAL_CODES)[keyof typeof CONVERSATION_HANDOFF_REFUSAL_CODES];
+
+/**
  * A turn refused because what its Session's engine was launched with (its
  * Agent, tool servers or engine connection) changed while the engine was
  * still running work started under the old configuration. Sending again
@@ -1761,6 +1782,41 @@ export interface ConversationContextSeedReceipt {
 
 export const CONVERSATION_CONTEXT_UNAVAILABLE_CODE =
   'conversation-context-unavailable';
+
+/**
+ * Machine codes on a refused `POST /agents/:slug/conversations/:id/fork`, so a
+ * client says what to do instead of showing the server's sentence. Every 4xx
+ * envelope that route answers for a JSON body within the size limit carries
+ * one of these, a Station Control scope code, `conversation_lineage_too_long`,
+ * or {@link CONVERSATION_CONTEXT_UNAVAILABLE_CODE} (a saved fork context that
+ * needs reconciling). A body that is not JSON (400) or is too large (413)
+ * gets the shared request-validation envelope, without a code.
+ */
+export const CONVERSATION_FORK_REFUSAL_CODES = Object.freeze({
+  /** The request names a malformed Agent or conversation identity (400). */
+  invalidRequest: 'conversation_fork_invalid_request',
+  /** The source Agent or the conversation is absent or not visible (404). */
+  sourceNotFound: 'conversation_fork_source_not_found',
+  /** The target Agent is absent, or not available in the target Project (404). */
+  targetUnavailable: 'conversation_fork_target_unavailable',
+  /** The caller's identity could not be resolved (403). */
+  callerUnresolved: 'conversation_fork_caller_unresolved',
+  /** The source history could not be read in full right now (409). */
+  historyUnavailable: 'conversation_fork_history_unavailable',
+  /**
+   * The history is past the fork read bound (decided before it is read), or
+   * even its text up to the selected turn is too large to save (409).
+   */
+  historyTooLarge: 'conversation_fork_history_too_large',
+  /** The selected turn is not a completed assistant answer (409). */
+  turnIncomplete: 'conversation_fork_turn_incomplete',
+  /** The source Agent does not own the conversation or the selected turn (409). */
+  sourceAgentMismatch: 'conversation_fork_source_agent_mismatch',
+  /** The idempotency key already names a different request or a deleted fork (409). */
+  idempotencyConflict: 'conversation_fork_idempotency_conflict',
+} as const);
+export type ConversationForkRefusalCode =
+  (typeof CONVERSATION_FORK_REFUSAL_CODES)[keyof typeof CONVERSATION_FORK_REFUSAL_CODES];
 
 export interface ConversationHandoffStatusProjection {
   conversationId: string;
