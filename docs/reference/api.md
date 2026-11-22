@@ -1987,8 +1987,9 @@ Station-engine Agent is launchable.
 
 The [default-Agent builder](../../src-server/runtime/agents/runtime-default-agent.ts)
 loads `station-control`, `station-knowledge`, and `station-docs` on the Station-engine path, installs
-approval hooks and memory, and processes the configured system prompt. This is
-not a tool-free text helper. Delivery to an external engine depends on that
+approval hooks and memory, and processes the configured system prompt. It also
+records the estimate of that prompt and its tools that conversation stats show,
+as a persisted Agent's framework does. This is not a tool-free text helper. Delivery to an external engine depends on that
 engine's supported delivery mechanisms. The catalog projection is separate
 from proof that a particular engine received its tools.
 
