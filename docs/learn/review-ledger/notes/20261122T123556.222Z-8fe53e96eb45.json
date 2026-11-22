@@ -1,0 +1,7 @@
+{
+  "revision": "67bc53f6e0384566a0842a955240ff3d0ace0b25",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Rechecked after the flag rename (#5398 fix round): the context map names no inbox status, flag or delivery label.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]}
+  ]
+}
