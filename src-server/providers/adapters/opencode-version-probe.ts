@@ -131,8 +131,8 @@ export const openCodeVersionProbe = createOpenCodeVersionProbe();
 
 /**
  * Why Station does not apply its approval mode to OpenCode `version` over
- * ACP (ruling R1). Shown as the governance refusal's reason.
+ * ACP below host full access (ruling R1). Shown as the refusal reason.
  */
 export function openCodeAcpApprovalUnsupportedReason(version: string): string {
-  return `OpenCode ${version} runs over ACP here, and over ACP Station cannot verify the approval rules OpenCode 2 enforces. Start the chat without a Station approval mode to use OpenCode's own approvals`;
+  return `OpenCode ${version} runs over ACP here, and over ACP Station cannot verify the approval rules OpenCode 2 enforces. Use host Never ask, or start the chat without a Station approval mode to use OpenCode's own approvals`;
 }

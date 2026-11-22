@@ -1,0 +1,7 @@
+{
+  "revision": "418a3ed48659b2c02662ccde82db5302950eb832",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed dismissal in ToastContext and NotificationContainer, including the inert exit and overflow unmount. Focused tests exercise undo commit timing, the exit fallback, turn-toast deduplication, and the resumed reading timer after overflow.","inputs":["docs/design/notification-delivery.md","src-ui/src/__tests__/toast-lifecycle.test.tsx","src-ui/src/components/notifications/NotificationContainer.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "b75f762eea83a2546b44f36445bace14ca1702ad",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Reviewed the import-only sort against the combined lifecycle source. The ACP stop classifier, native limit guidance and retry fold retain their previous order and behavior.","inputs":["src-server/services/orchestration/session-lifecycle-service.ts"]}
+  ]
+}

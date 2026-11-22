@@ -1,0 +1,7 @@
+{
+  "revision": "72e3e1eb3c28823cbf415588c2628ed3e8475352",
+
+  "notes": [
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the first-run usage-sharing contract against the real disclosure route and daily sender. The test waits for the rendered dialog before advancing the flush clock. Both paths catch a premature notice write and pass after restoration. Formatting does not affect the assertions or product behavior.","inputs":["src-ui/src/components/__tests__/TelemetryConsent.routes.test.tsx"]}
+  ]
+}

@@ -17,6 +17,7 @@ import {
   enumerateLayoutPanes,
 } from '@kontourai/station-contracts/workspace-pane-layout-adapter';
 import type { StationKitRegistryEntry } from '../kits/kit-observability-host.js';
+import { compactProjectLayoutPaneIdentity } from '../layouts/project-layout-pane-identity.js';
 import type { DistributionCatalogReadView } from '../plugins/distribution-profile-service.js';
 import { portableKitWorkspacePanes } from './portable-kit-workspace-panes.js';
 import {
@@ -277,8 +278,12 @@ export function readCurrentWorkspacePaneCatalog(
       'Current layout catalog contains an invalid Pane adaptation',
     );
   }
-  const layoutPaneCatalog =
-    createWorkspacePaneCatalogFromAdaptations(adaptations);
+  const layoutPaneCatalog = createWorkspacePaneCatalogFromAdaptations(
+    adaptations.map((adaptation) => ({
+      ...adaptation,
+      instance: compactProjectLayoutPaneIdentity(adaptation.instance),
+    })),
+  );
   const portablePanes = portableKitWorkspacePanes(portableKits, projectId);
   const portableEnabledByInstanceId = new Map(
     portablePanes.map((pane) => [pane.instance.instanceId, pane.enabled]),

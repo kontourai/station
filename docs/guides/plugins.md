@@ -171,13 +171,10 @@ its layout definition (#2995):
 ```
 
 An unknown value (`primary: "terminal"`), a drill-in that is not one of the
-layout's own panes, or `drillIns` without `"stack"` is refused by name. So is
-a drill-in whose Project occurrence id would exceed the 128 characters the
-pane host and the navigation store accept; that id embeds the plugin id and
-layout slug twice, so keep them short (#4130). Install refuses such a plugin.
-A plugin copied straight into `plugins/` without installing skips that
-check, and the catalog then leaves its whole layout out, not just the
-drill-in. Each
+layout's own panes, or `drillIns` without `"stack"` is refused by name.
+A drill-in's descriptor and bound source must fit the pane host's
+128-character identity limit. The Project catalog issues compact occurrence
+IDs and state keys when the composed values exceed that limit. Each
 drill-in still goes through the ordinary pane availability check, so one the
 Project's catalog does not issue is simply not on the rail. Station states
 the declaration on every layout read; it is not stored in the Project's
@@ -399,6 +396,11 @@ Common fields:
 | `prompts.source` | string | no | Directory of read-only command-skill Markdown files |
 | `skills` | string[] | no | Skill package IDs contributed by the plugin |
 | `settings` | PluginSettingField[] | no | Configurable settings (see Settings) |
+
+Use the declared ID in SDK document and vault calls for the same Project
+namespace. Applying the [Enterprise Layout example](../../examples/enterprise-layout/README.md#knowledge-namespaces)
+registers `enterprise-notes`, which its Notes pane already uses. A Project's existing
+namespace registrations remain in place when a layout adds another one.
 
 #### Reserved plugin names
 
@@ -674,6 +676,16 @@ keeps the folder visible with a **Rejected** badge, the validation reason, and
 specific repair guidance. Fix or restore the manifest, then choose **Reload
 plugins**. Station does not invent a version or expose normal settings, update,
 permission, or removal controls until the manifest validates again.
+
+Installed dependency and update readers use the selected package's physical
+directory. They read a bounded regular manifest under that directory. Inventory
+and update checks accept a manifest reference whose target stays within the
+selected package. The dependency build path still requires a regular manifest
+at the package root. Station checks that the selected dependency remains
+current under its content lock before building or publishing. Directory
+containment is checked when the path is
+resolved. Concurrent changes to parent directories and Windows reparse
+behavior require separate platform verification.
 
 ### Recover interrupted activation
 
@@ -1499,6 +1511,15 @@ DELETE /api/plugins/:name
 GET /api/plugins/check-updates
 ```
 
+Plugins shows when an update check was unavailable or incomplete and offers
+a retry. A partial check keeps any updates it found. The view confirms that
+it found no updates only after the eligible sources complete.
+
+When reviewing installation or recovery, inspect the registry verification
+for each dependency to see the claim and pin bound to that
+dependency's consent. The installed view shows the selected plugin's recorded
+receipt.
+
 A registry the [managed policy](managed-policy.md#capability-switches) refuses
 is not asked during an update check, and a plugin installed from it is not
 checked either: its git origin is not fetched, and the response lists it under
@@ -1941,13 +1962,14 @@ by plugin code.
     }
   },
   "ui": {
-    "component": "my-plugin-chat",
-    "quickPrompts": [
-      { "id": "help", "label": "Help", "prompt": "What can you help me with?" }
-    ]
+    "component": "my-plugin-chat"
   }
 }
 ```
+
+Remove `streaming` and `ui.quickPrompts` from Agent source definitions when
+updating to the current schema. Older Agent definitions still load. Layouts
+can continue passing an explicit `AgentQuickPrompt` to `onLaunchPrompt`.
 
 Installed Agent IDs remain clean and globally unique; the installer refuses an
 existing ID rather than adding a namespace prefix. Choose a unique ID if the

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import ts from 'typescript-api';
 
 export function createRequiredSourceReader({
   baseUrl,
@@ -19,6 +20,72 @@ export function createRequiredSourceReader({
       return '';
     }
   };
+}
+
+/** Calls through named bindings from one module, excluding type-only imports. */
+export function collectCalledModuleImports(source, moduleName) {
+  const tree = ts.createSourceFile(
+    'guardrail-source.ts',
+    source,
+    ts.ScriptTarget.Latest,
+    true,
+  );
+  const options = { noLib: true, noResolve: true };
+  const host = {
+    ...ts.createCompilerHost(options),
+    getSourceFile: (name) => (name === tree.fileName ? tree : undefined),
+  };
+  const symbols = ts
+    .createProgram([tree.fileName], options, host)
+    .getTypeChecker();
+  const imported = new Map();
+  const called = new Set();
+  const register = ({ name, propertyName }) => {
+    const binding = symbols.getSymbolAtLocation(name);
+    if (binding) imported.set(binding, (propertyName ?? name).text);
+  };
+  const matchesModule = (node) =>
+    node && ts.isStringLiteral(node) && node.text === moduleName;
+  const visit = (node) => {
+    if (ts.isImportDeclaration(node) && matchesModule(node.moduleSpecifier)) {
+      const clause = node.importClause;
+      const bindings = clause?.namedBindings;
+      if (bindings && !clause.isTypeOnly && ts.isNamedImports(bindings)) {
+        for (const item of bindings.elements) {
+          if (!item.isTypeOnly) register(item);
+        }
+      }
+    }
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isObjectBindingPattern(node.name)
+    ) {
+      const initializer = node.initializer;
+      const call =
+        initializer && ts.isAwaitExpression(initializer)
+          ? initializer.expression
+          : initializer;
+      if (
+        call &&
+        ts.isCallExpression(call) &&
+        call.expression.kind === ts.SyntaxKind.ImportKeyword &&
+        matchesModule(call.arguments[0])
+      ) {
+        for (const item of node.name.elements) {
+          if (ts.isIdentifier(item.name)) register(item);
+        }
+      }
+    }
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression))
+      called.add(symbols.getSymbolAtLocation(node.expression));
+    ts.forEachChild(node, visit);
+  };
+  visit(tree);
+  return new Set(
+    [...imported]
+      .filter(([local]) => called.has(local))
+      .map(([, name]) => name),
+  );
 }
 
 const PANE_HOST_COMPOSITION_REQUIREMENTS = [

@@ -14,8 +14,13 @@ import { Hono } from 'hono';
 import { z } from 'zod/v3';
 import type { PullRequestFeedbackDelivery } from '../../services/pull-requests/pull-request-feedback-delivery.js';
 import type { PullRequestFeedbackOwnership } from '../../services/pull-requests/pull-request-feedback-ownership.js';
+import type { PullRequestHeadReviewer } from '../../services/pull-requests/pull-request-head-review.js';
 import { getBody, param, validate } from '../schemas/schemas.js';
 import { pullRequestLinkIdentitySchema } from './conversation-pull-request-links.js';
+import {
+  type PullRequestFeedbackTaskBranchRoutePorts,
+  registerPullRequestFeedbackTaskBranchRoutes,
+} from './pull-request-feedback-task-branches.js';
 
 export interface PullRequestFeedbackRouteAccess {
   enabled(): boolean;
@@ -84,6 +89,15 @@ export function createPullRequestFeedbackRoutes(
   delivery: () => PullRequestFeedbackDelivery | undefined,
   refresh: (conversationId: string) => void,
   access: PullRequestFeedbackRouteAccess,
+  /** Project defaults and Task-branch pull requests, when composed. */
+  taskBranches?: PullRequestFeedbackTaskBranchRoutePorts,
+  /**
+   * Station's review of each head; undefined while the
+   * `pull-request-head-review` preview is off (its routes then answer 404).
+   */
+  headReview: () =>
+    | Pick<PullRequestHeadReviewer, 'reviewAgain' | 'sendFindings'>
+    | undefined = () => undefined,
 ) {
   const app = new Hono();
   // Before any body is parsed: while the preview is off every route answers
@@ -144,10 +158,13 @@ export function createPullRequestFeedbackRoutes(
     if (!readable(c, conversationId)) return unavailable(c);
     return c.json({
       success: true,
-      data: await ownership.view(
-        conversationId,
-        viewerOf(c, access.operator(c.req.raw) ?? ''),
-      ),
+      data: {
+        ...(await ownership.view(
+          conversationId,
+          viewerOf(c, access.operator(c.req.raw) ?? ''),
+        )),
+        viewerMayChange: !!writer(c, conversationId),
+      },
     });
   });
 
@@ -162,10 +179,17 @@ export function createPullRequestFeedbackRoutes(
       const settings = parsePullRequestFeedbackSettings(body.settings);
       if (!settings)
         return c.json({ success: false, error: 'Settings are invalid' }, 400);
+      // Left out, "Review each new head" keeps what this chat stored: a
+      // client that knows only the two sending switches must not turn it off.
+      const { reviewEachHead, ...sends } = settings;
       const result = await ownership.write({
         conversationId,
         identity: lower(body.identity),
-        settings,
+        // Ignored while review of each head is not offered (its preview off).
+        settings:
+          body.settings.reviewEachHead === undefined || !headReview()
+            ? sends
+            : { ...sends, reviewEachHead },
         viewer: actor,
         ...(body.move ? { move: true } : {}),
       });
@@ -251,5 +275,70 @@ export function createPullRequestFeedbackRoutes(
     },
   );
 
+  // Station's review of the pull request's current head: run it again, or
+  // send its required findings to the agent with "Address review comments"
+  // off. Only the owning chat, by the same writer rule as the switches.
+  const headReviewAction = (action: 'again' | 'send') => async (c: any) => {
+    const conversationId = param(c, 'conversationId');
+    const actor = writer(c, conversationId);
+    const reviewer = headReview();
+    if (!actor || !reviewer) return unavailable(c);
+    const body = getBody(c) as z.infer<typeof identityBodySchema>;
+    const claim = ownership.ownedClaim(conversationId, lower(body.identity));
+    if (!claim) return unavailable(c);
+    if (action === 'send') {
+      const outcome = await reviewer.sendFindings(claim.prKey);
+      if (outcome === 'queued')
+        return c.json({ success: true, data: { conversationId } });
+      return c.json(
+        outcome === 'paused'
+          ? {
+              success: false,
+              code: 'pull_request_feedback_paused',
+              error:
+                'Feedback for this pull request is paused. Send again to lift it.',
+            }
+          : {
+              success: false,
+              code: 'pull_request_head_review_nothing_to_send',
+              error: 'This head has no required findings to send.',
+            },
+        409,
+      );
+    }
+    const started = await reviewer.reviewAgain(claim.prKey);
+    if (started.outcome === 'started' || started.outcome === 'running')
+      return c.json({ success: true, data: { conversationId } });
+    return c.json(
+      {
+        success: false,
+        code: 'pull_request_head_review_not_started',
+        // The reviewer's own reason: a busy Project, the daily limit, no
+        // reviewer, a head not here yet. Display text, built server-side.
+        error: started.reason ?? 'Station could not start the review.',
+        details: { outcome: started.outcome },
+      },
+      409,
+    );
+  };
+  app.post(
+    '/conversations/:conversationId/head-review/again',
+    validate(identityBodySchema),
+    headReviewAction('again'),
+  );
+  app.post(
+    '/conversations/:conversationId/head-review/send',
+    validate(identityBodySchema),
+    headReviewAction('send'),
+  );
+
+  if (taskBranches)
+    registerPullRequestFeedbackTaskBranchRoutes(
+      app,
+      access,
+      taskBranches,
+      (request, conversationId) =>
+        pullRequestFeedbackWriterId(access, request, conversationId),
+    );
   return app;
 }

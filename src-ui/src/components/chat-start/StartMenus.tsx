@@ -17,7 +17,12 @@ import type {
 import { type AgentFixRoute, agentFixRoute } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
-import { CheckGlyph, MonitorGlyph, WarningGlyph } from '../icons/Glyph';
+import {
+  CheckGlyph,
+  MonitorGlyph,
+  PlusGlyph,
+  WarningGlyph,
+} from '../icons/Glyph';
 import { ProjectIcon } from '../icons/ProjectIcon';
 import {
   GLOBAL_CONTEXT,
@@ -31,6 +36,7 @@ import {
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
+  ResponsiveSurfaceActions,
 } from '../ResponsiveDialogSurface';
 import {
   describeReadFailure,
@@ -237,6 +243,7 @@ export function StartProjectMenu({
   icons,
   accents,
   onChoose,
+  onCreate,
   onClose,
 }: {
   anchor: HTMLElement | null;
@@ -251,6 +258,7 @@ export function StartProjectMenu({
   /** The sidebar's project colours (`useProjectAccents`), from the caller. */
   accents: ReadonlyMap<string, string>;
   onChoose: (context: string) => void;
+  onCreate?: () => void;
   onClose: () => void;
 }) {
   const anchorRef = useRef<HTMLElement | null>(anchor);
@@ -327,6 +335,13 @@ export function StartProjectMenu({
           onSelectContext={onChoose}
         />
       </div>
+      {onCreate && (
+        <ResponsiveSurfaceActions>
+          <Button onClick={onCreate}>
+            <PlusGlyph /> Create project
+          </Button>
+        </ResponsiveSurfaceActions>
+      )}
     </ResponsiveDialogSurface>
   );
 }

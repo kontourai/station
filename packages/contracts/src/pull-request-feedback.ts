@@ -13,8 +13,14 @@ import type { PullRequestLinkIdentity } from './conversation-pull-request-links.
 export const PULL_REQUEST_FEEDBACK_PREVIEW_ID = 'pull-request-agent-feedback';
 
 /**
- * What one delivery is about. `review-findings` is reserved for Station's
- * own independent review of each new head; nothing produces it yet.
+ * Station's independent review of each new head: behind this preview as
+ * well as `pull-request-agent-feedback`.
+ */
+export const PULL_REQUEST_HEAD_REVIEW_PREVIEW_ID = 'pull-request-head-review';
+
+/**
+ * What one delivery is about. `review-findings` is the required findings of
+ * Station's own independent review of a head.
  */
 export type PullRequestFeedbackCategory =
   | 'failing-checks'
@@ -25,8 +31,10 @@ export type PullRequestFeedbackCategory =
 /**
  * A person's switches for one pull request. `fixFailingChecks` covers
  * failing checks and merge conflicts; `addressReviewComments` covers
- * unresolved review threads and change requests. `reviewEachHead` is
- * accepted and stored for the later head review; nothing reads it yet.
+ * unresolved review threads and change requests. `reviewEachHead` runs
+ * Station's own independent review on each new head (behind the
+ * `pull-request-head-review` preview); its required findings go to the agent
+ * under `addressReviewComments`, or when a person sends them.
  */
 export interface PullRequestFeedbackSettings {
   fixFailingChecks: boolean;
@@ -46,6 +54,23 @@ export function pullRequestFeedbackSends(
   settings: PullRequestFeedbackSettings,
 ): boolean {
   return settings.fixFailingChecks || settings.addressReviewComments;
+}
+
+/**
+ * Whether the claim does anything at all: a switch that sends, or Station's
+ * own review of each new head. A review-only claim is still read, still
+ * owned and still placed (its findings go out on a person's Send to agent).
+ * `headReview` is whether review of each head is offered at all (its
+ * preview): while it is not, `reviewEachHead` alone does nothing.
+ */
+export function pullRequestFeedbackActive(
+  settings: PullRequestFeedbackSettings,
+  headReview: boolean,
+): boolean {
+  return (
+    pullRequestFeedbackSends(settings) ||
+    (headReview && settings.reviewEachHead)
+  );
 }
 
 /** A settings body as a client sent it, or undefined when it is not one. */
@@ -211,7 +236,11 @@ export type PullRequestFeedbackStatus =
     }
   | {
       state: 'paused';
-      reason: 'round-limit' | 'repeated-failure';
+      /**
+       * `fix-budget` (#5066): a watching Task's pull request used every fix
+       * attempt its Project allows.
+       */
+      reason: 'round-limit' | 'repeated-failure' | 'fix-budget';
       /**
        * round-limit only: `head` after the rounds one head allows, `day`
        * after the messages a pull request allows in 24 hours. Absent on a
@@ -277,6 +306,76 @@ export interface PullRequestFeedbackByPullRequest {
     headSha: string;
     checks: Array<{ name: string; url?: string; at: string }>;
   };
+  /** Station's newest head review, while the head review preview is on. */
+  headReview?: PullRequestHeadReview;
+  /** The observed head has no review yet, and why. */
+  headReviewWaiting?: PullRequestHeadReviewWaiting;
+}
+
+/** One finding of Station's review of a head, as a person reads it. */
+export interface PullRequestHeadReviewFinding {
+  file: string;
+  line: number;
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  confidence: 'high' | 'medium' | 'low';
+  summary: string;
+  /** Goes to the agent: critical or high, with high or medium confidence. */
+  required: boolean;
+  /** A previous head's finding the reviewer found still present. */
+  carried?: true;
+}
+
+/**
+ * Station's newest review of one of the pull request's heads.
+ * `unknown`: Station restarted (or the reviewer gave no answer) before it
+ * knew how the review ended; it is never run again by itself.
+ */
+export interface PullRequestHeadReview {
+  headSha: string;
+  /** It is about the head Station last observed, not an earlier push. */
+  current: boolean;
+  state:
+    | 'reviewing'
+    | 'reviewed'
+    | 'head-not-local'
+    | 'no-reviewer'
+    | 'unknown'
+    | 'not-verified';
+  /** When it started, or settled once it did. */
+  at: string;
+  /** `delta` reviewed only what changed since the previous reviewed head. */
+  mode?: 'initial' | 'delta';
+  /** reviewed: required first, at most 100. */
+  findings?: PullRequestHeadReviewFinding[];
+  required?: number;
+  others?: number;
+  /** not-verified: why, as the review said it. */
+  failureReason?: string;
+  /** The message that carried the required findings, when there was one. */
+  delivery?: { state: 'sent' | 'queued' | 'held'; at: string };
+}
+
+/**
+ * The head Station last observed has no review yet, and why:
+ * `settling` (it may move again: read once, no turn ended since), the agent
+ * `agent-busy`, `agent-waiting` on a person or `agent-stopped`,
+ * `feedback-waiting` for the agent, `project-busy` (another pull request of
+ * the Project is being reviewed), `daily-limit` (10 reviews in 24 hours),
+ * `draft`, `closed`, or `starting` (on Station's next check).
+ */
+export interface PullRequestHeadReviewWaiting {
+  headSha: string;
+  reason:
+    | 'settling'
+    | 'agent-busy'
+    | 'agent-waiting'
+    | 'agent-stopped'
+    | 'feedback-waiting'
+    | 'project-busy'
+    | 'daily-limit'
+    | 'draft'
+    | 'closed'
+    | 'starting';
 }
 
 /** One pull request's feedback, as one conversation's reader sees it. */
@@ -292,10 +391,16 @@ export interface PullRequestFeedbackView {
   last?: PullRequestFeedbackDelivery;
   /** Newest first, at most 20. */
   history: PullRequestFeedbackDelivery[];
+  /** Station's newest head review, for the owning chat's reader. */
+  headReview?: PullRequestHeadReview;
+  /** The observed head has no review yet, and why. */
+  headReviewWaiting?: PullRequestHeadReviewWaiting;
 }
 
 export interface ConversationPullRequestFeedback {
   conversationId: string;
+  /** The host's current person/read/continue rule; absent on older hosts. */
+  viewerMayChange?: boolean;
   pullRequests: PullRequestFeedbackView[];
 }
 
@@ -323,4 +428,46 @@ export function describePullRequestFeedbackCategories(
   if (parts.length === 0) return 'nothing';
   if (parts.length === 1) return parts[0]!;
   return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
+/**
+ * An open pull request whose head branch has the asked-for name, as a forge
+ * lists it. The name alone proves nothing: a fork can push a branch of the
+ * same name, so `crossRepository` and `headOwner` say where it lives.
+ */
+export interface PullRequestByHead {
+  /** The pull request's number. */
+  ref: string;
+  headRefName: string;
+  /** The owner of the repository the head branch lives in. */
+  headOwner: string;
+  /** The head branch lives in another repository (a fork). */
+  crossRepository: boolean;
+  url: string;
+}
+
+export type PullRequestsByHeadResult =
+  | { state: 'read'; pullRequests: PullRequestByHead[] }
+  | {
+      state: 'unavailable';
+      cause: PullRequestFeedbackUnavailableCause;
+      reason: string;
+    };
+
+/**
+ * A Project's agent feedback defaults: the switches Station turns on for a
+ * pull request one of the Project's Tasks opens from its own branch, when
+ * nobody has set that pull request up yet. Never applied to a pull request
+ * already set up, and changing them never changes one.
+ */
+export interface ProjectPullRequestFeedbackDefaults {
+  projectSlug: string;
+  settings: PullRequestFeedbackSettings;
+  /** Whether the reader may change them: this Station's owner, in person. */
+  canChange: boolean;
+  /**
+   * Pull requests these defaults turned feedback on for that still get it.
+   * Turning the defaults off leaves them on; each is turned off from its chat.
+   */
+  stillOn: number;
 }

@@ -1,16 +1,13 @@
 #!/usr/bin/env node
-import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { biomeCommand } from './lib/biome-cli.mjs';
+import { execAsSlotHolder } from './lib/slot-holder-exec.mjs';
 import {
   acquireTypecheckSlot,
   SLOT_HELD_ENV,
 } from './lib/typecheck-host-slots.mjs';
 
-const rootRequire = createRequire(import.meta.url);
-const require = createRequire(
-  rootRequire.resolve('@biomejs/biome/package.json'),
-);
 const directory =
   process.env.STATION_BIOME_SLOT_DIR ||
   (process.platform === 'win32'
@@ -28,24 +25,11 @@ const slot = await acquireTypecheckSlot({
     process.stderr.write(`${message.replaceAll('typecheck', 'Biome')}\n`),
 });
 process.once('exit', slot.release);
-const threads = Number(process.env.BIOME_THREADS ?? 2);
-if (!Number.isSafeInteger(threads) || threads < 1)
-  throw new Error('BIOME_THREADS must be a positive integer.');
-const env = { ...process.env, BIOME_THREADS: String(Math.min(threads, 2)) };
-const musl =
-  process.platform === 'linux' &&
-  !process.report.getReport().header.glibcVersionRuntime;
-const platform = musl ? 'linux' : process.platform;
-const suffix = process.platform === 'win32' ? '.exe' : '';
-const binary =
-  process.env.BIOME_BINARY ||
-  require.resolve(
-    `@biomejs/cli-${platform}-${process.arch}${musl ? '-musl' : ''}/biome${suffix}`,
-  );
+const { binary, env } = biomeCommand();
 const args = process.argv.slice(2);
 if (process.platform !== 'win32') {
   // Preserve the slot holder PID, so killing a queued/running check cannot orphan Biome.
-  process.execve(binary, [binary, ...args], env);
+  await execAsSlotHolder({ file: binary, args, label: 'Biome', env });
 } else {
   const {
     executeOwnedCommand,

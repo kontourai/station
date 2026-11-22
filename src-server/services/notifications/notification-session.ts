@@ -5,6 +5,7 @@
  * audience use (#2586). A notification that names a session may only reach
  * a surface whose principal can read that session, whatever its audience.
  */
+import { isNativePushSessionReference } from '@kontourai/station-contracts/native-push';
 import type {
   Notification,
   NotificationEnvelopeV1,
@@ -48,4 +49,47 @@ export function notificationSessionIdentity(
   if (envelope.target?.kind === 'session') return envelope.target.sessionId;
   if (envelope.source.kind === 'agent') return envelope.source.sessionId;
   return undefined;
+}
+
+/**
+ * The session opening a record goes to, on every channel:
+ * none for a path target (it opens its path), else
+ * {@link notificationSessionIdentity} — the session the read gate and the
+ * audience were checked against — with the metadata's Project unless the
+ * metadata names a different session. The OS links (`notificationOpenLink`)
+ * and the phones' sealed session references (FCM, APNs) all read this.
+ */
+export function notificationOpenSession(
+  notification: Pick<Notification, 'metadata'>,
+  envelope?: NotificationEnvelopeV1,
+): { sessionId: string; projectSlug?: string } | undefined {
+  if (envelope?.target?.kind === 'path') return undefined;
+  const sessionId = notificationSessionIdentity(notification, envelope);
+  if (!sessionId) return undefined;
+  const projectSlug = notification.metadata?.projectSlug;
+  const metadataSession = notificationMetadataSessionId(notification);
+  return (metadataSession === undefined || metadataSession === sessionId) &&
+    typeof projectSlug === 'string' &&
+    projectSlug.trim()
+    ? { sessionId, projectSlug }
+    : { sessionId };
+}
+
+/**
+ * {@link notificationOpenSession} as the phones' sealed session reference
+ * (FCM and APNs alerts): only ids in the contract grammar travel, and a
+ * Project slug outside it is left off.
+ */
+export function nativeSessionReference(
+  notification: Pick<Notification, 'metadata'>,
+  envelope?: NotificationEnvelopeV1,
+): { session_id?: string; project_slug?: string } {
+  const session = notificationOpenSession(notification, envelope);
+  if (!session || !isNativePushSessionReference(session.sessionId)) return {};
+  return {
+    session_id: session.sessionId,
+    ...(isNativePushSessionReference(session.projectSlug)
+      ? { project_slug: session.projectSlug }
+      : {}),
+  };
 }

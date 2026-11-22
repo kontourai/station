@@ -47,6 +47,7 @@ findings carried no signal. The run fails when it cannot judge the backlog:
 live labels that drift from `.github/labels.json`, a malformed manifest, an
 API failure or an incomplete issue read. It
 does not run on issue events: that produced a run per label click and a red
-between filing and labelling every issue, and main-health does not watch it. Its tests derive fixtures from the
+between filing and labelling every issue. Main: Health watches the daily run, so a red
+one opens a tracker issue. Its tests derive fixtures from the
 same exported policy constants to make changes to classifications or the P1
 limit deliberate.

@@ -497,7 +497,7 @@ describe('SchedulerLedger', () => {
     second.close();
   });
 
-  test('gives a delete-and-recreated display name a new server-issued principal', () => {
+  test('binds mutations and manual claims to the job identity across name reuse', () => {
     const ledger = createSchedulerLedger({ directory: tempDir });
     const job = {
       name: 'same-name',
@@ -512,14 +512,28 @@ describe('SchedulerLedger', () => {
     );
     if (first.kind !== 'claimed') throw new Error('expected first claim');
     const oldPrincipal = first.receipt.jobId;
-    ledger.remove('same-name');
-    ledger.create(job);
-    const second = ledger.claimManual(
-      'same-name',
-      Date.parse('2026-01-01T01:00:01.000Z'),
-    );
+    expect(ledger.remove('same-name', oldPrincipal)).toEqual({
+      kind: 'removed',
+    });
+    expect(ledger.create(job)).toMatchObject({ kind: 'created' });
+    expect(
+      ledger.update('same-name', { prompt: 'stale edit' }, oldPrincipal),
+    ).toEqual({
+      kind: 'not-found',
+    });
+    expect(ledger.remove('same-name', oldPrincipal)).toEqual({
+      kind: 'not-found',
+    });
+    const now = Date.parse('2026-01-01T01:00:01.000Z');
+    expect(ledger.claimManual('same-name', now, oldPrincipal)).toEqual({
+      kind: 'not-found',
+    });
+    const currentPrincipal = read(ledger.listViews(now))[0]!
+      .unattendedPrincipal!.jobId;
+    expect(currentPrincipal).not.toBe(oldPrincipal);
+    const second = ledger.claimManual('same-name', now, currentPrincipal);
     if (second.kind !== 'claimed') throw new Error('expected second claim');
-    expect(second.receipt.jobId).not.toBe(oldPrincipal);
+    expect(second.receipt.job.prompt).toBe('run');
     ledger.close();
   });
 
@@ -1172,6 +1186,70 @@ describe('SchedulerLedger', () => {
       ledger.close();
     }
   });
+
+  test.each([
+    ['invalid-json', Buffer.from('{"name":"damaged","prompt":"private-cue"}')],
+    ['invalid-job', Buffer.from('{"name":"damaged","prompt":42}')],
+    [
+      'invalid-job',
+      Buffer.from(
+        '{"name":"damaged","prompt":"private-cue","enabled":true,"createdAt":"2026-01-01T00:00:00.000Z","schedule":{"kind":"every","everyMs":-1}}',
+      ),
+    ],
+    [
+      'invalid-job',
+      Buffer.from(
+        '{"name":"damaged","prompt":"private-cue","enabled":true,"createdAt":"2026-01-01T00:00:00.000Z","schedule":{"kind":"other"}}',
+      ),
+    ],
+  ] as const)(
+    'isolates a damaged %s job from healthy reads and commands',
+    (reason, bytes) => {
+      const ledger = createSchedulerLedger({ directory: tempDir });
+      try {
+        const createdAt = '2026-01-01T00:00:00.000Z';
+        expect(
+          ledger.create({
+            name: 'healthy',
+            prompt: 'run',
+            enabled: true,
+            createdAt,
+          }).kind,
+        ).toBe('created');
+        const database = new DatabaseSync(join(tempDir, 'scheduler.sqlite'));
+        try {
+          const damaged = Buffer.from(bytes);
+          if (reason === 'invalid-json') damaged[0] ^= 1;
+          database
+            .prepare(
+              'INSERT INTO scheduler_jobs (name, job_id, revision, data, created_at) VALUES (?, ?, ?, ?, ?)',
+            )
+            .run('damaged', 'damaged-id', 1, damaged.toString(), createdAt);
+          expect(database.prepare('PRAGMA quick_check').get()).toEqual({
+            quick_check: 'ok',
+          });
+        } finally {
+          database.close();
+        }
+        expect(read(ledger.listViews()).map((job) => job.name)).toEqual([
+          'healthy',
+        ]);
+        expect(read(ledger.list()).map((job) => job.name)).toEqual(['healthy']);
+        expect(read(ledger.stats()).jobs.map((job) => job.name)).toEqual([
+          'healthy',
+        ]);
+        expect(read(ledger.rowIssues())).toEqual([
+          { jobId: 'damaged-id', name: 'damaged', reason },
+        ]);
+        expect(ledger.update('healthy', { enabled: false }).kind).toBe(
+          'updated',
+        );
+        expect(read(ledger.listViews())[0]?.enabled).toBe(false);
+      } finally {
+        ledger.close();
+      }
+    },
+  );
 
   test('returns a reclaimed manual retry to the manual caller with its immutable claimed job snapshot', () => {
     const owner = createSchedulerLedger({ directory: tempDir });

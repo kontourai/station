@@ -680,14 +680,22 @@ export function RegionModelProvider({ children }: { children: ReactNode }) {
   // Chat params are the layer's, so the load starts from the pre-layer ones
   // and the mount effect below writes them back to navigation.
   const [reloadedOverLayer] = useState(takePhoneLayerPreState);
-  const [regions, setRegions] = useState<RegionArrangement>(() =>
-    initialRegionArrangement(
+  const [regions, setRegions] = useState<RegionArrangement>(() => {
+    const arrangement = initialRegionArrangement(
       settings,
       dockMode,
       reloadedOverLayer ? reloadedOverLayer.visible : isDockOpen,
       reloadedOverLayer ? reloadedOverLayer.maximized : isDockMaximized,
-    ),
-  );
+    );
+    // Keep the Devices tab available without starting its tool on a plain
+    // Home launch. An explicit navigation intent still opens its surface.
+    return pathname === '/' &&
+      !isDockOpen &&
+      !surfaceIntent &&
+      arrangement.right.occupant === 'device'
+      ? updateRegion(arrangement, 'right', { visible: false })
+      : arrangement;
+  });
   const [lastShownRegion, setLastShownRegion] = useState<RegionId | null>(
     () => chatRegion(regions) ?? null,
   );

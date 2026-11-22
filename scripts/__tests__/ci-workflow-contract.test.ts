@@ -387,6 +387,7 @@ describe('CI verification workflow contracts', () => {
       | {
           on?: { workflow_run?: { workflows?: unknown; branches?: unknown } };
           permissions?: unknown;
+          jobs?: Record<string, { steps?: { uses?: string }[] }>;
         }
       | undefined;
     // Both jobs require head_branch == 'main', so a branch filter on the
@@ -407,9 +408,19 @@ describe('CI verification workflow contracts', () => {
       // build of a UI-only change happens there (build-ios.yml).
       '.github/workflows/build-ios.yml',
       // Scheduled housekeeping that went red unnoticed: the docs sweep for
-      // weeks (#4270), CI throughput health on most windows.
+      // weeks (#4270).
       '.github/workflows/docs-freshness-sweep.yml',
-      '.github/workflows/ci-throughput-health.yml',
+      // Every other scheduled workflow (owner decision: a scheduled red must
+      // open an issue). scheduled-failure-reporting.test.ts holds the whole
+      // scheduled set to this list or a justified allowlist.
+      '.github/workflows/backlog-priority-policy.yml',
+      '.github/workflows/dated-todo-sweep.yml',
+      '.github/workflows/starved-pr-report.yml',
+      '.github/workflows/pr-duplicate-sweep.yml',
+      '.github/workflows/fresh-home-walkthrough.yml',
+      '.github/workflows/ios-rust-cache-warm.yml',
+      // Push-only, path-filtered; its main push run is the only Seatbelt run.
+      '.github/workflows/seatbelt-kernel.yml',
     ];
     const intendedTargetNames = intendedTargetFiles.map((targetFile) => {
       const target = workflowDocuments.find(({ file }) => file === targetFile)
@@ -432,6 +443,7 @@ describe('CI verification workflow contracts', () => {
     );
     const successJob = mainHealth.slice(
       mainHealth.indexOf('  close-after-success:'),
+      mainHealth.indexOf('  overdue-schedules:'),
     );
 
     expect(trigger).toContain('types: [completed]');
@@ -441,32 +453,51 @@ describe('CI verification workflow contracts', () => {
     // Pinned as an exact object rather than a `not.toContain`, so the next
     // scope added to this privileged workflow_run handler is a visible edit
     // here and not a silently passing absence check.
+    // `checks: read` reads annotations: the failing lines the tracker
+    // quotes and who cancelled a run.
     expect(parsedMainHealth?.permissions).toEqual({
       actions: 'read',
+      checks: 'read',
       contents: 'read',
       issues: 'write',
     });
     expect(failureJob).toContain(
       "github.event.workflow_run.conclusion == 'failure'",
     );
+    expect(failureJob).toContain('classifyCancellation(annotations)');
     expect(successJob).toContain(
       "github.event.workflow_run.conclusion == 'success'",
     );
+    const githubScriptActions = ['report-failure', 'close-after-success'].map(
+      (id) => {
+        const steps = parsedMainHealth?.jobs?.[id]?.steps?.filter(({ uses }) =>
+          uses?.startsWith('actions/github-script@'),
+        );
+        expect(steps, id).toHaveLength(1);
+        const action = steps?.[0]?.uses;
+        expect(action, id).toMatch(/^actions\/github-script@[0-9a-f]{40}$/);
+        return action;
+      },
+    );
+    expect(new Set(githubScriptActions).size).toBe(1);
     for (const job of [failureJob, successJob]) {
       expect(job).toContain("github.event.workflow_run.head_branch == 'main'");
       expect(job).toContain(
         'github.event.workflow_run.head_repository.full_name == github.repository',
       );
-      expect(job).toContain(
-        'actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3',
-      );
       expect(job).toContain('github.event.workflow_run.html_url');
       expect(job).toContain('github.event.workflow_run.head_sha');
-      expect(job).toContain('Main pipeline red: $' + '{workflowName}');
+      expect(job).toContain('trackerTitle(workflowName)');
+      // One consistent listing of the bot's issues, never a scan of every
+      // issue (scheduled-failure-reporting.test.ts executes it).
+      expect(job).toContain(
+        'consolidateTracker(github, context.repo, await listTrackers(github, context.repo), title)',
+      );
+      expect(job).not.toContain(
+        'github.paginate(github.rest.issues.listForRepo',
+      );
     }
-    expect(failureJob).toContain("labels: ['bug', 'P1']");
-    expect(failureJob).toContain("state: 'all'");
-    expect(failureJob).toContain("state: 'open'");
+    expect(failureJob).toContain('labels,');
     expect(failureJob).toContain(
       'group: main-health-$' + '{{ github.event.workflow_run.name }}',
     );
@@ -492,6 +523,7 @@ describe('CI verification workflow contracts', () => {
     const mainHealth = workflow('main-health.yml');
     const successJob = mainHealth.slice(
       mainHealth.indexOf('  close-after-success:'),
+      mainHealth.indexOf('  overdue-schedules:'),
     );
 
     expect(successJob).toContain('github.rest.actions.listJobsForWorkflowRun');
@@ -551,6 +583,9 @@ describe('CI verification workflow contracts', () => {
       rest: {
         actions: { listJobsForWorkflowRun: listJobs },
         issues: {
+          getLabel: vi.fn(async () => {
+            throw Object.assign(new Error('Not Found'), { status: 404 });
+          }),
           listForRepo,
           listComments,
           create: vi.fn(),
@@ -570,13 +605,16 @@ describe('CI verification workflow contracts', () => {
             },
           ];
         if (method === listComments) return comments;
-        return [
-          {
-            number: 42,
-            state: issueState,
-            title: 'Main pipeline red: Repo: Backlog policy',
-          },
-        ];
+        if (method === listForRepo)
+          return [
+            {
+              number: 42,
+              state: issueState,
+              title: 'Main pipeline red: Repo: Backlog policy',
+              body: 'A required workflow failed on main.\n\nWorkflow: Repo: Backlog policy',
+            },
+          ];
+        throw new Error('unexpected paginate');
       }),
     };
     await run(
@@ -599,7 +637,7 @@ describe('CI verification workflow contracts', () => {
     return { createComment, updateComment, updateIssue };
   }
 
-  function recordedComment(failure: string) {
+  function recordedComment(failure: string, ageMs = 0) {
     return renderMainHealthComment(
       {
         workflowName: 'Repo: Backlog policy',
@@ -612,7 +650,7 @@ describe('CI verification workflow contracts', () => {
         failureCount: 1,
         digest: failureDigest([failure]),
         redRunsSinceComment: 4,
-        commentedAt: new Date().toISOString(),
+        commentedAt: new Date(Date.now() - ageMs).toISOString(),
       },
     );
   }
@@ -636,12 +674,15 @@ describe('CI verification workflow contracts', () => {
     expect(parseMainHealthState(call[0].body)?.redRunsSinceComment).toBe(5);
   });
 
-  it('comments when a different step fails than the last comment recorded', async () => {
+  it('comments when a different step fails than a day-old comment recorded', async () => {
     const { createComment, updateComment } = await runReportFailure({
       comments: [
         {
           id: 7,
-          body: recordedComment('policy > Run the gate (failure)'),
+          body: recordedComment(
+            'policy > Run the gate (failure)',
+            25 * 60 * 60 * 1000,
+          ),
           user: { type: 'Bot' },
         },
       ],
@@ -732,13 +773,16 @@ describe('CI verification workflow contracts', () => {
     )?.document as {
       jobs: Record<string, { steps: { with: { script: string } }[] }>;
     };
-    const script = document.jobs['close-after-success'].steps[0].with.script;
-    const run = new (Object.getPrototypeOf(async () => {}).constructor)(
-      'github',
-      'context',
-      'process',
-      script,
-    );
+    const script = document.jobs['close-after-success'].steps.find(
+      (step) => typeof step.with?.script === 'string',
+    )?.with.script as string;
+    // The step imports the tracker lookup, so it needs a host for dynamic
+    // import(); vm.compileFunction with the main loader runs it as written.
+    const run = vm.compileFunction(
+      `return async function (github, context, process, core) {\n${script}\n};`,
+      [],
+      { importModuleDynamically: vm.constants.USE_MAIN_CONTEXT_DEFAULT_LOADER },
+    )();
     const scenarios = [
       {
         workflowName: 'Nightly',
@@ -779,15 +823,29 @@ describe('CI verification workflow contracts', () => {
         );
         jobs.push({ name: optionalName, conclusion: 'skipped' });
         const listJobs = vi.fn();
+        const listForRepo = vi.fn();
+        const tracker = {
+          number: 1,
+          state: 'open',
+          title: `Main pipeline red: ${workflowName}`,
+          body: `A required workflow failed on main.\n\nWorkflow: ${workflowName}`,
+        };
         const github = {
           rest: {
-            actions: { listJobsForWorkflowRun: listJobs },
-            issues: { listForRepo: vi.fn(), createComment: vi.fn(), update },
+            actions: {
+              listJobsForWorkflowRun: listJobs,
+              listWorkflowRuns: vi.fn(async () => ({
+                data: { workflow_runs: [] },
+              })),
+            },
+            issues: { listForRepo, createComment: vi.fn(), update },
           },
           paginate: vi.fn(async (method) =>
             method === listJobs
               ? jobs
-              : [{ number: 1, title: `Main pipeline red: ${workflowName}` }],
+              : method === listForRepo
+                ? [tracker]
+                : [],
           ),
         };
         await run(
@@ -798,11 +856,13 @@ describe('CI verification workflow contracts', () => {
           },
           {
             env: {
+              GITHUB_WORKSPACE: pathToFileURL(root).href,
               WORKFLOW_NAME: workflowName,
               RUN_URL: 'https://example.test/run/123',
               HEAD_SHA: 'a'.repeat(40),
             },
           },
+          { info: vi.fn() },
         );
         expect(
           update,
@@ -1031,7 +1091,7 @@ describe('CI verification workflow contracts', () => {
       '.github/workflows/source-availability.yml':
         'reports on merged main and files issues; observational, not a build',
       '.github/workflows/container-smoke.yml':
-        'no pull-request signal today; unfiltered on every main push (#1331 covers its host contention)',
+        'exercises the built container on classified main pushes or manual dispatch; PR checks cover container release wiring',
       '.github/workflows/build-android.yml':
         'desktop-rust.yml type-checks the Android target on pull requests; full APK assembly stays post-merge',
       '.github/workflows/ios-rust-cache-warm.yml':
@@ -1087,8 +1147,10 @@ describe('CI verification workflow contracts', () => {
     // The head sha is part of the group identity, not decoration: without it
     // two runs for the same PR at different heads collide and
     // `cancel-in-progress` picks a winner by arrival order (#1445).
+    // An arming run (STATION_PR_HEAVY_CHECKS) gets its own identity, so it
+    // and the push run on the same head never cancel each other.
     expect(ci).toContain(
-      `group: ci-fast-\${{ github.event_name }}-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
+      `group: ci-fast-\${{ github.event_name }}\${{ github.event.action == 'auto_merge_enabled' && '-armed' || '' }}-\${{ github.event.pull_request.number || github.ref }}-\${{ github.event.pull_request.head.sha || github.sha }}`,
     );
     expect(containerSmoke).toContain(
       `group: container-smoke-\${{ github.ref }}`,
@@ -1185,61 +1247,53 @@ describe('CI verification workflow contracts', () => {
     expect(consumers).toEqual([]);
   });
 
-  it('lets the container smoke wait out every desktop-win lease it cannot share the host with', () => {
-    // Run 33589882367: the smoke (weight 9 of 10) waited 600s behind the
-    // Windows PR floor (weight 5, budgeted 45 min, runs on every PR), timed
-    // out, and main-health reopened #917 for a red with no code cause. Two
-    // relations hold this closed, both read from the parsed workflows so a
-    // renamed key or a string-typed number cannot satisfy them by accident.
+  it('runs container smoke on an isolated hosted VM with the same Docker checks', () => {
     type Step = {
       id?: string;
       name?: string;
       if?: string;
       uses?: string;
       with?: Record<string, unknown>;
+      run?: string;
     };
-    type Job = { 'timeout-minutes'?: number; steps?: Step[] };
-    const documents = readWorkflowDocuments();
-    const job = (file: string, jobId: string): Job => {
-      const document = documents.find(
-        (entry) => entry.file === `.github/workflows/${file}`,
-      )?.document as { jobs?: Record<string, Job> } | undefined;
-      const found = document?.jobs?.[jobId];
-      expect(found, `${file} must define job "${jobId}"`).toBeDefined();
-      return found as Job;
+    const document = readWorkflowDocuments().find(
+      (entry) => entry.file === '.github/workflows/container-smoke.yml',
+    )?.document as {
+      jobs: {
+        smoke: {
+          'runs-on': unknown;
+          'continue-on-error'?: boolean;
+          'timeout-minutes': number;
+          steps: Step[];
+        };
+      };
     };
-    const capacityStep = (candidate: Job): Step => {
-      const step = candidate.steps?.find((entry) =>
-        entry.uses?.startsWith(
-          'kontourai/.github/actions/physical-host-capacity@',
-        ),
-      );
-      expect(step, 'job must reserve physical-host capacity').toBeDefined();
-      return step as Step;
-    };
-
-    const smoke = job('container-smoke.yml', 'smoke');
-    const smokeCapacity = capacityStep(smoke);
-    const smokeWaitSeconds = Number(smokeCapacity.with?.['timeout-seconds']);
-    const smokeBudgetMinutes = Number(smoke['timeout-minutes']);
-    expect(Number.isInteger(smokeWaitSeconds)).toBe(true);
-    expect(Number.isInteger(smokeBudgetMinutes)).toBe(true);
-
-    // (1) Whatever the wait is, the job must keep the smoke's own running
-    // time after it: raising the wait alone moves the red from the reserve
-    // step to the job timeout. 25 minutes is the observed smoke duration
-    // (af2ae065: 03:45 -> 04:06) with margin.
-    expect(smokeBudgetMinutes * 60 - smokeWaitSeconds).toBeGreaterThanOrEqual(
-      25 * 60,
+    const smoke = document.jobs.smoke;
+    expect(smoke['runs-on']).toBe('ubuntu-24.04');
+    expect(smoke['timeout-minutes']).toBe(80);
+    expect(smoke['continue-on-error']).toBeUndefined();
+    expect(smoke.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          uses: expect.stringMatching(/runner-preflight@[a-f0-9]{40}$/),
+          with: { 'require-docker': 'true' },
+        }),
+        expect.objectContaining({
+          run: expect.stringContaining(
+            'playwright install --with-deps chromium',
+          ),
+        }),
+        expect.objectContaining({ run: 'scripts/container-smoke.sh' }),
+        expect.objectContaining({
+          run: 'node deploy/public-ingress/smoke.mjs',
+        }),
+      ]),
     );
 
-    // (2) The Docker-state cleanup is conditional on the isolate step having
-    // run. With a bare `always()` it refused the empty DOCKER_CONFIG after a
-    // failed reservation and reported that refusal as the job's last error.
-    const isolate = smoke.steps?.find(
+    const isolate = smoke.steps.find(
       (step) => step.name === 'Isolate Docker client state',
     );
-    const remove = smoke.steps?.find(
+    const remove = smoke.steps.find(
       (step) => step.name === 'Remove isolated Docker client state',
     );
     expect(isolate?.id).toEqual(expect.any(String));
@@ -1263,11 +1317,6 @@ describe('CI verification workflow contracts', () => {
         new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
       ),
     ).toHaveLength(1);
-    expect(
-      workflow('container-smoke.yml').match(
-        new RegExp(`physical-host-capacity@${reviewedSha}`, 'g'),
-      ),
-    ).toHaveLength(1);
     // Only playwright-full holds the physical-host lease now (#2416):
     // coverage moved to hosted coverage-shard/coverage-merge jobs, which
     // need nothing from the fleet host.
@@ -1283,6 +1332,7 @@ describe('CI verification workflow contracts', () => {
       'nightly.yml',
       'publish-packages.yml',
       'backlog-priority-policy.yml',
+      'container-smoke.yml',
       // #1645: the gallery capture moved to a digest-pinned Playwright
       // container on a hosted runner, so it no longer reserves half of
       // desktop-win for up to its owner lifetime. It held `lease-weight: "5"`
@@ -1682,6 +1732,12 @@ describe('CI verification workflow contracts', () => {
       'classify',
       'gallery-diff',
     ]);
+    const classifierRuns = (eventName: string) =>
+      evaluateJobIf(String(pr.jobs.classify.if ?? 'true'), {
+        github: { event_name: eventName },
+      });
+    expect(classifierRuns('pull_request_target')).toBe(true);
+    expect(classifierRuns('merge_group')).toBe(false);
     const classifyStep = pr.jobs.classify.steps.find(
       (step) => step.id === 'relevance',
     );
@@ -2011,11 +2067,12 @@ describe('CI verification workflow contracts', () => {
     };
     const job = document.jobs['ui-bundle-delta'];
     expect(job.if).toBe(
-      "${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository }}",
+      "${{ always() && !cancelled() && needs.pr-admission.outputs.heavy != 'false' && github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && (github.event.action != 'auto_merge_enabled' || vars.STATION_PR_HEAVY_CHECKS == 'when-armed') && github.event.pull_request.head.repo.full_name == github.repository }}",
     );
     expect(job.if).not.toContain('merge_group');
-    // Parallel to fast-checks, never behind it.
-    expect(job.needs).toBeUndefined();
+    // Parallel to fast-checks, never behind it; only the heavy-check
+    // decision (STATION_PR_HEAVY_CHECKS) comes first.
+    expect(job.needs).toBe('pr-admission');
     expect(job['continue-on-error']).toBeUndefined();
     expect(job.concurrency?.group).toContain(
       'github.event.pull_request.head.sha',
@@ -2118,6 +2175,7 @@ describe('CI verification workflow contracts', () => {
         expect(job.name ?? id, id).not.toBe('fast-checks');
     expect(jobs['fast-checks'].needs).toEqual([
       'classify',
+      'pr-admission',
       'fast-checks-plan',
       'fast-checks-shard',
       'fast-checks-statics',
@@ -2170,9 +2228,10 @@ describe('CI verification workflow contracts', () => {
       );
     expect(jobs['fast-checks-shard'].if).toBe(
       // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
-      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' }}",
+      "${{ always() && !cancelled() && needs.fast-checks-plan.result == 'success' && needs.actionlint-artifact.result == 'success' && needs.fast-checks-plan.outputs.legacy == 'false' && needs.fast-checks-plan.outputs.empty != 'true' && needs.pr-admission.outputs.heavy != 'false' }}",
     );
     expect(jobs['fast-checks-shard'].needs).toEqual([
+      'pr-admission',
       'fast-checks-plan',
       'actionlint-artifact',
     ]);
@@ -2236,9 +2295,8 @@ describe('CI verification workflow contracts', () => {
       FAST_CHECKS_SHARD_BUDGET_MS + boundedMs + 3 * 60_000,
     );
 
-    // The selection can include tests that exec zsh, which ubuntu-22.04
-    // lacks: the shard provisions it exactly as full-regression does, before
-    // the tests run.
+    // Only slices with a Linux zsh requirement use the full-regression
+    // preflight. An older slicer with no requirement output stays compatible.
     const zshName =
       'Provision and preflight zsh for process-heavy installer fixtures';
     const fullRegressionZsh = (
@@ -2249,6 +2307,10 @@ describe('CI verification workflow contracts', () => {
     expect(fullRegressionZsh?.run).toContain('sudo bash "$bootstrap" zsh');
     const shardZshIndex = shardSteps.findIndex((step) => step.name === zshName);
     expect(shardZshIndex).toBeGreaterThan(-1);
+    expect(shardSteps[shardZshIndex].if).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: literal GitHub expression.
+      "${{ steps.slice.outputs.empty == 'false' && steps.slice.outputs.requires-zsh != 'false' }}",
+    );
     expect(shardSteps[shardZshIndex].run).toBe(fullRegressionZsh?.run);
     expect(shardSteps[shardZshIndex].env).toEqual({
       BOOTSTRAP_SOURCE_REPOSITORY: `\${{ github.repository }}`,
@@ -2767,9 +2829,7 @@ describe('CI verification workflow contracts', () => {
     expect(performance).toContain(
       'runs-on: [self-hosted, Windows, X64, kontour-windows, native]',
     );
-    expect(workflow('container-smoke.yml')).toContain(
-      'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, docker, playwright]',
-    );
+    expect(workflow('container-smoke.yml')).not.toContain('self-hosted');
     expect(workflow('ci-extended.yml')).toContain(
       'runs-on: [self-hosted, Linux, X64, kontour-linux, heavy-host, playwright]',
     );
@@ -3950,6 +4010,10 @@ describe('hosted qualification workflow covers the full regression', () => {
     const { jobs } = document();
     const text = workflow('full-regression.yml');
     expect(text).not.toMatch(/:raw\b/);
+    expect(jobs['android-viewport'].steps?.[0]).toMatchObject({
+      uses: CHECKOUT_ACTION,
+      with: { ref: `\${{ inputs.source_sha }}` },
+    });
     const aggregate = jobs.qualification;
     expect(aggregate.name).toBe('Full source qualification');
     expect(aggregate.if).toBe('always() && !cancelled()');
@@ -4448,6 +4512,46 @@ describe('hosted qualification workflow covers the full regression', () => {
   it('includes quarantined files in every qualification corpus', () => {
     for (const { text } of selections(document().jobs))
       expect(text).not.toContain('--exclude-quarantined');
+  });
+
+  it('qualifies UI-only main pushes and routes completion through main health', () => {
+    const qualification = load(workflow('main-qualification.yml')) as {
+      name: string;
+      on: { push: unknown };
+    };
+    expect(qualification.on.push).toEqual({
+      branches: ['main'],
+      'paths-ignore': [
+        'docs/reference/deploy-ledger.json',
+        'docs/reference/deploy-ledger.md',
+      ],
+    });
+    expect(qualification).toMatchObject({
+      jobs: {
+        qualification: {
+          if: "github.ref == 'refs/heads/main'",
+          uses: './.github/workflows/full-regression.yml',
+          with: { source_sha: `\${{ github.sha }}` },
+        },
+      },
+    });
+    const health = load(workflow('qualification-health.yml')) as {
+      name: string;
+    };
+    expect(health).toMatchObject({
+      on: {
+        workflow_run: { workflows: [qualification.name], types: ['completed'] },
+      },
+    });
+    expect(load(workflow('main-health.yml'))).toMatchObject({
+      on: {
+        workflow_run: {
+          workflows: expect.arrayContaining([health.name]),
+          types: ['completed'],
+          branches: ['main'],
+        },
+      },
+    });
   });
 
   it('keeps scheduled full qualification canonical, including quarantined files', () => {

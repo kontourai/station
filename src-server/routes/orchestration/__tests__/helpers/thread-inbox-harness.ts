@@ -33,6 +33,7 @@ import {
   queuedAttachmentsOf,
   readQueuedAttachmentFrom,
 } from '../../../../runtime/routes/conversation-start-ports.js';
+import { prepareManagedAcpWorkspace } from '../../../../services/acp/managed-acp-workspace.js';
 import {
   type ExecutionSessionBinding,
   type ExecutionTargetExecutionDependencies,
@@ -82,6 +83,8 @@ class ScriptedAdapter implements ProviderAdapterShape {
   readonly starts: ProviderSessionStartInput[] = [];
   /** Leave each turn running until `complete` ends it. */
   holdTurns = false;
+  prepareNextSession?: Promise<void>;
+  workspaceHome?: string;
   /** Refuse the next send as a turn the engine opened itself. */
   refuseNextAsBusy = false;
   /** Take the next send and never answer it (the engine may have it). */
@@ -96,7 +99,20 @@ class ScriptedAdapter implements ProviderAdapterShape {
 
   async startSession(input: ProviderSessionStartInput) {
     this.starts.push(input);
+    const preparation = this.prepareNextSession;
+    this.prepareNextSession = undefined;
+    if (preparation) await preparation;
     const now = new Date().toISOString();
+    const cwd = this.workspaceHome
+      ? await prepareManagedAcpWorkspace(
+          {
+            kind: 'session',
+            connectionId: 'fixture',
+            threadId: input.threadId,
+          },
+          this.workspaceHome,
+        )
+      : undefined;
     for (const method of ['session.started', 'session.configured'] as const)
       this.events.push({
         eventId: `${input.threadId}:${method}`,
@@ -106,11 +122,13 @@ class ScriptedAdapter implements ProviderAdapterShape {
         sessionId: input.threadId,
         createdAt: now,
         metadata: input.metadata,
+        ...(method === 'session.configured' && cwd ? { cwd } : {}),
       } as CanonicalRuntimeEvent);
     this.sessions.add(input.threadId);
     return {
       provider: this.provider,
       threadId: input.threadId,
+      ...(cwd ? { cwd } : {}),
       // The model it started with, as an engine that confirms it reports.
       ...(input.modelId ? { model: input.modelId } : {}),
       status: 'ready' as const,
@@ -269,6 +287,7 @@ export function createInboxHarness() {
        * model continues in a new Session (`needsModelRestart`).
        */
       modelPerTurn?: false;
+      managedWorkspace?: true;
       /**
        * Continuation after a memory kill: `manual` mounts only the
        * person's route; `automatic` also feeds Station's own trigger.
@@ -296,6 +315,7 @@ export function createInboxHarness() {
         : []),
     );
     const adapter = new ScriptedAdapter();
+    if (options.managedWorkspace) adapter.workspaceHome = root;
     if (options.stagedAttachments || options.queuedFiles)
       adapter.metadata.capabilities = [
         ...adapter.metadata.capabilities,
@@ -494,7 +514,9 @@ export function createInboxHarness() {
           store.readInputlessTurnDisposition(threadId),
         readInvocationTerminal: (threadId, invocationId, turnId) =>
           store.readInvocationTerminal(threadId, invocationId, turnId),
-        coordinatorBusy: (threadId) => service.hasActiveTurn(threadId),
+        coordinatorBusy: (threadId) =>
+          service.isSessionStartUnderway(threadId) ||
+          service.hasActiveTurn(threadId),
         hasPossibleEffect: (threadId) =>
           store.sessionTurnBoundaryAuthority().hasPossibleEffect(threadId),
         conversationOf: (threadId) =>
@@ -547,7 +569,11 @@ export function createInboxHarness() {
                 fullAccessGrant: null,
               } as never,
               deps,
-              { submissionDigest: payload.inputDigest, inboxPlacement: true },
+              {
+                submissionDigest: payload.inputDigest,
+                inboxPlacement: true,
+                expectedInboxSessionId: payload.expectedInboxSessionId,
+              },
             );
             if (!isForegroundDispatchHandle(handle))
               return { outcome: 'indeterminate' };

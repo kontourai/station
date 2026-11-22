@@ -28,6 +28,10 @@ const CHECK = join(ROOT, 'scripts/check-required-tests-ran.mjs');
 const PROFILES = join(ROOT, 'scripts/required-test-profiles.json');
 const FIXTURES = join(ROOT, 'scripts/__tests__/fixtures/required-tests-ran');
 const MACOS_REPORT = join(FIXTURES, 'seatbelt-process-macos.report.json');
+const CAPTURED_SEATBELT_PROFILE = join(
+  FIXTURES,
+  'captured-seatbelt-profile.json',
+);
 const WORKFLOW = join(ROOT, '.github/workflows/seatbelt-kernel.yml');
 const LINUX_REPORT = join(FIXTURES, 'bubblewrap-process-linux.report.json');
 const BUBBLEWRAP_WORKFLOW = join(
@@ -111,7 +115,12 @@ function runCheck(args: string[]) {
 
 function check(
   report: string,
-  { profile = 'seatbelt-kernel', profiles = PROFILES } = {},
+  {
+    profile = 'seatbelt-kernel',
+    profiles = profile === 'seatbelt-kernel'
+      ? CAPTURED_SEATBELT_PROFILE
+      : PROFILES,
+  }: { profile?: string; profiles?: string } = {},
 ) {
   return runCheck([
     '--profile-name',
@@ -139,7 +148,32 @@ function expectInputFailure(
 
 const id = (title: string) => `${SEATBELT_FILE} > ${SUITE} > ${title}`;
 
-describe('the seatbelt-kernel profile over a real macOS report', () => {
+const NEW_SEATBELT_LEGS = [
+  'a Unix socket listens inside the confined TMPDIR, which stays within the socket budget',
+  'the short root beside the session directory is neither writable nor readable',
+  'a process with an overlapping workspace is never observed confined',
+];
+
+test('the live Seatbelt profile preserves captured requirements and requires the new kernel legs', () => {
+  const live = JSON.parse(readFileSync(PROFILES, 'utf8'))['seatbelt-kernel']
+    .files[SEATBELT_FILE];
+  const captured = JSON.parse(readFileSync(CAPTURED_SEATBELT_PROFILE, 'utf8'))[
+    'seatbelt-kernel'
+  ].files[SEATBELT_FILE];
+  for (const titles of [
+    ...captured.mustPass,
+    ...NEW_SEATBELT_LEGS.map((title) => [SUITE, title]),
+  ])
+    expect(live.mustPass).toContainEqual(titles);
+  expect(live.mayRuntimeSkip).toEqual(captured.mayRuntimeSkip);
+  expect(live.notRequired).toEqual(captured.notRequired);
+  const result = check(MACOS_REPORT, { profiles: PROFILES });
+  expect(result.status).toBe(1);
+  for (const title of NEW_SEATBELT_LEGS)
+    expect(result.stderr).toContain(`absent: ${id(title)}`);
+});
+
+describe('the captured seatbelt-kernel profile over its real macOS report', () => {
   test('passes when every pinned leg ran and passed', () => {
     const result = check(join(FIXTURES, 'seatbelt-process-macos.report.json'));
     expect(result.stderr).toBe('');
@@ -406,6 +440,8 @@ describe('an unusable report fails closed', () => {
         'seatbelt-kernel',
         '--report',
         MACOS_REPORT,
+        '--profiles-file',
+        CAPTURED_SEATBELT_PROFILE,
         '--root',
         '/station',
       ]),
@@ -423,6 +459,8 @@ describe('an unusable report fails closed', () => {
         join(FIXTURES, 'does-not-exist.report.json'),
         '--report',
         MACOS_REPORT,
+        '--profiles-file',
+        CAPTURED_SEATBELT_PROFILE,
         '--root',
         '/station',
       ],
@@ -436,6 +474,8 @@ describe('an unusable report fails closed', () => {
         'seatbelt-kernel',
         '--report',
         MACOS_REPORT,
+        '--profiles-file',
+        CAPTURED_SEATBELT_PROFILE,
         '--root',
         '/station',
       ],
@@ -530,7 +570,7 @@ describe('the hosted workflow invokes the check with arguments it accepts', () =
     ['seatbelt-kernel', 'macOS', WORKFLOW, MACOS_REPORT],
     ['linux-bubblewrap-kernel', 'Linux', BUBBLEWRAP_WORKFLOW, LINUX_REPORT],
   ])(
-    'the %s workflow check step passes over the real %s report',
+    'the %s workflow checks the captured %s report against the live profile',
     (profile, _host, workflowFile, realReport) => {
       const workflow = load(readFileSync(workflowFile, 'utf8')) as Workflow;
       const runs = Object.values(workflow.jobs)
@@ -556,12 +596,18 @@ describe('the hosted workflow invokes the check with arguments it accepts', () =
         .slice(2)
         .map((word) => (word.includes('$RUNNER_TEMP') ? realReport : word));
       expect(args).toContain(realReport);
+      expect(words).not.toContain('--profiles-file');
       const result = runCheck([...args, '--root', '/station']);
-      expect(
-        result.status,
-        `the workflow's arguments ${JSON.stringify(words.slice(2))} were refused: ${result.stderr}`,
-      ).toBe(0);
-      expect(result.stdout).toMatch(/^\[required-tests\] OK: profile "/);
+      if (profile === 'seatbelt-kernel') {
+        // The historical report predates these legs. Production must refuse
+        // it, not infer new kernel passes from the captured 63-test result.
+        expect(result.status, result.stderr).toBe(1);
+        for (const title of NEW_SEATBELT_LEGS)
+          expect(result.stderr).toContain(`absent: ${id(title)}`);
+      } else {
+        expect(result.status, result.stderr).toBe(0);
+        expect(result.stdout).toMatch(/^\[required-tests\] OK: profile "/);
+      }
     },
   );
 });
@@ -655,8 +701,8 @@ describe('statuses read from a real run of every skip form', () => {
 
 describe('the pinned profile agrees with the real test file', () => {
   test.each([
-    // 56 must-pass + 5 may-skip + 2 not-required today (#4769 added 8 + 3 + 1).
-    ['seatbelt.process.test.ts', 'seatbelt-kernel', SEATBELT_FILE, 63],
+    // 59 must-pass + 5 may-skip + 2 not-required (#4755 added 3 must-pass legs).
+    ['seatbelt.process.test.ts', 'seatbelt-kernel', SEATBELT_FILE, 66],
     // 52 must-pass + 3 may-skip today (#4770).
     [
       'bubblewrap.process.test.ts',

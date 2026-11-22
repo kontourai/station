@@ -1,0 +1,7 @@
+{
+  "revision": "95b26011a7a1ee3a458b18f5743ab491c6625db1",
+
+  "notes": [
+    {"path":"docs/design/station-connection.md","note":"Connection routing and observation claims are unchanged. ConversationBody reads stationName for the long-wait line; the revalidator still reads /open through the bound connection, now keyed on conversation and connection only.","inputs":["docs/design/station-connection.md","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

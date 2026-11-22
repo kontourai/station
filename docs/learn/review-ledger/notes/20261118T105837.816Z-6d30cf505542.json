@@ -1,0 +1,7 @@
+{
+  "revision": "6a67f706a0109a222cecc9fd833ab8a615a5f45f",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Rechecked the Project settings tests after removing an unsupported Testing Library option from the Save queries. String role names match exactly in the installed library. The absence and presence assertions, native UI behavior, and the knowledge guide claims remain unchanged.","inputs":["src-ui/src/__tests__/ProjectSettingsView.test.tsx"]}
+  ]
+}

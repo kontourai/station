@@ -1,0 +1,7 @@
+{
+  "revision": "0a2b19721dd788427254cc93957fa0195d659958",
+
+  "notes": [
+    {"path":"docs/reference/issue-lifecycle.md","note":"labels.json gained ci:red; the handoff and stage label rules described here are unchanged.","inputs":["docs/reference/issue-lifecycle.md",".github/labels.json"]}
+  ]
+}

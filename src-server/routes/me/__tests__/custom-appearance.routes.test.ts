@@ -1,3 +1,8 @@
+import {
+  createCustomAppearanceThemePack,
+  parseAppearanceProposalReference,
+  parseCustomAppearanceThemePack,
+} from '@kontourai/station-contracts/custom-appearance';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { Hono } from 'hono';
 import { describe, expect, test } from 'vitest';
@@ -20,7 +25,10 @@ const appearance = {
   css: '[data-surface="sidebar"] { border-right: 2px solid #334; }',
 };
 
-function fixture(maxBytes?: number) {
+function fixture(
+  maxBytes?: number,
+  studioEnabled: () => boolean = () => false,
+) {
   const home = makeTempDir('station-custom-appearance-');
   const app = new Hono().route(
     '/api/me',
@@ -33,6 +41,9 @@ function fixture(maxBytes?: number) {
           : humanPrincipal('fixture', who, who);
       },
       tenantId: () => undefined,
+      studioEnabled,
+      resolveProposalSourceSessionId: (c) =>
+        c.req.header('x-test-runtime-session'),
     }),
   );
   type As = 'person' | 'agent-tool' | 'internal';
@@ -40,10 +51,12 @@ function fixture(maxBytes?: number) {
     method: string,
     path: string,
     body?: unknown,
-    options: { as?: As; who?: string; raw?: string } = {},
+    options: { as?: As; who?: string; raw?: string; sessionId?: string } = {},
   ) => {
     const headers = new Headers({ 'Content-Type': 'application/json' });
     if (options.who) headers.set('x-test-person', options.who);
+    if (options.sessionId)
+      headers.set('x-test-runtime-session', options.sessionId);
     if (options.as === 'agent-tool')
       headers.set('x-station-control-origin', 'agent-tool');
     const request = new Request(`http://station.test/api/me${path}`, {
@@ -79,6 +92,57 @@ function fixture(maxBytes?: number) {
 }
 
 describe('/api/me/appearance', () => {
+  test('a delegated proposal stays with its granting person and an expired grant cannot write', async () => {
+    const home = makeTempDir('delegated-appearance-');
+    const store = new CustomAppearanceStore(home);
+    const owner = {
+      principalId: humanPrincipal('fixture', 'alice', 'Alice').id,
+    };
+    const another = { principalId: humanPrincipal('fixture', 'bob', 'Bob').id };
+    let active = true;
+    const app = createCustomAppearanceRoutes({
+      store,
+      resolvePrincipal: () => {
+        throw new Error('The child has no acting principal');
+      },
+      resolveDelegatedAppearanceOwner: () =>
+        active ? owner.principalId : undefined,
+      resolveProposalSourceSessionId: () => 'task:appearance',
+      tenantId: () => undefined,
+    });
+    const first = await app.request('/appearance');
+    expect(first.status).toBe(200);
+    expect(await first.json()).toMatchObject({
+      success: true,
+      data: { revision: store.read(owner).revision },
+    });
+    const submit = (revision: string) =>
+      app.request('/appearance/proposal', {
+        method: 'POST',
+        body: JSON.stringify({ revision, appearance }),
+      });
+    expect((await submit(store.read(owner).revision)).status).toBe(200);
+    expect(store.read(owner)).toMatchObject({
+      active: null,
+      proposal: {
+        sourceSessionId: 'task:appearance',
+        appearance: { name: 'Quiet' },
+      },
+    });
+    expect(store.read(another).proposal).toBeNull();
+    const keep = await app.request('/appearance/proposal/keep', {
+      method: 'POST',
+      body: JSON.stringify({
+        revision: store.read(owner).revision,
+        proposalId: store.read(owner).proposal?.id,
+      }),
+    });
+    expect(keep.status).toBe(403);
+    active = false;
+    expect((await submit(store.read(owner).revision)).status).toBe(403);
+    expect(store.read(owner).active).toBeNull();
+  });
+
   test('an agent proposes; only the person keeps, saves, dismisses, turns off or reports', async () => {
     const f = fixture();
     const empty = await f.read();
@@ -365,5 +429,334 @@ describe('/api/me/appearance', () => {
       expect(refused.status, JSON.stringify(name)).toBe(400);
       expect(refused.json.violations?.[0]?.kind).toBe('invalid-shape');
     }
+  });
+  test('studio gates visual writes and the saved library while legacy read and turn-off work', async () => {
+    let enabled = true;
+    const f = fixture(undefined, () => enabled);
+    const visual = {
+      ...appearance,
+      visual: { panelOpacity: 0.7, radius: 12, fontSize: 16 },
+    };
+    const saved = await f.call('PUT', '/appearance', {
+      revision: (await f.read()).revision,
+      appearance: visual,
+    });
+    expect(saved.status).toBe(200);
+    const proposed = await f.call('POST', '/appearance/proposal', {
+      revision: saved.json.data.revision,
+      appearance: visual,
+    });
+    expect(proposed.status).toBe(200);
+    enabled = false;
+    expect((await f.read()).active.visual).toEqual(visual.visual);
+    for (const [method, path, body] of [
+      [
+        'PUT',
+        '/appearance',
+        { revision: proposed.json.data.revision, appearance: visual },
+      ],
+      [
+        'POST',
+        '/appearance/proposal',
+        { revision: proposed.json.data.revision, appearance: visual },
+      ],
+      [
+        'POST',
+        '/appearance/proposal/keep',
+        {
+          revision: proposed.json.data.revision,
+          proposalId: proposed.json.data.proposal.id,
+        },
+      ],
+      ['GET', '/appearance/library', undefined],
+    ] as const) {
+      const refused = await f.call(method, path, body);
+      expect(refused.status).toBe(404);
+      expect(refused.json.code).toBe('feature_preview_disabled');
+    }
+    expect(
+      (
+        await f.call('PUT', '/appearance', {
+          revision: (await f.read()).revision,
+          appearance: null,
+        })
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await f.call('PUT', '/appearance', {
+          revision: (await f.read()).revision,
+          appearance,
+        })
+      ).status,
+    ).toBe(200);
+  });
+
+  test('saved themes persist separately from active appearance, compare revisions and isolate people', async () => {
+    const f = fixture(undefined, () => true);
+    const empty = (await f.call('GET', '/appearance/library')).json.data;
+    const saved = await f.call('POST', '/appearance/library', {
+      revision: empty.revision,
+      appearance,
+      favorite: true,
+    });
+    expect(saved.status).toBe(200);
+    const theme = saved.json.data.themes[0];
+    expect(theme).toMatchObject({ name: 'Quiet', favorite: true, appearance });
+    expect(theme.id).toMatch(/^[a-f0-9]{64}$/);
+    expect((await f.read()).active).toBeNull();
+    expect((await f.call('GET', '/appearance/library')).json.data).toEqual(
+      saved.json.data,
+    );
+    expect(
+      (await f.call('GET', '/appearance/library', undefined, { who: 'bob' }))
+        .json.data.themes,
+    ).toEqual([]);
+    expect(
+      (
+        await f.call('PATCH', '/appearance/library', {
+          revision: empty.revision,
+          id: theme.id,
+          name: 'Stale',
+        })
+      ).status,
+    ).toBe(409);
+    const updated = await f.call('PATCH', '/appearance/library', {
+      revision: saved.json.data.revision,
+      id: theme.id,
+      name: 'Renamed',
+      favorite: false,
+    });
+    expect(updated.status).toBe(200);
+    expect(updated.json.data.themes[0]).toMatchObject({
+      name: 'Renamed',
+      favorite: false,
+      appearance: { name: 'Renamed' },
+    });
+    expect(updated.json.data.themes[0].id).not.toBe(theme.id);
+    const duplicate = await f.call('POST', '/appearance/library', {
+      revision: updated.json.data.revision,
+      appearance: updated.json.data.themes[0].appearance,
+    });
+    expect(duplicate.json.data.themes).toHaveLength(1);
+    const edited = await f.call('POST', '/appearance/library', {
+      revision: duplicate.json.data.revision,
+      id: duplicate.json.data.themes[0].id,
+      appearance: { ...appearance, name: 'Edited', css: '' },
+    });
+    expect(edited.json.data.themes).toHaveLength(1);
+    const finalTheme = edited.json.data.themes[0];
+    for (const as of ['agent-tool', 'internal'] as const)
+      for (const [method, body] of [
+        ['POST', { revision: edited.json.data.revision, appearance }],
+        [
+          'PATCH',
+          {
+            revision: edited.json.data.revision,
+            id: finalTheme.id,
+            favorite: true,
+          },
+        ],
+        ['DELETE', { revision: edited.json.data.revision, id: finalTheme.id }],
+      ] as const)
+        expect(
+          (await f.call(method, '/appearance/library', body, { as })).status,
+        ).toBe(403);
+    expect(
+      (
+        await f.call('DELETE', '/appearance/library', {
+          revision: edited.json.data.revision,
+          id: finalTheme.id,
+        })
+      ).json.data.themes,
+    ).toEqual([]);
+  });
+
+  test('library caps entries and its total document bytes without changing saved state', async () => {
+    const f = fixture(undefined, () => true);
+    let library = (await f.call('GET', '/appearance/library')).json.data;
+    for (let index = 0; index < 24; index++) {
+      const result = await f.call('POST', '/appearance/library', {
+        revision: library.revision,
+        appearance: { ...appearance, name: `Theme ${index}` },
+      });
+      expect(result.status).toBe(200);
+      library = result.json.data;
+    }
+    const full = await f.call('POST', '/appearance/library', {
+      revision: library.revision,
+      appearance: { ...appearance, name: 'Overflow' },
+    });
+    expect(full.status).toBe(413);
+    expect(full.json.code).toBe('custom_appearance_library_full');
+    expect((await f.call('GET', '/appearance/library')).json.data).toEqual(
+      library,
+    );
+    const small = fixture(1500, () => true);
+    const before = (await small.call('GET', '/appearance/library')).json.data;
+    expect(
+      (
+        await small.call('POST', '/appearance/library', {
+          revision: before.revision,
+          appearance: { ...appearance, css: `/* ${'x'.repeat(2000)} */` },
+        })
+      ).status,
+    ).toBe(413);
+    expect((await small.call('GET', '/appearance/library')).json.data).toEqual(
+      before,
+    );
+  });
+
+  test('proposal references are bound to runtime sessions and superseded ids cannot keep their successor', async () => {
+    const f = fixture(undefined, () => true);
+    const first = await f.call(
+      'POST',
+      '/appearance/proposal',
+      { revision: (await f.read()).revision, appearance },
+      { as: 'internal', sessionId: 'runtime-a' },
+    );
+    expect(first.json.data.proposal.sourceSessionId).toBe('runtime-a');
+    const tool = { success: true, state: 'proposed', data: first.json.data };
+    expect(
+      parseAppearanceProposalReference(
+        'mcp__station-control__propose_appearance',
+        { content: [{ type: 'text', text: JSON.stringify(tool) }] },
+      ),
+    ).toEqual({
+      id: first.json.data.proposal.id,
+      name: 'Quiet',
+      sourceSessionId: 'runtime-a',
+    });
+    expect(
+      parseAppearanceProposalReference('other/propose_appearance', tool),
+    ).toBeUndefined();
+    expect(
+      parseAppearanceProposalReference('station-control/propose_appearance', {
+        ...tool,
+        success: false,
+      }),
+    ).toBeUndefined();
+    expect(
+      (
+        await f.call('POST', '/appearance/proposal', {
+          revision: first.json.data.revision,
+          appearance,
+          sourceSessionId: 'forged',
+        })
+      ).status,
+    ).toBe(400);
+    const second = await f.call(
+      'POST',
+      '/appearance/proposal',
+      { revision: first.json.data.revision, appearance },
+      { as: 'internal', sessionId: 'runtime-b' },
+    );
+    expect(second.json.data.proposal.id).not.toBe(first.json.data.proposal.id);
+    expect(
+      (
+        await f.call('POST', '/appearance/proposal/keep', {
+          revision: second.json.data.revision,
+          proposalId: first.json.data.proposal.id,
+        })
+      ).status,
+    ).toBe(409);
+    expect((await f.read()).proposal.sourceSessionId).toBe('runtime-b');
+  });
+
+  test('admits bounded raster backgrounds and refuses external, SVG, malformed and oversized raster headers', async () => {
+    const f = fixture(undefined, () => true);
+    const png =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jU1sAAAAASUVORK5CYII=';
+    const visual = {
+      background: {
+        dataUrl: `data:image/png;base64,${png}`,
+        size: 'cover',
+        position: 'center',
+        dim: 0.4,
+      },
+    };
+    const accepted = await f.call('PUT', '/appearance', {
+      revision: (await f.read()).revision,
+      appearance: { ...appearance, visual },
+    });
+    expect(accepted.status).toBe(200);
+    expect((await f.read()).active.visual).toEqual(visual);
+    const huge = Buffer.from(png, 'base64');
+    huge.writeUInt32BE(100000, 16);
+    const forgedWebp = Buffer.alloc(44);
+    forgedWebp.write('RIFF', 0);
+    forgedWebp.writeUInt32LE(36, 4);
+    forgedWebp.write('WEBPVP8X', 8);
+    forgedWebp.writeUInt32LE(10, 16);
+    forgedWebp.write('VP8L', 30);
+    forgedWebp.writeUInt32LE(5, 34);
+    forgedWebp[38] = 47;
+    forgedWebp.writeUInt32LE(9999, 39); // A 1px canvas must not disguise a 10,000px frame.
+    const malformedJpeg = Buffer.from([
+      255, 216, 255, 255, 255, 255, 255, 255, 255, 255, 255, 217,
+    ]);
+    for (const dataUrl of [
+      'https://example.test/background.png',
+      'data:image/svg+xml;base64,PHN2Zy8+',
+      `data:image/jpeg;base64,${png}`,
+      'data:image/png;base64,AAAA',
+      `data:image/webp;base64,${forgedWebp.toString('base64')}`,
+      `data:image/jpeg;base64,${malformedJpeg.toString('base64')}`,
+      `data:image/png;base64,${huge.toString('base64')}`,
+      `data:image/png;base64,${'A'.repeat(1400000)}`,
+    ]) {
+      const refused = await f.call('PUT', '/appearance', {
+        revision: (await f.read()).revision,
+        appearance: {
+          ...appearance,
+          visual: { background: { ...visual.background, dataUrl } },
+        },
+      });
+      expect(refused.status, dataUrl.slice(0, 80)).toBe(400);
+    }
+    for (const bad of [
+      { panelOpacity: 0.1 },
+      { radius: 25 },
+      { fontSize: 21 },
+      { background: { ...visual.background, dim: 2 } },
+      { unexpected: true },
+    ]) {
+      expect(
+        (
+          await f.call('PUT', '/appearance', {
+            revision: (await f.read()).revision,
+            appearance: { ...appearance, visual: bad },
+          })
+        ).status,
+      ).toBe(400);
+    }
+    expect((await f.read()).active.visual).toEqual(visual);
+  });
+
+  test('portable theme packs contain only validated appearance bytes and reject invalid import data', async () => {
+    const pack = createCustomAppearanceThemePack({ ...appearance, version: 1 });
+    expect(Object.keys(pack)).toEqual(['format', 'version', 'appearance']);
+    expect(parseCustomAppearanceThemePack(JSON.stringify(pack))).toEqual({
+      ok: true,
+      value: pack,
+    });
+    for (const invalid of [
+      { ...pack, owner: 'person' },
+      { ...pack, version: 2 },
+      { ...pack, appearance: { ...appearance, revision: 'secret' } },
+      {
+        ...pack,
+        appearance: {
+          ...appearance,
+          css: 'body{background:url(https://evil.test)}',
+        },
+      },
+      '{broken',
+      ' '.repeat(1536 * 1024 + 1),
+    ]) {
+      expect(parseCustomAppearanceThemePack(invalid).ok).toBe(false);
+    }
+    const f = fixture(undefined, () => true);
+    expect((await f.read()).active).toBeNull();
   });
 });

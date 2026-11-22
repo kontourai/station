@@ -2,6 +2,7 @@ import {
   describePullRequestFeedbackCategories,
   type PullRequestFeedbackDelivery,
   type PullRequestFeedbackView,
+  type PullRequestHeadReview,
 } from '@kontourai/station-contracts/pull-request-feedback';
 import type { PullRequestChipValue } from './pull-request-chips';
 
@@ -12,7 +13,10 @@ export function pullRequestFeedbackChip(
   if (!view?.ownedHere) return null;
   switch (view.status.state) {
     case 'watching':
-      return { label: 'Auto-fix on', tone: 'success' };
+      return view.settings.fixFailingChecks ||
+        view.settings.addressReviewComments
+        ? { label: 'Auto-fix on', tone: 'success' }
+        : { label: 'Review on', tone: 'success' };
     case 'held':
       return view.status.reason === 'checks-running'
         ? { label: 'Waiting on checks', tone: 'pending' }
@@ -117,9 +121,11 @@ export function pullRequestFeedbackLine(
         text:
           status.reason === 'repeated-failure'
             ? `Paused: the same checks failed on 3 pushes (${short(status.headSha)})`
-            : status.cap === 'day'
-              ? 'Paused after 10 messages in 24 hours'
-              : `Paused after 3 rounds on ${short(status.headSha)}`,
+            : status.reason === 'fix-budget'
+              ? `Paused: every fix attempt is used (${short(status.headSha)})`
+              : status.cap === 'day'
+                ? 'Paused after 10 messages in 24 hours'
+                : `Paused after 3 rounds on ${short(status.headSha)}`,
       };
     case 'held': {
       if (status.reason === 'checks-running')
@@ -148,7 +154,9 @@ export function pullRequestFeedbackLine(
               ? 'Watching checks and reviews'
               : view.settings.fixFailingChecks
                 ? 'Watching checks'
-                : 'Watching reviews',
+                : view.settings.addressReviewComments
+                  ? 'Watching reviews'
+                  : 'Reviewing each new head',
         };
       return { text: deliverySentence(last), at: last.at };
     }
@@ -172,4 +180,18 @@ export function historyRowParts(row: PullRequestFeedbackDelivery): {
       superseded: 'Superseded',
     }[row.state],
   };
+}
+
+/** The row's meta facts for Station's newest head review: "Reviewed · 2 findings". */
+export function headReviewMeta(
+  review: PullRequestHeadReview | undefined,
+): string[] {
+  // Only about the newest head: an earlier push's review says nothing now.
+  if (!review?.current) return [];
+  if (review.state === 'reviewing') return ['Reviewing'];
+  if (review.state !== 'reviewed') return [];
+  const required = review.required ?? 0;
+  return required
+    ? ['Reviewed', `${required} ${required === 1 ? 'finding' : 'findings'}`]
+    : ['Reviewed'];
 }

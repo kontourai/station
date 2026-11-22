@@ -1,0 +1,7 @@
+{
+  "revision": "7a67bf0ea4191aa4e71bc4f02756e46fa020ae59",
+
+  "notes": [
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Reviewed UX-03 and its evidence boundaries against the changed reconnect spec. The new 390px touch journeys extend browser evidence for Connections and Station recovery without changing the campaign scope or qualifying independent devices, external providers, or integrated acceptance.","inputs":["docs/plans/whole-app-ux-campaign.md"]}
+  ]
+}

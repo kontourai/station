@@ -5,6 +5,7 @@ import {
   type PrincipalRef,
 } from '@kontourai/station-contracts/principal';
 import {
+  GRANTABLE_PROJECT_ROLES,
   PROJECT_MEMBER_ROLES,
   PROJECT_MEMBERSHIP_VERSION,
   type ProjectAccessAdministrationView,
@@ -28,7 +29,7 @@ export class ProjectMembershipRefusal extends Error {
   }
 }
 const principalSchema = z.custom<PrincipalRef>(isPrincipalRef);
-const roleSchema = z.enum(['viewer', 'contributor', 'admin', 'owner']);
+const roleSchema = z.enum([...GRANTABLE_PROJECT_ROLES, 'owner']);
 const memberSchema = z
   .object({
     principal: principalSchema,
@@ -43,7 +44,7 @@ const invitationSchema = z
   .object({
     id: z.string().min(1),
     recipientEmail: z.string().email().nullable(),
-    role: z.enum(['viewer', 'contributor', 'admin']),
+    role: z.enum(GRANTABLE_PROJECT_ROLES),
     invitedBy: principalSchema,
     status: z.enum(['pending', 'accepted', 'revoked']),
     expiresAt: z.string().datetime(),
@@ -200,7 +201,7 @@ export class ProjectMembershipStore {
     if (
       (email !== null &&
         (!z.string().email().safeParse(email).success || email.length > 320)) ||
-      !['viewer', 'contributor', 'admin'].includes(input.role)
+      !GRANTABLE_PROJECT_ROLES.includes(input.role)
     )
       throw new ProjectMembershipRefusal('invitation_invalid');
     const expiry = Date.parse(input.expiresAt);
@@ -437,7 +438,7 @@ export class ProjectMembershipStore {
       if (
         !z
           .object({
-            role: z.enum(['viewer', 'contributor', 'admin']),
+            role: z.enum(GRANTABLE_PROJECT_ROLES),
             status: z.enum(['active', 'revoked']),
           })
           .strict()

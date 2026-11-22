@@ -22,6 +22,7 @@ import {
   MANDATORY_DENIED_PERMISSIONS,
   PAGE_SESSION_CDP_ALLOWLIST,
   type PreviewDiagnostic,
+  SERVED_DOCUMENT_URL,
 } from '../hosts/chromium-server-host.js';
 import { deriveStationListeners } from '../station-listeners.js';
 
@@ -540,6 +541,81 @@ describe('ChromiumServerHost with a fake browser', () => {
     expect(events.filter((e) => e.kind === 'request-blocked')).toHaveLength(2);
   });
 
+  test('a served document loads once, only into the target that asked for it', async () => {
+    // Chrome 158 aborts when an about:blank page adds a sandboxed srcdoc
+    // frame (#4917), so the preview's page must have a real site.
+    let emitEvent: (
+      event: string,
+      params: unknown,
+      sessionId?: string,
+    ) => void = () => {};
+    const { host, profileDir, emit, calls } = harness((call) => {
+      if (
+        call.method === 'Page.navigate' &&
+        (call.params as { url?: string }).url === SERVED_DOCUMENT_URL
+      ) {
+        // While T1's document is still waiting, another frame asks for the
+        // same address first: it must not receive T1's document.
+        emitEvent('Fetch.requestPaused', {
+          requestId: 'other-while-pending',
+          request: { url: SERVED_DOCUMENT_URL },
+          resourceType: 'Document',
+          frameId: 'T9',
+        });
+        emitEvent('Fetch.requestPaused', {
+          requestId: 'served',
+          request: { url: SERVED_DOCUMENT_URL },
+          resourceType: 'Document',
+          frameId: 'T1',
+        });
+        emitEvent('Page.loadEventFired', {}, call.sessionId);
+      }
+      return {};
+    });
+    emitEvent = emit;
+    const html = '<!doctype html><body>bootstrap ✓</body>';
+    await host.openTarget({ profileDir, viewport: VIEWPORT, document: html });
+    expect(calls).toContainEqual({
+      method: 'Page.navigate',
+      params: { url: SERVED_DOCUMENT_URL },
+      sessionId: 'S-T1',
+    });
+    expect(calls).toContainEqual({
+      method: 'Fetch.fulfillRequest',
+      params: {
+        requestId: 'served',
+        responseCode: 200,
+        responseHeaders: [
+          { name: 'Content-Type', value: 'text/html; charset=utf-8' },
+          { name: 'Referrer-Policy', value: 'no-referrer' },
+        ],
+        body: Buffer.from(html, 'utf8').toString('base64'),
+      },
+      sessionId: undefined,
+    });
+    // One-shot and per target: a later request for the same URL, from this
+    // target or another, is never answered with the document.
+    emit('Fetch.requestPaused', {
+      requestId: 'again',
+      request: { url: SERVED_DOCUMENT_URL },
+      resourceType: 'Document',
+      frameId: 'T1',
+    });
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    emit('Fetch.requestPaused', {
+      requestId: 'other',
+      request: { url: SERVED_DOCUMENT_URL },
+      resourceType: 'Document',
+      frameId: 'T2',
+    });
+    await flush();
+    expect(
+      calls
+        .filter((c) => c.method === 'Fetch.fulfillRequest')
+        .map((c) => (c.params as { requestId: string }).requestId),
+    ).toEqual(['served']);
+  });
+
   test('a popup from our target is closed and its URL loads in the opener', async () => {
     const { host, profileDir, emit, calls } = harness();
     await host.openTarget({ profileDir, viewport: VIEWPORT });
@@ -904,6 +980,26 @@ describe('ChromiumServerHost with a fake browser', () => {
       targetId: 'X',
       url: 'view-source:https://a.example/',
     });
+  });
+
+  test('a target already destroyed is not closed again when its info arrives late', async () => {
+    const { host, profileDir, emit, calls, events } = harness();
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    // Ours, then closed: Chromium may still report its info afterwards.
+    emit('Target.targetDestroyed', { targetId: 'T1' });
+    emit('Target.targetInfoChanged', {
+      targetInfo: { targetId: 'T1', type: 'page', url: 'about:blank' },
+    });
+    // Unknown, destroyed during its grace.
+    emit('Target.targetCreated', {
+      targetInfo: { targetId: 'X', type: 'page', url: 'about:blank' },
+    });
+    emit('Target.targetDestroyed', { targetId: 'X' });
+    await new Promise((r) => setTimeout(r, 1_100));
+    expect(calls.filter((c) => c.method === 'Target.closeTarget')).toEqual([]);
+    expect(events.filter((e) => e.kind === 'untracked-target-closed')).toEqual(
+      [],
+    );
   });
 
   test('our own target is never mistaken for an untracked one, however slow the attach', async () => {

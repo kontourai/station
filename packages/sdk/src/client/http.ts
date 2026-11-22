@@ -41,6 +41,7 @@ import {
 } from './request-deadline';
 import {
   forgetStationOrigin,
+  hasStationEnvelopeMarker,
   observeStationResponse,
 } from './station-envelope';
 
@@ -561,7 +562,8 @@ export type ClientCredential = {
   onAccountUnauthorized?: () => void | Promise<void>;
   /**
    * Records that this Station accepted an authenticated request, and names the
-   * URL it was accepted on. The URL matters to the recipient: a connection
+   * URL it was accepted on. Requires a direct, Station-marked JSON success.
+   * The URL matters to the recipient: a connection
    * keeps its identity across a rebind, so "this connection was reachable" and
    * "THIS ADDRESS accepted us" are different facts.
    */
@@ -1164,9 +1166,8 @@ async function reportUnauthorized(
 }
 
 /**
- * The mirror of `reportUnauthorized`, and deliberately gated on the same two
- * facts: a request that did not carry this Station's credentials says nothing
- * about them either way.
+ * Credential recovery requires a direct JSON success marked by Station.
+ * This check leaves the response untouched for normal caller validation.
  *
  * `authentication: 'omit'` is a DELIBERATELY public request — the event-stream
  * resume probe and the session-event-window probe both use it against
@@ -1181,25 +1182,24 @@ async function reportAuthenticated(
   configured: ClientCredential | undefined,
   opts?: ClientRequestOptions,
 ): Promise<void> {
-  if (!response.ok || opts?.authentication === 'omit') return;
-  // A stale Station address can serve an HTML fallback or a sign-in page
-  // with status 200. That is not evidence that it accepted this credential.
-  // Recovering here would re-key the authority gate before JSON parsing
-  // rejects the page, repeating the startup/401/recovery cycle indefinitely.
-  // Custom `fetch` implementations may return response-like objects without
-  // headers; those carry no HTML evidence, so they keep the recovery path.
+  if (
+    !configured?.onAuthenticated ||
+    !response.ok ||
+    opts?.authentication === 'omit' ||
+    !sameOrigin(url, configured.origin) ||
+    response.redirected ||
+    (response.url && !sameOrigin(response.url, configured.origin)) ||
+    !hasStationEnvelopeMarker(response)
+  )
+    return;
   const mediaType = response.headers
-    ?.get?.('content-type')
+    .get('content-type')
     ?.split(';')[0]
     ?.trim()
     .toLowerCase();
-  if (mediaType === 'text/html' || mediaType === 'application/xhtml+xml')
-    return;
+  if (mediaType !== 'application/json') return;
 
-  if (configured && sameOrigin(url, configured.origin)) {
-    // Awaited, and bounded, for the same reasons as `reportUnauthorized`.
-    await awaitCredentialReport(configured.onAuthenticated?.(url));
-  }
+  await awaitCredentialReport(configured.onAuthenticated(url));
 }
 
 /** Preserve the three authority boundaries around both awaited reporters. */
@@ -1646,7 +1646,10 @@ async function mutateBody(
         requestOptions?.authentication !== 'omit',
     ),
   );
-  const init: RequestInit = { method };
+  const init: RequestInit = {
+    method,
+    ...(requestOptions?.redirect ? { redirect: requestOptions.redirect } : {}),
+  };
   if (requestOptions?.signal) init.signal = requestOptions.signal;
   if (headers) {
     init.headers = headers;
@@ -1890,6 +1893,27 @@ type HostEventTarget = {
   ): void;
 };
 
+function hostSupportsEvents(
+  target: HostEventTarget | undefined,
+): target is HostEventTarget {
+  return (
+    typeof target?.addEventListener === 'function' &&
+    typeof target.removeEventListener === 'function'
+  );
+}
+
+function listenToHost(
+  target: HostEventTarget | undefined,
+  type: string,
+  listener: (event?: { persisted?: boolean }) => void,
+): (() => void) | undefined {
+  if (!hostSupportsEvents(target)) return;
+  // The stream can settle after the page is torn down.
+  const remove = target.removeEventListener.bind(target, type, listener);
+  target.addEventListener(type, listener);
+  return remove;
+}
+
 function browserDocument():
   | (HostEventTarget & { hidden?: boolean })
   | undefined {
@@ -1956,18 +1980,21 @@ function interruptibleDelay(
       clearTimeout(timer);
       if (resumeTimer !== undefined) clearTimeout(resumeTimer);
       signal.removeEventListener('abort', finish);
-      browserDocument()?.removeEventListener('visibilitychange', onWake);
-      const scope = browserWindow();
-      scope?.removeEventListener('focus', onWake);
-      scope?.removeEventListener('online', onWake);
+      removeVisibility?.();
+      removeFocus?.();
+      removeOnline?.();
       resolve();
     };
+    const page = browserWindow();
+    const removeVisibility = listenToHost(
+      browserDocument(),
+      'visibilitychange',
+      onWake,
+    );
+    const removeFocus = listenToHost(page, 'focus', onWake);
+    const removeOnline = listenToHost(page, 'online', onWake);
     const timer = setTimeout(() => finish(), ms);
     signal.addEventListener('abort', finish, { once: true });
-    browserDocument()?.addEventListener('visibilitychange', onWake);
-    const scope = browserWindow();
-    scope?.addEventListener('focus', onWake);
-    scope?.addEventListener('online', onWake);
   });
   return { promise, wake: () => finish() };
 }
@@ -2074,9 +2101,12 @@ async function consumeSseResponse(
       if (chunk.done) break;
     }
   } finally {
-    stopWatchdog.stop();
-    signal.removeEventListener('abort', cancelReader);
-    reader.releaseLock();
+    try {
+      stopWatchdog.stop();
+    } finally {
+      signal.removeEventListener('abort', cancelReader);
+      reader.releaseLock();
+    }
   }
   // Cancelling the reader resolves the pending read as `done`, which on its
   // own reads exactly like a server that closed cleanly. Name the cause.
@@ -2105,21 +2135,24 @@ function watchForStall(
     stalled = true;
     cancel();
   };
+  const page = browserWindow();
+  const removeVisibility = listenToHost(
+    browserDocument(),
+    'visibilitychange',
+    check,
+  );
+  const removeFocus = listenToHost(page, 'focus', check);
+  const removeOnline = listenToHost(page, 'online', check);
   const timer = setInterval(check, Math.max(1, Math.floor(stallTimeoutMs / 3)));
-  const doc = browserDocument();
-  const scope = browserWindow();
-  doc?.addEventListener('visibilitychange', check);
-  scope?.addEventListener('focus', check);
-  scope?.addEventListener('online', check);
   return {
     touch() {
       lastActivityAt = Date.now();
     },
     stop() {
       clearInterval(timer);
-      doc?.removeEventListener('visibilitychange', check);
-      scope?.removeEventListener('focus', check);
-      scope?.removeEventListener('online', check);
+      removeVisibility?.();
+      removeFocus?.();
+      removeOnline?.();
     },
     get stalled() {
       return stalled;
@@ -2177,10 +2210,15 @@ export function fetchSSE(
   // can retain a stale UI tree and its credentials. BFCache entry is different:
   // the same page may resume, so it intentionally keeps the stream alive.
   const page = browserWindow();
-  const abortOnPageHide = (event?: { persisted?: boolean }) => {
+  const pageIsCurrent = () =>
+    page === undefined ||
+    (browserWindow() === page && hostSupportsEvents(page));
+  const removePageHide = listenToHost(page, 'pagehide', (event) => {
     if (!event?.persisted) abort();
-  };
-  page?.addEventListener('pagehide', abortOnPageHide);
+  });
+  if (page !== undefined && !removePageHide) {
+    throw new TypeError('SSE browser window cannot register pagehide');
+  }
   opts.signal?.addEventListener('abort', abort, { once: true });
   const origin = requestOrigin(url);
   const initialRetryDelay = opts.retryDelayMs ?? 1000;
@@ -2216,6 +2254,10 @@ export function fetchSSE(
     let retryCount = 0;
     const resetAfterMessages = Math.max(1, opts.retryResetAfterMessages ?? 1);
     while (!controller.signal.aborted) {
+      if (!pageIsCurrent()) {
+        abort();
+        break;
+      }
       if (restartPending) {
         restartPending = false;
         retryDelay = baseRetryDelay;
@@ -2244,17 +2286,26 @@ export function fetchSSE(
         });
         let response: Response;
         try {
-          response = await waitForSseResponse(
-            getJson(url, {
-              ...opts,
-              headers,
-              signal: attemptSignal,
-              // The opening watchdog ends at headers; a healthy body's lifetime is open-ended.
-              timeoutMs: null,
-              progressTimeoutMs: undefined,
-            }),
-            attemptSignal,
+          const requestOptions = {
+            ...opts,
+            headers,
+            signal: attemptSignal,
+            // The opening watchdog ends at headers; a healthy body's lifetime is open-ended.
+            timeoutMs: null,
+            progressTimeoutMs: undefined,
+          };
+          const opening = resolveRequestCredential(url, requestOptions).then(
+            (credential) => {
+              if (!pageIsCurrent()) abort();
+              attemptSignal.throwIfAborted();
+              return getJsonWithResolvedCredential(
+                url,
+                requestOptions,
+                credential,
+              );
+            },
           );
+          response = await waitForSseResponse(opening, attemptSignal);
         } finally {
           openingWatchdog.stop();
         }
@@ -2433,8 +2484,11 @@ export function fetchSSE(
       retryDelay = Math.min(Math.max(retryDelay * 2, 1), maxRetryDelay);
     }
   })().finally(() => {
-    page?.removeEventListener('pagehide', abortOnPageHide);
-    opts.signal?.removeEventListener('abort', abort);
+    try {
+      removePageHide?.();
+    } finally {
+      opts.signal?.removeEventListener('abort', abort);
+    }
   });
   return {
     close: abort,

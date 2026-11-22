@@ -1,0 +1,47 @@
+{
+  "revision": "b4c1cbff5ea6159b3bb99051b14ac3c0d4ac030a",
+
+  "notes": [
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed the compile-target check in the Tauri adapter and the desktop-only Rust replay commands. Android and iOS skip subscription after a valid report. The desktop subscribe-before-drain replay path retains its early mount and acknowledgement.","inputs":["docs/design/native-capabilities.md","src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed direct-origin, media-type, and Station-envelope checks in SDK credential reporting. The runtime marks its own JSON and removes markers from relayed responses. Native authenticated transport preserves the marker and declines redirects. The app still records refusals and uses verified, generation-bound successes to recover.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed tray subscription against Android compile-target reporting and the desktop replay contract. Android and iOS use a no-op subscription after a valid capability report. Desktop still subscribes, drains, validates and acknowledges pending destinations.","inputs":["src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed tray subscription against Android compile-target reporting and the desktop replay contract. Android and iOS use a no-op subscription after a valid capability report. Desktop still subscribes, drains, validates and acknowledges pending destinations.","inputs":["src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed tray subscription against Android compile-target reporting and the desktop replay contract. Android and iOS use a no-op subscription after a valid capability report. Desktop still subscribes, drains, validates and acknowledges pending destinations.","inputs":["src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed tray subscription against Android compile-target reporting and the desktop replay contract. Android and iOS use a no-op subscription after a valid capability report. Desktop still subscribes, drains, validates and acknowledges pending destinations.","inputs":["src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed tray subscription against Android compile-target reporting and the desktop replay contract. Android and iOS use a no-op subscription after a valid capability report. Desktop still subscribes, drains, validates and acknowledges pending destinations.","inputs":["src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the SDK credential recovery gate and its related client, UI and transport references. Direct Station-marked JSON can retire a rejection for the captured current authority. Response delivery, body-reader fences, explicit public probes, refusal reporting and SSE lifecycle contracts retain their existing boundaries.","inputs":["packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the SDK credential recovery gate and its related client, UI and transport references. Direct Station-marked JSON can retire a rejection for the captured current authority. Response delivery, body-reader fences, explicit public probes, refusal reporting and SSE lifecycle contracts retain their existing boundaries.","inputs":["packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"Reviewed the SDK credential recovery gate and its related client, UI and transport references. Direct Station-marked JSON can retire a rejection for the captured current authority. Response delivery, body-reader fences, explicit public probes, refusal reporting and SSE lifecycle contracts retain their existing boundaries.","inputs":["packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Reviewed the SDK credential recovery gate and its related client, UI and transport references. Direct Station-marked JSON can retire a rejection for the captured current authority. Response delivery, body-reader fences, explicit public probes, refusal reporting and SSE lifecycle contracts retain their existing boundaries.","inputs":["packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the SDK credential recovery gate and its related client, UI and transport references. Direct Station-marked JSON can retire a rejection for the captured current authority. Response delivery, body-reader fences, explicit public probes, refusal reporting and SSE lifecycle contracts retain their existing boundaries.","inputs":["packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the SDK credential recovery gate and its related client, UI and transport references. Direct Station-marked JSON can retire a rejection for the captured current authority. Response delivery, body-reader fences, explicit public probes, refusal reporting and SSE lifecycle contracts retain their existing boundaries.","inputs":["packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the SDK credential recovery gate and its related client, UI and transport references. Direct Station-marked JSON can retire a rejection for the captured current authority. Response delivery, body-reader fences, explicit public probes, refusal reporting and SSE lifecycle contracts retain their existing boundaries.","inputs":["packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the SDK credential recovery gate and its related client, UI and transport references. Direct Station-marked JSON can retire a rejection for the captured current authority. Response delivery, body-reader fences, explicit public probes, refusal reporting and SSE lifecycle contracts retain their existing boundaries.","inputs":["packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the SDK credential recovery gate and its related client, UI and transport references. Direct Station-marked JSON can retire a rejection for the captured current authority. Response delivery, body-reader fences, explicit public probes, refusal reporting and SSE lifecycle contracts retain their existing boundaries.","inputs":["packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the SDK credential recovery gate and its related client, UI and transport references. Direct Station-marked JSON can retire a rejection for the captured current authority. Response delivery, body-reader fences, explicit public probes, refusal reporting and SSE lifecycle contracts retain their existing boundaries.","inputs":["packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the SDK credential recovery gate and its related client, UI and transport references. Direct Station-marked JSON can retire a rejection for the captured current authority. Response delivery, body-reader fences, explicit public probes, refusal reporting and SSE lifecycle contracts retain their existing boundaries.","inputs":["packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the SDK credential recovery gate and its related client, UI and transport references. Direct Station-marked JSON can retire a rejection for the captured current authority. Response delivery, body-reader fences, explicit public probes, refusal reporting and SSE lifecycle contracts retain their existing boundaries.","inputs":["packages/sdk/src/client/http.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the integration and SDK authoring references against the credential recovery paragraph. Existing SDK entrypoints and request-scope guidance apply to the stricter automatic recovery signal.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the integration and SDK authoring references against the credential recovery paragraph. Existing SDK entrypoints and request-scope guidance apply to the stricter automatic recovery signal.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

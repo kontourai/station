@@ -808,7 +808,24 @@ interface Running {
   closing: Set<string>;
   /** Each target's current main-frame page-world script context. */
   mainWorlds: Map<string, { id: number; uniqueId: string }>;
+  /** One-shot documents this host serves to its own targets' main frames. */
+  served: Map<string, string>;
+  /** Recently destroyed targets: a late info event must not re-close them. */
+  destroyed: Set<string>;
 }
+
+/**
+ * Where {@link ChromiumServerHost.openTarget} serves a caller's document. The
+ * `.invalid` name never resolves and the request never leaves the browser:
+ * CDP Fetch answers it for that one target's main frame, once. A page with a
+ * real site matters: Chrome 158 aborts the whole browser (CHECK `has_site_`
+ * in site_instance_impl.cc) when an about:blank page adds a sandboxed srcdoc
+ * frame while sandboxed frames get their own process (#4917).
+ */
+export const SERVED_DOCUMENT_URL = 'http://station-document.invalid/';
+
+/** Destroyed target ids remembered against late `targetInfoChanged` events. */
+const DESTROYED_TARGET_MEMORY = 256;
 
 /** Grace before an unknown page target (not ours, not a popup) is closed. */
 const UNTRACKED_TARGET_GRACE_MS = 1_000;
@@ -989,6 +1006,8 @@ export class ChromiumServerHost implements BrowserHost {
   async openTarget(p: {
     profileDir: string;
     viewport: BrowserViewport;
+    /** Load this HTML as the main document (see {@link SERVED_DOCUMENT_URL}). */
+    document?: string;
   }): Promise<BrowserTarget> {
     const running = await this.ensureRunning(p.profileDir);
     const transport = running.launch.transport;
@@ -1040,6 +1059,8 @@ export class ChromiumServerHost implements BrowserHost {
           { enabled: true },
           sessionId,
         );
+      if (p.document !== undefined)
+        await this.loadServedDocument(running, targetId, sessionId, p.document);
       return { targetId, cdpSessionId: sessionId };
     } catch (error) {
       if (targetId)
@@ -1262,6 +1283,8 @@ export class ChromiumServerHost implements BrowserHost {
       pendingUntracked: new Map(),
       closing: new Set(),
       mainWorlds: new Map(),
+      served: new Map(),
+      destroyed: new Set(),
     };
     void launch.exited.then((reason) => {
       this.reportDiagnostic({
@@ -1624,6 +1647,11 @@ export class ChromiumServerHost implements BrowserHost {
         if (typeof targetId !== 'string') return;
         this.closeDiagnostic(targetId, 'unknown', 'destroyed');
         running.closing.delete(targetId);
+        running.destroyed.add(targetId);
+        if (running.destroyed.size > DESTROYED_TARGET_MEMORY)
+          running.destroyed.delete(running.destroyed.values().next().value!);
+        clearTimeout(running.pendingUntracked.get(targetId));
+        running.pendingUntracked.delete(targetId);
         const target = running.targets.get(targetId);
         target?.unsubscribe();
         running.targets.delete(targetId);
@@ -1666,6 +1694,40 @@ export class ChromiumServerHost implements BrowserHost {
     }
   }
 
+  private async loadServedDocument(
+    running: Running,
+    targetId: string,
+    sessionId: string,
+    document: string,
+  ): Promise<void> {
+    const transport = running.launch.transport;
+    running.served.set(targetId, document);
+    let off = () => {};
+    try {
+      const loaded = new Promise<void>((resolve) => {
+        off = transport.on('Page.loadEventFired', (_params, eventSessionId) => {
+          if (eventSessionId === sessionId) resolve();
+        });
+      });
+      const navigated = await transport.send<{ errorText?: string }>(
+        'Page.navigate',
+        { url: SERVED_DOCUMENT_URL },
+        sessionId,
+      );
+      if (navigated?.errorText)
+        throw new Error(`Served document failed: ${navigated.errorText}`);
+      await Promise.race([
+        loaded,
+        transport.closed.then(() => {
+          throw new Error('Browser closed while loading a served document');
+        }),
+      ]);
+    } finally {
+      off();
+      running.served.delete(targetId);
+    }
+  }
+
   private onRequestPaused(running: Running, params: unknown): void {
     const p = params as {
       requestId: string;
@@ -1674,6 +1736,27 @@ export class ChromiumServerHost implements BrowserHost {
       frameId?: string;
     };
     const transport = running.launch.transport;
+    const served =
+      p.resourceType === 'Document' &&
+      p.request.url === SERVED_DOCUMENT_URL &&
+      p.frameId !== undefined
+        ? running.served.get(p.frameId)
+        : undefined;
+    if (served !== undefined && p.frameId !== undefined) {
+      running.served.delete(p.frameId);
+      void transport
+        .send('Fetch.fulfillRequest', {
+          requestId: p.requestId,
+          responseCode: 200,
+          responseHeaders: [
+            { name: 'Content-Type', value: 'text/html; charset=utf-8' },
+            { name: 'Referrer-Policy', value: 'no-referrer' },
+          ],
+          body: Buffer.from(served, 'utf8').toString('base64'),
+        })
+        .catch(() => {});
+      return;
+    }
     const decision = decidePausedRequest(
       { url: p.request.url, resourceType: p.resourceType, frameId: p.frameId },
       {
@@ -1742,6 +1825,8 @@ export class ChromiumServerHost implements BrowserHost {
       running.closing.has(targetId)
     )
       return;
+    // Chromium can report a target's info after it was destroyed; it is gone.
+    if (running.destroyed.has(targetId)) return;
     const url = typeof info.url === 'string' ? info.url : '';
     let popup = running.popups.get(targetId);
     if (!popup) {

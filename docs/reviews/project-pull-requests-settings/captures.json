@@ -1,0 +1,13 @@
+{
+  "baselineCommit": "60a0f52b1ad444b028dcc4d343708e40186479db",
+  "applicationCommit": "11be299bd79457c6972ca44ae6a584386ea31b93",
+  "fixtureCommit": "70caf068a12a6cef36bfbd6db46eb9d1b42c41d7",
+  "files": {
+    "after-dark-mobile.png": "e9bd508f6f0743b611dc7ac737f8c28f1b5aabddc977443f279bd799de76bb9d",
+    "after-light-desktop.png": "0a995799a3da1cd47e24e8f42334f0babe44eecac350ae2892ab2714e29f7bd7",
+    "before-dark-mobile.png": "8c9bb53b5bbc132aed8c26a26c5881d0d631966398a15c93b9c18722e55a0c22",
+    "before-light-desktop.png": "53594e71be8387b85b323944627c049f7a2b2b4029b5f12ce20fffdcda250420",
+    "no-repository-dark-mobile.png": "9f329bb7ba57b066205ecc6756708e5f04e0b40b1470ebbb03c5ac8eef17a6a3",
+    "no-repository-light-desktop.png": "3737f9a787514464b84dcbdde58ef34b495906f5774c8b5395af5c1a0684c01a"
+  }
+}

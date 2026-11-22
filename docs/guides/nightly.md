@@ -27,7 +27,11 @@ ships skip before source tests and builds. Eligible candidates must pass lint,
 all typecheck lanes, native boundary checks and real browser smoke on the exact
 event SHA. Full qualification runs separately every six hours; Nightly's gate
 does not produce that receipt. Manual dispatch retains the same source and
-artifact gates for recovery.
+artifact gates for recovery. An ordinary manual dispatch uses the same early
+cadence decision. Supplying `rebuild_index` retains the explicit rebuild path;
+the publishers still enforce cadence and ancestry under the delivery lock.
+Terminal-failure recovery may complete a partial ship of the same source inside
+the interval; a recent ship of another source still blocks early admission.
 The hourly qualification-health watchdog reports stale or missing qualification
 and failed delivery; see [the release procedure](releasing.md#release-procedure).
 The cohort decision compares its source
@@ -82,6 +86,10 @@ non-allocation version shapes remain visible unchanged.
 A manual `source_sha` may only echo the current workflow event SHA. It cannot
 select an older Stable/TestFlight candidate. Native staging needs the successful exact-SHA source usability gate; promotion
 requires that gate and completed staging. Full regression runs independently.
+The gate accepts the merge queue's passing `fast-checks statics` run on the
+same exact SHA instead of repeating it, and runs its own checks otherwise; the
+run's notice and job summary name the accepted run (see
+[testing](testing.md#default-implementation-loop)).
 
 **Signing and upload.** `nightly-native-stage.yml` authenticates through Google
 OIDC, fetches the upload key from Secret Manager, and checks the APK/AAB package,

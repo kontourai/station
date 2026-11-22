@@ -1,5 +1,7 @@
-// Legacy protocol; reconcile token, audio framing and transcript events in #2784.
 import type { STTOptions, STTProvider, STTState } from '@kontourai/station-sdk';
+import { requestVoiceAuthorization } from './authorization';
+
+const SAMPLE_RATE = 16_000;
 
 export class ElevenLabsSTTProvider implements STTProvider {
   readonly id = 'elevenlabs';
@@ -7,21 +9,20 @@ export class ElevenLabsSTTProvider implements STTProvider {
 
   private _state: STTState = 'idle';
   private _transcript = '';
+  private _attempt: AbortController | null = null;
   private _ws: WebSocket | null = null;
-  private _keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   private _audioCtx: AudioContext | null = null;
   private _mediaStream: MediaStream | null = null;
   private _listeners = new Set<() => void>();
-  private _apiBase: string;
 
-  constructor(apiBase: string) {
-    this._apiBase = apiBase;
-  }
+  constructor(private readonly apiBase: string) {}
 
   get isSupported(): boolean {
     return (
       typeof WebSocket !== 'undefined' &&
-      typeof navigator.mediaDevices !== 'undefined'
+      typeof AudioContext !== 'undefined' &&
+      typeof navigator !== 'undefined' &&
+      !!navigator.mediaDevices
     );
   }
 
@@ -39,103 +40,124 @@ export class ElevenLabsSTTProvider implements STTProvider {
 
   async startListening(_opts?: STTOptions): Promise<void> {
     this.stopListening();
+    const attempt = new AbortController();
+    this._attempt = attempt;
+    this._transcript = '';
     this._setState('listening');
-
+    const fail = () => {
+      if (attempt.signal.aborted) return;
+      this._dispose();
+      this._setState('error');
+    };
     try {
-      const res = await fetch(
-        `${this._apiBase}/api/plugins/elevenlabs-voice/signed-url`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            type: 'stt',
-            sessionId: crypto.randomUUID(),
-          }),
-        },
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (attempt.signal.aborted) {
+        for (const track of stream.getTracks()) track.stop();
+        return;
+      }
+      this._mediaStream = stream;
+      const url = await requestVoiceAuthorization(
+        this.apiBase,
+        'stt',
+        attempt.signal,
       );
-      if (!res.ok) throw new Error('Failed to get signed URL');
-      const { url } = await res.json();
+      if (attempt.signal.aborted) return;
 
+      const audio = new AudioContext({ sampleRate: SAMPLE_RATE });
+      this._audioCtx = audio;
+      if (audio.sampleRate !== SAMPLE_RATE)
+        throw new Error('Unsupported audio sample rate');
+      const source = audio.createMediaStreamSource(stream);
+      const processor = audio.createScriptProcessor(4096, 1, 1);
       const ws = new WebSocket(url);
       this._ws = ws;
-
-      ws.onopen = () => {
-        this._keepaliveTimer = setInterval(() => {
-          if (ws.readyState === WebSocket.OPEN)
-            ws.send(JSON.stringify({ text: ' ' }));
-        }, 20_000);
-      };
-
-      ws.onmessage = (evt) => {
+      let ready = false;
+      let committed = '';
+      ws.onerror = fail;
+      ws.onclose = fail;
+      ws.onmessage = ({ data }) => {
+        if (attempt.signal.aborted) return;
         try {
-          const msg = JSON.parse(evt.data);
-          if (msg.type === 'transcript' && msg.text) {
-            this._transcript = msg.text;
+          const message = JSON.parse(data);
+          if (typeof message?.message_type !== 'string' || 'error' in message) {
+            fail();
+            return;
+          }
+          if (message.message_type === 'session_started') ready = true;
+          const final = message.message_type === 'committed_transcript';
+          if (
+            (final || message.message_type === 'partial_transcript') &&
+            typeof message.text === 'string'
+          ) {
+            this._transcript = [committed, message.text.trim()]
+              .filter(Boolean)
+              .join(' ');
+            if (final) committed = this._transcript;
             this._notify();
           }
-        } catch {}
-      };
-
-      ws.onclose = () => {
-        this._clearKeepalive();
-        if (this._state === 'listening') this._setState('idle');
-      };
-
-      ws.onerror = () => {
-        this._setState('error');
-        setTimeout(() => this._setState('idle'), 1500);
-      };
-
-      this._mediaStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-      });
-      this._audioCtx = new AudioContext({ sampleRate: 16_000 });
-      const source = this._audioCtx.createMediaStreamSource(this._mediaStream);
-
-      // ScriptProcessor as fallback (AudioWorklet requires a separate file)
-      const processor = this._audioCtx.createScriptProcessor(4096, 1, 1);
-      processor.onaudioprocess = (e) => {
-        if (ws.readyState !== WebSocket.OPEN) return;
-        const pcm = e.inputBuffer.getChannelData(0);
-        const int16 = new Int16Array(pcm.length);
-        for (let i = 0; i < pcm.length; i++) {
-          int16[i] = Math.max(-32768, Math.min(32767, pcm[i] * 32768));
+        } catch {
+          fail();
         }
-        ws.send(int16.buffer);
       };
-
+      processor.onaudioprocess = (event) => {
+        if (
+          attempt.signal.aborted ||
+          !ready ||
+          ws.readyState !== WebSocket.OPEN
+        )
+          return;
+        const samples = event.inputBuffer.getChannelData(0);
+        const pcm = new Uint8Array(samples.length * 2);
+        const view = new DataView(pcm.buffer);
+        for (let i = 0; i < samples.length; i++) {
+          view.setInt16(
+            i * 2,
+            Math.max(-32768, Math.min(32767, samples[i] * 32768)),
+            true,
+          );
+        }
+        try {
+          ws.send(
+            JSON.stringify({
+              message_type: 'input_audio_chunk',
+              audio_base_64: btoa(String.fromCharCode(...pcm)),
+              sample_rate: SAMPLE_RATE,
+            }),
+          );
+        } catch {
+          fail();
+        }
+      };
       source.connect(processor);
-      processor.connect(this._audioCtx.destination);
+      processor.connect(audio.destination);
     } catch {
-      this._setState('error');
-      setTimeout(() => this._setState('idle'), 1500);
+      fail();
     }
   }
 
   stopListening(): void {
-    this._clearKeepalive();
+    this._dispose();
+    this._setState('idle');
+  }
+
+  private _dispose(): void {
+    this._attempt?.abort();
+    this._attempt = null;
     this._ws?.close();
     this._ws = null;
-    this._mediaStream?.getTracks().forEach((t) => t.stop());
+    for (const track of this._mediaStream?.getTracks() ?? []) track.stop();
     this._mediaStream = null;
-    this._audioCtx?.close();
+    void this._audioCtx?.close().catch(() => {});
     this._audioCtx = null;
-    if (this._state === 'listening') this._setState('idle');
   }
 
-  private _clearKeepalive(): void {
-    if (this._keepaliveTimer !== null) {
-      clearInterval(this._keepaliveTimer);
-      this._keepaliveTimer = null;
-    }
-  }
-
-  private _setState(s: STTState): void {
-    this._state = s;
+  private _setState(next: STTState): void {
+    if (this._state === next) return;
+    this._state = next;
     this._notify();
   }
 
   private _notify(): void {
-    this._listeners.forEach((fn) => fn());
+    for (const listener of this._listeners) listener();
   }
 }

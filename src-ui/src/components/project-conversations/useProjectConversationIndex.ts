@@ -1,4 +1,7 @@
+import type { ProjectSharedTaskSummary } from '@kontourai/station-contracts/project-shared-task';
 import {
+  fetchReadMarkerSummary,
+  readMarkerQueries,
   useOrchestrationSessionsQuery,
   useReadMarkerSummaryQuery,
   useTasksQuery,
@@ -9,6 +12,7 @@ import {
   useProjectRoomLiveIndex,
   workingProjectRoomAgents,
 } from '@kontourai/station-sdk/project-rooms';
+import { useQuery } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
 import { projectLiveLanes } from '../../views/project-page/project-live-work-model';
@@ -59,6 +63,16 @@ export interface ProjectConversationIndex {
   };
 }
 
+export interface MemberConversationIndexSource {
+  tasks: {
+    data?: ProjectSharedTaskSummary[];
+    isPending: boolean;
+    isError: boolean;
+    refetch(): unknown;
+  };
+  isCurrent(): boolean;
+}
+
 /**
  * One Project's channels and Task rooms with server-kept unread state, for
  * the sidebar and the phone's channel list. One summary request covers both
@@ -69,24 +83,49 @@ export function useProjectConversationIndex(
   project: { slug: string; id: string },
   requestScope: ApiRequestScope | undefined,
   enabled: boolean,
+  member?: MemberConversationIndexSource,
 ): ProjectConversationIndex {
-  const active = enabled && !!requestScope;
+  const memberOnly = member !== undefined;
+  const active = enabled && !!requestScope && (member?.isCurrent() ?? true);
   const channels = useProjectRoomChannels(
     requestScope ?? { apiBase: '', authorityKey: '' },
     project.slug,
     project.id,
     active,
   );
-  const tasks = useTasksQuery(project.slug, { enabled: active });
+  const operatorTasks = useTasksQuery(project.slug, {
+    enabled: active && !member,
+  });
+  const tasks = member?.tasks ?? operatorTasks;
   const agents = useAgents();
-  const { data: sessions = [] } = useOrchestrationSessionsQuery();
-  const listed = useMemo(
-    () => listedChannels(channels.list.data),
-    [channels.list.data],
+  const { data: sessions = [] } = useOrchestrationSessionsQuery(
+    member ? { enabled: false } : undefined,
+    member ? null : undefined,
   );
+  const listed = useMemo(
+    () =>
+      listedChannels(
+        memberOnly && (!active || channels.list.isError)
+          ? undefined
+          : channels.list.data,
+      ),
+    [active, channels.list.data, channels.list.isError, memberOnly],
+  );
+  const memberTasks = member?.tasks.data;
+  const memberTaskError = member?.tasks.isError;
   const candidates = useMemo(
-    () => taskRoomCandidates(tasks.data),
-    [tasks.data],
+    () =>
+      taskRoomCandidates(
+        memberOnly
+          ? memberTaskError || !active
+            ? []
+            : memberTasks?.map(({ task, sharedAt }) => ({
+                ...task,
+                updatedAt: sharedAt,
+              }))
+          : operatorTasks.data,
+      ),
+    [active, memberOnly, memberTaskError, memberTasks, operatorTasks.data],
   );
   const targets = useMemo(
     () => [
@@ -98,11 +137,42 @@ export function useProjectConversationIndex(
   // Ask once both lists have answered, so a Project costs one summary
   // request rather than one per list as each arrives.
   const settled = !channels.list.isPending || channels.unsupported;
-  const summary = useReadMarkerSummaryQuery(targets, {
-    enabled: active && settled && !tasks.isPending,
+  const operatorSummary = useReadMarkerSummaryQuery(targets, {
+    enabled: !member && active && settled && !tasks.isPending,
     refetchInterval: active ? CONVERSATION_SUMMARY_REFRESH_MS : false,
   });
-  const states = useMemo(() => readStates(summary.data), [summary.data]);
+  const summaryOptions = readMarkerQueries.summary(targets);
+  const memberSummary = useQuery({
+    queryKey: [
+      ...summaryOptions.queryKey,
+      requestScope?.apiBase,
+      requestScope?.authorityKey,
+    ],
+    queryFn: async ({ signal }) => {
+      if (!member?.isCurrent() || !requestScope)
+        throw new Error('The Station connection changed.');
+      const result = await fetchReadMarkerSummary(
+        requestScope.apiBase,
+        targets,
+        {
+          requestScope,
+          signal,
+        },
+      );
+      if (!member.isCurrent())
+        throw new Error('The Station connection changed.');
+      return result;
+    },
+    enabled:
+      !!member && active && settled && !tasks.isPending && targets.length > 0,
+    staleTime: summaryOptions.staleTime,
+    refetchInterval: active ? CONVERSATION_SUMMARY_REFRESH_MS : false,
+    retry: false,
+  });
+  const summary = member ? memberSummary : operatorSummary;
+  const summaryData =
+    member && (!active || summary.isError) ? undefined : summary.data;
+  const states = useMemo(() => readStates(summaryData), [summaryData]);
   // One live connection for every listed channel (#4798): a new message or
   // change re-reads the summary (unread, mentions) soon after, coalesced.
   const refetchSummary = summary.refetch;

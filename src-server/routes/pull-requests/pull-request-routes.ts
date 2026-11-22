@@ -151,6 +151,12 @@ export function createPullRequestRoutes(
       data: {
         available: true,
         provider: provider.id,
+        providerLabel: provider.displayName,
+        automation: {
+          feedback: typeof provider.getFeedbackObservation === 'function',
+          taskBranchDiscovery:
+            typeof provider.findOpenPullRequestsByHead === 'function',
+        },
         host: provider.getHost(resolution.context),
         repository: {
           owner: resolution.context.repository.owner,

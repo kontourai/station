@@ -20,6 +20,7 @@
 import { EventEmitter } from 'node:events';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
+import type { SessionEvent } from '@github/copilot-sdk';
 import {
   type ChildWorkDelta,
   type ChildWorkItem,
@@ -35,6 +36,7 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import ts from 'typescript-api';
 import { describe, expect, test } from 'vitest';
 import { GROK_LIVE_CAPTURE } from '../../../src-shared/extension-notification-bindings.js';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { STATION_UNMAPPED_SUBAGENT_ENGINES } from '../../services/orchestration/child-work-projection.js';
 import type { ProviderAdapterShape } from '../adapter-shape.js';
 import {
@@ -56,6 +58,7 @@ import {
   CODEX_COLLAB_V2_SPAWN_WAIT_COMPLETED,
   replayCodexCapture,
 } from './codex-collab-fixtures.js';
+import { replayCopilotSdkTurn } from './copilot-sdk-fakes.js';
 import { QWEN_SUBAGENT_FRAMES } from './fixtures/qwen-code-subagent-frames.js';
 import {
   MUSE_13_BACKGROUND_WORKFLOW_TURN_LINES,
@@ -446,6 +449,94 @@ async function stationAdapterStructural(): Promise<CanonicalRuntimeEvent[]> {
   return [];
 }
 
+const copilotTempDir = trackTempDirs({ lifetime: 'file' });
+
+/**
+ * Copilot SDK: two subagents in one turn, through the real adapter on the SDK
+ * fake, in the SDK's own event shapes (`@github/copilot-sdk` 1.0.32
+ * `session-events.d.ts`). No live Copilot capture exists yet (see
+ * docs/decisions/copilot-sdk-engine.md). One subagent completes and its task
+ * tool returns its reply; the other fails before its tool returns, so both
+ * orders of the shared `toolCallId` are exercised.
+ */
+async function replayCopilotSdkSubagents(): Promise<CanonicalRuntimeEvent[]> {
+  return replayCopilotSdkTurn(
+    copilotTempDir('copilot-sdk-child-work-'),
+    (session) => {
+      const at = '2026-11-13T12:00:00.000Z';
+      const base = () => ({
+        id: session.nextEventId(),
+        parentId: null,
+        timestamp: at,
+      });
+      return [
+        {
+          ...base(),
+          type: 'tool.execution_start',
+          data: { toolCallId: 'task-1', toolName: 'task' },
+        },
+        {
+          ...base(),
+          type: 'subagent.started',
+          data: {
+            toolCallId: 'task-1',
+            agentName: 'explore',
+            agentDisplayName: 'Explore',
+            agentDescription: 'Find the tests',
+          },
+        },
+        {
+          ...base(),
+          type: 'tool.execution_start',
+          data: { toolCallId: 'task-2', toolName: 'task' },
+        },
+        {
+          ...base(),
+          type: 'subagent.started',
+          data: {
+            toolCallId: 'task-2',
+            agentName: 'task',
+            agentDisplayName: 'Task',
+            agentDescription: 'Fix the build',
+          },
+        },
+        {
+          ...base(),
+          type: 'subagent.completed',
+          data: {
+            toolCallId: 'task-1',
+            agentName: 'explore',
+            agentDisplayName: 'Explore',
+            totalTokens: 900,
+            totalToolCalls: 4,
+            durationMs: 3000,
+          },
+        },
+        {
+          ...base(),
+          type: 'tool.execution_complete',
+          data: {
+            toolCallId: 'task-1',
+            success: true,
+            result: { content: 'The tests are in src/__tests__.' },
+          },
+        },
+        {
+          ...base(),
+          type: 'subagent.failed',
+          data: {
+            toolCallId: 'task-2',
+            agentName: 'task',
+            agentDisplayName: 'Task',
+            error: 'The build tool is missing.',
+            totalTokens: 120,
+          },
+        },
+      ] satisfies SessionEvent[];
+    },
+  );
+}
+
 /**
  * The `opencode` cell is declared for OpenCode 2's own server: the 2.3.0
  * `subagent` capture replayed through `OpenCodeAdapter`'s native session (a
@@ -546,6 +637,7 @@ const DRIVERS: Record<string, Driver> = {
     ],
     formats: ACP_FORMATS,
   },
+  'copilot-sdk': { run: replayCopilotSdkSubagents },
   opencode: { run: replayOpenCodeServeSubagent },
 };
 

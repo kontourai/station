@@ -10,6 +10,7 @@ import { AcpAdapter } from '../adapters/acp-adapter.js';
 import { BedrockAdapter } from '../adapters/bedrock-adapter.js';
 import { ClaudeAdapter } from '../adapters/claude-adapter.js';
 import { CodexAdapter } from '../adapters/codex-adapter.js';
+import { CopilotSdkAdapter } from '../adapters/copilot-sdk-adapter.js';
 import { MuseAdapter } from '../adapters/muse-adapter.js';
 import { OllamaAdapter } from '../adapters/ollama-adapter.js';
 import { OpenCodeAdapter } from '../adapters/opencode-adapter.js';
@@ -19,6 +20,9 @@ const eventBus = new EventBus();
 const adapters = [
   new ClaudeAdapter(),
   new CodexAdapter(),
+  new CopilotSdkAdapter({
+    preview: { select: ({ disabled }) => disabled() },
+  }),
   new AcpAdapter({ getConnections: async () => [] }),
   new OpenCodeAdapter({ getConnections: async () => [] }),
   // As the Station runtime builds it: sessions run on `muse serve`.
@@ -56,7 +60,8 @@ describe('built-in adapter durability conformance', () => {
       // The native steer claims are exercised through the scripted SDK input
       // and app-server RPC in claude-adapter.test and codex-adapter.test,
       // and through the replayed `muse serve` 1.4.18 capture in
-      // muse-serve-adapter.test. Any additional native cell needs its own
+      // muse-serve-adapter.test. Copilot steering is covered by the scripted
+      // SDK conversation in copilot-sdk-adapter.test. Any additional native cell needs its own
       // executable proof first.
       const claims = Object.entries(adapter.metadata.durability ?? {})
         .filter(([, cell]) => cell.state === 'native')
@@ -65,6 +70,7 @@ describe('built-in adapter durability conformance', () => {
       expect(claims).toEqual(
         adapter.provider === 'claude' ||
           adapter.provider === 'codex' ||
+          adapter.provider === 'copilot-sdk' ||
           adapter.provider === 'muse'
           ? ['steerPlacement']
           : [],

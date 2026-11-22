@@ -1,0 +1,7 @@
+{
+  "revision": "ab006b1943d711a87abb425abbeec7a76a6eca26",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Reviewed ab006b19 test-only producer repair against the terminal design's journal/frame-credit claims. The prior160 timed POSIX writes could coalesce into133 records on hosted Linux before the gateway assertion. The real shell now accepts one release at a time and observes each journal append; split output-only markers establish readiness. All160 payload bytes, both >140 record/render bounds,128 unacknowledged frames, the no-ACK pause, ACK resume and delayed SDK application remain asserted. Windows producer command bytes are unchanged, not requalified locally. The full real-PTY/socket owner file passes25 tests (11.48s). At a clean frozen head, disabling the production frame cap failed at163 versus128 frames; exact restored source passed. No production behavior or documented limits changed; Linux hosted acceptance remains pending.","inputs":["docs/design/terminal.md","src-server/services/terminal/__tests__/terminal-gateway.process.test.ts"]}
+  ]
+}

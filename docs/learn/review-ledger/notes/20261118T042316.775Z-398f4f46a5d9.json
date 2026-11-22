@@ -1,0 +1,9 @@
+{
+  "revision": "1e3aa345e911bff4106349848d6530c60afbe916",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the Task-first Home locator against Chromium’s actual Accessible Name. It names the rendered Shared model and Bedrock provider, then retains the current-route, selection and focus assertions. The selector no longer requires the model’s undisplayed internal id. This note does not claim the larger mocked browser journey ran successfully.","inputs":["docs/guides/e2e-coverage-matrix.md"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Reviewed the narrowly corrected Task-first Home model locator after Chromium exposed the visible provider suffix. It targets the model choice and keeps the original current-state and focus checks. The scoped accessibility evidence is separate from the campaign’s full journey acceptance.","inputs":["docs/plans/whole-app-ux-campaign.md"]}
+  ]
+}

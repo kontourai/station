@@ -250,7 +250,7 @@ describe('useChatInput last-chosen model memory', () => {
 
     expect(result.current.canModelSelect).toBe(false);
     expect(result.current.modelSelectionReason).toBe(
-      'This engine can choose a model for a new chat, but cannot change it in an existing conversation.',
+      'Choose a model and any advertised thinking effort when starting a new chat with this engine.',
     );
   });
 

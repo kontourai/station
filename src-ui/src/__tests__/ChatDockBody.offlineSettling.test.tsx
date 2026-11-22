@@ -443,7 +443,8 @@ describe('ChatDockBody offline settling (station#2605)', () => {
       expect(screen.getByTestId('transcript').textContent).toContain(
         'Saved transcript',
       );
-      expect(screen.queryByText('Loading chat')).toBeNull();
+      expect(document.querySelector('.conversation-loading')).toBeNull();
+      expect(screen.queryByLabelText('Loading chat')).toBeNull();
       expect(screen.queryByText('Loading offline messages')).toBeNull();
       expect(screen.getByText('Try again in a moment.')).toBeTruthy();
       expect(screen.queryByText(/Station unreachable/)).toBeNull();
@@ -508,7 +509,8 @@ describe('ChatDockBody offline settling (station#2605)', () => {
     );
     // A refresh of a transcript already on screen is not "loading": no
     // skeleton and no "Start new chat" escape under the finished answer.
-    expect(screen.queryByText('Loading chat')).toBeNull();
+    expect(document.querySelector('.conversation-loading')).toBeNull();
+    expect(screen.queryByLabelText('Loading chat')).toBeNull();
     expect(screen.queryByText('Catching up')).toBeNull();
     expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
     expect(transcriptMounts).toHaveBeenCalledTimes(firstTranscriptMounts);
@@ -550,7 +552,8 @@ describe('ChatDockBody offline settling (station#2605)', () => {
       expect(fetchConversationWindow).toHaveBeenCalledTimes(2),
     );
     // B has never loaded: it is loading, and A's transcript is not B's.
-    expect(await screen.findAllByText('Loading chat')).not.toHaveLength(0);
+    expect(await screen.findAllByLabelText('Loading chat')).not.toHaveLength(0);
+    expect(document.querySelector('.conversation-loading')).not.toBeNull();
     expect(screen.queryByText(/Saved transcript/)).toBeNull();
   });
 

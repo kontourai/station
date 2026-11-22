@@ -1,0 +1,10 @@
+.settled-conversation-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: var(--k-space-1);
+  margin: var(--k-space-3) var(--k-space-3) var(--k-space-2);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}

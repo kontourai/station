@@ -1,0 +1,7 @@
+{
+  "revision": "cd5f59d514e5225de8712bb41baa731640c7e124",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"Receipt validation unchanged; the escalated importer changes add plan fields and ci-fast reasons only.","inputs":["docs/reference/verification-receipts.md","scripts/run-changed-verification.mjs"]}
+  ]
+}

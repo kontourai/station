@@ -1,0 +1,29 @@
+{
+  "revision": "9e84b72d953d6270f0cbf414d26186f5e3ffcc07",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked ApprovalModeChip display for Full access, ordinary modes and pending or refused overrides. The new shield and warning placement retain the same tool-policy inputs, disclosures and picker actions.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/badges/ApprovalModeChip.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the Agent and model panel, stacked engine disclosure, narrow badge, selected effort, model ID details and same-session error card behavior against the actual composer callers. Merged main's authoritative next-turn decision and retained the existing explicit handoff flow.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/NewChatModalSelectDispatch.test.tsx","src-ui/src/__tests__/SessionModelPicker.test.tsx","src-ui/src/components/badges/EngineApprovalDisclosureChip.tsx","src-ui/src/components/session/SessionModelPicker.tsx","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/__tests__/ChatInputArea.test.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Checked the Gallery changes. Only dialog name locators changed for the Agent and model panel. Screenshot capture timing and motion settings stay as documented.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the shared model picker. It still uses the catalog's display label and route metadata. The selected route-qualified model ID is now inspectable without changing Agent configuration or model eligibility.","inputs":["docs/guides/agent-configuration.md","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked model picker routing metadata and selected model disclosure. Connection resolution, readiness, and eligibility continue through their original owners.","inputs":["docs/guides/connections.md","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked the mobile composer journey changes. Queries now match the Agent and model dialog name. Existing user journeys, required actions and assertions are still present.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the dialog's shared surface, aligned choices, engine disclosure target and narrow label treatment. The Agent and model panel still yields to its child picker and restores the existing focus path.","inputs":["docs/guides/responsive-ui.md"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the shared model picker. The selected route-qualified model ID disclosure does not change provider capability checks, configuration selection or application.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/session/SessionModelPicker.tsx"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the Gallery scenario changes. Dialog locators follow the new Agent and model label. Capture selectors, fixture data and audit constraints remain in place.","inputs":["docs/guides/testing.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the Gallery code diff. Only dialog-name selectors changed. No telemetry producer, labels, fields or usage aggregation changed.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the combined composer trigger, Agent and model panel title, Agent and Model controls, engine mark disclosure and effective next-turn language against current callers. Existing context handoff and approval controls are unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the shared model picker against the example. Route-qualified ID details use existing model data and do not change the example's inputs or setup workflow.","inputs":["examples/self-configuring-agent/README.md","src-ui/src/components/session/SessionModelPicker.tsx"]}
+  ]
+}

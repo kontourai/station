@@ -1,0 +1,7 @@
+{
+  "revision": "f999d60cc925fee3d72f36e9ec0c62b4af05ca1c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked HomeStartComposer setupAgents (menu pick that cannot start only) and the quick-start hand-off for no Agent; rewrote the setup-card sentence to name the dock and Home's quick-start.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}

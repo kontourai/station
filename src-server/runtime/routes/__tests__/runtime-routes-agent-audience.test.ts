@@ -753,10 +753,18 @@ describe('configureRuntimeRoutes: an Agent is listed and usable only by its audi
 
   test('a station-control call that acts for no principal is admitted to no Agent (fail closed)', async () => {
     await setup();
-    // The raw internal token with no verified caller: what a pooled child
-    // reaches REST with. It resolves to no `PrincipalRef`.
-    const listed = await api('/agents');
-    expect(listed).toEqual({ success: true, data: [] });
+    // A verified caller whose session has no recorded owner resolves to no
+    // `PrincipalRef`; the guard admits its read, and this gate lists nothing.
+    expect((await asTool('ownerless-session', '/agents')).body).toEqual({
+      success: true,
+      data: [],
+    });
+    // Slice D: the raw internal token with no verified caller is refused by
+    // the guard before this gate.
+    expect(await api('/agents')).toMatchObject({
+      success: false,
+      code: 'station_control_caller_required',
+    });
     // `GET /api/agents/:id` is a dispatch route the guard already refuses to
     // a caller-less request, before this gate.
     expect(await api('/api/agents/concierge')).toMatchObject({

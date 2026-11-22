@@ -1,0 +1,31 @@
+{
+  "revision": "7cf4459a2228244ef21372ed66256a06fe45887e",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Verified both reuse callers compare the requested policy with the original Session or conversation metadata before invoking the engine. The inherited execution refusal remains in place. Focused controls fail before the fix and the repaired suites pass 89 cases.","inputs":["docs/conformance/tool-policy-delivery.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed chat lifecycle, configuration, API and environment references against the reuse check. The existing conversation policy must retain requested restrictions before streaming. Stream, storage, and configuration interfaces are unchanged.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed chat lifecycle, configuration, API and environment references against the reuse check. The existing conversation policy must retain requested restrictions before streaming. Stream, storage, and configuration interfaces are unchanged.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed chat lifecycle, configuration, API and environment references against the reuse check. The existing conversation policy must retain requested restrictions before streaming. Stream, storage, and configuration interfaces are unchanged.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed chat lifecycle, configuration, API and environment references against the reuse check. The existing conversation policy must retain requested restrictions before streaming. Stream, storage, and configuration interfaces are unchanged.","inputs":["src-server/routes/chat/chat-primary-stream.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed execution target architecture, Home and isolated-run authority, and Session API claims. The reused Session is checked against captured restrictions before turn send. Target resolution, owner checks, binding and receipt shapes are unchanged.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed execution target architecture, Home and isolated-run authority, and Session API claims. The reused Session is checked against captured restrictions before turn send. Target resolution, owner checks, binding and receipt shapes are unchanged.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed execution target architecture, Home and isolated-run authority, and Session API claims. The reused Session is checked against captured restrictions before turn send. Target resolution, owner checks, binding and receipt shapes are unchanged.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Reviewed execution target architecture, Home and isolated-run authority, and Session API claims. The reused Session is checked against captured restrictions before turn send. Target resolution, owner checks, binding and receipt shapes are unchanged.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed execution target architecture, Home and isolated-run authority, and Session API claims. The reused Session is checked against captured restrictions before turn send. Target resolution, owner checks, binding and receipt shapes are unchanged.","inputs":["src-server/services/execution-target/execution-target-execution.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed coverage for existing Session binding in the module map, isolated-run design, and Session API. Four foreground controls reproduced missing or mutated restrictions. The two owner suites pass 89 cases after repair.","inputs":["src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Reviewed coverage for existing Session binding in the module map, isolated-run design, and Session API. Four foreground controls reproduced missing or mutated restrictions. The two owner suites pass 89 cases after repair.","inputs":["src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed coverage for existing Session binding in the module map, isolated-run design, and Session API. Four foreground controls reproduced missing or mutated restrictions. The two owner suites pass 89 cases after repair.","inputs":["src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]}
+  ]
+}

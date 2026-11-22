@@ -714,10 +714,9 @@ describe('station-control-mcp-route', () => {
     expect(tenantHeaders.sort()).toEqual(['alpha', 'bravo']);
   });
 
-  test('stateless HTTP family loading is credential-local, rechecked on each request and reset by rotation', async () => {
-    let enabled = true;
+  test("stateless HTTP family loading is credential-local, kept for the credential's life and reset by rotation", async () => {
     let issuerCurrent = true;
-    const mint = (session: string) =>
+    const mint = (session: string, toolFamilies = true) =>
       mintStationControlMcpToken(
         session,
         'http-header-token',
@@ -727,13 +726,12 @@ describe('station-control-mcp-route', () => {
         'station-control',
         undefined,
         () => issuerCurrent,
-        true,
+        toolFamilies,
       ).token;
     const first = mint('dynamic-one');
     const other = mint('dynamic-two');
     const app = createStationControlMcpRoutes({
       port: TEST_PORT,
-      progressiveToolsEnabled: () => enabled,
       resolveCallerRecord: () => ({
         principal: { id: 'person:reader', source: 'session-owner' },
         localProjectId: 'project-one',
@@ -786,12 +784,14 @@ describe('station-control-mcp-route', () => {
     });
     expect(await list(first)).toContain('list_agents');
     expect(await list(other)).not.toContain('list_agents');
-    enabled = false;
-    expect(await list(first)).toEqual(
+    // A credential minted without families lists the whole selection; no
+    // route-level switch changes either kind afterwards.
+    const plain = mint('plain-one', false);
+    expect(await list(plain)).toEqual(
       expect.arrayContaining(['list_agents', 'get_agent']),
     );
-    expect(await list(first)).not.toContain('load_tool_family');
-    enabled = true;
+    expect(await list(plain)).not.toContain('load_tool_family');
+    revokeStationControlMcpToken('plain-one');
     revokeStationControlMcpToken('dynamic-one');
     const rotated = mint('dynamic-one');
     expect(await list(rotated)).not.toContain('list_agents');
@@ -829,7 +829,6 @@ describe('station-control-mcp-route', () => {
     ).token;
     const app = createStationControlMcpRoutes({
       port: TEST_PORT,
-      progressiveToolsEnabled: () => true,
       resolveCallerRecord: () => ({
         principal: { id: 'person:reader', source: 'session-owner' },
         localProjectId: 'project-one',

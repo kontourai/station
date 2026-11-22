@@ -1,0 +1,11 @@
+{
+  "revision": "0399af4840c1692342f59f5edeeb4362b1baa82f",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Section navigation now admits every Project settings section, so a link to a preview section (Brief, Memory, Models and effort, Usage) survives a reload before the preview flags load; the list and panels still show them only with the project-coordination preview. settings.md already says section links remain bookmarkable, which this makes true for the preview sections; settings-architecture.md and shell-skeletons.md describe SectionNavigation and the page header, which are unchanged.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"Section navigation now admits every Project settings section, so a link to a preview section (Brief, Memory, Models and effort, Usage) survives a reload before the preview flags load; the list and panels still show them only with the project-coordination preview. settings.md already says section links remain bookmarkable, which this makes true for the preview sections; settings-architecture.md and shell-skeletons.md describe SectionNavigation and the page header, which are unchanged.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Section navigation now admits every Project settings section, so a link to a preview section (Brief, Memory, Models and effort, Usage) survives a reload before the preview flags load; the list and panels still show them only with the project-coordination preview. settings.md already says section links remain bookmarkable, which this makes true for the preview sections; settings-architecture.md and shell-skeletons.md describe SectionNavigation and the page header, which are unchanged.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]}
+  ]
+}

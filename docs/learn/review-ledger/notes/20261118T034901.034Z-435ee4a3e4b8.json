@@ -1,0 +1,35 @@
+{
+  "revision": "083ed9dd82b28650ab26d80f166905cfde3d82f6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"ProjectPage passes the operator request scope to Setup recommendations. The composer continues to own sending and retains the existing Project conversation route.","inputs":["docs/design/chat-composer.md","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"The form stores a chat continuation under the confirmed Project ID. The slug picker, portable Project identity, workspace binding and starter layout selection still use their existing owners.","inputs":["docs/design/portable-project-identity.md","src-ui/src/hooks/useNewProjectModalState.ts","src-ui/src/hooks/useNewProjectSubmit.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The tab-local chat draft is bound only after the current creation receipt identifies its Project. The retained request ID, account partition and starter layout still govern recovery across reloads.","inputs":["docs/guides/connections.md","src-ui/src/hooks/useNewProjectSubmit.ts","src-ui/src/hooks/useProjectCreationRecovery.ts"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"The optional request scope on a Project field update chooses its authenticated transport. Distribution-profile catalog selection and default layout resolution continue to use the existing Project inputs.","inputs":["docs/guides/distribution-profiles.md","packages/sdk/src/query-domains/workspaceProjects.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The SDK reference documents optional request scopes for three existing mutations. Integrators still use the same Task, reference and Project routes, payloads and permission checks.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"A chat continuation identifies the creating Project with its retained request and confirmed ID. Blank starts, layout selection and initial workspace navigation continue through the existing creation flow.","inputs":["docs/guides/starter-work.md","src-ui/src/hooks/useNewProjectModalState.ts","src-ui/src/hooks/useNewProjectSubmit.ts","src-ui/src/hooks/useProjectCreationRecovery.ts","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"The illustrated Project Tasks view already has a saved Task. The changed setup path applies to a chat-derived empty Project or an in-progress setup, outside the illustrated journey.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"The optional continuation ID belongs to the browser's retained creation request. The server still receives the same Project-create and layout-apply payloads and returns the existing Project identity.","inputs":["docs/reference/api.md","src-ui/src/hooks/useProjectCreationRecovery.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the scoped Task create, Task reference and Project update mutation signatures, request body construction, credential-aware transport and cache refresh. The reference now documents passing the captured scope to the related writes.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/taskGraph-invalidation.test.tsx","packages/sdk/src/query-domains/taskGraph.ts","packages/sdk/src/query-domains/workspaceProjects.ts","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Traced the chat dialog, scoped draft, confirmed creation response and existing Task citation retry. The revised guide describes the destination of the suggested Task and the action available after a citation failure.","inputs":["docs/user/concepts.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"Compared the optional chat draft to ordinary Project creation and retained-request recovery. Manual Project starts, source selection, new Task creation and starter selection still follow the published steps.","inputs":["docs/user/getting-started.md","src-ui/src/hooks/useNewProjectModalState.ts","src-ui/src/hooks/useNewProjectSubmit.ts","src-ui/src/hooks/useProjectCreationRecovery.ts","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The added mutation options use the existing public SDK and its request-scoped transport. SDK boundary and verification instructions still apply.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"The screenshot records a Tasks view with an existing Task. The ProjectPage change supplies request scope to setup recommendations and does not alter that view's controls.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"The change passes the captured Project scope to Setup recommendations. The recorded starter composer and its before-send view are independent of the chat continuation dialog.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/views/ProjectPage.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"The captured result of sending from the starter composer uses its existing conversation route. This PR qualifies the separate Continue in Project and setup flow.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

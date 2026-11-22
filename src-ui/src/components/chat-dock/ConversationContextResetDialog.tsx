@@ -8,15 +8,18 @@ import {
   isSessionLifecycleStateAtRest,
 } from '@kontourai/station-contracts/session-lifecycle';
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
-import { useConversationContextBoundaryStatusQuery } from '@kontourai/station-sdk';
+import { isProvablyNotSent } from '@kontourai/station-sdk';
 import {
+  ChatHttpError,
   cancelConversationContextBoundary,
   reserveConversationContextBoundary,
 } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChatSession } from '../../types';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { ActionRow } from '../ActionRow';
+import { Button } from '../Button';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
@@ -24,8 +27,12 @@ import {
 import type { ConversationContextBoundaryEligibility } from './conversationContextBoundaryEligibility';
 import { conversationContextBoundaryEligibility } from './conversationContextBoundaryEligibility';
 import {
-  readConversationContextBoundaryUiState,
-  writeConversationContextBoundaryUiState,
+  type ContextBoundaryAuthority,
+  type ContextBoundaryScope,
+  forgetContextBoundaryIntent,
+  observeContextBoundary,
+  rememberContextBoundaryIntent,
+  useContextBoundaryRecovery,
 } from './conversationContextBoundaryUiState';
 
 function describeNextStart(policy: ConversationContextBoundaryPolicy) {
@@ -39,6 +46,7 @@ export function ConversationContextResetDialog({
   apiBase,
   conversationId,
   sessionId,
+  authority,
   eligibility: suppliedEligibility,
   session,
   sessionRead,
@@ -51,6 +59,7 @@ export function ConversationContextResetDialog({
   apiBase: string;
   conversationId: string;
   sessionId: string;
+  authority?: ContextBoundaryAuthority;
   /** Test-only override; production derives this in the lazy dialog. */
   eligibility?: ConversationContextBoundaryEligibility;
   session?: ChatSession;
@@ -78,161 +87,211 @@ export function ConversationContextResetDialog({
           kind: 'blocked' as const,
           reason: 'Send a message first.',
         });
-  const [stored, setStored] = useState(() =>
-    readConversationContextBoundaryUiState(conversationId),
-  );
-  // A reopened dialog shows the reset already chosen, not the default.
-  const [policy, setPolicy] = useState<ConversationContextBoundaryPolicy>(
-    () => stored?.policy ?? 'empty-next-cold-start',
-  );
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const scope = authority && {
+    ...authority,
+    conversationId,
+    sessionId,
+    isCurrent: () => mounted.current && authority.isCurrent(),
+  };
+  const { candidate, boundary, refetch, refreshCurrent } =
+    useContextBoundaryRecovery(scope, apiBase);
+  const stored = candidate?.legacy ? undefined : candidate;
+  const [selectedPolicy, setPolicy] = useState<
+    'continue-from-history' | 'empty-next-cold-start'
+  >('empty-next-cold-start');
+  const policy =
+    stored?.policy ??
+    (boundary?.policy === 'continue-from-history'
+      ? boundary.policy
+      : selectedPolicy);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string>();
-  const [stopNote, setStopNote] = useState<string>();
+  const [stopNote, setStopNote] = useState(false);
+  const lastPublication = useRef<
+    { state: string; idempotencyKey: string } | undefined
+  >(undefined);
   const onReservedRef = useRef(onReserved);
   onReservedRef.current = onReserved;
-  useEffect(() => {
-    setStored(readConversationContextBoundaryUiState(conversationId));
-  }, [conversationId]);
-  const status = useConversationContextBoundaryStatusQuery(
-    conversationId,
-    stored?.idempotencyKey ?? '',
-    apiBase,
-    { enabled: Boolean(stored), refetchInterval: 2_000 },
+
+  const publish = useCallback(
+    (
+      target: ContextBoundaryScope,
+      intent: NonNullable<typeof candidate>,
+      result: ConversationContextBoundaryProjection,
+    ) => {
+      const publication = `${target.namespace}:${result.boundaryId}:${result.status}`;
+      if (lastPublication.current?.state === publication) return;
+      if (!observeContextBoundary(target, intent, result)) return;
+      lastPublication.current = {
+        state: publication,
+        idempotencyKey: intent.idempotencyKey,
+      };
+      setError(undefined);
+      onReservedRef.current(result, intent.idempotencyKey);
+    },
+    [],
   );
-  const boundary = status.data;
+
   useEffect(() => {
-    if (!boundary || !stored) return;
-    if (
-      boundary.status === stored.status &&
-      boundary.policy === stored.policy &&
-      boundary.boundaryId === stored.boundaryId
-    )
-      return;
-    const next = writeConversationContextBoundaryUiState(
-      stored.idempotencyKey,
-      boundary,
-    );
-    setStored(next);
-    setPolicy(boundary.policy);
-    onReservedRef.current(boundary, stored.idempotencyKey);
-  }, [boundary, stored]);
-  useEffect(() => {
-    const onStorage = (event: StorageEvent) => {
-      if (event.storageArea !== window.localStorage) return;
-      setStored(readConversationContextBoundaryUiState(conversationId));
+    if (scope && candidate && boundary) publish(scope, candidate, boundary);
+  }, [scope, candidate, boundary, publish]);
+
+  const statusValue = boundary?.status;
+  const canCancel = statusValue === 'reserved' && Boolean(candidate);
+  const choiceLocked = pending || Boolean(stored || boundary);
+  const couldRetry = !statusValue || statusValue === 'failed';
+  const requestOptions = authority?.requestScope
+    ? { requestScope: authority.requestScope }
+    : undefined;
+
+  const reserveBoundary = async (stopped: boolean) => {
+    if (!scope?.isCurrent()) return;
+    const intent = stored ?? {
+      idempotencyKey: randomCorrelationId(),
+      policy,
+      ...(stopped ? { stopped: true } : {}),
     };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, [conversationId]);
-  const statusValue = boundary?.status ?? stored?.status;
-  const claimedOrIndeterminate =
-    statusValue === 'claimed' || statusValue === 'indeterminate';
-  const canCancel = statusValue === 'reserved' && Boolean(stored);
-  // A held reservation keeps its idempotency key, and the server refuses that
-  // key with a different policy; change the choice by cancelling first.
-  const choiceLocked =
-    pending ||
-    statusValue === 'reserved' ||
-    statusValue === 'claimed' ||
-    statusValue === 'indeterminate' ||
-    statusValue === 'failed';
-  const reserve = async () => {
-    if (pending || eligibility.kind !== 'reserve' || claimedOrIndeterminate)
+    if (!rememberContextBoundaryIntent(scope, intent)) {
+      setError('Station could not save the reset request on this device.');
       return;
-    setPending(true);
-    setError(undefined);
+    }
     try {
-      const idempotencyKey = stored?.idempotencyKey ?? randomCorrelationId();
       const result = await reserveConversationContextBoundary(
         apiBase,
         conversationId,
         {
-          policy,
+          policy: intent.policy,
           expectedCurrentSessionId: sessionId,
-          idempotencyKey,
+          idempotencyKey: intent.idempotencyKey,
         },
+        requestOptions,
       );
-      setStored(
-        writeConversationContextBoundaryUiState(idempotencyKey, result),
-      );
-      onReserved(result, idempotencyKey);
+      publish(scope, intent, result);
     } catch (cause) {
+      if (
+        lastPublication.current?.idempotencyKey === intent.idempotencyKey &&
+        !statusValue
+      )
+        return;
+      const refused =
+        cause instanceof ChatHttpError &&
+        cause.stationEnvelope &&
+        cause.status >= 400 &&
+        cause.status < 500;
+      const notSent = isProvablyNotSent(cause);
+      const validationRefused =
+        refused &&
+        cause.status === 400 &&
+        typeof cause.details === 'object' &&
+        cause.details !== null &&
+        'fieldErrors' in cause.details;
+      // A transport can replay the POST after losing its first response. A
+      // later conflict only reports the replay, so keep its original key.
+      let canRetire = !stored && (validationRefused || notSent);
+      if (stored && statusValue === 'failed' && (refused || notSent)) {
+        // A different tab may have started the reserved successor since the
+        // failed status was shown. Check again before retiring its local key.
+        const current = await refreshCurrent();
+        canRetire =
+          !current.isError &&
+          current.data?.status === 'failed' &&
+          observeContextBoundary(scope, intent, current.data);
+      }
+      if (canRetire && (refused || notSent))
+        forgetContextBoundaryIntent(scope, intent.idempotencyKey);
+      if (!scope.isCurrent()) return;
       setError(
-        cause instanceof Error
+        canRetire && refused
           ? userFacingErrorMessage(cause)
-          : "Couldn't reset the agent context.",
+          : canRetire && notSent
+            ? "Station didn't send the reset request."
+            : "Station couldn't confirm the reset. Check its status before continuing.",
       );
+    }
+  };
+
+  const reserve = async () => {
+    if (pending || eligibility.kind !== 'reserve' || !couldRetry) return;
+    setPending(true);
+    setError(undefined);
+    try {
+      await reserveBoundary(false);
     } finally {
       setPending(false);
     }
   };
+
   const stopThenReserve = async () => {
-    if (pending || eligibility.kind !== 'stop-session') return;
+    if (
+      pending ||
+      eligibility.kind !== 'stop-session' ||
+      !scope?.isCurrent() ||
+      stored
+    )
+      return;
     setPending(true);
     setError(undefined);
-    setStopNote(undefined);
+    setStopNote(false);
     try {
-      const {
-        dispatchOrchestrationCommandWithReceipt,
-        STOP_REQUEST_BUDGET_MS,
-      } = await import('@kontourai/station-sdk');
-      await dispatchOrchestrationCommandWithReceipt(
-        { type: 'stopSession', threadId: sessionId },
-        apiBase,
-        STOP_REQUEST_BUDGET_MS,
-      );
-      const refreshed = await onStoppedSessionRefreshed();
-      if (
-        !refreshed ||
-        !isSessionLifecycleStateAtRest(
-          foldedSessionLifecycleState(refreshed.lifecycleState),
-        ) ||
-        refreshed.hasActiveTurn
-      ) {
+      try {
+        const {
+          dispatchOrchestrationCommandWithReceipt,
+          STOP_REQUEST_BUDGET_MS,
+        } = await import('@kontourai/station-sdk');
+        if (!scope.isCurrent()) return;
+        await dispatchOrchestrationCommandWithReceipt(
+          { type: 'stopSession', threadId: sessionId },
+          apiBase,
+          STOP_REQUEST_BUDGET_MS,
+          requestOptions,
+        );
+        const refreshed = await onStoppedSessionRefreshed();
+        if (
+          !refreshed ||
+          !isSessionLifecycleStateAtRest(
+            foldedSessionLifecycleState(refreshed.lifecycleState),
+          ) ||
+          refreshed.hasActiveTurn
+        ) {
+          setError(
+            "Station couldn't confirm the agent stopped. Nothing was reset.",
+          );
+          return;
+        }
+      } catch (cause) {
+        const detail =
+          cause instanceof Error ? userFacingErrorMessage(cause) : '';
         setError(
-          "Station couldn't confirm the agent stopped. Nothing was reset.",
+          `Station couldn't confirm the agent stopped${detail ? `: ${detail}` : '.'} Nothing was reset.`,
         );
         return;
       }
-      setStopNote('Agent stopped.');
-      const idempotencyKey = stored?.idempotencyKey ?? randomCorrelationId();
-      const result = await reserveConversationContextBoundary(
-        apiBase,
-        conversationId,
-        {
-          policy,
-          expectedCurrentSessionId: sessionId,
-          idempotencyKey,
-        },
-      );
-      setStored(
-        writeConversationContextBoundaryUiState(idempotencyKey, result),
-      );
-      onReserved(result, idempotencyKey);
-    } catch (cause) {
-      const detail =
-        cause instanceof Error ? userFacingErrorMessage(cause) : '';
-      setError(
-        `Station couldn't confirm the agent stopped${detail ? `: ${detail}` : '.'} Nothing was reset.`,
-      );
+      setStopNote(true);
+      await reserveBoundary(true);
     } finally {
       setPending(false);
     }
   };
+
   const cancel = async () => {
-    if (!stored || !canCancel || pending) return;
+    if (!scope?.isCurrent() || !candidate || !canCancel || pending) return;
     setPending(true);
     setError(undefined);
     try {
       const result = await cancelConversationContextBoundary(
         apiBase,
         conversationId,
-        stored.idempotencyKey,
+        candidate.idempotencyKey,
+        requestOptions,
       );
-      setStored(
-        writeConversationContextBoundaryUiState(stored.idempotencyKey, result),
-      );
-      onReserved(result, stored.idempotencyKey);
+      publish(scope, candidate, result);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -287,10 +346,13 @@ export function ConversationContextResetDialog({
             instructions, safety policy, tools, skills and your next message.
           </p>
         )}
+        {stored && !statusValue && (
+          <p role="status">Checking the original reset request.</p>
+        )}
         {statusValue && (
           <p role="status">
             {statusValue === 'reserved'
-              ? `Ready. On your next message the agent ${describeNextStart(boundary?.policy ?? stored?.policy ?? policy)}.`
+              ? `Ready. On your next message the agent ${describeNextStart(boundary?.policy ?? policy)}.`
               : statusValue === 'claimed'
                 ? "Starting the agent's next context. You can't cancel now."
                 : statusValue === 'indeterminate'
@@ -302,34 +364,47 @@ export function ConversationContextResetDialog({
                       : 'Reset applied.'}
           </p>
         )}
-        {eligibility.kind !== 'reserve' && (
+        {eligibility.kind !== 'reserve' && !stored && !statusValue && (
           <p role="alert">{eligibility.reason}</p>
         )}
-        {stopNote && <p role="status">{stopNote}</p>}
+        {(stopNote || stored?.stopped) && <p role="status">Agent stopped.</p>}
+        {!scope && (
+          <p role="alert">
+            Reconnect to the Station to check or reset agent context.
+          </p>
+        )}
         {error && <p role="alert">{error}</p>}
-        {eligibility.kind === 'reserve' && (
-          <button
-            type="button"
-            onClick={reserve}
-            disabled={pending || claimedOrIndeterminate}
-          >
-            {pending
-              ? 'Applying…'
-              : stored
-                ? 'Retry reset'
-                : 'Reset agent context'}
-          </button>
-        )}
-        {eligibility.kind === 'stop-session' && !statusValue && (
-          <button type="button" onClick={stopThenReserve} disabled={pending}>
-            {pending ? 'Stopping agent…' : 'Stop agent and reset'}
-          </button>
-        )}
-        {canCancel && (
-          <button type="button" onClick={cancel} disabled={pending}>
-            Cancel reset
-          </button>
-        )}
+        <ActionRow
+          overflowLabel="More reset actions"
+          primary={
+            eligibility.kind === 'reserve' && couldRetry ? (
+              <Button onClick={reserve} disabled={pending || !scope}>
+                {pending
+                  ? 'Applying…'
+                  : stored
+                    ? 'Retry reset'
+                    : 'Reset agent context'}
+              </Button>
+            ) : eligibility.kind === 'stop-session' &&
+              !statusValue &&
+              !stored ? (
+              <Button onClick={stopThenReserve} disabled={pending || !scope}>
+                {pending ? 'Stopping agent…' : 'Stop agent and reset'}
+              </Button>
+            ) : undefined
+          }
+          secondary={
+            canCancel ? (
+              <Button onClick={cancel} disabled={pending} variant="secondary">
+                Cancel reset
+              </Button>
+            ) : stored && !statusValue && !pending ? (
+              <Button onClick={refetch} variant="secondary">
+                Check reset status
+              </Button>
+            ) : undefined
+          }
+        />
       </div>
     </ResponsiveDialogSurface>
   );

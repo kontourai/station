@@ -62,6 +62,7 @@
  */
 import * as readline from 'node:readline';
 import {
+  authenticatedFetch,
   fetchFleetRoutingReceipts,
   getOrchestrationSession,
   getSessionBuilderRun,
@@ -525,9 +526,9 @@ export async function runOperateShell(
 
     void (async () => {
       try {
-        const response = await fetch(
+        const response = await authenticatedFetch(
           `${options.apiBase}/api/orchestration/events`,
-          { signal: abortController.signal },
+          { signal: abortController.signal, redirect: 'error' },
         );
         if (!response.ok) {
           throw new Error(

@@ -228,7 +228,10 @@ disclosure on this channel.
   header-token server and, with the preview on, the bound catalog too, so
   persisted copies from a catalog source thread keep working. The model may
   then see both copies of a tool; both run as this Session's caller, the bound
-  ones at `bound`. Station cannot tell whether such a source carried the
+  ones at `bound`. Their credentials use separate keys (`station-control`
+  for the header, `codex-control` for the bound catalog), so minting or
+  closing one channel does not revoke the other; Session shutdown revokes
+  both. Station cannot tell whether such a source carried the
   catalog: Codex's fork and resume responses do not list a thread's
   `dynamicTools`. An adoption's first start carries no Agent tool servers,
   so during that first Session any catalog copies inherited from the source

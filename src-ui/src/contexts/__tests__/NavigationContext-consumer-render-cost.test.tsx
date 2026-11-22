@@ -38,6 +38,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useProjectLayoutsQuery: () => ({ data: undefined }),
   useBoardAvailabilityQuery: () => ({ data: undefined }),
   useOrchestrationSessionsQuery: () => ({ data: [] }),
+  useAttentionQuery: () => ({ data: undefined }),
   useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
   useFeaturePreviewsQuery: () => ({ data: [] }),
 }));
@@ -106,7 +107,6 @@ vi.mock('../open-chats-store', () => ({
   }),
   openChatsStore: {
     focus: vi.fn(),
-    openCollection: vi.fn(),
     registerNavigation: () => vi.fn(),
   },
 }));

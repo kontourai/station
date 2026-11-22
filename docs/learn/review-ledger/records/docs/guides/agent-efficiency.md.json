@@ -72,7 +72,9 @@
 
     "src-server/services/automation/__tests__/repair-worker.test.ts",
 
-    "src-server/services/automation/__tests__/repair-publisher.test.ts"
+    "src-server/services/automation/__tests__/repair-publisher.test.ts",
+
+    "src-server/providers/adapters/codex-tool-families.ts"
   ],
 
   "checks": [

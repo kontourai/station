@@ -1,40 +1,46 @@
-/**
- * The UI's single clipboard write (archive#3341).
- *
- * Seven components had each hand-rolled this and five of them reported a copy
- * that never happened. Two shapes produced it:
- *
- *  - `navigator.clipboard?.writeText(x)` — Station is routinely reached over
- *    plain `http://` from another device, and on a non-secure origin
- *    `navigator.clipboard` does not exist at all. The optional chain then
- *    evaluates to `undefined`, so `void`-ing it no-ops and `await`-ing it
- *    RESOLVES. A `try`/`catch` around that await is not enough: there is
- *    nothing to catch, and the success branch runs.
- *  - an unhandled promise — a permission refusal rejects, and a caller that
- *    never awaited still ran its success branch.
- *
- * `copyToClipboard` therefore resolves `true` only for a `writeText` call that
- * itself resolved: a missing clipboard is `false`, a rejection is `false`, and
- * nothing throws back to the caller. Callers keep their own affordance — a
- * toast, an inline label, an error line — and derive it from this boolean;
- * confirmations (including haptics) belong only on the `true` branch.
- *
- * `packages/connect`'s `DevicePairingPanel` keeps its own copy of this shape on
- * purpose: it is a separately published package and cannot import from
- * `src-ui/`. It already guards the same three cases and tests them.
- */
+// Plain HTTP and some WebViews cannot use the async clipboard API. The
+// browser can still allow a copy command from the user's click.
+function copySelection(text: string): boolean {
+  if (typeof document.execCommand !== 'function') return false;
+  const active = document.activeElement;
+  const selection = document.getSelection();
+  const anchor = selection?.anchorNode;
+  const focus = selection?.focusNode;
+  const anchorOffset = selection?.anchorOffset ?? 0;
+  const focusOffset = selection?.focusOffset ?? 0;
+
+  const field = document.createElement('textarea');
+  field.value = text;
+  field.readOnly = true;
+  field.tabIndex = -1;
+  field.className = 'sr-only';
+  field.setAttribute('aria-hidden', 'true');
+  (active?.parentElement ?? document.body).appendChild(field);
+  try {
+    field.focus({ preventScroll: true });
+    field.select();
+    return document.execCommand('copy');
+  } finally {
+    if (active instanceof HTMLElement) active.focus({ preventScroll: true });
+    field.remove();
+    if (anchor?.isConnected && focus?.isConnected)
+      selection?.setBaseAndExtent(anchor, anchorOffset, focus, focusOffset);
+  }
+}
+
 export async function copyToClipboard(text: string): Promise<boolean> {
   try {
-    // No `navigator` at all: not reachable from a browser, so it is defence
-    // rather than a case, and the unit tests below do not cover it (jsdom
-    // always provides one). It is here because this module is importable from
-    // a non-DOM context and `navigator.clipboard` would throw a ReferenceError
-    // there — a `false` is the same answer every other arm gives.
-    if (typeof navigator === 'undefined') return false;
-    const clipboard = navigator.clipboard;
-    if (!clipboard || typeof clipboard.writeText !== 'function') return false;
-    await clipboard.writeText(text);
-    return true;
+    const clipboard = globalThis.navigator?.clipboard;
+    if (typeof clipboard?.writeText === 'function') {
+      await clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // A browser may refuse the async API but allow a selection-based copy.
+  }
+
+  try {
+    return typeof document !== 'undefined' && copySelection(text);
   } catch {
     return false;
   }

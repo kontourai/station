@@ -1,0 +1,7 @@
+{
+  "revision": "f347f235a9bba843490da4606e3689b71f3739aa",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Verified the changed workflow contract against the parsed hosted container job, including preflight, Chromium install, actual smoke entry points, fatal failures, concurrency and conditional Docker cleanup. The test rejects the retired runner route.","inputs":["scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}

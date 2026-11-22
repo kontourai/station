@@ -31,7 +31,6 @@ import {
   isDockOwnedViewType,
   isMobileDockFullscreen as isMobileDockFullscreenState,
 } from './components/chat-dock/mobile-chrome';
-import { StationRouteLearning } from './components/connections/useStationRoutes';
 import { DialogHistoryHostBoundary } from './components/DialogHistoryHost';
 import { Header } from './components/header/Header';
 import { LazyBoundary } from './components/LazyBoundary';
@@ -46,7 +45,10 @@ import { ProjectSidebar } from './components/project-sidebar/ProjectSidebar';
 import { Empty, ErrorState, useRetainedReadFailure } from './components/state';
 import { StationConnectionsProvider } from './connections/StationConnectionsContext';
 import { useAgents } from './contexts/AgentsContext';
-import { useApiBase } from './contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from './contexts/ApiBaseContext';
 import { useConfig } from './contexts/ConfigContext';
 import { KERNEL_RESERVED_SHORTCUTS } from './contexts/kernelReservedShortcuts';
 import { useModels } from './contexts/ModelsContext';
@@ -59,6 +61,7 @@ import { PushNotificationsProvider } from './contexts/PushNotificationsContext';
 import { useRegionModelOptional } from './contexts/RegionModelContext';
 import { useToast } from './contexts/ToastContext';
 import { useShowSurface } from './contexts/useShowSurface';
+import { useDeveloperFeatures } from './hooks/useDeveloperFeatures';
 import { useDockSlotPlacement } from './hooks/useIsMobile';
 import { isMainDesktopWindow } from './platform/native/mainWindow';
 import { foldedDockRegion } from './regions/region-model';
@@ -110,6 +113,11 @@ const loadServerOlderLaunchCheck = () =>
     default: module.ServerOlderLaunchCheck,
   }));
 
+const loadStationRouteLearning = () =>
+  import('./components/connections/useStationRoutes').then((module) => ({
+    default: module.StationRouteLearning,
+  }));
+
 const loadOutboundQueueFlushMount = () =>
   import('./hooks/OutboundQueueFlushMount').then((module) => ({
     default: module.OutboundQueueFlushMount,
@@ -122,6 +130,7 @@ const loadServerEventsMount = () =>
     default: module.ServerEventsMount,
   }));
 
+import { useActiveStationName } from './hooks/useActiveStationName';
 import { useFeatureSettings } from './hooks/useFeatureSettings';
 import { useFocusReporter } from './hooks/useFocusReporter';
 import { useFoldSplit } from './hooks/useFoldSplit';
@@ -183,7 +192,7 @@ function App({
   // `connectionFailureCopy`'s contract wants the short name the user saved,
   // with the URL as the address it actually tried (archive#3713).
   const { activeConnection } = useConnections();
-  const activeConnectionName = activeConnection?.name;
+  const activeConnectionName = useActiveStationName();
   const activeConnectionUrl = activeConnection?.url;
   const availableModels = useModels();
   const agents = useAgents();
@@ -248,9 +257,11 @@ function App({
   } = useScopedProjectsQuery();
   const appConfig = useConfig();
   const { settings: featureSettings } = useFeatureSettings();
+  const { stationRoutes } = useDeveloperFeatures();
   const pushNotifications = usePushNotifications({
     enabled: featureSettings.pushNotificationsEnabled,
     apiBase: API_BASE,
+    requestScope: useHostRequestAuthorityScope() ?? null,
   });
   const [showShortcutsCheatsheet, setShowShortcutsCheatsheet] = useState(false);
   const [currentView, setCurrentView] = useState<NavigationView>(() => {
@@ -515,12 +526,8 @@ function App({
     (displayCurrentView.type !== 'layout' ||
       (!selectedLayoutUnknown && !isChatWorkspaceLayout));
   /**
-   * A full-screen mobile dock owns the whole viewport (archive#4460: any
-   * occupant, not just Chat — `ChatDockMobileHeader` already carries the app
-   * chrome for the docked case, and the shared `DockShell` behaves
-   * identically regardless of occupant). A project layout owns the visible
-   * view instead, even while a persisted dock snap is being restored on
-   * navigation.
+   * A maximized dock owns the workspace below the toolbar. Layouts that
+   * occupy the workspace themselves do not acquire the ambient dock state.
    */
   const isAmbientMobileDockFullscreen =
     !isPanePopOut &&
@@ -663,6 +670,9 @@ function App({
     <DialogHistoryHostBoundary>
       <AppViewContent
         currentView={displayCurrentView}
+        stationUnavailable={
+          connectionStatus === 'error' || connectionStatus === 'idle'
+        }
         agents={agents}
         apiBase={API_BASE}
         availableModels={availableModels}
@@ -772,7 +782,13 @@ function App({
                   />
                 )}
                 <ConnectionBannerSource />
-                <StationRouteLearning />
+                {stationRoutes && (
+                  <LazyBoundary
+                    load={loadStationRouteLearning}
+                    componentProps={{}}
+                    pending={null}
+                  />
+                )}
                 <StationDetailsHost />
 
                 {showShortcutsCheatsheet && (

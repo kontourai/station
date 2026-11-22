@@ -6,11 +6,13 @@ import {
   closeSync,
   constants,
   fstatSync,
+  lstatSync,
   openSync,
   readFileSync,
   realpathSync,
 } from 'node:fs';
 import http from 'node:http';
+import { isAbsolute, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 function readInstanceRecord(file, { allowWildcardHost = false } = {}) {
@@ -31,6 +33,12 @@ function readInstanceRecord(file, { allowWildcardHost = false } = {}) {
       !record.instanceId ||
       !record.bootId ||
       !record.build?.sha ||
+      !Number.isInteger(record.serverPort) ||
+      record.serverPort < 1 ||
+      record.serverPort > 65532 ||
+      !Number.isInteger(record.uiPort) ||
+      record.uiPort < 1 ||
+      record.uiPort > 65535 ||
       !Number.isInteger(record.serverPid) ||
       record.serverPid < 1 ||
       record.serverFingerprint?.pid !== record.serverPid ||
@@ -477,11 +485,67 @@ function matches(actual, identity) {
   );
 }
 
-async function fetchIdentity(url, identity, signal) {
-  const response = await fetch(url, {
+function readOwnedIdentityCredential(baseDir) {
+  const missing = () =>
+    new Error('owned Station identity credential unavailable');
+  if (typeof baseDir !== 'string' || !isAbsolute(baseDir)) throw missing();
+  try {
+    const directory = join(realpathSync(baseDir), 'security');
+    const directoryInfo = lstatSync(directory);
+    const owner = process.getuid?.();
+    if (
+      !directoryInfo.isDirectory() ||
+      (owner !== undefined && directoryInfo.uid !== owner) ||
+      (directoryInfo.mode & 0o777) !== 0o700
+    )
+      throw missing();
+    const fd = openSync(
+      join(directory, 'environment.json'),
+      constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0),
+    );
+    try {
+      const info = fstatSync(fd);
+      if (
+        !info.isFile() ||
+        info.nlink !== 1 ||
+        (owner !== undefined && info.uid !== owner) ||
+        (info.mode & 0o777) !== 0o600 ||
+        info.size > 4096
+      )
+        throw missing();
+      const security = JSON.parse(readFileSync(fd, 'utf8'));
+      if (
+        security?.schemaVersion !== 1 ||
+        typeof security.credential !== 'string' ||
+        !/^[A-Za-z0-9_-]{43}$/.test(security.credential)
+      )
+        throw missing();
+      return security.credential;
+    } finally {
+      closeSync(fd);
+    }
+  } catch {
+    throw missing();
+  }
+}
+
+async function fetchIdentity(url, identity, signal, authenticate) {
+  const options = {
     signal,
+    redirect: 'error',
     headers: { Accept: 'application/json' },
-  });
+  };
+  let response = await fetch(url, options);
+  if (response.status === 401 && authenticate) {
+    await response.body?.cancel();
+    response = await fetch(url, {
+      ...options,
+      headers: {
+        ...options.headers,
+        Authorization: `Bearer ${authenticate()}`,
+      },
+    });
+  }
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
   const body = await response.json();
   if (!matches(body, identity)) throw new Error('boot identity mismatch');
@@ -546,6 +610,11 @@ export async function probeDogfoodHealth(
           `http://127.0.0.1:${record.serverPort}/api/system/identity`,
           identity,
           controller.signal,
+          () => {
+            assertProcessOwnership(record, deadline);
+            assertListenerOwnership(record, deadline);
+            return readOwnedIdentityCredential(record.baseDir);
+          },
         ),
     ],
     [

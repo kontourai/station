@@ -1249,3 +1249,37 @@
 .schedule__rate-value--low {
   color: var(--error-text);
 }
+
+.schedule__week {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--k-space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.schedule__week > li {
+  border: 1px solid var(--border-primary);
+  border-radius: var(--k-radius-md);
+  padding: var(--k-space-3);
+}
+
+.schedule__week ul {
+  padding-inline-start: var(--k-space-4);
+}
+
+.schedule__executions {
+  display: grid;
+  gap: var(--k-space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.schedule__execution-receipt {
+  margin-block-start: var(--k-space-4);
+  overflow-wrap: anywhere;
+}
+
+.schedule__execution-receipt pre {
+  white-space: pre-wrap;
+}

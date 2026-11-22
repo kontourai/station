@@ -1,0 +1,21 @@
+{
+  "revision": "b4c233923ac4bb368bcfcd7081e699f7bdef109d",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Reviewed the managed install deadline and controlled recovery against the actual guard, retained failed receipt and isolated fixture tree. Recovery requires exclusive checkout control and confirmed process-tree settlement, isolates the incomplete tree while its guard holds, and permits a fresh verified install after moving the guard last.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/reference/contributor-commands.md","note":"Reviewed the generated Unix and Windows setup metadata. Both retain the same dependencies:ci command and expose the positive-millisecond timeout override with a link to the canonical guarded recovery guidance. The complete generated reference matched the recipe source.","inputs":["docs/reference/contributor-commands.md","justfile"]},
+
+    {"path":"docs/reference/contributor-commands.md","note":"Reviewed matching setup descriptions and commands for both platforms. Displayed timeout guidance comes from recipe metadata. Exact command-generation and CLI documentation parity tests passed.","inputs":["justfile"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the cited lifecycle and test guidance against the limited operator recovery paragraph. Existing contributor scope, baseline gates and process supervision contracts retain their governing rules.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed the cited lifecycle and test guidance against the limited operator recovery paragraph. Existing contributor scope, baseline gates and process supervision contracts retain their governing rules.","inputs":["docs/guides/development.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the cited lifecycle and test guidance against the limited operator recovery paragraph. Existing contributor scope, baseline gates and process supervision contracts retain their governing rules.","inputs":["docs/guides/development.md"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed the cited lifecycle and test guidance against the limited operator recovery paragraph. Existing contributor scope, baseline gates and process supervision contracts retain their governing rules.","inputs":["docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the cited lifecycle and test guidance against the limited operator recovery paragraph. Existing contributor scope, baseline gates and process supervision contracts retain their governing rules.","inputs":["docs/guides/development.md"]}
+  ]
+}

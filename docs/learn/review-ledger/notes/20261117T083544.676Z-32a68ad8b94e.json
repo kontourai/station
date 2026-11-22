@@ -1,0 +1,7 @@
+{
+  "revision": "973766b9929d5c1d8a93ce4f63929bfa52f85df9",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated with docs:mcp:generate after the Project brief, memory and usage doc edits; the bundle now carries the updated module-map, architecture, API, config and contracts prose. station-docs.md describes the bundle, its tools and digest generically, and those claims still hold.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

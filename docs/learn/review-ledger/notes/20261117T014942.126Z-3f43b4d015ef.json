@@ -1,0 +1,7 @@
+{
+  "revision": "456e853a409055b6fef893f2a83646d490e58107",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Corrects what publishes when a native build is cancelled for lack of a runner: the native cohort is skipped; the npm nightly CLI and the portable server Nightly are not gated on staging. Checked against nightly.yml needs and conditions.","inputs":["docs/guides/releasing.md"]}
+  ]
+}

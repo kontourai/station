@@ -57,9 +57,13 @@ export interface ChildChatController {
 }
 
 export const ChildChatPresentationContext = createContext<{
+  currentChild?: ChildChatTarget;
   trail: ReactNode;
   pane: ReactNode;
 } | null>(null);
+export function useCurrentChildChat() {
+  return useContext(ChildChatPresentationContext)?.currentChild;
+}
 export function useChildChatTrail() {
   return useContext(ChildChatPresentationContext)?.trail;
 }

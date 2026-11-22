@@ -1,0 +1,7 @@
+{
+  "revision": "858e5c30f4b451eae1e8eb321d36ab553bb1b882",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked the weekly calendar after switching to the declared shared medium radius token. Chromium covered both widths and themes, and the guide’s Schedule journey is unchanged.","inputs":["src-ui/src/views/ScheduleView.css"]}
+  ]
+}

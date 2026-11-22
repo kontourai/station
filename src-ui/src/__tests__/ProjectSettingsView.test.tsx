@@ -61,6 +61,15 @@ const sdkMocks = vi.hoisted(() => ({
   chatDefaultsQuery: vi.fn(),
   // Station-wide previews the host reports, and the checkout freshness read.
   previews: [] as Array<{ id: string; enabled: boolean }>,
+  repository: true,
+  repositoryProvider: 'github',
+  repositoryProviderLabel: 'GitHub',
+  repositoryAutomation: true,
+  repositoryCause: undefined as 'unsupported-forge' | undefined,
+  repositoryError: false,
+  repositoryFetching: false,
+  repositoryRefetch: vi.fn(),
+  setPullRequestWatch: vi.fn(),
   checkoutFreshness: undefined as ProjectCheckoutFreshness | null | undefined,
   checkoutFreshnessError: null as Error | null,
   checkoutFreshnessQuery: vi.fn(),
@@ -134,6 +143,9 @@ vi.mock('../components/ModelSelector', () => ({
   ),
 }));
 
+vi.mock('../views/project-settings/AgentFeedbackDefaultsSection', () => ({
+  AgentFeedbackDefaultsSection: () => <p>Agent feedback defaults</p>,
+}));
 vi.mock('../components/PathAutocomplete', () => ({
   PathAutocomplete: ({
     value,
@@ -183,6 +195,29 @@ vi.mock('../views/project-settings/ProjectSourcesSection', () => ({
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
+  usePullRequestContextQuery: () => ({
+    data: sdkMocks.repository
+      ? {
+          available: true,
+          provider: sdkMocks.repositoryProvider,
+          providerLabel: sdkMocks.repositoryProviderLabel,
+          automation: {
+            feedback: sdkMocks.repositoryAutomation,
+            taskBranchDiscovery: sdkMocks.repositoryAutomation,
+          },
+          host: 'github.com',
+          repository: { owner: 'acme', name: 'widgets' },
+        }
+      : {
+          available: false,
+          reason: 'No repository attached.',
+          cause: sdkMocks.repositoryCause,
+        },
+    isPending: false,
+    isError: sdkMocks.repositoryError,
+    isFetching: sdkMocks.repositoryFetching,
+    refetch: sdkMocks.repositoryRefetch,
+  }),
   useIntegrationsQuery: () =>
     ({
       data: [],
@@ -347,6 +382,18 @@ vi.mock('@kontourai/station-sdk', () => ({
         }
       : { data: undefined, error: null, isError: false, refetch: vi.fn() },
   useProjectSchedulesCapability: () => ({ data: true }),
+  // #5066: the Pull requests section saves through this mutation.
+  useSetProjectPullRequestWatchMutation: (slug: string) => ({
+    isPending: false,
+    error: null,
+    mutate: (
+      settings: { enabled: boolean; maxFixAttempts: number },
+      options?: { onSuccess?: () => void },
+    ) => {
+      sdkMocks.setPullRequestWatch(slug, settings);
+      options?.onSuccess?.();
+    },
+  }),
   useSchedulerJobs: () => ({
     data: [],
     isPending: false,
@@ -443,6 +490,14 @@ function expectPageFullRoot(container: HTMLElement) {
 // Every suite here renders the Workspace section, so the stale checkout
 // warning's state starts empty for each test.
 beforeEach(() => {
+  sdkMocks.repository = true;
+  sdkMocks.repositoryProvider = 'github';
+  sdkMocks.repositoryProviderLabel = 'GitHub';
+  sdkMocks.repositoryAutomation = true;
+  sdkMocks.repositoryCause = undefined;
+  sdkMocks.repositoryError = false;
+  sdkMocks.repositoryFetching = false;
+  sdkMocks.repositoryRefetch.mockClear();
   sdkMocks.previews = [];
   sdkMocks.checkoutFreshness = undefined;
   sdkMocks.checkoutFreshnessError = null;
@@ -454,6 +509,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
   beforeEach(() => {
     window.history.replaceState({}, '', '/projects/demo/settings');
     sdkMocks.project = projectFixture;
+    sdkMocks.repository = true;
     sdkMocks.isLoading = false;
     sdkMocks.isError = false;
     sdkMocks.error = undefined;
@@ -943,6 +999,35 @@ describe('ProjectSettingsView (#250 shell port)', () => {
     });
   });
 
+  test('one Pull requests destination includes preview controls and preserves former Agent feedback links', () => {
+    const { unmount } = renderProjectSettings('agent-feedback');
+    expect(screen.queryByRole('link', { name: 'Agent feedback' })).toBeNull();
+    expect(screen.queryByText('Agent feedback defaults')).toBeNull();
+    unmount();
+    sdkMocks.previews = [{ id: 'pull-request-agent-feedback', enabled: true }];
+    renderProjectSettings('agent-feedback');
+    expect(
+      screen
+        .getByRole('link', { name: 'Pull requests' })
+        .getAttribute('aria-current'),
+    ).toBe('location');
+    expect(screen.queryByRole('link', { name: 'Agent feedback' })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Pull requests' })).toBeTruthy();
+    expect(new URLSearchParams(window.location.search).get('section')).toBe(
+      'pull-requests',
+    );
+    expect(
+      screen.getByRole('switch', { name: 'Watch Task pull requests' }),
+    ).toBeTruthy();
+    expect(screen.getByText('Agent feedback defaults')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    // It saves on its own, not with the page's Save.
+    expect(
+      screen.getByText('Changes in this section save automatically.'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+  });
+
   test('section picker shows one topic and keeps hidden project drafts mounted', () => {
     renderProjectSettings('basic-info');
     fireEvent.change(screen.getByRole('textbox', { name: 'Name *' }), {
@@ -961,6 +1046,10 @@ describe('ProjectSettingsView (#250 shell port)', () => {
         .getAttribute('aria-current'),
     ).toBe('location');
     expect(screen.queryByRole('textbox', { name: 'Name *' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveProperty(
+      'disabled',
+      false,
+    );
     expect(
       screen.queryByRole('textbox', { name: 'Working Directory' }),
     ).toBeNull();
@@ -1181,7 +1270,7 @@ describe('ProjectSettingsView (#250 shell port)', () => {
       ).toBe('inherit');
       expect(
         screen.getByRole('option', {
-          name: 'Use the Station approval default (currently: Ask first)',
+          name: 'Station default (Ask first)',
         }),
       ).toBeTruthy();
       expect(sdkMocks.chatDefaultsQuery).toHaveBeenCalledWith(
@@ -1819,5 +1908,151 @@ describe('ProjectSettingsView: changing the icon after creation', () => {
     save();
     await waitFor(() => expect(sdkMocks.updateProject).toHaveBeenCalled());
     expect(sdkMocks.updateProject.mock.calls[0][0]).not.toHaveProperty('icon');
+  });
+});
+
+describe('Pull requests section (#5066)', () => {
+  test('a recognized remote without a PR adapter is not presented as a missing repository', () => {
+    sdkMocks.repository = false;
+    sdkMocks.repositoryCause = 'unsupported-forge';
+    renderProjectSettings('pull-requests');
+    expect(
+      screen.getByText(
+        'Pull request integration is not available for this remote',
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText('Add a repository to use pull requests'),
+    ).toBeNull();
+  });
+  test.each([
+    ['gitlab', 'GitLab'],
+    ['bitbucket', 'Bitbucket'],
+    ['azure-devops', 'Azure DevOps'],
+  ])(
+    'a valid %s repository without automation gets an honest capability state',
+    (provider, label) => {
+      sdkMocks.repositoryProvider = provider;
+      sdkMocks.repositoryProviderLabel = label;
+      sdkMocks.repositoryAutomation = false;
+      renderProjectSettings('pull-requests');
+      expect(
+        screen.getByText(`Automatic feedback is not available for ${label}`),
+      ).toBeTruthy();
+      expect(
+        screen.queryByText('Add a repository to use pull requests'),
+      ).toBeNull();
+      expect(
+        screen.queryByRole('switch', { name: 'Watch Task pull requests' }),
+      ).toBeNull();
+      expect(sdkMocks.setPullRequestWatch).not.toHaveBeenCalled();
+    },
+  );
+  test('a future provider with feedback support uses the same controls', () => {
+    sdkMocks.repositoryProvider = 'another-forge';
+    sdkMocks.repositoryProviderLabel = 'Another forge';
+    sdkMocks.repositoryAutomation = true;
+    renderProjectSettings('pull-requests');
+    expect(
+      screen.getByRole('switch', { name: 'Watch Task pull requests' }),
+    ).toBeTruthy();
+  });
+  beforeEach(() => {
+    sdkMocks.repository = true;
+    sdkMocks.setPullRequestWatch.mockClear();
+    sdkMocks.refetch.mockClear();
+  });
+
+  test('a failed repository refresh hides stale switches and offers Retry', () => {
+    sdkMocks.repositoryError = true;
+    renderProjectSettings('pull-requests');
+    expect(
+      screen.getByText("Could not check the Project's repository"),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('switch', { name: 'Watch Task pull requests' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(sdkMocks.repositoryRefetch).toHaveBeenCalledOnce();
+  });
+
+  test('a repository recheck hides retained controls until the refreshed result arrives', () => {
+    sdkMocks.repositoryFetching = true;
+    const { rerender } = renderProjectSettings('pull-requests');
+    const section = document.getElementById('section-pull-requests')!;
+    section.focus();
+    expect(document.activeElement).toBe(section);
+    expect(
+      screen.queryByRole('switch', { name: 'Watch Task pull requests' }),
+    ).toBeNull();
+    sdkMocks.repositoryFetching = false;
+    rerender(<ProjectSettingsView slug="demo" />);
+    expect(document.getElementById('section-pull-requests')).toBe(section);
+    expect(document.activeElement).toBe(section);
+    expect(
+      screen.getByRole('switch', { name: 'Watch Task pull requests' }),
+    ).toBeTruthy();
+  });
+
+  test('without a repository, offers Sources instead of irrelevant switches and keeps saved choices', () => {
+    sdkMocks.repository = false;
+    sdkMocks.project = {
+      ...projectFixture,
+      pullRequestWatch: { enabled: true, maxFixAttempts: 7 },
+    };
+    renderProjectSettings('pull-requests');
+    expect(
+      screen.getByText('Add a repository to use pull requests'),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('switch', { name: 'Watch Task pull requests' }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Open Sources' }));
+    expect(new URLSearchParams(window.location.search).get('section')).toBe(
+      'resources',
+    );
+    expect(sdkMocks.setPullRequestWatch).not.toHaveBeenCalled();
+    expect(sdkMocks.project?.pullRequestWatch).toEqual({
+      enabled: true,
+      maxFixAttempts: 7,
+    });
+  });
+
+  test('cannot be changed while the pull request agent feedback preview is off', () => {
+    sdkMocks.project = projectFixture;
+    renderProjectSettings('pull-requests');
+    const toggle = screen.getByRole('switch', {
+      name: 'Watch Task pull requests',
+    });
+    expect(toggle).toHaveProperty('disabled', true);
+    expect(
+      screen.getByText(/Turn on Pull request agent feedback/),
+    ).toBeTruthy();
+    fireEvent.click(toggle);
+    expect(sdkMocks.setPullRequestWatch).not.toHaveBeenCalled();
+  });
+
+  test('saves the Project setting as it changes and refreshes the Project', () => {
+    sdkMocks.project = {
+      ...projectFixture,
+      pullRequestWatch: { enabled: false, maxFixAttempts: 3 },
+    };
+    sdkMocks.previews = [{ id: 'pull-request-agent-feedback', enabled: true }];
+    renderProjectSettings('pull-requests');
+    fireEvent.click(
+      screen.getByRole('switch', { name: 'Watch Task pull requests' }),
+    );
+    expect(sdkMocks.setPullRequestWatch).toHaveBeenLastCalledWith('demo', {
+      enabled: true,
+      maxFixAttempts: 3,
+    });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Fix attempts' }), {
+      target: { value: '5' },
+    });
+    expect(sdkMocks.setPullRequestWatch).toHaveBeenLastCalledWith('demo', {
+      enabled: false,
+      maxFixAttempts: 5,
+    });
+    expect(sdkMocks.refetch).toHaveBeenCalledTimes(2);
   });
 });

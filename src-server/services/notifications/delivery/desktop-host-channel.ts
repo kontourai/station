@@ -32,11 +32,7 @@ import {
   type SurfaceDeliveryEntry,
   type SurfaceDeliveryFeed,
 } from '@kontourai/station-contracts/notification-preferences';
-import { activityDeepLink } from '@kontourai/station-contracts/surface-deep-link';
-import {
-  resolveNotificationOpenHref,
-  withOpenedNotification,
-} from '../notification-deep-link.js';
+import { notificationOpenLink } from '../notification-deep-link.js';
 import {
   osNotificationBody,
   osNotificationTitle,
@@ -89,9 +85,19 @@ export class DesktopHostChannel implements DeliveryChannel {
   readonly #epoch: string;
   #seq = 0;
 
-  constructor(options: { now?: () => number; epoch?: string } = {}) {
+  readonly #stationId: () => string | undefined;
+
+  constructor(
+    options: {
+      now?: () => number;
+      epoch?: string;
+      /** This Station's environment id, carried in each link. */
+      stationId?: () => string | undefined;
+    } = {},
+  ) {
     this.#now = options.now ?? Date.now;
     this.#epoch = options.epoch ?? randomUUID();
+    this.#stationId = options.stationId ?? (() => undefined);
   }
 
   registrations(): Array<{ surface: SurfaceId; ref: string }> {
@@ -108,9 +114,10 @@ export class DesktopHostChannel implements DeliveryChannel {
     envelope: NotificationEnvelopeV1,
     to: ChannelTarget[],
   ): Promise<DeliveryOutcome[]> {
-    const link = withOpenedNotification(
-      resolveNotificationTargetLink(notification, envelope),
-      notification.id,
+    const link = notificationOpenLink(
+      notification,
+      this.#stationId(),
+      envelope,
     );
     return to.map(({ surface, ref, hideContent }) => {
       const feed = this.#feeds.get(surface);
@@ -209,28 +216,4 @@ export class DesktopHostChannel implements DeliveryChannel {
       this.#feeds.delete(oldest);
     }
   }
-}
-
-/**
- * Where a click opens: the envelope's target when it has one, else the
- * same session/metadata resolution Web Push uses, else the inbox.
- */
-function resolveNotificationTargetLink(
-  notification: Notification,
-  envelope: NotificationEnvelopeV1,
-): string {
-  const target = envelope.target;
-  if (target?.kind === 'path') return target.path;
-  if (target?.kind === 'session')
-    return activityDeepLink({ sessionId: target.sessionId });
-  const metadata = notification.metadata ?? {};
-  const text = (value: unknown) =>
-    typeof value === 'string' && value.trim() ? value : undefined;
-  return (
-    resolveNotificationOpenHref(
-      metadata,
-      text(metadata.sessionId) ?? text(metadata.conversationId),
-      text(metadata.sessionKind),
-    ) ?? '/notifications'
-  );
 }

@@ -6,7 +6,7 @@ import type {
 
 export type SelectableModel = Pick<
   ModelOption,
-  'id' | 'name' | 'capabilities' | 'canonicalModelIdentity'
+  'id' | 'name' | 'capabilities' | 'canonicalModelIdentity' | 'catalogRoute'
 > &
   Partial<Pick<ModelOption, 'originalId' | 'resolvedModel'>> & {
     providerId?: string;
@@ -109,6 +109,16 @@ export const MODEL_NOT_REPORTED = 'Model not reported';
  * it, and saying "not reported" would be a claim about the session rather than
  * about our catalog. The prettified id says exactly what is known.
  */
+export function modelOptionLabel(
+  model: Pick<ModelOption, 'name' | 'catalogRoute'>,
+  showProvider = false,
+): string {
+  const route = model.catalogRoute;
+  if (!route) return model.name;
+  const label = route.displayName ?? route.modelId;
+  return showProvider ? `${label} (${route.providerId})` : label;
+}
+
 export function modelDisplayLabel(
   modelId: string | null | undefined,
   catalog: readonly SelectableModel[] = [],
@@ -121,7 +131,7 @@ export function modelDisplayLabel(
   // `|| id` is the last guard: a catalog entry with an empty `name` would
   // otherwise render blank, and an entry that exists is not a reason to show
   // nothing.
-  return known?.name || prettifyModelId(id) || id;
+  return (known && modelOptionLabel(known)) || prettifyModelId(id) || id;
 }
 
 /**
@@ -142,7 +152,7 @@ export function resolvedModelLabel(
       (model.originalId === resolved || model.id === resolved) &&
       !model.resolvedModel,
   );
-  if (match) return match.name;
+  if (match) return modelOptionLabel(match);
   return prettifyModelId(resolved);
 }
 
@@ -229,6 +239,15 @@ export function replaceModelControlOptions(
   const next = { ...current };
   for (const key of MODEL_CONTROL_KEYS) delete next[key];
   return { ...next, ...applied };
+}
+
+/** A model acknowledgement cannot settle a separate mode request. */
+export function pendingNonModelOptions(
+  requested: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!requested) return undefined;
+  const pending = replaceModelControlOptions(requested);
+  return Object.keys(pending).length > 0 ? pending : undefined;
 }
 
 export function updateModelRuntimeOption(
@@ -450,11 +469,21 @@ export function resolveModelChoice(
           model.executionAgentId === choice.executionAgentId,
       )
     : undefined;
+  const effectiveOption = models.find(
+    (model) =>
+      model.id === (sourceModel ?? effective.id) &&
+      model.executionAgentId === choice?.executionAgentId,
+  );
   return {
     id: choice?.modelId ?? sourceModel ?? effective.id ?? undefined,
     label: choice?.modelId
-      ? (selected?.name ?? choice.modelId)
-      : (sourceModel ?? effective.label),
+      ? selected
+        ? modelOptionLabel(selected)
+        : choice.modelId
+      : (sourceModel ??
+        (effectiveOption?.catalogRoute
+          ? modelOptionLabel(effectiveOption)
+          : effective.label)),
     source: choice?.modelId
       ? ('session override' as const)
       : sourceModel
@@ -463,14 +492,7 @@ export function resolveModelChoice(
     engineName: selected?.engineName,
     executionAgentId: choice?.executionAgentId,
     effortLabel: requestedEffortLabel(
-      (
-        selected ??
-        models.find(
-          (model) =>
-            model.id === (sourceModel ?? effective.id) &&
-            model.executionAgentId === choice?.executionAgentId,
-        )
-      )?.capabilities,
+      (selected ?? effectiveOption)?.capabilities,
       choice?.providerOptions,
     ),
   };

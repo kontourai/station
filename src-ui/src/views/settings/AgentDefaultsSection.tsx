@@ -1,4 +1,7 @@
-import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
+import {
+  APP_SETTINGS_REGISTRY,
+  type SettingProvenanceEntry,
+} from '@kontourai/station-contracts/settings-registry';
 import type {
   AgentConnectionView,
   ModelConnectionConfig,
@@ -119,16 +122,6 @@ function ProjectModelDefaults({
   );
 }
 
-// archive#settings-revamp: promoted from a de-emphasized disclosure
-// to its own top-level "Defaults" scope (docs/design/settings-architecture.md
-// §3) — still default values only used when a chat, project, or agent
-// has no override of its own, now with a persistence-tier caption
-// (`SettingsView.tsx`) instead of "de-emphasized" framing. The internal
-// progressive disclosure is gone: these fields sat behind a closed
-// <details> labelled "Show default model, instructions, region, and
-// variables", so the scope that was promoted to top level still opened
-// closed. The `agent-defaults__panel` wrapper is kept — it carries the
-// section's layout.
 export function AgentDefaultsSection({
   config,
   validationErrors,
@@ -306,7 +299,7 @@ export function AgentDefaultsSection({
               onChange={(event) =>
                 onChange({ ...config, systemPrompt: event.target.value })
               }
-              placeholder="Default instructions used when an agent or chat doesn't define its own…"
+              placeholder="Instructions for prompts built by Station…"
               rows={6}
             />
           </ManagedFieldset>
@@ -323,9 +316,10 @@ export function AgentDefaultsSection({
             </span>
           )}
           <span className="settings__field-hint">
-            Added before Station agents’ instructions. Used for chats with no
-            instructions of their own. Supports {'{{date}}'}, {'{{time}}'}, or
-            custom variables below.
+            {
+              APP_SETTINGS_REGISTRY.find(({ key }) => key === 'systemPrompt')
+                ?.help
+            }
           </span>
         </div>
 
@@ -338,6 +332,13 @@ export function AgentDefaultsSection({
             {settingsRow('template-variables').title}
           </div>
           <ManagedSettingBadge provenance={templateVariablesProvenance} />
+          <p className="settings__field-hint">
+            {
+              APP_SETTINGS_REGISTRY.find(
+                ({ key }) => key === 'templateVariables',
+              )?.help
+            }
+          </p>
           <ManagedFieldset provenance={templateVariablesProvenance}>
             <div className="settings__vars">
               {(config.templateVariables || []).map((variable, index) => (
@@ -356,6 +357,7 @@ export function AgentDefaultsSection({
                     placeholder="variable_name"
                   />
                   <select
+                    aria-label={`Template variable ${index + 1} type`}
                     value={variable.type}
                     onChange={(event) => {
                       const updated = [...(config.templateVariables || [])];
@@ -405,7 +407,7 @@ export function AgentDefaultsSection({
                       }}
                       placeholder="Format (optional)"
                       aria-label={`Date/time format for ${variable.key || 'unnamed variable'}`}
-                      title='JSON date/time options, e.g. {"year":"numeric","month":"short","day":"numeric"}. Leave empty for the default.'
+                      title='JSON date/time options, e.g. {"timeZone":"UTC"}. Leave empty to use the Station host locale.'
                     />
                   )}
                   <button
@@ -456,14 +458,14 @@ export function AgentDefaultsSection({
               ) && (
                 <span className="settings__field-hint">
                   Date/time format uses JSON options, such as{' '}
-                  <code>{'{"year":"numeric"}'}</code>. Leave empty for the
-                  default.
+                  <code>{'{"timeZone":"UTC"}'}</code>. Leave empty to use the
+                  Station host locale.
                 </span>
               )}
             </div>
           </ManagedFieldset>
           <div className="settings__var-ref">
-            <strong>Built-in (always available):</strong>
+            <strong>Built-in variables:</strong>
             <ul>
               <li>
                 <code>{'{{date}}'}</code> Full date · <code>{'{{time}}'}</code>{' '}

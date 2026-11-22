@@ -147,6 +147,18 @@ test.describe('Project channels in the sidebar (#4794)', () => {
     const slug = `channels-sidebar-${Date.now().toString(36)}`;
     const seeded = await seedProject(request, slug, ['design', 'launch']);
     try {
+      const task = await json(
+        await request.post(`${resolveE2EApiBase()}/api/tasks`, {
+          data: {
+            projectId: slug,
+            title: 'Sidebar task room',
+            createdBy: 'user',
+          },
+        }),
+      );
+      await json(
+        await request.get(`${resolveE2EApiBase()}/api/tasks/${task.id}/room`),
+      );
       await post(request, seeded, 'design', 'Checkout screens are ready.');
       await post(request, seeded, 'design', 'The CTA is shorter now.');
       await page.setViewportSize({ width: 1440, height: 900 });
@@ -201,6 +213,65 @@ test.describe('Project channels in the sidebar (#4794)', () => {
       await expect(
         projectSidebar(page).getByRole('button', { name: 'launch, 1 unread' }),
       ).toHaveClass(/conversation-list__row--unread/);
+
+      await page
+        .getByRole('button', { name: 'Collapse workspace map' })
+        .click();
+      const project = sidebar.getByRole('button', {
+        name: /^Channel journey views/,
+      });
+      await project.press('Enter');
+      const popover = page.getByRole('dialog', {
+        name: 'Channel journey views',
+      });
+      const launch = popover.getByRole('button', { name: 'launch, 1 unread' });
+      const current = popover.getByRole('button', {
+        name: 'design',
+        exact: true,
+      });
+      const taskRoom = popover.getByRole('button', {
+        name: /^Sidebar task room, Task room/,
+      });
+      await expect(launch).toBeVisible();
+      await expect(launch.locator('.conversation-list__label')).toHaveCSS(
+        'font-weight',
+        '650',
+      );
+      await expect(taskRoom).toBeVisible();
+      await expect(
+        popover.locator('[data-conversation-row][tabindex="0"]'),
+      ).toHaveCount(1);
+      await expect(current).toHaveAttribute('tabindex', '0');
+      await current.focus();
+      await page.keyboard.press('ArrowDown');
+      await expect(launch).toBeFocused();
+      await page.keyboard.press('ArrowDown');
+      await expect(taskRoom).toBeFocused();
+      await page.keyboard.press('ArrowUp');
+      await expect(launch).toBeFocused();
+      await page.keyboard.press('Escape');
+      await expect(popover).toBeHidden();
+      await expect(project).toBeFocused();
+
+      await project.click();
+      await current.focus();
+      await page.keyboard.press('ArrowDown');
+      await page.keyboard.press('Enter');
+      await expect(popover).toBeHidden();
+      await expect(
+        room.getByText('Launch checklist is drafted.'),
+      ).toBeVisible();
+      await project.click();
+      await popover
+        .getByRole('button', { name: 'launch', exact: true })
+        .focus();
+      await page.keyboard.press('ArrowDown');
+      await expect(taskRoom).toBeFocused();
+      await page.keyboard.press('Enter');
+      await expect(popover).toBeHidden();
+      await expect(page).toHaveURL(
+        new RegExp(`/tasks/${task.id}.*taskView=conversation`),
+      );
     } finally {
       await removeProject(request, slug);
     }

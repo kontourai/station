@@ -311,6 +311,33 @@ describe('Invoke Routes', () => {
     expect(agent.generateText).not.toHaveBeenCalled();
   });
 
+  test.each([
+    ['voltagent', 2],
+    ['strands', undefined],
+  ] as const)(
+    'POST /agents/:slug/invoke/stream respects the Agent step cap on %s',
+    async (runtime, expected) => {
+      const ctx = createMockCtx();
+      const agent = ctx.activeAgents.get('default')!;
+      ctx.activeAgents.set('writer', agent);
+      ctx.agentSpecs.set('writer', { maxSteps: 2 });
+      const app = createInvokeRoutes({
+        ...ctx,
+        appConfig: { ...ctx.appConfig, runtime },
+      } as any);
+      const response = await app.request('/agents/writer/invoke/stream', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: 'Hello', maxSteps: 7 }),
+      });
+      expect(response.status).toBe(200);
+      expect(agent.generateText).toHaveBeenCalledWith(
+        'Hello',
+        expect.objectContaining({ maxSteps: expected }),
+      );
+    },
+  );
+
   test('POST /agents/:slug/invoke/stream rejects a model override without catalog evidence', async () => {
     const ctx = createMockCtx({ modelCatalog: undefined });
     const agent = ctx.activeAgents.get('default')!;

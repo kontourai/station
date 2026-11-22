@@ -1,0 +1,21 @@
+{
+  "revision": "c78c44138b81a223cc0204004bd585d2e3a9d37d",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Verified New Chat setup temporarily collapses the chat dock and preserves the origin's draft and layout. Return revalidates the chosen setup and restores the captured route as exercised by the dock tests and clean Starter journey.","inputs":["docs/user/getting-started.md","src-ui/src/components/modals/NewChatModal.tsx","src-ui/src/components/modals/useNewChatSetupReturn.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the New Chat setup-return call site. Retained selection, request authority and revalidation boundaries still apply. The explicit collapse request prevents the draft dock covering the setup route.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the New Chat setup-return call site. Retained selection, request authority and revalidation boundaries still apply. The explicit collapse request prevents the draft dock covering the setup route.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the New Chat setup-return call site. Retained selection, request authority and revalidation boundaries still apply. The explicit collapse request prevents the draft dock covering the setup route.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Reviewed the New Chat setup-return call site. Retained selection, request authority and revalidation boundaries still apply. The explicit collapse request prevents the draft dock covering the setup route.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Reviewed the New Chat setup-return call site. Retained selection, request authority and revalidation boundaries still apply. The explicit collapse request prevents the draft dock covering the setup route.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the New Chat setup-return call site. Retained selection, request authority and revalidation boundaries still apply. The explicit collapse request prevents the draft dock covering the setup route.","inputs":["src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed canonical navigation and restoration for desktop and phone. The New Chat consumer collapses the dock in setup while the shared scheduler caller retains its desktop behavior.","inputs":["src-ui/src/components/modals/useNewChatSetupReturn.ts"]}
+  ]
+}

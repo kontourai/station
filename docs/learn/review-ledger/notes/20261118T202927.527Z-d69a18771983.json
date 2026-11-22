@@ -1,0 +1,7 @@
+{
+  "revision": "29954d55f14969043f3ebbe3c18111ba16acdbe0",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Checked the named sharing, watch, write-back, store creation, rules save, output, review feedback, capture session and starter-link recovery messages against their renderers. The guide uses the existing action labels, or tells the reader what to inspect before another write. The write-back retry only rereads history. No external deployment or provider action occurred.","inputs":["docs/user/concepts.md"]}
+  ]
+}

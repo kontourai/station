@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { chromium } from '@playwright/test';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import {
   afterAll,
   afterEach,
@@ -45,9 +45,6 @@ vi.mock('react-markdown', () => ({
   default: ({ children }: { children?: string }) => <div>{children}</div>,
 }));
 vi.mock('remark-gfm', () => ({ default: () => null }));
-vi.mock('../components/chat/message-bubble/MessageRating', () => ({
-  MessageRating: () => null,
-}));
 vi.mock('../components/icons/UserIcon', () => ({ UserIcon: () => null }));
 vi.mock('../hooks/useIsMobile', async (original) => ({
   ...(await original<typeof import('../hooks/useIsMobile')>()),
@@ -112,7 +109,7 @@ afterEach(() => {
 });
 
 /** One settled answer whose chip carries the longest unresolved label. */
-async function answerMarkup(mobile: boolean): Promise<string> {
+async function answerMarkup(mobile: boolean) {
   mocks.isMobile = mobile;
   const { container, unmount } = render(
     <QueryClientProvider client={new QueryClient()}>
@@ -171,6 +168,13 @@ async function answerMarkup(mobile: boolean): Promise<string> {
       />
     </QueryClientProvider>,
   );
+  const row = container.innerHTML;
+  if (mobile) {
+    expect(container.querySelector('.answer-basis-chip')).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Answer details and actions' }),
+    );
+  }
   const chip = await screen.findByRole(
     'button',
     {
@@ -182,7 +186,14 @@ async function answerMarkup(mobile: boolean): Promise<string> {
   expect(chip.getAttribute('title')).toMatch(
     /^Basis · Temporarily unavailable\. /,
   );
-  const markup = container.innerHTML;
+  if (!mobile) {
+    await screen.findByRole('button', { name: 'More answer actions' });
+  }
+  const sheet = mobile
+    ? screen.getByRole('dialog').closest('.responsive-surface-overlay')!
+        .outerHTML
+    : '';
+  const markup = { row: mobile ? row : container.innerHTML, sheet };
   unmount();
   return markup;
 }
@@ -199,7 +210,7 @@ function measure() {
   const lead = chip.querySelector<HTMLElement>(
     '.station-basis-affordance__lead',
   )!;
-  // On a phone the chip sits in the meta row below the bubble, not in it.
+  // The phone sheet is portalled outside the answer bubble.
   const bubble = chip.closest<HTMLElement>('.message')?.getBoundingClientRect();
   const box = chip.getBoundingClientRect();
   const hit = document.elementFromPoint(
@@ -237,6 +248,76 @@ describe.skipIf(!chromiumAvailable)(
       await browser?.close();
     });
 
+    it.each([
+      [820, 135],
+      [1000, 220],
+    ])(
+      'at %ipx the complete answer footer fits its %ipx allocation and reveals focusable actions',
+      async (width, footerWidth) => {
+        const markup = await answerMarkup(false);
+        const page = await browser.newPage({
+          viewport: { width, height: 850 },
+        });
+        page.setDefaultTimeout(3_000);
+        try {
+          await page.setContent(
+            `<!doctype html><style>${stylesheet()}</style><main style="margin-left:120px;width:420px">${markup.row}</main>`,
+          );
+          const footer = page.locator('.turn-footer');
+          await footer.evaluate((element, size) => {
+            element.style.width = `${size}px`;
+          }, footerWidth);
+          const names = [
+            `${LABEL} for the answer “The build passed on the second attempt.”`,
+            'Copy answer',
+            'More answer actions',
+            'Good response',
+            'Bad response',
+          ];
+          const buttons = names.map((name) =>
+            footer.getByRole('button', { name, exact: true }),
+          );
+          await buttons[0]!.focus();
+          for (const button of buttons) {
+            expect(
+              await button.evaluate((element) =>
+                element.matches(':focus-visible'),
+              ),
+            ).toBe(true);
+            await page.keyboard.press('Tab');
+          }
+          const fit = await page.evaluate(measure);
+          expect(fit.leadWhole).toBe(true);
+          const bounds = await footer.boundingBox();
+          expect(bounds?.width).toBe(footerWidth);
+          for (const button of buttons) {
+            const box = await button.boundingBox();
+            expect(box).not.toBeNull();
+            expect(box!.x).toBeGreaterThanOrEqual(bounds!.x - 0.5);
+            expect(box!.x + box!.width).toBeLessThanOrEqual(
+              bounds!.x + bounds!.width + 0.5,
+            );
+          }
+          await buttons[0]!.hover({ timeout: 2_000 });
+          for (const button of buttons) {
+            expect(
+              await button.evaluate((element) => {
+                const box = element.getBoundingClientRect();
+                return element.contains(
+                  document.elementFromPoint(
+                    box.x + box.width / 2,
+                    box.y + box.height / 2,
+                  ),
+                );
+              }),
+            ).toBe(true);
+          }
+        } finally {
+          await page.close();
+        }
+      },
+    );
+
     it.each([280, 320, 360])(
       'in a %ipx desktop dock it stays inside the bubble, whole "Basis · " and clickable',
       async (dock) => {
@@ -246,7 +327,7 @@ describe.skipIf(!chromiumAvailable)(
         });
         try {
           await page.setContent(
-            `<!doctype html><style>${stylesheet()}</style><main style="width:${dock}px;overflow:hidden">${markup}</main>`,
+            `<!doctype html><style>${stylesheet()}</style><main style="width:${dock}px;overflow:hidden">${markup.row}</main>`,
           );
           expect(
             await page.evaluate(() => matchMedia('(hover: hover)').matches),
@@ -265,7 +346,7 @@ describe.skipIf(!chromiumAvailable)(
     );
 
     it.each([320, 375])(
-      'in a %ipx phone row the trailing timestamp keeps one line and the chip stays on screen',
+      'in a %ipx phone row the trailing timestamp keeps one line and the chip fits in answer details',
       async (width) => {
         const markup = await answerMarkup(true);
         const page = await browser.newPage({
@@ -275,15 +356,43 @@ describe.skipIf(!chromiumAvailable)(
         });
         try {
           await page.setContent(
-            `<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><style>${stylesheet()}</style><main style="padding:8px">${markup}</main>`,
+            `<!doctype html><meta name="viewport" content="width=device-width, initial-scale=1"><style>${stylesheet()}</style><main style="padding:8px">${markup.row}</main>`,
           );
+          const trigger = page.getByRole('button', {
+            name: 'Answer details and actions',
+          });
+          const rowFit = await trigger.evaluate((el) => {
+            if (!(el instanceof HTMLButtonElement))
+              throw new Error('Expected an answer details button');
+            const time = el
+              .closest('.message-meta')!
+              .querySelector<HTMLElement>('.message-meta__time')!;
+            const t = time.getBoundingClientRect(),
+              r = el.getBoundingClientRect();
+            return {
+              height: t.height,
+              fontSize: parseFloat(getComputedStyle(time).fontSize),
+              whole: time.scrollWidth <= time.clientWidth + 1,
+              timeLeft: t.left,
+              timeRight: t.right,
+              buttonRight: r.right,
+              buttonWidth: el.offsetWidth,
+              buttonHeight: el.offsetHeight,
+            };
+          });
+          expect(rowFit.height).toBeLessThan(1.8 * rowFit.fontSize);
+          expect(rowFit.whole).toBe(true);
+          expect(rowFit.timeRight).toBeLessThanOrEqual(width);
+          expect(rowFit.buttonRight).toBeLessThanOrEqual(rowFit.timeLeft + 1);
+          expect(rowFit.buttonWidth).toBeGreaterThanOrEqual(44);
+          expect(rowFit.buttonHeight).toBeGreaterThanOrEqual(44);
+          await page
+            .locator('body')
+            .evaluate(
+              (el, html) => el.insertAdjacentHTML('beforeend', html),
+              markup.sheet,
+            );
           const fit = await page.evaluate(measure);
-          expect(fit.time).not.toBeNull();
-          // One line: a second would at least double a ~1.2em line box.
-          expect(fit.time!.height).toBeLessThan(1.8 * fit.time!.fontSize);
-          expect(fit.time!.whole).toBe(true);
-          expect(fit.chip.right).toBeLessThanOrEqual(fit.time!.left);
-          expect(fit.time!.right).toBeLessThanOrEqual(width);
           expect(fit.chip.left).toBeGreaterThanOrEqual(0);
           expect(fit.chip.right).toBeLessThanOrEqual(width);
           expect(fit.rowOverflow).toBe(false);

@@ -1,0 +1,23 @@
+{
+  "revision": "c8d8e416493899f40d56200b43bcbb72c0d8c39b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the Home continuation fixture change. It still opens the same stored chat and now checks that its project is named before the agent. Module ownership and navigation are unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Documented the project-first metadata order across both Inbox panels and Home. The shared component preserves the status clock, peer attribution, project mark and engine marks; the browser verifies the order and spacing.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Reviewed the identity-line flex layout and spacing. The existing row entrance, hover-action positioning and reduced-motion rules still own animation. The geometry tests pass in both themes.","inputs":["docs/design/motion.md","src-ui/src/components/inbox-row/InboxRow.css"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"The cross-surface project palette fixture still checks the assigned Beta accent on sidebar, Inbox and Home. Its Home assertion now also checks the displayed project precedes the agent.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/__tests__/ProjectSidebar.test.tsx"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"The Home test continues to prove chat activation through the same focus handler. Only its metadata order assertion changed; shell slots and plugin contracts are unaffected.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/plugins.md","note":"Verified the Home continuation fixture still focuses the same session. The metadata reading order does not affect the public plugin surfaces.","inputs":["docs/guides/plugins.md","src-ui/src/__tests__/HomeView.test.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Updated the shared card reading order. Real Chromium captures at desktop and phone widths show the project mark and label before engine identity. Both Inbox hosts preserve accent, target and alignment checks.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"The accessible-name test checks the same chat-owned project, observed approval state, recency and agent. Agent identity is now announced with the project rather than appended after recency.","inputs":["docs/user/concepts.md","src-ui/src/__tests__/InboxOpenChatStatusConsistency.test.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the desktop and phone Inbox instructions against the shared metadata renderer. Project, engine and status remain visible as applicable. Activation, menus and disclosure journeys use the same controls.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx"]}
+  ]
+}

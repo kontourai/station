@@ -1,0 +1,9 @@
+{
+  "revision": "34e67be98cc1b26ffebc57077c5a7009d6bad0a5",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the resource partition change against the focused runner and ordinary partition. The scheduler privacy suite now owns real loopback sockets and SDK timers, so it is listed with the other loopback telemetry test. The manifest test and the real export test passed. No change to the lane ownership rules or other suites.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Reviewed the resource partition change against the focused runner and ordinary partition. The scheduler privacy suite now owns real loopback sockets and SDK timers, so it is listed with the other loopback telemetry test. The manifest test and the real export test passed. No change to the lane ownership rules or other suites.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

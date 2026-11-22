@@ -170,6 +170,15 @@ const recordSchema = scopeSchema
       .object({ reason: z.string().min(1), at: z.number() })
       .strict()
       .optional(),
+    /** Idempotency identity for a server-owned setup command. */
+    operationId: z.string().max(128).optional(),
+    /** Persisted lifetime of a server-owned command, including core restarts. */
+    maxRuntimeMs: z
+      .number()
+      .int()
+      .min(1)
+      .max(24 * 60 * 60_000)
+      .optional(),
     /** Ended because its in-process host stopped with the core, not by itself. */
     hostStopped: z.literal(true).optional(),
   })
@@ -195,6 +204,7 @@ function sessionView(
     projectId: record.projectId,
     bindingKey: record.bindingKey,
     terminalId: record.terminalId,
+    ...(record.operationId ? { operationId: record.operationId } : {}),
     cols: record.cols,
     rows: record.rows,
     status: record.status,
@@ -393,6 +403,10 @@ export class TerminalSessions<Principal> {
   private records = new Map<string, SessionRecord>();
   private journals = new Map<string, Promise<SessionJournal>>();
   private live = new Map<string, LiveSession>();
+  private readonly runtimeDeadlines = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
   private stopping = new Map<string, Promise<void>>();
   private commands: Promise<unknown> = Promise.resolve();
   private persistence: Promise<void> = Promise.resolve();
@@ -506,6 +520,8 @@ export class TerminalSessions<Principal> {
         };
       }
       const profile = input.launch;
+      const maxRuntimeMs =
+        profile?.kind === 'repository-sign-in' ? 10 * 60 * 1000 : undefined;
       let launch: ShellLaunch | undefined;
       if (profile && profile.kind !== 'shell') {
         if (!this.authority.resolveLaunch)
@@ -561,7 +577,13 @@ export class TerminalSessions<Principal> {
         rows: input.rows,
         status: 'starting',
         createdAt: Date.now(),
-        ...(profile && { launch: profile }),
+        ...(maxRuntimeMs !== undefined && { maxRuntimeMs }),
+        ...(profile && {
+          launch:
+            profile.kind === 'repository-sign-in'
+              ? { kind: 'server' }
+              : profile,
+        }),
         ...(input.legacy && { legacy: { ...input.legacy, imported: false } }),
         ...(shellRequested && { ordinal: this.nextOrdinal(scope) }),
         ...this.storage(),
@@ -588,6 +610,7 @@ export class TerminalSessions<Principal> {
           rows: record.rows,
           journal: this.journalSpec(record),
           ...(launch && { launch }),
+          ...(maxRuntimeMs !== undefined && { maxRuntimeMs }),
         });
         this.track(record, proc, journal);
         record.status = 'running';
@@ -615,6 +638,8 @@ export class TerminalSessions<Principal> {
       cols: number;
       rows: number;
       launch: ShellLaunch;
+      operationId?: string;
+      maxRuntimeMs?: number;
       /**
        * `command`: no PTY, output capped at `outputCapBytes` (default 16
        * MiB). The caller confines `cwd`; this only canonicalizes it.
@@ -622,8 +647,9 @@ export class TerminalSessions<Principal> {
       kind?: 'command';
       outputCapBytes?: number;
     },
+    authorize?: () => Promise<void>,
   ): Promise<{ terminalId: string; exited: Promise<TerminalExit> }> {
-    return this.launchInternal(scope, input);
+    return this.launchInternal(scope, input, authorize);
   }
 
   /**
@@ -669,6 +695,8 @@ export class TerminalSessions<Principal> {
       cols: number;
       rows: number;
       launch: ShellLaunch;
+      operationId?: string;
+      maxRuntimeMs?: number;
       kind?: 'command';
       outputCapBytes?: number;
     },
@@ -691,6 +719,10 @@ export class TerminalSessions<Principal> {
       const record = recordSchema.parse({
         ...scopeSchema.parse(scope),
         terminalId: randomUUID(),
+        ...(input.operationId ? { operationId: input.operationId } : {}),
+        ...(input.maxRuntimeMs !== undefined
+          ? { maxRuntimeMs: input.maxRuntimeMs }
+          : {}),
         cwd,
         cols: input.cols,
         rows: input.rows,
@@ -719,7 +751,11 @@ export class TerminalSessions<Principal> {
           cols: record.cols,
           rows: record.rows,
           journal: this.journalSpec(record),
+          ...(input.maxRuntimeMs !== undefined
+            ? { maxRuntimeMs: input.maxRuntimeMs }
+            : {}),
           launch: input.launch,
+          ...(authorize ? { authorize } : {}),
           ...spawnKind,
         });
         this.track(record, proc, journal);
@@ -1124,6 +1160,9 @@ export class TerminalSessions<Principal> {
             });
         });
     const unsubscribeExit = proc.onExit((event) => {
+      const deadline = this.runtimeDeadlines.get(record.terminalId);
+      if (deadline) clearTimeout(deadline);
+      this.runtimeDeadlines.delete(record.terminalId);
       // node-pty can destroy a paused socket before publishing onExit.
       if (event.outputIncomplete) {
         record.status = 'failed';
@@ -1157,6 +1196,22 @@ export class TerminalSessions<Principal> {
       process: proc,
       exit: exited,
     });
+    if (record.maxRuntimeMs !== undefined && !isHostedShellProcess(proc)) {
+      const deadline = setTimeout(
+        () => {
+          void this.closeInternal(record, record.terminalId).catch(
+            (error: unknown) =>
+              logger.error('Terminal deadline cleanup failed', {
+                terminalId: record.terminalId,
+                error,
+              }),
+          );
+        },
+        Math.max(0, record.createdAt + record.maxRuntimeMs - Date.now()),
+      );
+      deadline.unref?.();
+      this.runtimeDeadlines.set(record.terminalId, deadline);
+    }
   }
 
   async list(principal: Principal, scope: TerminalSessionScope) {
@@ -1321,6 +1376,9 @@ export class TerminalSessions<Principal> {
 
   async dispose(): Promise<void> {
     this.disposed = true;
+    for (const deadline of this.runtimeDeadlines.values())
+      clearTimeout(deadline);
+    this.runtimeDeadlines.clear();
     this.listeners.clear();
     await this.ready;
     await this.commands.catch(() => undefined);

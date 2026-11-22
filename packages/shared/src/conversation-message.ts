@@ -72,6 +72,7 @@ export interface MessagePart {
   progressMessage?: string;
   /** A station-control refusal, whole (see `ToolCompletedEvent`). */
   stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
+  appearanceProposal?: import('@kontourai/station-contracts/custom-appearance').CustomAppearanceProposalReference;
   /** When the call's `tool.started` was created (ISO); a running row's elapsed time. */
   startedAt?: string;
   /** Engine output was deliberately narrowed before publication. */
@@ -185,6 +186,13 @@ export interface ConversationMessage {
     /** Immutable copied-context receipt; it is not an execution or read grant. */
     forkOrigin?: { eventId: string; digest: string };
     forkSourceMessageId?: string;
+    /**
+     * A row another Station sent (`conversation-imports`), named as that
+     * Station named itself when requesting pairing (the Device name this
+     * Station's operator approved). That Station's claim, not a row this
+     * Station recorded; every seed and memory copy quotes it.
+     */
+    importedFrom?: string;
     timestamp?: number;
     /** User input appended inside an already-running provider turn. */
     inputKind?: 'steer';

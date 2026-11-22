@@ -1014,6 +1014,86 @@ describe('SkillsView', () => {
       },
     };
 
+    test('a stale writable listing keeps the unsaved edit and labels the refused path', async () => {
+      const { updateLocalSkill } = await vi.importActual<
+        typeof import('@kontourai/station-sdk/client')
+      >('@kontourai/station-sdk/client');
+      const sourcePath = '/station/plugins/author-copy.example/skills/notes';
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              success: false,
+              code: 'skill-not-owned',
+              error: 'A plugin serves it in place.',
+              details: {
+                reason: 'served-in-place',
+                detail: 'A plugin serves it in place.',
+                packageDirectory: sourcePath,
+              },
+            }),
+            { status: 409, headers: { 'Content-Type': 'application/json' } },
+          ),
+        ),
+      );
+      updateLocalSkillMock.mockImplementationOnce(({ name, ...data }) =>
+        updateLocalSkill('http://localhost', name, data),
+      );
+      selectRow(REGISTRY_BUT_WRITABLE);
+      const { container } = renderEditor();
+      fireEvent.change(
+        screen.getByLabelText('Description', { selector: 'input' }),
+        {
+          target: { value: 'My unsaved edit' },
+        },
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await screen.findByText('Package directory');
+      expect(
+        container.querySelector('.skill-detail__source-path code')?.textContent,
+      ).toBe(sourcePath);
+      expect(
+        container.querySelector('.skill-detail__source-note')?.textContent,
+      ).toContain('The plugin that provides it is what to change.');
+      expect(
+        container.querySelector('.skill-detail__source-note')?.textContent,
+      ).not.toContain(sourcePath);
+      expect(showToastMock).toHaveBeenCalledWith(
+        'The changes could not be saved.',
+      );
+      expect(screen.getByDisplayValue('My unsaved edit')).toBeTruthy();
+    });
+
+    test('an older server write error remains a failure without adopting its raw message', async () => {
+      const { updateLocalSkill } = await vi.importActual<
+        typeof import('@kontourai/station-sdk/client')
+      >('@kontourai/station-sdk/client');
+      const response = new Response(
+        JSON.stringify({
+          success: false,
+          error: 'Session expired. Visit author-copy.example.',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } },
+      );
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response));
+      updateLocalSkillMock.mockImplementationOnce(({ name, ...data }) =>
+        updateLocalSkill('http://localhost', name, data),
+      );
+      selectRow(REGISTRY_BUT_WRITABLE);
+      renderEditor();
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() =>
+        expect(showToastMock).toHaveBeenCalledWith(
+          'The changes could not be saved.',
+        ),
+      );
+      expect(JSON.stringify(showToastMock.mock.calls)).not.toContain(
+        'author-copy.example',
+      );
+      expect(screen.queryByText('Package directory')).toBeNull();
+    });
+
     test("offers Save on a writable package the old derivation called read-only (source: 'registry')", () => {
       selectRow(REGISTRY_BUT_WRITABLE);
 

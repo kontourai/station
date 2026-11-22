@@ -485,7 +485,14 @@ function syncChildStopControl(
     turnId && new TextEncoder().encode(turnId).length <= 512
       ? turnId
       : undefined;
-  if (hasTarget === hasControl && existing.controls?.steer?.turnId === steer)
+  const images =
+    !!steer &&
+    context.record.childModelAcceptsImages?.(existing.model?.id) !== false;
+  if (
+    hasTarget === hasControl &&
+    existing.controls?.steer?.turnId === steer &&
+    !!existing.controls?.steer?.images === images
+  )
     return;
   emit(context, {
     kind: 'upsert',
@@ -493,7 +500,14 @@ function syncChildStopControl(
       ...existing,
       controls: {
         ...(hasTarget ? { stop: 'provider-task-stop' as const } : {}),
-        ...(steer ? { steer: { turnId: steer } } : {}),
+        ...(steer
+          ? {
+              steer: {
+                turnId: steer,
+                ...(images ? { images: true as const } : {}),
+              },
+            }
+          : {}),
       },
     },
   });
@@ -848,10 +862,16 @@ export function codexRunningChildTurnId(
   return stateOf(record).children.get(childId)?.activeTurnId;
 }
 
+export function refreshCodexChildSteerControls(context: ChildWorkContext) {
+  for (const child of runningChildren(context.record))
+    syncChildStopControl(context, child.childId);
+}
+
 export function codexChildSteerTarget(
   record: CodexSessionRecord,
   childId: string,
   turnId: string,
+  withImages = false,
 ): 'ready' | 'unsupported' | 'no-active-task' {
   const facts = stateOf(record).children.get(childId);
   if (
@@ -861,8 +881,14 @@ export function codexChildSteerTarget(
   )
     return 'no-active-task';
   if (facts.protocol !== 'v1') return 'unsupported';
-  if (itemFor(record, childId)?.controls?.steer?.turnId !== turnId)
-    return 'no-active-task';
+  const child = itemFor(record, childId);
+  if (
+    withImages &&
+    (!child?.controls?.steer?.images ||
+      record.childModelAcceptsImages?.(child.model?.id) === false)
+  )
+    return 'unsupported';
+  if (child?.controls?.steer?.turnId !== turnId) return 'no-active-task';
   return 'ready';
 }
 

@@ -22,7 +22,8 @@
         "Whole Task Basis collection",
         "Project session directory",
         "StarterWorkRegistry",
-        "Project working configuration"
+        "Project working configuration",
+        "Project Library"
       ],
       "questions": [
         "Which record owns the work when no engine is running?",

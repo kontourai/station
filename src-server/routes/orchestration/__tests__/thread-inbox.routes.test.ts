@@ -26,6 +26,177 @@ import {
 describe('POST /chat whenBusy queue (#3568)', () => {
   const station = createInboxHarness();
 
+  test.each(['same', 'changed', 'changed-during-placement'] as const)(
+    'queues an implicit Station-managed folder and preserves its Session binding (%s)',
+    async (head) => {
+      const changed = head !== 'same';
+      const world = station({ managedWorkspace: true });
+      await world.busy();
+      const current = world.service.currentConversationSessionId(CONVERSATION);
+      const sent = await world.send('follow', 'then summarize', {
+        whenBusy: 'queue',
+      });
+      expect(sent.status, await sent.clone().text()).toBe(202);
+      expect(await sent.json()).toMatchObject({
+        data: { entry: { state: 'queued', message: 'then summarize' } },
+      });
+      const row = world.store.threadInboxStore().read(CONVERSATION, 'follow');
+      expect(JSON.parse(row!.payload)).toMatchObject({
+        expectedInboxSessionId: current,
+      });
+      const anotherView = await world.listInbox(READER);
+      expect(await anotherView.json()).toMatchObject({
+        data: { entries: [{ state: 'queued', message: 'then summarize' }] },
+      });
+      expect(world.prompts()).toEqual(['read the file']);
+      const replaceSession = () => {
+        world.store.reserveNextConversationSession({
+          conversationId: CONVERSATION,
+          predecessorSessionId: current,
+          proposedSessionId: `${CONVERSATION}:replacement`,
+          createdAt: new Date().toISOString(),
+        });
+        expect(
+          world.service.currentConversationSessionId(CONVERSATION),
+        ).not.toBe(current);
+      };
+      const differentDirectory = await world.send(
+        'other-folder',
+        'send elsewhere',
+        {
+          whenBusy: 'queue',
+          target: {
+            environment: { kind: 'current' },
+            agent: AGENT,
+            workspace: { kind: 'directory', cwd: world.root },
+          },
+        },
+      );
+      expect(differentDirectory.status).toBeGreaterThanOrEqual(400);
+      expect(
+        world.store.threadInboxStore().read(CONVERSATION, 'other-folder'),
+      ).toBeUndefined();
+      let releasePlacement!: () => void;
+      const placement = new Promise<void>((resolve) => {
+        releasePlacement = resolve;
+      });
+      if (head === 'changed') replaceSession();
+      if (head === 'changed-during-placement')
+        world.inboxStartGate.wait = placement;
+      world.adapter.holdTurns = false;
+      world.adapter.complete();
+      if (head === 'changed-during-placement') {
+        try {
+          await eventually(() =>
+            expect(world.inboxStartGate.wait).toBeUndefined(),
+          );
+          replaceSession();
+        } finally {
+          releasePlacement();
+        }
+      }
+      await eventually(() =>
+        expect(
+          world.store.threadInboxStore().read(CONVERSATION, 'follow'),
+        ).toMatchObject({
+          state: changed ? 'refused' : 'placed',
+        }),
+      );
+      if (changed) {
+        const retry = await world.send('follow', 'then summarize');
+        expect(retry.status).toBe(409);
+        expect(await retry.json()).toMatchObject({
+          code: 'conversation_binding_changed',
+        });
+      }
+      expect(world.prompts()).toEqual(
+        changed ? ['read the file'] : ['read the file', 'then summarize'],
+      );
+    },
+  );
+
+  test('queues ordinary Send behind an automatic continuation still preparing its Session', async () => {
+    const world = station();
+    await world.busy();
+    world.adapter.holdTurns = false;
+    const predecessor =
+      world.service.currentConversationSessionId(CONVERSATION);
+    world.adapter.events.push({
+      eventId: `${predecessor}:exit-for-wake`,
+      provider: 'claude',
+      threadId: predecessor,
+      sessionId: predecessor,
+      createdAt: new Date().toISOString(),
+      method: 'session.exited',
+      exitKind: 'error',
+    } as CanonicalRuntimeEvent);
+    await eventually(async () => {
+      const detail = await world.service.readSession(
+        predecessor,
+        sessionReadAuthorityFromRequest(OWNER, undefined, undefined),
+      );
+      expect(detail?.session.status).toBe('closed');
+    });
+    let release!: () => void;
+    world.adapter.prepareNextSession = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    try {
+      expect(
+        world.inbox.submit({
+          conversationId: CONVERSATION,
+          clientTurnId: 'houston-wake',
+          payload: { message: 'Update from Station', actor: { userId: OWNER } },
+        }).outcome,
+      ).toBe('queued');
+      await eventually(() => expect(world.adapter.starts).toHaveLength(2));
+      const preparing =
+        world.service.currentConversationSessionId(CONVERSATION);
+      expect(preparing).not.toBe(predecessor);
+      expect(world.service.isSessionStartUnderway(preparing)).toBe(true);
+      const staleWorkspace = await world.send(
+        'stale-workspace',
+        'wrong folder',
+        {
+          whenBusy: 'queue',
+          target: {
+            environment: { kind: 'current' },
+            agent: AGENT,
+            workspace: { kind: 'directory', cwd: world.root },
+          },
+        },
+      );
+      expect(staleWorkspace.status).toBeGreaterThanOrEqual(400);
+      expect(
+        world.inbox.entry(CONVERSATION, 'stale-workspace'),
+      ).toBeUndefined();
+
+      const queued = await world.send('manual', 'while starting', {
+        whenBusy: 'queue',
+      });
+      expect(queued.status, await queued.clone().text()).toBe(202);
+      expect(await queued.json()).toMatchObject({
+        data: { entry: { state: 'queued', clientTurnId: 'manual' } },
+      });
+      expect(world.prompts()).toEqual(['read the file']);
+    } finally {
+      release();
+    }
+    await eventually(() =>
+      expect(world.inbox.entry(CONVERSATION, 'manual')?.state).toBe('sent'),
+    );
+    expect(world.prompts().map((prompt) => prompt.split('\n').at(-1))).toEqual([
+      'read the file',
+      'Update from Station',
+      'while starting',
+    ]);
+    expect(
+      (await world.send('manual', 'while starting', { whenBusy: 'queue' }))
+        .status,
+    ).toBe(200);
+    expect(world.adapter.turns).toHaveLength(3);
+  });
+
   test('the inbox read exposes the current session head for a steer submission', async () => {
     const world = station();
     await world.busy();

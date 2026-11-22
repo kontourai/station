@@ -295,7 +295,10 @@ describe('createAgentHooks', () => {
 
     await expect(hooks.beforeToolCall!(call, invocation)).resolves.toBe(true);
     expect(requester).toHaveBeenCalledOnce();
-    expect(requester).toHaveBeenCalledWith(call);
+    expect(requester).toHaveBeenCalledWith(
+      call,
+      'Force push was not asked for.',
+    );
     expect(reviewToolCall).toHaveBeenCalledTimes(4);
   });
 

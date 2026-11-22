@@ -39,15 +39,18 @@ import {
   type ClientOrigin,
   isClientOrigin,
 } from '@kontourai/station-contracts/client-origin';
+import { projectEffortApplies } from '@kontourai/station-contracts/project';
 import type {
   EngineId,
   ProviderSession,
 } from '@kontourai/station-contracts/provider';
+import type { TaskPullRequestWatchModeInput } from '@kontourai/station-contracts/pull-request-watch';
 import type {
   TaskChildCreateInput,
   TaskIdentity,
   TaskParentMutationInput,
   TaskParentMutationResult,
+  TaskPullRequestWatchHold,
   TaskWorkChatMutationInput,
   TaskWorkChatMutationResult,
 } from '@kontourai/station-contracts/task-graph';
@@ -80,6 +83,7 @@ import type {
   AssignmentClaimService,
 } from '../evidence/assignment-claim-service.js';
 import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-service.js';
+import { AgentCatalogRefreshingError } from '../execution-target/execution-target-resolver.js';
 import { JsonFileStore } from '../infra/json-store.js';
 import { captureExecutionWorkspaceBinding } from '../orchestration/execution-workspace-binding.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
@@ -334,6 +338,49 @@ interface TaskGraphServiceDeps {
 }
 
 /** Concrete integrations captured at the TaskDispatcher composition Seam. */
+/** #5068: a Project's Task model and effort (`ProjectConfig.task*`). */
+export interface ProjectTaskDefaults {
+  modelId?: string;
+  /** The engine `modelId` belongs to; another engine's Agent ignores it. */
+  providerId?: string;
+  effort?: string;
+}
+
+/**
+ * The dispatch start with the Project's Task defaults filled in, or
+ * `undefined` when none applies. The model applies only to an Agent on the
+ * engine it belongs to; the effort only on an engine that takes one
+ * (`projectEffortApplies`). What the dispatch named itself always wins.
+ */
+export function withProjectTaskDefaults<T extends object>(
+  start: T & {
+    modelId?: string;
+    modelOptions?: Readonly<Record<string, unknown>>;
+  },
+  provider: string,
+  defaults: ProjectTaskDefaults | undefined,
+): T | undefined {
+  if (!defaults) return undefined;
+  const modelId =
+    !start.modelId &&
+    defaults.modelId &&
+    (!defaults.providerId || defaults.providerId === provider)
+      ? defaults.modelId
+      : undefined;
+  const effort =
+    start.modelOptions?.effort === undefined &&
+    defaults.effort &&
+    projectEffortApplies(provider)
+      ? defaults.effort
+      : undefined;
+  if (!modelId && !effort) return undefined;
+  return {
+    ...start,
+    ...(modelId ? { modelId } : {}),
+    ...(effort ? { modelOptions: { ...start.modelOptions, effort } } : {}),
+  };
+}
+
 export interface TaskDispatchAdapterDeps {
   orchestrationService?: TaskDispatchOrchestration;
   assignmentClaimService?: Pick<
@@ -368,6 +415,15 @@ export interface TaskDispatchAdapterDeps {
     modelId?: string;
     modelOptions?: Readonly<Record<string, unknown>>;
   }) => Promise<TaskDispatchAgentStart>;
+  /**
+   * #5068: the Project's Task model and effort, read at each dispatch so a
+   * change reaches the next dispatched Task only. A dispatch that names its
+   * own model or effort keeps it. Absent (or `undefined`, while the
+   * `project-coordination` preview is off): the Agent's own defaults.
+   */
+  projectTaskDefaults?: (
+    projectSlug: string,
+  ) => ProjectTaskDefaults | undefined;
 }
 
 /**
@@ -676,6 +732,9 @@ const TASK_RECORD_KEYS = [
   'workItemObservedAt',
   'workItemProvenance',
   'closeOnMerge',
+  'overviewReopenedAt',
+  'pullRequestWatch',
+  'pullRequestWatchHold',
   'dispatchReservation',
 ] as const;
 const DISPATCH_RESERVATION_KEYS = [
@@ -1018,6 +1077,51 @@ function validateTaskGraphStoreData(
       );
     if (task.closeOnMerge !== undefined && task.closeOnMerge !== true)
       problems.push(`${at}.closeOnMerge: must be true when present`);
+    if (task.overviewReopenedAt !== undefined)
+      validateCanonicalTimestamp(
+        task.overviewReopenedAt,
+        `${at}.overviewReopenedAt`,
+        problems,
+      );
+    if (
+      task.pullRequestWatch !== undefined &&
+      task.pullRequestWatch !== 'on' &&
+      task.pullRequestWatch !== 'off'
+    )
+      problems.push(`${at}.pullRequestWatch: must be 'on' or 'off'`);
+    if (task.pullRequestWatchHold !== undefined) {
+      const hold = task.pullRequestWatchHold as unknown;
+      const record =
+        hold && typeof hold === 'object' && !Array.isArray(hold)
+          ? (hold as Record<string, unknown>)
+          : undefined;
+      if (
+        !record ||
+        Object.keys(record).some(
+          (key) => !['checks', 'pullRequest', 'at'].includes(key),
+        ) ||
+        !Array.isArray(record.checks) ||
+        record.checks.length > 20 ||
+        !record.checks.every(
+          (check) =>
+            typeof check === 'string' &&
+            check.length > 0 &&
+            check.length <= 200,
+        ) ||
+        typeof record.pullRequest !== 'string' ||
+        record.pullRequest.length === 0 ||
+        record.pullRequest.length > 300
+      )
+        problems.push(
+          `${at}.pullRequestWatchHold: must name its checks and pull request`,
+        );
+      else
+        validateCanonicalTimestamp(
+          record.at,
+          `${at}.pullRequestWatchHold.at`,
+          problems,
+        );
+    }
     if (task.workspaceBinding === undefined) {
       problems.push(`${at}.workspaceBinding: required`);
     } else if (
@@ -2666,6 +2770,7 @@ export class TaskGraphService {
     namespace: string,
     operationId: string,
     clientOrigin?: ClientOrigin,
+    authorize?: () => boolean,
   ): Promise<TaskRecord> {
     const digest = crypto
       .createHash('sha256')
@@ -2676,13 +2781,21 @@ export class TaskGraphService {
     digest[8] = (digest[8] & 0x3f) | 0x80;
     const hex = digest.subarray(0, 16).toString('hex');
     const taskId = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+    const assertAuthorized = () => {
+      if (authorize && !authorize())
+        throw new Error('Task creation is no longer authorized');
+    };
+    assertAuthorized();
     const existing = this.readTask(taskId);
     if (existing) return this.assertIdempotentTask(existing, input, taskId);
     try {
-      return await this.createTask(input, clientOrigin, taskId);
+      return await this.createTask(input, clientOrigin, taskId, authorize);
     } catch (error) {
       const replay = this.readTask(taskId);
-      if (replay) return this.assertIdempotentTask(replay, input, taskId);
+      if (replay) {
+        assertAuthorized();
+        return this.assertIdempotentTask(replay, input, taskId);
+      }
       throw error;
     }
   }
@@ -2816,8 +2929,11 @@ export class TaskGraphService {
           `Cannot transition task from ${task.status} to ${status}`,
         );
       }
+      // #5066: the hold says why Station blocked the Task; any move
+      // settles it.
+      const { pullRequestWatchHold: _hold, ...unheld } = task;
       const nextTask: TaskRecord = {
-        ...task,
+        ...(status === task.status ? task : unheld),
         status,
         updatedAt: new Date().toISOString(),
         ...(clientOrigin ? { updatedClientOrigin: clientOrigin } : {}),
@@ -2873,6 +2989,113 @@ export class TaskGraphService {
           ),
         },
         result: nextTask,
+      };
+    });
+  }
+
+  /**
+   * #5064: a PERSON reopens a Task the Project Overview auto-resolved after
+   * its quiet period. The mark restarts that clock, so the Task returns to
+   * the group its facts place it in. It is not a Task edit: `updatedAt`
+   * stays, so the Tasks board keeps its order. No agent tool names the route.
+   */
+  async reopenOnOverview(
+    taskId: string,
+    clientOrigin?: ClientOrigin,
+  ): Promise<TaskRecord> {
+    return this.mutateStore((data) => {
+      const task = data.tasks.find((item) => item.id === taskId);
+      if (!task) throw new Error(`Task not found: ${taskId}`);
+      if (task.status === 'done' || task.status === 'canceled')
+        throw new Error(`Task is already ${task.status}`);
+      const nextTask: PersistedTaskRecord = {
+        ...task,
+        overviewReopenedAt: new Date().toISOString(),
+        ...(clientOrigin ? { updatedClientOrigin: clientOrigin } : {}),
+      };
+      return {
+        data: {
+          ...data,
+          tasks: data.tasks.map((item) =>
+            item.id === taskId ? nextTask : item,
+          ),
+        },
+        result: nextTask,
+      };
+    });
+  }
+
+  /**
+   * #5066: a PERSON's choice whether this Task watches its kept pull
+   * requests. `project` drops the Task's own choice. Like close-on-merge,
+   * no agent tool reaches it.
+   */
+  async setPullRequestWatch(
+    taskId: string,
+    mode: TaskPullRequestWatchModeInput,
+    clientOrigin?: ClientOrigin,
+  ): Promise<TaskRecord> {
+    return this.mutateStore((data) => {
+      const task = data.tasks.find((item) => item.id === taskId);
+      if (!task) throw new Error(`Task not found: ${taskId}`);
+      if (task.status === 'done' || task.status === 'canceled')
+        throw new Error(`Task is already ${task.status}`);
+      const { pullRequestWatch: _previous, ...rest } = task;
+      const nextTask: PersistedTaskRecord = {
+        ...rest,
+        ...(mode === 'project' ? {} : { pullRequestWatch: mode }),
+        updatedAt: new Date().toISOString(),
+        ...(clientOrigin ? { updatedClientOrigin: clientOrigin } : {}),
+      };
+      return {
+        data: {
+          ...data,
+          tasks: data.tasks.map((item) =>
+            item.id === taskId ? nextTask : item,
+          ),
+        },
+        result: nextTask,
+      };
+    });
+  }
+
+  /**
+   * #5066: a watched pull request used every fix attempt. Move the Task to
+   * `blocked` (the board's Needs you) with the failing checks named, when
+   * that is a transition it may make now. A Task already blocked keeps its
+   * status and gains the reason. Returns whether the Task was changed.
+   */
+  async holdTaskForPullRequestWatch(input: {
+    taskId: string;
+    hold: TaskPullRequestWatchHold;
+  }): Promise<boolean> {
+    return this.mutateStore((data) => {
+      const task = data.tasks.find((item) => item.id === input.taskId);
+      if (
+        !task ||
+        task.dispatchReservation ||
+        (task.status !== 'blocked' &&
+          !canTransitionTaskStatus(task.status, 'blocked'))
+      )
+        return { data, result: false };
+      const nextTask: PersistedTaskRecord = {
+        ...task,
+        status: 'blocked',
+        pullRequestWatchHold: {
+          checks: input.hold.checks.slice(0, 20).map((c) => c.slice(0, 200)),
+          pullRequest: input.hold.pullRequest.slice(0, 300),
+          at: input.hold.at,
+        },
+        updatedAt: new Date().toISOString(),
+      };
+      return {
+        data: {
+          ...data,
+          tasks: data.tasks.map((item) =>
+            item.id === input.taskId ? nextTask : item,
+          ),
+        },
+        result: true,
       };
     });
   }
@@ -3942,6 +4165,7 @@ export class TaskGraphService {
       deps.resolveProjectWorkspace ?? this.resolveProjectWorkspace;
     const taskBrief = deps.taskBrief;
     const resolveAgentStart = deps.resolveAgentStart;
+    const projectTaskDefaults = deps.projectTaskDefaults;
     const assertAgentExists = deps.assertAgentExists;
     const graph: TaskDispatchGraphState = {
       reserve: async (taskId, input, agentStart) => {
@@ -4062,9 +4286,10 @@ export class TaskGraphService {
           };
         let agentStart: TaskDispatchAgentStart;
         try {
-          agentStart = await resolveAgentStart({
+          const projectSlug = this.projectSlugFor(task.projectId);
+          const startInput = {
             agentId,
-            projectSlug: this.projectSlugFor(task.projectId),
+            projectSlug,
             ...(input.runtimeConfig?.cwd !== undefined
               ? { cwd: input.runtimeConfig.cwd }
               : {}),
@@ -4074,8 +4299,19 @@ export class TaskGraphService {
             ...(input.runtimeConfig?.modelOptions
               ? { modelOptions: input.runtimeConfig.modelOptions }
               : {}),
-          });
+          };
+          agentStart = await resolveAgentStart(startInput);
+          // #5068: the Project's Task model and effort, where the dispatch
+          // chose none and the Agent's engine takes them.
+          const withDefaults = withProjectTaskDefaults(
+            startInput,
+            agentStart.provider,
+            projectTaskDefaults?.(projectSlug),
+          );
+          if (withDefaults) agentStart = await resolveAgentStart(withDefaults);
         } catch (error) {
+          if (error instanceof AgentCatalogRefreshingError)
+            return { kind: 'unavailable' as const, reason: error.message };
           return {
             kind: 'refused' as const,
             reason: `Agent '${agentId}' cannot start this Task: ${errorMessage(error)}`,

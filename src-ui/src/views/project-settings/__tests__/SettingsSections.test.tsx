@@ -31,6 +31,12 @@ beforeEach(() => vi.clearAllMocks());
 function AgentsEditor() {
   const [form, setForm] = useState<ProjectForm | null>({
     name: 'Demo',
+    goal: '',
+    instructions: '',
+    coordinatorEffort: 'inherit',
+    taskEffort: 'inherit',
+    taskModel: '',
+    taskProviderId: '',
     defaultWorkspaceIsolation: 'inherit',
     defaultModelSelection: 'fixed',
     defaultApprovalModeSelection: 'fixed',

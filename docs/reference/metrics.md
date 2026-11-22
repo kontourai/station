@@ -31,7 +31,7 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.adapter.session\_start\_duration" | createHistogram | "adapterSessionStartDuration (exported declaration)" | "Provider adapter session start duration" | "ms" |
 | "station.adapter.turn\_duration" | createHistogram | "adapterTurnDuration (exported declaration)" | "Provider adapter turn duration" | "ms" |
 | "station.agent.operations" | createCounter | "agentOps (exported declaration)" | "Agent CRUD operations" | not declared |
-| "station.agents.active" | createObservableGauge | "unbound call in registerObservableGauges" | "Number of active agents" | not declared |
+| "station.agents.active" | createObservableGauge | "unbound call in registerObservableGauges" | "Number of loaded Agent objects" | not declared |
 | "station.analytics.operations" | createCounter | "analyticsOps (exported declaration)" | "Analytics query events" | not declared |
 | "station.answer\_share.channel\_status" | createCounter | "answerShareChannelStatuses (exported declaration)" | "Computed channel-binding status for served answer shares (reported\_current / reported\_superseded / not\_in\_channel / predates\_channel\_addressing / history\_not\_served / coordinate\_mismatch)" | not declared |
 | "station.answer\_share.minted" | createCounter | "answerSharesMinted (exported declaration)" | "Answer-share mint attempts by outcome (minted / answer\_not\_found)" | not declared |
@@ -103,6 +103,7 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.diagnostics.bundle.error" | createCounter | "diagnosticsBundleErrors (exported declaration)" | "Diagnostics bundle generation failures" | not declared |
 | "station.diagnostics.bundle.generated" | createCounter | "diagnosticsBundlesGenerated (exported declaration)" | "Diagnostics bundles generated successfully" | not declared |
 | "station.discord.gateway\_events" | createCounter | "discordGatewayEvents (exported declaration)" | "Discord gateway lifecycle and authorization outcomes by bounded outcome" | not declared |
+| "station.engine.workload\_notices" | createCounter | "engineWorkloadNotices (exported declaration)" | "Workload notices engine adapters handled, by provider\_family ('claude' &#124; 'codex'), kind ('pressure-enter' &#124; 'pressure-exit' &#124; 'oom-kill') and outcome ('delivered-mid-turn': in the running turn &#124; 'delivered-turn-start': with the next turn's input &#124; 'superseded': a later transition replaced it before delivery &#124; 'expired': undelivered for 10 minutes &#124; 'discarded': the session ended first)" | not declared |
 | "station.feedback.operations" | createCounter | "feedbackOps (exported declaration)" | "Feedback submission events" | not declared |
 | "station.file\_mutation\_lock.orphan\_temporaries" | createCounter | "fileMutationLockOrphanTemporaries (exported declaration)" | "Orphaned file mutation lock temporaries found by the startup sweep, by bounded outcome" | not declared |
 | "station.filetree.operations" | createCounter | "fileTreeOps (exported declaration)" | "File tree browse events" | not declared |
@@ -153,7 +154,7 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.logs.store.retention\_removed\_files" | createCounter | "serverLogStoreRetentionRemovedFiles (exported declaration)" | "Server log store files removed by age/size retention" | not declared |
 | "station.logs.store.write\_errors" | createCounter | "serverLogStoreWriteErrors (exported declaration)" | "Server log store write failures (sink degraded to stdout-only)" | not declared |
 | "station.logs.suppressed\_records" | createCounter | "logRecordsSuppressed (exported declaration)" | "Repeated identical log records suppressed by the logger repeat limit, by component and level" | not declared |
-| "station.mcp.connections" | createObservableGauge | "unbound call in registerObservableGauges" | "Number of MCP connections" | not declared |
+| "station.mcp.connections" | createObservableGauge | "unbound call in registerObservableGauges" | "Number of tracked MCP server status entries, including failures" | not declared |
 | "station.mcp.lifecycle" | createCounter | "mcpLifecycle (exported declaration)" | "MCP connection lifecycle events" | not declared |
 | "station.mcp.negotiation.duration" | createHistogram | "mcpNegotiationDuration (exported declaration)" | "MCP connection negotiation and initial discovery duration" | "ms" |
 | "station.mcp.negotiation.total" | createCounter | "mcpNegotiations (exported declaration)" | "MCP protocol negotiation outcomes by era, version, compatibility-path use, and error class" | not declared |
@@ -262,8 +263,9 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.runtime.extension\_notifications" | createCounter | "inboundExtensionNotifications (exported declaration)" | "Inbound extension.notification by disposition ('bound' &#124; 'unbound') and provider; namespace/type are log-only" | not declared |
 | "station.scheduler.concurrency.deferrals" | createCounter | "schedulerConcurrencyDeferrals (exported declaration)" | "Automatic scheduler invocation-ceiling lifecycle outcomes by disposition" | not declared |
 | "station.scheduler.healthy" | createObservableGauge | "schedulerHealthy (exported declaration)" | "Scheduler heartbeat health (1=healthy, 0=unhealthy)" | not declared |
-| "station.scheduler.job.duration" | createHistogram | "schedulerJobDuration (exported declaration)" | "Scheduler job execution duration" | "ms" |
-| "station.scheduler.job.runs" | createCounter | "schedulerJobRuns (exported declaration)" | "Scheduler job executions" | not declared |
+| "station.scheduler.job.duration" | createHistogram | "schedulerJobDuration (exported declaration)" | "Elapsed time of confirmed built-in scheduler job executions with an applied terminal receipt" | "ms" |
+| "station.scheduler.job.runs" | createCounter | "schedulerJobRuns (exported declaration)" | "Confirmed built-in scheduler job executions with an applied terminal receipt" | not declared |
+| "station.scheduler.management.operations" | createCounter | "schedulerManagementOperations (exported declaration)" | "Scheduler mutation requests reaching the route dispatch boundary" | not declared |
 | "station.search.reads" | createCounter | "unifiedSearchReads (exported declaration)" | "Bounded search and exact-open reads by operation and outcome; no query or resource identity" | not declared |
 | "station.secret\_binding.operations" | createCounter | "secretBindingOperations (exported declaration)" | "Secret-binding metadata and resolution operations by bounded operation and outcome" | not declared |
 | "station.session.activity\_events" | createCounter | "sessionActivityEvents (exported declaration)" | "Provider activity signals mapped to canonical events (attrs: provider, kind)" | not declared |
@@ -322,6 +324,8 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.ui\_block.emitted" | createCounter | "uiBlockEmitted (exported declaration)" | "Chat-native UIBlocks emitted by the render\_component builtin tool (by type)" | not declared |
 | "station.uicommand.operations" | createCounter | "uiCommandOps (exported declaration)" | "UI command execution events" | not declared |
 | "station.unattended\_grant.operations" | createCounter | "unattendedGrantOperations (exported declaration)" | "Unattended exact-tool grant mutations by operation" | not declared |
+| "station.usage\_projection.pass.duration" | createHistogram | "usageProjectionPassDuration (exported declaration)" | "Lifetime usage projection pass duration by mode" | "ms" |
+| "station.usage\_projection.rows\_scanned" | createHistogram | "usageProjectionRowsScanned (exported declaration)" | "Event rows read per lifetime usage projection pass by mode" | not declared |
 | "station.usage\_telemetry.batches" | createCounter | "usageTelemetryBatches (exported declaration)" | "Usage telemetry batch delivery outcomes by bounded class" | not declared |
 | "station.usage\_telemetry.outcomes" | createCounter | "usageTelemetryOutcomes (exported declaration)" | "Usage telemetry delivery and drop outcomes" | not declared |
 | "station.usage\_telemetry.suppressed\_warnings" | createCounter | "usageTelemetrySuppressedWarnings (exported declaration)" | "Usage telemetry delivery warnings suppressed as repeats, by publisher and code" | not declared |
@@ -336,6 +340,8 @@ Regenerate with `npm run docs:metrics:generate`; verify exact output with `npm r
 | "station.work\_item\_provider.list.total" | createCounter | "workItemProviderListTotal (exported declaration)" | "Work-item provider seam listWorkItems calls by provider\_kind (local/flow-agents-github) and outcome (available/unavailable/error)" | not declared |
 | "station.workflow.sidecar.bindings" | createCounter | "workflowSidecarBindings (exported declaration)" | "Session -&gt; task-slug sidecar bindings at session start, by resumed flag and runtime kind (the cross-runtime resume signal)" | not declared |
 | "station.workflow.sidecar.transitions" | createCounter | "workflowSidecarTransitions (exported declaration)" | "Workflow sidecar state.json transitions by trigger (session-start/gate-verdict/completion/manual) and resulting status" | not declared |
+| "station.workload.scope.memory\_pressure" | createCounter | "workloadScopeMemoryPressure (exported declaration)" | "Workload scope memory-pressure transitions by transition ('enter': working set reached the configured share of memory.max &#124; 'exit') and scope\_kind ('engine' &#124; 'command')" | not declared |
+| "station.workload.scope.oom\_kills" | createCounter | "workloadScopeOomKills (exported declaration)" | "Kernel OOM kills inside workload scopes by source ('live': the 1 s poll saw the scope's count rise while it ran &#124; 'close': first seen when the scope closed) and scope\_kind ('engine' &#124; 'command')" | not declared |
 | "station.workload.scope\_cleanup.attempts" | createCounter | "workloadScopeCleanupAttempts (exported declaration)" | "Workload scope cleanup attempts by outcome ('settled' &#124; 'retry\_scheduled' &#124; 'abandoned'), error\_kind ('none' &#124; 'bus\_unavailable' &#124; 'command\_failed' &#124; 'other') and trigger ('monitor' &#124; 'close' &#124; 'shutdown')" | not declared |
 | "station.workload.scope\_cleanup.backlog" | createObservableGauge | "workloadScopeCleanupBacklog (exported declaration)" | "Workload scopes whose cleanup has not settled, by state ('pending' &#124; 'abandoned')" | not declared |
 | "station.workspace\_pane.availability\_resolutions" | createCounter | "workspacePaneAvailabilityResolutions (exported declaration)" | "Workspace Pane availability resolutions by bounded descriptor, state, and reason code" | not declared |

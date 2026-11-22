@@ -429,9 +429,9 @@ export class FlowPolicySidecar {
   }
 
   /**
-   * Completion choke point: a Flow-bound session may only transition to
-   * 'completed' on a 'pass' verdict. Every check emits a `flow.gate-verdict`
-   * event (guidance lands in session history); non-pass verdicts reject the
+   * An observed Flow pass or an already-completed run permits completion.
+   * Every check emits a `flow.gate-verdict`
+   * event (guidance lands in session history); holding verdicts reject the
    * transition. Sessions without a Flow binding pass through unchanged.
    */
   private async enforceFlowCompletionGate(options: {
@@ -460,7 +460,10 @@ export class FlowPolicySidecar {
       definition: binding.definitionId,
     });
 
-    if (verdictEvent.verdict !== 'pass') {
+    if (
+      verdictEvent.verdict !== 'pass' &&
+      verdictEvent.verdict !== 'not-evaluated'
+    ) {
       // The verdict's guidance outlives this session: a task-bound sidecar
       // records it as the durable next_action before the transition is
       // rejected, so the NEXT session (any runtime kind) resumes from it.

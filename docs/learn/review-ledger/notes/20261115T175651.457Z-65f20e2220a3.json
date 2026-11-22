@@ -1,0 +1,9 @@
+{
+  "revision": "bc60240dba08db75aa7ff4234d1ad3b1c768c854",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"notification-delivery.md only reworded the Station switch notice (no trailing ellipsis, with a spinner); automation links still open as validated relative paths.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Opener bullet now quotes the switch notice as \"Opening conversation on <Station>\" with a spinner, matching NotificationStationOpener.tsx after the state-primitives ratchet refused a bespoke wait sentence.","inputs":["docs/design/notification-delivery.md"]}
+  ]
+}

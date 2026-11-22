@@ -1,0 +1,19 @@
+{
+  "revision": "3e0a4682d77e7b89fd3dd075f0b7e6ad6c1539ce",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the citing start-composer captures: they show the composer with no attached file. This change only turns an attached image's thumbnail into a Preview button, so the captured states are unaffected.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the citing start-composer captures: they show the composer with no attached file. This change only turns an attached image's thumbnail into a Preview button, so the captured states are unaffected.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Checked the citing start-composer captures: they show the composer with no attached file. This change only turns an attached image's thumbnail into a Preview button, so the captured states are unaffected.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Checked the citing start-composer captures: they show the composer with no attached file. This change only turns an attached image's thumbnail into a Preview button, so the captured states are unaffected.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Checked the citing start-composer captures: they show the composer with no attached file. This change only turns an attached image's thumbnail into a Preview button, so the captured states are unaffected.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Checked the citing start-composer captures: they show the composer with no attached file. This change only turns an attached image's thumbnail into a Preview button, so the captured states are unaffected.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the citing start-composer captures: they show the composer with no attached file. This change only turns an attached image's thumbnail into a Preview button, so the captured states are unaffected.","inputs":["src-ui/src/components/chat-start/StartComposer.tsx"]}
+  ]
+}

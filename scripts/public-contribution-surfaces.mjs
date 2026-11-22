@@ -27,6 +27,7 @@ export const TRUST_ROOTS = Object.freeze([
   'scripts/dependency-advisory-exceptions.json',
   'scripts/issue-lifecycle-reducer.mjs',
   'scripts/main-health-comment-policy.mjs',
+  'scripts/main-health-schedules.mjs',
   'scripts/issue-availability.mjs',
   'scripts/source-availability-driver.mjs',
   'scripts/lib/github-merged-issue-facts.mjs',

@@ -1,4 +1,5 @@
 import { externalSessionContinuationAvailability } from '@kontourai/station-contracts/engine-capability-matrix';
+import { ADOPTION_SOURCE_ACTIVE_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import type {
   AdoptedSessionResult,
@@ -250,9 +251,38 @@ export function AttachedSessionDetail({
     };
   }, [handoff]);
   const composerRef = useRef<HTMLTextAreaElement>(null);
+  // The server's read of whether the harness that wrote this transcript is
+  // still working on it. Continuing then forks it, so the person confirms
+  // first; the server re-checks and refuses without the override, which
+  // opens this same warning when the read here was stale.
+  const sourceActive = session.attachedSourceActivity?.state === 'active';
+  const [sourceActiveWarning, setSourceActiveWarning] = useState(false);
+  // The caution is its own row under the origin, apart from Continue in
+  // Station. Opening it (or pressing Continue again while it shows) moves
+  // focus to Continue anyway; Not now moves it back to Continue. Set beside
+  // the state change; applied once the caution has rendered or gone.
+  const focusAfterSwap = useRef<'caution' | 'continue' | null>(null);
+  // Continue anyway removes the caution that had focus; if that request then
+  // fails, focus goes to the retry rather than the page.
+  const focusContinueOnFailure = useRef(false);
+  const continueActionRef = useRef<HTMLButtonElement>(null);
+  const continueAnywayRef = useRef<HTMLButtonElement>(null);
+  const sourceActiveNoteId = useId();
+  const showSourceActiveWarning = useCallback(() => {
+    // Already showing: nothing re-renders, so focus moves now.
+    if (continueAnywayRef.current) {
+      continueAnywayRef.current.focus();
+      return;
+    }
+    focusAfterSwap.current = 'caution';
+    setSourceActiveWarning(true);
+  }, []);
   const adoption = useMutation({
-    mutationFn: async (_intent: number) => {
+    mutationFn: async ({ override }: { intent: number; override: boolean }) => {
       setServerFailureReason(null);
+      const overrideField = override
+        ? { continueWhileSourceActive: true as const }
+        : {};
       try {
         const persisted = continuationStore.current!.read(session.threadId);
         let operationId: string;
@@ -288,6 +318,7 @@ export function AttachedSessionDetail({
               apiBase,
               intent: adoptionIntent.current,
               ...(adoptionTarget ? { target: adoptionTarget } : {}),
+              ...overrideField,
             });
           const reservation = await continuationStore.current!.reserve(
             session.threadId,
@@ -303,6 +334,7 @@ export function AttachedSessionDetail({
           operationId,
           apiBase,
           ...(adoptionTarget ? { target: adoptionTarget } : {}),
+          ...overrideField,
         });
         if (outcome.state === 'continued') {
           const clearance = await continuationStore.current!.clear(
@@ -324,6 +356,13 @@ export function AttachedSessionDetail({
             );
           return outcome.session;
         }
+        if (outcome.code === ADOPTION_SOURCE_ACTIVE_CODE)
+          throw new AdoptSessionError({
+            failureClass: 'certain-response',
+            message: outcome.reason,
+            retryable: true,
+            code: outcome.code,
+          });
         if (outcome.retrySafe === false) {
           serverRejectedRetryRef.current = true;
           setServerRejectedRetry(true);
@@ -358,9 +397,16 @@ export function AttachedSessionDetail({
         });
       }
     },
-    onSuccess: (child, intent) =>
+    onSuccess: (child, { intent }) =>
       onAdopted(child, intent, confirmedDraft.current),
     onError: (error) => {
+      if (
+        error instanceof AdoptSessionError &&
+        error.code === ADOPTION_SOURCE_ACTIVE_CODE
+      ) {
+        showSourceActiveWarning();
+        return;
+      }
       // Keep the diagnostic available to native/browser developer consoles;
       // the screen deliberately presents a plain-language recovery state.
       console.error('Attached-session continuation failed', error);
@@ -408,6 +454,10 @@ export function AttachedSessionDetail({
       : null;
   const adoptionDidNotReachStation =
     adoptionError?.failureClass === 'certain-not-sent';
+  // Refused only because the source is still running: the warning below says
+  // so and offers the override, so it is not shown as a failure.
+  const adoptionSourceActive =
+    adoptionError?.code === ADOPTION_SOURCE_ACTIVE_CODE;
   const adoptionNonRetryable = adoptionError?.retryable === false;
   const adoptionOutcomeUncertain =
     adoptionError?.failureClass === 'uncertain-no-response';
@@ -437,7 +487,7 @@ export function AttachedSessionDetail({
 
   const continuationFeedback = (
     <>
-      {adoption.error && (
+      {adoption.error && !adoptionSourceActive && (
         <p
           className="sessions-detail__adoption-reason sessions-detail__adoption-folder"
           role="alert"
@@ -478,7 +528,7 @@ export function AttachedSessionDetail({
   // Every entry (the action, Send, a draft handed over from Activity) comes
   // through here, so each one gets the same guards the action shows.
   const adoptionInFlight = useRef(false);
-  const startContinuation = () => {
+  const startContinuation = ({ override = false } = {}) => {
     if (
       adoptionDisabled ||
       composerDisabled ||
@@ -486,13 +536,23 @@ export function AttachedSessionDetail({
       serverRejectedRetryRef.current
     )
       return;
-    adoptionInFlight.current = true;
     confirmedDraft.current = currentDraft.current;
-    adoption.mutate(getSelectionIntent(), {
-      onSettled: () => {
-        adoptionInFlight.current = false;
+    // The source is still running: ask first, inline, instead of forking it.
+    if (sourceActive && !override) {
+      showSourceActiveWarning();
+      return;
+    }
+    setSourceActiveWarning(false);
+    focusContinueOnFailure.current = override;
+    adoptionInFlight.current = true;
+    adoption.mutate(
+      { intent: getSelectionIntent(), override },
+      {
+        onSettled: () => {
+          adoptionInFlight.current = false;
+        },
       },
-    });
+    );
   };
   const requestSend = async ({ allowEmpty = false } = {}) => {
     if ((!allowEmpty && !draft.trim()) || composerDisabled) return;
@@ -549,6 +609,23 @@ export function AttachedSessionDetail({
     handoffScope,
   ]);
 
+  const cautionShown = sourceActiveWarning && !adoption.isPending;
+  useEffect(() => {
+    const target = focusAfterSwap.current;
+    if (target === 'caution' && cautionShown) {
+      focusAfterSwap.current = null;
+      continueAnywayRef.current?.focus();
+    } else if (target === 'continue' && !cautionShown) {
+      focusAfterSwap.current = null;
+      continueActionRef.current?.focus();
+    }
+  }, [cautionShown]);
+  const adoptionFailed = adoption.isError;
+  useEffect(() => {
+    if (!adoptionFailed || !focusContinueOnFailure.current) return;
+    focusContinueOnFailure.current = false;
+    continueActionRef.current?.focus();
+  }, [adoptionFailed]);
   // Why continuing is unavailable, said once, beside the action it explains.
   const continueBlockedReason = !continuationSupported
     ? continuationSupport.reason
@@ -562,6 +639,7 @@ export function AttachedSessionDetail({
   const continueReasonId = useId();
   const continueAction = continued ? null : (
     <Button
+      ref={continueActionRef}
       variant="secondary"
       size="sm"
       className="sessions-detail__continue-action"
@@ -576,7 +654,9 @@ export function AttachedSessionDetail({
   );
   const continuationNotice =
     !continued &&
-    (continueBlockedReason || outsideProjects || adoption.error) ? (
+    (continueBlockedReason ||
+      outsideProjects ||
+      (adoption.error && !adoptionSourceActive)) ? (
       <div
         className="sessions-detail__continue-notice"
         data-testid="attached-continue-notice"
@@ -609,6 +689,46 @@ export function AttachedSessionDetail({
         {continuationFeedback}
       </div>
     ) : null;
+  // The source is still running: its caution and two choices take a full
+  // row of the content area, under the header, not the header's action slot
+  // (too narrow for a sentence and two buttons, and on a phone the origin
+  // row is one line). Continue in Station stays where it is.
+  const sourceActiveCaution = cautionShown ? (
+    <div
+      className="sessions-detail__source-active"
+      data-testid="attached-source-active"
+    >
+      <p
+        id={sourceActiveNoteId}
+        role="status"
+        className="sessions-detail__source-active-text"
+      >
+        Still running in {displayProvider(session)}. Continuing now forks it
+      </p>
+      <div className="sessions-detail__source-active-actions">
+        <Button
+          ref={continueAnywayRef}
+          variant="primary"
+          size="sm"
+          aria-describedby={sourceActiveNoteId}
+          disabled={adoptionDisabled || composerDisabled}
+          onClick={() => startContinuation({ override: true })}
+        >
+          Continue anyway
+        </Button>
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => {
+            focusAfterSwap.current = 'continue';
+            setSourceActiveWarning(false);
+          }}
+        >
+          Not now
+        </Button>
+      </div>
+    </div>
+  ) : null;
 
   return (
     <section
@@ -695,6 +815,7 @@ export function AttachedSessionDetail({
       {actionSlot && !showHeader && continueAction
         ? createPortal(continueAction, actionSlot)
         : null}
+      {sourceActiveCaution}
       {continuationNotice}
 
       <ConversationBody

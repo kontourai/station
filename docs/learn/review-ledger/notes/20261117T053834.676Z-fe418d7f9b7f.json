@@ -1,0 +1,7 @@
+{
+  "revision": "c7daf61146bf28ac8b0330f32849ba036a91c3c4",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"station-docs-content.ts is the regenerated shipped docs bundle (npm run docs:mcp:generate) carrying this change's doc edits; station-docs.md's claims about how the bundle is built and served are unchanged.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

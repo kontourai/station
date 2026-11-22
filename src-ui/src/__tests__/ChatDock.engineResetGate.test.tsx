@@ -34,6 +34,7 @@ const composer = vi.hoisted(() => ({
 }));
 const viewSession = vi.hoisted(() => ({ current: null as unknown }));
 const handleModelReset = vi.hoisted(() => vi.fn());
+const hostAuthority = vi.hoisted(() => ({ available: true }));
 
 vi.mock('../components/chat/ChatInputArea', () => ({
   ChatInputArea: (props: ComposerProps) => {
@@ -94,7 +95,14 @@ vi.mock('../contexts/useShowSurface', () => ({
 }));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
-  useHostRequestAuthorityScope: () => undefined,
+  useHostRequestAuthorityScope: () =>
+    hostAuthority.available
+      ? {
+          apiBase: 'http://test.local',
+          authorityKey: 'host-authority',
+          isCurrent: () => true,
+        }
+      : undefined,
 }));
 vi.mock('../contexts/AgentsContext', () => ({
   useAgents: () => [],
@@ -125,20 +133,28 @@ vi.mock('../contexts/ProjectsContext', () => ({
 vi.mock('../contexts/ToastContext', () => ({
   useToast: () => ({ showToast: vi.fn() }),
 }));
-vi.mock('../contexts/ActiveChatsContext', () => ({
-  activeChatsStore: {
+vi.mock('../contexts/ActiveChatsContext', () => {
+  const activeChatsStore = {
     getState: () => ({}),
-    getSnapshot: () => ({}),
+    getSnapshot: (): Record<string, unknown> => ({}),
     subscribe: () => () => {},
-  },
-  useActiveChatActions: () => ({
-    initChat: vi.fn(),
-    removeChat: vi.fn(),
-    updateChat: vi.fn(),
-    addEphemeralMessage: vi.fn(),
-    clearEphemeralMessages: vi.fn(),
-  }),
-}));
+  };
+  return {
+    activeChatsStore,
+    useActiveChatActions: () => ({
+      initChat: vi.fn(),
+      removeChat: vi.fn(),
+      updateChat: vi.fn(),
+      addEphemeralMessage: vi.fn(),
+      clearEphemeralMessages: vi.fn(),
+    }),
+    // Reads the same empty snapshot the way the real hook does.
+    useActiveChatSelector: (
+      sessionId: string,
+      selector: (state: unknown) => unknown,
+    ) => selector(activeChatsStore.getSnapshot()[sessionId] || null),
+  };
+});
 vi.mock('../contexts/open-chats-store', () => ({
   openChatsStore: {
     getState: () => ({}),
@@ -235,7 +251,7 @@ vi.mock('../components/chat-dock/useChatDockViewModel', () => ({
   }),
 }));
 vi.mock('../components/chat-dock/useChatDockActiveChatSync', () => ({
-  useChatDockActiveChatSync: () => {},
+  useChatDockActiveChatSync: () => ({ pendingChat: null }),
 }));
 vi.mock('../components/chat/ShareIntakeController', () => ({
   ShareIntakeController: () => null,
@@ -251,12 +267,21 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     telemetry: { track: () => {} },
     useAcknowledgeConversationMutation: () => ({ mutate: () => {} }),
     useEngineConnectionsQuery: () => ({ data: [] }),
+    useFeaturePreviewsQuery: () => ({ data: [] }),
     useConversationInventoryQuery: () => ({ data: [] }),
     useGenerateSessionSummaryMutation: () => ({ mutate: () => {} }),
     useInvalidateQuery: () => () => {},
     useOrchestrationSessionsQuery: () => ({
       data: [],
       status: 'success',
+      refetch: () => {},
+    }),
+    // The real read waits on an SDK base this harness never configures.
+    useSkillExperienceSessionQuery: () => ({
+      data: { current: null, history: [], hasMore: false },
+      isPending: false,
+      isFetching: false,
+      error: null,
       refetch: () => {},
     }),
   };
@@ -322,6 +347,7 @@ async function renderPane(active: ChatSession) {
 }
 
 beforeEach(() => {
+  hostAuthority.available = true;
   handleModelReset.mockClear();
   window.localStorage.clear();
   window.history.replaceState({}, '', '/?dock=open');
@@ -373,6 +399,16 @@ describe('ChatWorkspacePane engine-override reset gate', () => {
     expect(props?.modelResetOffered).toBe(true);
     props?.onModelReset();
     // An engine override resets through the engine change, never model-only.
+    expect(handleModelReset).not.toHaveBeenCalled();
+  });
+
+  test('a writable conversation with unresolved host authority cannot reset its engine', async () => {
+    hostAuthority.available = false;
+    const { props } = await renderPane(
+      session(resolved({ canContinue: true })),
+    );
+    expect(props?.modelResetOffered).toBe(false);
+    props?.onModelReset();
     expect(handleModelReset).not.toHaveBeenCalled();
   });
 
@@ -432,5 +468,23 @@ describe('ChatWorkspacePane engine-override reset gate', () => {
     view.rerender(pane());
     await waitFor(() => expect(composerProps()?.modelResetOffered).toBe(true));
     expect(composerProps()?.modelResetDisabledReason).toBeUndefined();
+  });
+
+  test('the gate is read on a pane whose visual-skill panel rendered', async () => {
+    const { props } = await renderPane(
+      session(resolved({ canContinue: true }), { skillExperienceActive: true }),
+    );
+    await screen.findByRole('region', { name: 'Visual skill' });
+    expect(
+      screen.queryByRole('status', { name: 'Loading recorded skill' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Retry recorded skill' }),
+    ).toBeNull();
+    expect(
+      screen.queryByText('Unable to load this part of Station.'),
+    ).toBeNull();
+    expect(props?.modelResetOffered).toBe(true);
+    expect(props?.modelResetDisabledReason).toBeUndefined();
   });
 });

@@ -1,0 +1,61 @@
+{
+  "revision": "b520b94452880ff9a8033d1139f661dc41e2673f",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Only routes to the Web Push guide for current delivery; the guide's tap and link changes (Station id, worker message) leave this historical review's claims accurate.","inputs":["docs/architecture/abstraction-review.md","docs/guides/web-push-notifications.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Native notification feed entry updated: a click now passes the validated in-app path with the Station origin the alert was read from, opened by notificationStationOpen.ts. Other notification_feed.rs claims (cursor, epoch, gate, retract) unchanged.","inputs":["docs/architecture/module-map.md","src-desktop/src/notification_feed.rs"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"main.tsx change only holds a cold notification link (station param) before first render and is skipped on account and shared-answer paths; permalink claims unaffected.","inputs":["docs/design/answer-share-permalinks.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/design/automations.md","note":"notification-delivery.md gained the Opening-a-notification section and Android/iOS tap updates; automation notification links (metadata.link such as /automations?job=) still open as validated relative paths.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"ChatDock now covers a stale conversation with an opening state while a deep-linked chat resolves and reports notification-opened misses; composer, draft and send claims unaffected.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/useChatDockActiveChatSync.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"tauri.ts now lets iOS take agent-activity launch routes as Android does; the share-intake passage's reference to launch routes stays accurate. Capability rows unchanged.","inputs":["docs/design/native-capabilities.md","src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Updated: Android tap routes switch to the route's saved Station via the notification opener, iOS alert taps route through take_launch_route (device NOT_VERIFIED), desktop clicks carry the read origin, and a new section owns the canonical href, station param, opener, cold-load hold, SW message and dock states.","inputs":["docs/design/notification-delivery.md","src-desktop/plugins/agent-activity/ios/Sources/StationAgentActivityPlugin/AgentActivityPlugin.swift","src-desktop/src/notification_feed.rs","src-server/services/notifications/delivery/apns-alert-channel.ts","src-server/services/notifications/delivery/fcm-alert-channel.ts","src-ui/src/platform/native/agentActivity.ts"]},
+
+    {"path":"docs/design/offline-outbound-queue.md","note":"sw.js change is the notificationclick path only (message the focused tab, fall back to navigate); offline shell caching and outbound queue claims unaffected.","inputs":["docs/design/offline-outbound-queue.md","src-ui/public/sw.js"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"ChatDock change adds the deep-link opening cover and the sync hook's pendingChat; pane relation claims unaffected.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"ChatDock deep-link opening cover does not change placement; legacy ?surface=activity links still translate as documented and attention Open now maps a stored Activity link to the Chat surface in-app.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"AttentionCard Open now navigates in the app and acknowledges after; no agent configuration claim depends on the reload.","inputs":["docs/guides/agent-configuration.md","src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/guides/android-build.md","note":"tauri.ts change widens launch-route take to iOS only; Android build steps and deep-link verification notes unchanged.","inputs":["docs/guides/android-build.md","src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"tauri.ts launch-route change is mobile-only; desktop build plugin list unchanged.","inputs":["docs/guides/desktop-build.md","src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Updated the click sentence: the WebView receives the validated in-app path with the alert's Station origin and switches to that saved Station first. Feed, retract and evidence limits unchanged.","inputs":["docs/guides/desktop-tray.md","src-desktop/src/notification_feed.rs","src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"main.tsx cold-link hold runs before render and does not touch native authority, deep-link or relaunch handling described here.","inputs":["docs/guides/native-shell-verification.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"tauri.ts launch-route change does not touch channel ports or schemes.","inputs":["docs/guides/release-channel-ports.md","src-ui/src/platform/native/tauri.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"ChatDock opening cover is a SkeletonBlock in the existing covered-chat slot; layout and dialog rules unaffected (the engine-switch test change is a mock shape update).","inputs":["docs/guides/responsive-ui.md","src-ui/src/__tests__/ChatDock.engineSwitchGate.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"main.tsx change does not touch theme boot or branding application order.","inputs":["docs/guides/theming.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Updated: the URL is the shared notificationOpenLink (session href for runtime and managed sessions, station=<environmentId>), and the worker posts the link to the focused tab with a 1.5 s acknowledgement before navigating. Wiring passes the environment id per delivery.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/routes/notification-delivery-wiring.ts","src-server/services/notifications/notification-deep-link.ts","src-server/services/notifications/push-payload-composer.ts","src-server/services/notifications/web-push-channel.ts","src-ui/public/sw.js"]},
+
+    {"path":"docs/patterns/backend.md","note":"main.tsx change is client boot only; backend patterns unaffected.","inputs":["docs/patterns/backend.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/patterns/frontend.md","note":"main.tsx cold-link hold uses the navigation store's updateParams before render; frontend data/state patterns unaffected.","inputs":["docs/patterns/frontend.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/privacy-policy.md","note":"Web Push still retains routing and deep-link fields under content hiding; the added station environment id is such a routing field, so the statement stays accurate.","inputs":["docs/privacy-policy.md","src-server/services/notifications/web-push-channel.ts"]},
+
+    {"path":"docs/reference/api.md","note":"ChatDock change makes no API call beyond the existing conversation lookup, now shared while in flight; API reference unaffected.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"ChatDock change adds no configuration.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/env-vars.md","note":"main.tsx change reads no environment variable.","inputs":["docs/reference/env-vars.md","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"Updated station-notification-push: Android and iOS alerts can carry a sealed Session reference a tap opens (APNs plaintext now seals session_id/project_slug); Android also receives retractions. Web Push link gains the Station environment id, a routing field.","inputs":["docs/reference/play-data-safety.md","src-server/services/notifications/web-push-channel.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"contracts notification module gains NOTIFICATION_STATION_QUERY_PARAM, isNotificationStationId and notificationSessionHref; no SDK export or hook changed, main.tsx boot change is app-only.","inputs":["docs/reference/sdk.md","packages/contracts/src/notification.ts","src-ui/src/main.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"AttentionCard Open navigation change does not alter session API routes or shapes.","inputs":["docs/reference/session-api.md","src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

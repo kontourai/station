@@ -1633,14 +1633,23 @@ export const contextSafetyFindings = meter.createCounter(
 export const schedulerJobRuns = meter.createCounter(
   'station.scheduler.job.runs',
   {
-    description: 'Scheduler job executions',
+    description:
+      'Confirmed built-in scheduler job executions with an applied terminal receipt',
   },
 );
 export const schedulerJobDuration = meter.createHistogram(
   'station.scheduler.job.duration',
   {
-    description: 'Scheduler job execution duration',
+    description:
+      'Elapsed time of confirmed built-in scheduler job executions with an applied terminal receipt',
     unit: 'ms',
+  },
+);
+export const schedulerManagementOperations = meter.createCounter(
+  'station.scheduler.management.operations',
+  {
+    description:
+      'Scheduler mutation requests reaching the route dispatch boundary',
   },
 );
 export const schedulerConcurrencyDeferrals = meter.createCounter(
@@ -1673,6 +1682,38 @@ export const workloadScopeCleanupBacklog = meter.createObservableGauge(
   {
     description:
       "Workload scopes whose cleanup has not settled, by state ('pending' | 'abandoned')",
+  },
+);
+
+/**
+ * Kernel OOM kills inside workload scopes (#5081), counted once each by where
+ * Station first saw them. Attributes are closed: `source` and `scope_kind`;
+ * never a unit, session or process name.
+ */
+export const workloadScopeOomKills = meter.createCounter(
+  'station.workload.scope.oom_kills',
+  {
+    description:
+      "Kernel OOM kills inside workload scopes by source ('live': the 1 s poll saw the scope's count rise while it ran | 'close': first seen when the scope closed) and scope_kind ('engine' | 'command')",
+  },
+);
+/** Workload scope memory-pressure transitions (#5081). */
+export const workloadScopeMemoryPressure = meter.createCounter(
+  'station.workload.scope.memory_pressure',
+  {
+    description:
+      "Workload scope memory-pressure transitions by transition ('enter': working set reached the configured share of memory.max | 'exit') and scope_kind ('engine' | 'command')",
+  },
+);
+/**
+ * Workload notices (#5113) an engine adapter handled for its own scope.
+ * Attributes are closed: `provider_family`, `kind` and `outcome`.
+ */
+export const engineWorkloadNotices = meter.createCounter(
+  'station.engine.workload_notices',
+  {
+    description:
+      "Workload notices engine adapters handled, by provider_family ('claude' | 'codex'), kind ('pressure-enter' | 'pressure-exit' | 'oom-kill') and outcome ('delivered-mid-turn': in the running turn | 'delivered-turn-start': with the next turn's input | 'superseded': a later transition replaced it before delivery | 'expired': undelivered for 10 minutes | 'discarded': the session ended first)",
   },
 );
 
@@ -2423,6 +2464,28 @@ export const analyticsOps = meter.createCounter(
     description: 'Analytics query events',
   },
 );
+/**
+ * #373: one lifetime usage pass, by `mode`: `full` (no valid watermark, or a
+ * requested rebuild) or `incremental` (caught up from the watermark).
+ */
+export const usageProjectionPassDuration = meter.createHistogram(
+  'station.usage_projection.pass.duration',
+  {
+    description: 'Lifetime usage projection pass duration by mode',
+    unit: 'ms',
+  },
+);
+/**
+ * #373: event rows one lifetime usage pass read, by `mode`: `full` (every
+ * thread refolded), `incremental` (new rows past the watermark) or `rebuild`
+ * (usage rows of the threads an incremental pass refolded).
+ */
+export const usageProjectionRowsScanned = meter.createHistogram(
+  'station.usage_projection.rows_scanned',
+  {
+    description: 'Event rows read per lifetime usage projection pass by mode',
+  },
+);
 
 // ── Bedrock ──
 export const bedrockOps = meter.createCounter('station.bedrock.operations', {
@@ -2752,13 +2815,14 @@ export function registerObservableGauges(callbacks: {
 }): void {
   meter
     .createObservableGauge('station.agents.active', {
-      description: 'Number of active agents',
+      description: 'Number of loaded Agent objects',
     })
     .addCallback((obs) => obs.observe(callbacks.activeAgents()));
 
   meter
     .createObservableGauge('station.mcp.connections', {
-      description: 'Number of MCP connections',
+      description:
+        'Number of tracked MCP server status entries, including failures',
     })
     .addCallback((obs) => obs.observe(callbacks.mcpConnections()));
 }

@@ -1,50 +1,61 @@
+import { navigationStore } from '../contexts/NavigationContext';
+import { notificationOpenTarget } from '../lib/notificationOpen';
+import { openNotificationTargetHere } from '../lib/notificationStationOpen';
+
 /**
  * archive#3203: opening a notification's target is an acknowledgement.
  *
  * The tray badge counts attention items that carry no `acknowledgedAt`
- * (`AttentionProjectionService.list`), and until now only the Dismiss button
+ * (`AttentionProjectionService.list`), and until then only the Dismiss button
  * recorded one. Acting on a row therefore left the number where it was, so
- * the bell stopped meaning "things you have not seen" — the reported "clicking
- * on a notification that needs attention should probably make the notification
- * number decrement as seen".
+ * the bell stopped meaning "things you have not seen".
  *
- * The ordering matters and is the whole reason this is a function rather than
- * an `onClick` one-liner. "Open session" is a real document navigation, and a
- * fire-and-forget POST racing an unload is cancelled by the browser; even when
- * it survives, the destination document fetches `/api/attention` on mount and
- * can read the pre-ack count. Awaiting the ack before navigating is what makes
- * the decrement observable on arrival rather than one refetch later.
+ * "Open session" navigates inside the running app (`navigateToAttentionTarget`),
+ * so nothing unloads: the acknowledgement no longer has to finish before the
+ * user may leave, and opening waits for nothing. The acknowledgement's own
+ * mutation refreshes the count when it lands.
  */
-export async function acknowledgeThenOpen({
+export async function openThenAcknowledge({
   acknowledge,
   navigate,
 }: {
-  acknowledge: () => Promise<unknown>;
+  acknowledge?: () => Promise<unknown>;
   navigate: () => void;
 }): Promise<void> {
+  navigate();
+  if (!acknowledge) return;
   try {
     await acknowledge();
   } catch {
-    // A failed acknowledgement must never trap the user on the tray: the
-    // request they made was "open this". The next `/api/attention` read is the
-    // source of truth for the count either way.
-    //
-    // This swallow is BROADER than the SDK's. `acknowledgeAttentionItem`
-    // absorbs only the stale-item 404 and throws for everything else; here we
-    // absorb any failure, because navigation is the user's actual request and
-    // the ack is incidental to it. Do not read this as the SDK being lenient.
+    // A failed acknowledgement changes nothing the user asked for. The next
+    // `/api/attention` read is the source of truth for the count. This is
+    // broader than the SDK's swallow (`acknowledgeAttentionItem` absorbs only
+    // the stale-item 404): the ack is incidental to opening.
   }
-  navigate();
 }
 
 /**
- * Browser navigation seam for the attention surfaces. `<a href>`'s default
- * action is suppressed when a row acknowledges first, so the navigation has to
- * be re-issued explicitly; keeping it behind one named export lets component
- * tests observe the target without jsdom attempting a real navigation.
+ * Navigation seam for the attention surfaces: an in-app navigation, never a
+ * document reload, opened like a notification tap (a failed open is told). A stored Activity-surface link opens the Chat surface
+ * that replaced it (the same translation `routing.ts` applies to a loaded
+ * URL). Anything that is not an in-app path is left to the browser.
+ * Component tests mock this export to observe the target.
  */
 export function navigateToAttentionTarget(href: string): void {
-  window.location.assign(href);
+  const target = notificationOpenTarget(href);
+  if (!target) {
+    window.location.assign(href);
+    return;
+  }
+  const params =
+    target.params.surface === 'activity'
+      ? { ...target.params, surface: 'chat' }
+      : target.params;
+  // Marked like a notification tap: a conversation that is gone or refused
+  // says so instead of clearing silently.
+  openNotificationTargetHere(target.pathname, params, (pathname, query) =>
+    navigationStore.navigate(pathname, query),
+  );
 }
 
 /**

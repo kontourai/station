@@ -1316,6 +1316,11 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         '/api/orchestration/delegations?environmentId=env-peer',
         undefined,
       ],
+      [
+        'POST',
+        '/api/orchestration/delegations/options',
+        { environmentId: 'env-peer' },
+      ],
     ];
     for (const [method, path, body] of remote) {
       expect([
@@ -1380,38 +1385,6 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         ),
       ]).toEqual([route, OUT('remote')]);
     }
-    // #2377 slice C2b: target discovery on a saved Environment is the
-    // operator's (decision 1) at the table, and the route decides the remote
-    // verdict before it connects or forwards anything.
-    const options = [
-      'POST',
-      '/api/orchestration/delegations/options',
-      { environmentId: 'env-peer' },
-    ] as const;
-    expect(
-      await request(
-        options[0],
-        options[1],
-        as('bearer-exposed', 'op-caller-a')(),
-        options[2],
-      ),
-    ).toBe(ASSURANCE);
-    expect(
-      await request(
-        options[0],
-        options[1],
-        as('bound', 'person-caller-a')(),
-        options[2],
-      ),
-    ).toBe(ROLE);
-    expect(
-      await request(
-        options[0],
-        options[1],
-        as('bound', 'op-caller-a')(),
-        options[2],
-      ),
-    ).toBe('passed');
   });
 
   // Review A5: the route dispatches the canonical folder its check decided

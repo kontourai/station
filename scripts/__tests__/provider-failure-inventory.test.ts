@@ -194,6 +194,10 @@ const exclusions = {
     'delegation_depth_exceeded',
     'Delegation lineage policy/admission, not provider turn execution.',
   ],
+  'src-server/runtime/agents/delegation.ts:DelegationPolicyLimitError.code': [
+    'delegation_lineage_unavailable',
+    'Station rejects oversized inherited allowlist ancestry before dispatch.',
+  ],
   'src-server/runtime/agents/request-delegation.ts:DelegationLineageUnavailableError.code':
     [
       'delegation_lineage_unavailable',
@@ -242,6 +246,11 @@ const exclusions = {
     [
       'delegation_attempt_conflict',
       'Delegation attempt idempotency claim state, not an engine failure.',
+    ],
+  'src-server/services/orchestration/delegation-tool-policy.ts:DelegationToolPolicyUnavailableError.code':
+    [
+      'delegation_lineage_unavailable',
+      'Station refuses inherited tool policy before engine execution.',
     ],
   'src-server/services/orchestration/event-store.ts:TurnDigestLineageTooLongError.code':
     [

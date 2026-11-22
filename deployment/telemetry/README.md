@@ -10,6 +10,11 @@ and a separate authenticated OTel Collector, Prometheus, Tempo and Grafana.
 [`compose.yaml`](compose.yaml) holds the receiver and PostgreSQL and includes
 the diagnostic services from [`compose.diagnostics.yaml`](compose.diagnostics.yaml).
 The Grafana dashboard is [`dashboards/station.json`](dashboards/station.json).
+The Scheduler section distinguishes HTTP management requests from confirmed
+built-in job executions. The execution count and duration select the current
+`source="built-in"` series. The
+[monitoring guide](../../docs/guides/monitoring.md#grafana-dashboard) describes
+the dashboard's other populations and absent observations.
 Grafana uses the plugins bundled in its pinned image. Plugin preinstallation and
 automatic updates are disabled: startup must not replace a bundled datasource
 with an unpinned download or unload it while an update fails on the read-only

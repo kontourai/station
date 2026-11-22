@@ -40,11 +40,33 @@ const gitlabSchema = z
   )
   .max(PAGE_SIZE);
 
-class RepositoryProviderUnavailable extends Error {
-  constructor(readonly provider: RepositoryProvider) {
+export class RepositoryProviderUnavailable extends Error {
+  constructor(
+    readonly code:
+      | 'repository_cli_missing'
+      | 'repository_sign_in_required'
+      | 'repository_catalog_unavailable',
+  ) {
     super('Repository provider is unavailable or needs host sign-in.');
   }
 }
+
+function catalogFailure(error: unknown): RepositoryProviderUnavailable {
+  if (typeof error === 'object' && error !== null) {
+    if ('code' in error && error.code === 'ENOENT')
+      return new RepositoryProviderUnavailable('repository_cli_missing');
+    if (
+      'stderr' in error &&
+      typeof error.stderr === 'string' &&
+      /(?:HTTP 401|To get started with GitHub CLI, please run:|not logged in to any GitLab hosts)/i.test(
+        error.stderr,
+      )
+    )
+      return new RepositoryProviderUnavailable('repository_sign_in_required');
+  }
+  return new RepositoryProviderUnavailable('repository_catalog_unavailable');
+}
+
 type Transport = (
   command: 'gh' | 'glab',
   args: string[],
@@ -174,8 +196,8 @@ export class RepositoryProviderCatalog {
         hasMore: repositories.length === PAGE_SIZE,
         observedAt: new Date().toISOString(),
       };
-    } catch {
-      throw new RepositoryProviderUnavailable(provider);
+    } catch (error) {
+      throw catalogFailure(error);
     }
   }
 }

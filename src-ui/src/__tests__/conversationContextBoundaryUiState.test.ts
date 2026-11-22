@@ -2,23 +2,33 @@
 
 import { afterEach, describe, expect, test } from 'vitest';
 import {
-  contextBoundaryUiStorageKey,
-  readConversationContextBoundaryUiState,
-  writeConversationContextBoundaryUiState,
+  observeContextBoundary,
+  rememberContextBoundaryIntent,
 } from '../components/chat-dock/conversationContextBoundaryUiState';
 
 afterEach(() => localStorage.clear());
 
+const scope = {
+  namespace: 'station-a:user-a',
+  actorId: 'user-a',
+  conversationId: 'conversation-a',
+  sessionId: 'session-a',
+  isCurrent: () => true,
+};
+const intent = {
+  idempotencyKey: 'key-a',
+  policy: 'empty-next-cold-start' as const,
+};
 const boundary = (
   status: 'reserved' | 'claimed' | 'consumed' | 'cancelled',
 ) => ({
   boundaryId: 'boundary-a',
-  conversationId: 'conversation-a',
-  predecessorSessionId: 'session-a',
+  conversationId: scope.conversationId,
+  predecessorSessionId: scope.sessionId,
   successorSessionId: 'session-b',
-  policy: 'empty-next-cold-start' as const,
+  policy: intent.policy,
   status,
-  actorId: 'user-a',
+  actorId: scope.actorId,
   createdAt: '2026-08-25T00:00:00.000Z',
   priorTranscriptInjected: false,
   omitted: ['provider-native history'],
@@ -27,35 +37,44 @@ const boundary = (
 });
 
 describe('conversation context-boundary UI state', () => {
-  test('persists only the opaque key and safe boundary projection', () => {
-    writeConversationContextBoundaryUiState('key-a', boundary('reserved'));
-    const raw = localStorage.getItem(
-      contextBoundaryUiStorageKey('conversation-a'),
+  test('retains intent and the confirmed opaque reservation identity without copying the projection', () => {
+    expect(rememberContextBoundaryIntent(scope, intent)).toBe(true);
+    const key = localStorage.key(0)!;
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({
+      ...intent,
+      recordedAt: expect.any(Number),
+    });
+    expect(observeContextBoundary(scope, intent, boundary('reserved'))).toBe(
+      true,
     );
-    expect(raw).toContain('key-a');
-    expect(raw).toContain('boundary-a');
-    expect(raw).not.toContain('provider-native history');
-    expect(raw).not.toContain('canonical transcript');
-    expect(
-      readConversationContextBoundaryUiState('conversation-a'),
-    ).toMatchObject({
-      idempotencyKey: 'key-a',
-      status: 'reserved',
+    expect(JSON.parse(localStorage.getItem(key)!)).toEqual({
+      ...intent,
+      boundaryId: 'boundary-a',
+      recordedAt: expect.any(Number),
     });
   });
 
-  test('keeps uncertain state for another tab to reconcile and clears only consumed/cancelled terminal state', () => {
-    writeConversationContextBoundaryUiState('key-a', boundary('claimed'));
+  test('only a matching terminal observation retires the scope’s intent', () => {
+    expect(rememberContextBoundaryIntent(scope, intent)).toBe(true);
+    expect(observeContextBoundary(scope, intent, boundary('claimed'))).toBe(
+      true,
+    );
+    const terminal = boundary('consumed');
+    for (const mismatched of [
+      { ...terminal, actorId: 'other-author' },
+      { ...terminal, predecessorSessionId: 'other-session' },
+    ]) {
+      expect(observeContextBoundary(scope, intent, mismatched)).toBe(false);
+    }
     expect(
-      readConversationContextBoundaryUiState('conversation-a'),
-    ).toMatchObject({
-      status: 'claimed',
-    });
-    writeConversationContextBoundaryUiState('key-a', boundary('consumed'));
-    expect(readConversationContextBoundaryUiState('conversation-a')).toBeNull();
-
-    writeConversationContextBoundaryUiState('key-b', boundary('reserved'));
-    writeConversationContextBoundaryUiState('key-b', boundary('cancelled'));
-    expect(readConversationContextBoundaryUiState('conversation-a')).toBeNull();
+      observeContextBoundary(
+        { ...scope, namespace: 'station-b:user-a' },
+        intent,
+        terminal,
+      ),
+    ).toBe(false);
+    expect(localStorage.length).toBe(1);
+    expect(observeContextBoundary(scope, intent, terminal)).toBe(true);
+    expect(localStorage.length).toBe(0);
   });
 });

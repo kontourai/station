@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 102,
+  "pageLocalMediaQueryCeiling": 104,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -109,6 +109,10 @@
       "count": 2,
       "reason": "The toast stack's small-screen box (safe-area gutters, a viewport-bounded height) and its dismiss touch target."
     },
+    "src-ui/src/components/notifications/NotificationStationOpener.css": {
+      "count": 1,
+      "reason": "The notification-open notice is a fixed overlay like the toast stack; on a phone it stands just above the collapsed dock instead of over the route's top controls (Home's start composer)."
+    },
     "src-ui/src/components/notifications/NotificationHistory.css": {
       "count": 1,
       "reason": "prefers-reduced-motion. Keeps `animation: none` because the dismiss-collapse animation is `forwards`: under the motion primitive alone the row would snap to `opacity: 0.35` instead of staying legible."
@@ -158,8 +162,8 @@
       "reason": "The voice pill lifts above the safe-area inset and its mute control takes a 44px box."
     },
     "src-ui/src/index.css": {
-      "count": 11,
-      "reason": "The app-shell stylesheet, and the largest remaining concentration (10 blocks, down from 12 \u2014 #1636 folded the maximized-bar mobile-agent-avatar and mobile-project-name breakpoints into the unconditional `.chat-dock__mobile-project`/`.chat-dock__mobile-identity` flex layout, removing two `@media` blocks outright; corrected here because the ratchet never reports an over-recorded file, same as #1160). It is deliberately NOT a primitive entry: it mixes genuine shell primitives (the responsive dialog surface, the toolbar, the chat dock, the global touch-target net) with page-ish rules (the command/delegation launchers, the new-chat modal), and exempting the file would let any page hide a responsive rule by moving it here. Two blocks are reduced-motion END STATES the motion primitive cannot express; one is a `prefers-color-scheme` fork that should be reading theme tokens; the rest are the shell's own mobile and desktop-only geometry. Three same-condition folds were REFUSED because a `chat-input`/`chat-dock` property is decided again in between."
+      "count": 12,
+      "reason": "The app-shell stylesheet, and the largest remaining concentration (10 blocks, down from 12 \u2014 #1636 folded the maximized-bar mobile-agent-avatar and mobile-project-name breakpoints into the unconditional `.chat-dock__mobile-project`/`.chat-dock__mobile-identity` flex layout, removing two `@media` blocks outright; corrected here because the ratchet never reports an over-recorded file, same as #1160). It is deliberately NOT a primitive entry: it mixes genuine shell primitives (the responsive dialog surface, the toolbar, the chat dock, the global touch-target net) with page-ish rules (the command/delegation launchers, the new-chat modal), and exempting the file would let any page hide a responsive rule by moving it here. Two blocks are reduced-motion END STATES the motion primitive cannot express; one is a `prefers-color-scheme` fork that should be reading theme tokens; the rest are the shell's own mobile and desktop-only geometry. Three same-condition folds were REFUSED because a `chat-input`/`chat-dock` property is decided again in between. The twelfth is a `(hover: hover) and (pointer: fine)` capability query on `.chat-scroll-to-bottom`, so a tap cannot leave the button scaled. It is not a layout breakpoint, and no other query in this file has that condition."
     },
     "src-ui/src/pages/NotificationsPage.css": {
       "count": 1,

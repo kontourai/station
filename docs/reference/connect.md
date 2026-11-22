@@ -339,8 +339,13 @@ healthy transport with a failed subscription stays `connected` with
 
 `classifyConnectionFailure(reason: ConnectionFailureReason):
 'transient' | 'terminal'` maps this package's failure vocabulary onto the
-supervisor's generic classification — today only `authentication-failed`
-(401/403) is terminal. `ConnectionHealthCoordinator` is the first adopter: it
+supervisor's generic classification. Only `authentication-failed` is
+terminal. Station's detailed probe retains the response status, an observed
+error code when available, and whether it answered the public handshake or
+an authenticated request. Local relay authority failures carry the local code
+without an HTTP status. The probe keeps its original `reason` for compatibility.
+The coordinator uses the additional evidence to keep rate limits, scope refusals
+and verification failures out of the pairing state. It
 consults this classifier on each failure and, for a terminal reason, stops
 scheduling its automatic retry ladder (surfaced as a new `blocked: boolean`
 on `ConnectionHealthSnapshot` / `ConnectionStatusResult`). It resumes on the next explicit

@@ -1,0 +1,19 @@
+{
+  "revision": "5b2668dc7d1a742b998d45fa0b822363d3467d7f",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Verified initial URL compatibility through the default trusted pane and real SDK provider. With empty URL, the child initializer sees the saved active-tab hash; an incoming hash wins. The mounted controls also cover state clearing, tab switches, remount, and retirement of a pending callback on unmount.","inputs":["docs/reference/sdk.md","packages/sdk/src/providers.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The SDK provider description now specifies the first-render hash contract observed on main and preserved by the fix. This changes no SDK import, integration or plugin distribution requirement.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The SDK provider description now specifies the first-render hash contract observed on main and preserved by the fix. This changes no SDK import, integration or plugin distribution requirement.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Rechecked the saved-hash mount path, first-render consumer contract, tab restoration and owned deferred cleanup. The existing SDK layout, Agent configuration and Enterprise Calendar callers continue to use the same hooks and per-tab storage contract.","inputs":["packages/sdk/src/providers.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Rechecked the saved-hash mount path, first-render consumer contract, tab restoration and owned deferred cleanup. The existing SDK layout, Agent configuration and Enterprise Calendar callers continue to use the same hooks and per-tab storage contract.","inputs":["packages/sdk/src/providers.tsx"]},
+
+    {"path":"examples/enterprise-layout/README.md","note":"Rechecked the saved-hash mount path, first-render consumer contract, tab restoration and owned deferred cleanup. The existing SDK layout, Agent configuration and Enterprise Calendar callers continue to use the same hooks and per-tab storage contract.","inputs":["packages/sdk/src/providers.tsx"]},
+
+    {"path":"packages/sdk/README.md","note":"Rechecked the saved-hash mount path, first-render consumer contract, tab restoration and owned deferred cleanup. The existing SDK layout, Agent configuration and Enterprise Calendar callers continue to use the same hooks and per-tab storage contract.","inputs":["packages/sdk/src/providers.tsx"]}
+  ]
+}

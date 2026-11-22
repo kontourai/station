@@ -1,0 +1,7 @@
+{
+  "revision": "721507c8d06d859579642d51ef1e3792acb9d1d5",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"ProjectPullRequestFeedbackDefaults.stillOn now documented as open pull requests in chats the reader may read, matching the store count; other contract text unchanged.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

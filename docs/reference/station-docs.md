@@ -61,6 +61,15 @@ but cannot perform them through the docs tools. The [connection guide](../guides
 Say which capabilities are actually available; do not imply an operation ran
 because its documentation was retrieved.
 
+On supported macOS hosts, the built-in Station Agent on Claude advertises its
+shipped documentation tools when the session starts and launches the docs
+helper on the first call. The host verifies the helper against its own build
+and uses the same verified bytes for later launches. Search runs in that
+helper process. The helper exits after idle time or when the Session stops.
+Sessions with authored or restricted tool configuration, and installations
+that cannot verify the helper at initial resolution, use the existing stdio
+delivery path.
+
 ## Projects
 
 A Project is Station's unit of working context and durable work identity. It can organize Tasks, layouts, Agents, knowledge, and settings, with explicit resources and machine-local workspace bindings where needed. An organizational Project need not have a checkout; a Task or Session that requires files must resolve an authorized available workspace instead of inferring one from a similar name.
@@ -158,7 +167,8 @@ list.
 A configured, reachable local model is one credential-free option. Discovery, configuration, and readiness are different facts; inspect the Connections surface before assuming a detected service is ready for a conversation.
 
 Startup can adopt detected Claude, Codex, and Muse engines with their default
-Agents. An explicitly removed engine is not silently recreated. Adoption is
+Agents; with the `copilot-sdk-engine` Feature Preview on, it also adopts
+GitHub Copilot (SDK) when `copilot` is on `PATH`, from the next start. An explicitly removed engine is not silently recreated. Adoption is
 not credential or launch-readiness proof; use [Getting started](../user/getting-started.md)
 and [Connections](../guides/connections.md) for that distinction.
 
@@ -386,6 +396,12 @@ Station's core owns durable product and authorization behavior as well as runtim
 A plugin is manifest-driven and can declare layouts, Agents, MCP integrations, providers, knowledge namespaces, engine connections, branding, and settings. Declaring a contribution is not authority to activate it: validation, permissions, grants, and host admission apply. Plugin authors build on core capabilities through the public SDK and extension contracts. The default in-process host connects configuration, models, conversation lists and chat state to their core owners; host bindings do not grant extra authority. See the SDK reference for exact bindings, remaining gaps and isolated-frame limits.
 
 The registry is the unified place to browse and install agents, skills, integrations, and plugins (a plugin only with a person’s approval of its preview), with an install lifecycle that includes updates and removal. Installs can route through approval, because installing something is a platform mutation like any other.
+
+In Plugins, a partial update check lists the updates it found and offers a
+retry. An unavailable check gives no confirmation that updates are absent.
+Install previews and recovery reviews show the registry claim and pin for
+each dependency when Station has verified them. The installed view shows the
+stored verification for the selected plugin.
 
 Station uses MCP for tool servers, ACP for supported external-engine
 connections, OpenTelemetry for configured observability, and MCP-UI for

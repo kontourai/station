@@ -96,7 +96,11 @@
 
     "tests/task-room-reload-recovery.spec.ts",
 
-    "tests/task-review.spec.ts"
+    "tests/task-review.spec.ts",
+
+    "tests/settings.spec.ts",
+
+    "tests/enterprise-pane-lifecycle.spec.ts"
   ],
 
   "checks": [

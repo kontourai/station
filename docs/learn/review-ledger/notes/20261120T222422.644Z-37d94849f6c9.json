@@ -1,0 +1,11 @@
+{
+  "revision": "30a3af911f38045c463dd7ec215a6534bea32ae9",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Verified the peer stream fixture declares an empty pending-start projection. The test still reaches caught-up and verifies that revocation closes the stream. No API prose change is needed.","inputs":["docs/reference/api.md","src-server/runtime/__tests__/peer-chat-tunnel-boundary.test.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Verified the wire inventory includes resource_engine_start_cancelled as cancelled and non-retryable, as documented. The provider failure suite and affected route suites passed.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Verified the empty pending-start fixture lets the actual receiver stream reach the revocation assertion. The receiver grant and revocation contract remains accurate.","inputs":["docs/security/remote-access-threat-model.md","packages/sdk/src/client/application-session.ts","src-server/adapters/pty-process-groups.ts","src-server/routes/inference/fleet-inference.ts","src-server/routes/orchestration/attachment-staging.ts","src-server/runtime/__tests__/peer-chat-tunnel-boundary.test.ts","src-server/runtime/bootstrap/runtime-http.ts","src-server/services/terminal/terminal-gateway.ts"]}
+  ]
+}

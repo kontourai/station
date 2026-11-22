@@ -1,0 +1,9 @@
+{
+  "revision": "cb4f00804c797739b25f16420ba99ebe06ee146d",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Verified the SDK root and queries barrel still expose the documented Project mutation hooks. Compared their implementations with the predecessor and checked scoped create/update transport and cache invalidation in the owner tests. The new module loads with the screens that use it.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/publicBarrel.test.ts","packages/sdk/src/__tests__/taskGraph-invalidation.test.tsx","packages/sdk/src/query-domains/workspace.ts","packages/sdk/src/query-domains/workspaceProjects.ts","packages/sdk/src/query-domains/workspaceProjectMutations.ts"]},
+
+    {"path":"docs/guides/distribution-profiles.md","note":"Traced the layout catalog read and retry rules in workspaceProjects.ts. Moving layout apply and delete hooks alongside other Project writes preserves their behavior and the catalog visibility described here.","inputs":["docs/guides/distribution-profiles.md","packages/sdk/src/query-domains/workspaceProjects.ts"]}
+  ]
+}

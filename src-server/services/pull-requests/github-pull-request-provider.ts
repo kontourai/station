@@ -16,6 +16,8 @@ import type {
 } from '@kontourai/station-contracts/pull-request-provider';
 import { execGitContextCommand } from '../../utils/git-exec.js';
 import { readGitHubFeedbackObservation } from './github-feedback-observation.js';
+import { readGitHubPullRequestsByHead } from './github-pull-requests-by-head.js';
+import { isConfiguredGitLabHost } from './gitlab-pull-request-provider.js';
 import {
   readPullRequestReview,
   writePullRequestReview,
@@ -100,6 +102,13 @@ export interface GitHubPullRequestProviderOptions {
   /** TTL of {@link GitHubPullRequestProvider.getPullRequestStatusByIdentity}. */
   statusReadCacheTtlMs?: number;
   now?: () => number;
+  /**
+   * #5064: whether a status read asks GitHub if an unarmed open pull request
+   * is in its merge queue (one GraphQL call, retained with the read). Read
+   * per status read; absent or false: not asked, and `landing` is reported
+   * only when auto-merge is armed.
+   */
+  readMergeQueue?: () => boolean;
 }
 
 interface ForgeReadEntry {
@@ -190,7 +199,17 @@ const GITHUB_PULL_REQUEST_FIELDS =
  * comments, which are the expensive parts of a full read.
  */
 const GITHUB_PULL_REQUEST_STATUS_FIELDS =
-  'number,url,title,state,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,isDraft,reviewDecision';
+  'number,url,title,state,headRefName,baseRefName,headRefOid,mergeable,mergeStateStatus,isDraft,reviewDecision,autoMergeRequest';
+
+/**
+ * Whether an open pull request sits in its repository's merge queue (#5064).
+ * `gh pr view --json` has no merge-queue field, and `autoMergeRequest` is
+ * null for an entry already in the queue, so this one GraphQL read decides.
+ */
+const GITHUB_MERGE_QUEUE_QUERY =
+  'query($owner:String!,$name:String!,$number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){isInMergeQueue autoMergeRequest{enabledAt}}}}';
+const GITHUB_NAME = /^[A-Za-z0-9._-]{1,100}$/;
+const GITHUB_HOST = /^[a-z0-9.-]{1,253}(?::\d{1,5})?$/;
 
 /**
  * How long a status read is shared; a write to the repository through
@@ -231,9 +250,6 @@ const githubReviewDecision = (value: unknown): PullRequest['reviewDecision'] =>
       : value === 'REVIEW_REQUIRED'
         ? 'review_required'
         : undefined;
-
-const canonicalHost = (host: string) =>
-  host.toLowerCase().replace(/:\d+$/, '').replace(/\.$/, '');
 
 export function normalizeGitHubPullRequest(
   value: any,
@@ -280,6 +296,12 @@ export function normalizeGitHubPullRequest(
     ...(githubMergeReadiness(value.mergeStateStatus)
       ? { mergeReadiness: githubMergeReadiness(value.mergeStateStatus) }
       : {}),
+    // Only the positive fact: a read without the field says nothing.
+    ...(value.state === 'OPEN' &&
+    value.autoMergeRequest !== undefined &&
+    value.autoMergeRequest !== null
+      ? { landing: 'auto-merge' as const }
+      : {}),
   };
 }
 
@@ -306,7 +328,7 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
   readonly offeredCapabilities = offeredCapabilities;
   readonly offeredMergeMethods = offeredMergeMethods;
   canServeHost(host: string) {
-    return canonicalHost(host) !== 'gitlab.com';
+    return !isConfiguredGitLabHost(host);
   }
   constructor(
     private readonly transport: (
@@ -332,8 +354,10 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       options.now ?? Date.now,
     );
     this.now = options.now ?? Date.now;
+    this.readMergeQueue = options.readMergeQueue ?? (() => false);
   }
   private readonly now: () => number;
+  private readonly readMergeQueue: () => boolean;
   private readonly reads: ForgeReadCache;
   /**
    * Status reads for the Task board: one in-flight `gh pr view` per pull
@@ -684,6 +708,13 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       ref,
     });
   }
+  /** Agent feedback's Task-branch discovery (github-pull-requests-by-head.ts). */
+  findOpenPullRequestsByHead(
+    c: PullRequestRepositoryIdentityContext,
+    branch: string,
+  ) {
+    return readGitHubPullRequestsByHead((args) => this.gh(args, c), c, branch);
+  }
 
   async getPullRequestStatusByIdentity(
     c: PullRequestRepositoryIdentityContext,
@@ -707,11 +738,71 @@ export class GitHubPullRequestProvider implements IPullRequestProvider {
       // Stamped when gh is asked, so a cached answer carries its own age.
       async () => {
         const observedAt = new Date(this.now()).toISOString();
-        return { ...(await this.callByIdentity(c, args)), observedAt };
+        const read = await this.callByIdentity(c, args);
+        return {
+          ...(await this.withMergeQueueLanding(c, ref, read)),
+          observedAt,
+        };
       },
       (value) => value.available,
     );
     return structuredClone(result);
+  }
+  /**
+   * #5064: completes `landing` for an open pull request auto-merge has not
+   * claimed: in the merge queue, or neither. A failed read leaves it absent
+   * (not observed), never `not-queued`.
+   */
+  private async withMergeQueueLanding(
+    c: PullRequestRepositoryIdentityContext,
+    ref: string,
+    read: PullRequestResult<PullRequest>,
+  ): Promise<PullRequestResult<PullRequest>> {
+    if (!read.available || !read.data) return read;
+    const pullRequest = read.data;
+    if (pullRequest.state !== 'OPEN' || pullRequest.landing) return read;
+    try {
+      if (!this.readMergeQueue()) return read;
+    } catch {
+      return read;
+    }
+    const host = c.host.toLowerCase();
+    if (
+      !GITHUB_HOST.test(host) ||
+      !GITHUB_NAME.test(c.repository.owner) ||
+      !GITHUB_NAME.test(c.repository.name) ||
+      !/^\d{1,10}$/.test(ref)
+    )
+      return read;
+    try {
+      const { stdout } = await this.gh(
+        [
+          'api',
+          'graphql',
+          '--hostname',
+          host,
+          '-f',
+          `query=${GITHUB_MERGE_QUEUE_QUERY}`,
+          '-f',
+          `owner=${c.repository.owner}`,
+          '-f',
+          `name=${c.repository.name}`,
+          '-F',
+          `number=${ref}`,
+        ],
+        c,
+      );
+      const observed = JSON.parse(stdout)?.data?.repository?.pullRequest;
+      if (typeof observed?.isInMergeQueue !== 'boolean') return read;
+      const landing: PullRequest['landing'] = observed.isInMergeQueue
+        ? 'merge-queue'
+        : observed.autoMergeRequest
+          ? 'auto-merge'
+          : 'not-queued';
+      return { ...read, data: { ...pullRequest, landing } };
+    } catch {
+      return read;
+    }
   }
   openPullRequest(c: PullRequestRepositoryContext, input: any) {
     const host = this.getHost(c);

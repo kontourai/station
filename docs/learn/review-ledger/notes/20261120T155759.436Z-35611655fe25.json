@@ -1,0 +1,11 @@
+{
+  "revision": "d77858e33a62ffd47c700917b0e1a283106d4160",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the 20 to 100 ms native event-loop histogram change and warning cadence field against the runtime bootstrap and focused tests. Orchestration health pickup, sync housekeeping, and published contracts retain their existing owners and timing.","inputs":["src-server/runtime/bootstrap/runtime-health.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the 20 to 100 ms native event-loop histogram change and warning cadence field against the runtime bootstrap and focused tests. Orchestration health pickup, sync housekeeping, and published contracts retain their existing owners and timing.","inputs":["src-server/runtime/bootstrap/runtime-health.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the 20 to 100 ms native event-loop histogram change and warning cadence field against the runtime bootstrap and focused tests. Orchestration health pickup, sync housekeeping, and published contracts retain their existing owners and timing.","inputs":["src-server/runtime/bootstrap/runtime-health.ts"]}
+  ]
+}

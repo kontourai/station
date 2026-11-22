@@ -18,6 +18,8 @@ import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import {
   authenticatedFetch,
   continueExecutionMessage,
+  getOrchestrationSessionDetailWindow,
+  inspectAttentionRequest,
   sendExecutionMessage,
 } from '@kontourai/station-sdk/client';
 import { describeApiError, printJson, requestJson } from './core-api.js';
@@ -101,6 +103,7 @@ export async function createSessionClient(
   apiBase: string,
   target: {
     agentSlug: AgentId;
+    readOnly?: boolean;
     /**
      * station#1155: when the caller has ALREADY classified a plain agent
      * slug via `resolveManagedAgentExternalEngineTarget` (the CLI's
@@ -152,6 +155,7 @@ async function resolveRuntimeSessionTargetForConnection(
   apiBase: string,
   connectionId: EngineConnectionId,
   agentSlug: AgentId,
+  readOnly: boolean,
 ): Promise<RuntimeSessionTarget> {
   const connection = (await requestJson<ConnectionConfig>(
     apiBase,
@@ -160,12 +164,13 @@ async function resolveRuntimeSessionTargetForConnection(
   if (connection.kind !== 'agent') {
     throw new Error(`Connection '${connectionId}' is not an agent connection.`);
   }
-  if (!connection.enabled || connection.status === 'disabled') {
+  if (!readOnly && (!connection.enabled || connection.status === 'disabled')) {
     throw new Error(`Connection '${connectionId}' is disabled.`);
   }
   if (
-    connection.status === 'missing_prerequisites' ||
-    connection.status === 'error'
+    !readOnly &&
+    (connection.status === 'missing_prerequisites' ||
+      connection.status === 'error')
   ) {
     const blockers = describeConnectionBlockers(connection);
     throw new Error(
@@ -234,7 +239,7 @@ function connectionRuntimeProvider(
 export async function resolveManagedAgentExternalEngineTarget(
   apiBase: string,
   agentSlug: AgentId,
-  options?: { strict?: boolean },
+  options?: { strict?: boolean; readOnly?: boolean },
 ): Promise<RuntimeSessionTarget | null> {
   try {
     const binding = (await requestJson<{
@@ -263,6 +268,7 @@ export async function resolveManagedAgentExternalEngineTarget(
       apiBase,
       engineConnectionId(connectionId),
       agentSlug,
+      options?.readOnly === true,
     );
   } catch (error) {
     if (options?.strict) throw error;
@@ -276,6 +282,7 @@ async function resolveSessionTarget(
   apiBase: string,
   target: {
     agentSlug: AgentId;
+    readOnly?: boolean;
     classifiedExternalTarget?: RuntimeSessionTarget | null;
   },
 ): Promise<ResolvedSessionTarget> {
@@ -288,6 +295,7 @@ async function resolveSessionTarget(
       : await resolveManagedAgentExternalEngineTarget(
           apiBase,
           target.agentSlug,
+          { readOnly: target.readOnly === true },
         );
   if (externalTarget) return externalTarget;
   return { kind: 'managed', agentSlug: target.agentSlug };
@@ -481,6 +489,74 @@ export async function sendExecutionTargetChat(
   }
 }
 
+async function confirmPendingRequest(
+  apiBase: string,
+  sessionId: string,
+  turnId: string,
+  requiredEventId?: string,
+): Promise<(PendingRequestNotice & { respondCommand: string }) | undefined> {
+  const options = { signal: AbortSignal.timeout(2000) };
+  try {
+    const { session, events } = await getOrchestrationSessionDetailWindow(
+      apiBase,
+      sessionId,
+      { turnLimit: 1 },
+      options,
+    );
+    if (
+      session.threadId !== sessionId ||
+      session.answerability?.answerable !== true ||
+      !Array.isArray(session.openRequestIds)
+    )
+      return;
+    const open = new Set(session.openRequestIds);
+    const candidate = events
+      .slice()
+      .reverse()
+      .find(
+        ({ event }) =>
+          event.method === 'request.opened' &&
+          event.threadId === sessionId &&
+          event.turnId === turnId &&
+          (event.requestType === 'approval' ||
+            event.requestType === 'permission') &&
+          open.has(event.requestId) &&
+          typeof event.eventId === 'string' &&
+          event.eventId.length > 0 &&
+          (requiredEventId === undefined || event.eventId === requiredEventId),
+      )?.event;
+    if (candidate?.method !== 'request.opened') return;
+    // The ID projection identifies candidates. Inspection verifies the exact
+    // opening even if the same request ID was replaced after the snapshot.
+    const inspected = await inspectAttentionRequest(
+      apiBase,
+      {
+        threadId: sessionId,
+        requestId: candidate.requestId,
+        requestEventId: candidate.eventId,
+      },
+      options,
+    );
+    if (
+      inspected.state === 'open' &&
+      inspected.canRespond &&
+      !inspected.requiresAnswers
+    ) {
+      return {
+        requestId: candidate.requestId,
+        requestType: inspected.requestType,
+        title: inspected.title,
+        respondCommand: buildApprovalsRespondCommand(
+          sessionId,
+          candidate.requestId,
+        ),
+      };
+    }
+  } catch {
+    // This supplemental read cannot change the accepted turn's exit result.
+  }
+}
+
 async function sendOrchestrationChat(
   apiBase: string,
   agentSlug: AgentId,
@@ -518,7 +594,8 @@ async function sendOrchestrationChat(
   let finishReason: string | undefined;
   let accumulatedText = '';
   let lifecycleState: string | undefined;
-  let pendingRequest: PendingRequestNotice | undefined;
+  let lastObservedRequest: PendingRequestNotice | undefined;
+  let observedEventId: string | undefined;
   let onRequestFailTriggered = false;
 
   const observation = consumeOrchestrationEvents({
@@ -540,8 +617,9 @@ async function sendOrchestrationChat(
     onSessionState: (state) => {
       lifecycleState = state;
     },
-    onRequestOpened: (info) => {
-      pendingRequest = info;
+    onRequestOpened: (info, eventId) => {
+      lastObservedRequest = info;
+      observedEventId = eventId;
       printPendingRequestNotice({ ...info, threadId: acceptedSessionId });
       if (onRequest === 'fail') {
         onRequestFailTriggered = true;
@@ -613,56 +691,38 @@ async function sendOrchestrationChat(
     await eventsTask.catch(() => {});
   }
 
-  if (onRequestFailTriggered && pendingRequest) {
-    if (jsonMode) {
-      printJson({
-        agent: agentSlug,
-        sessionId: acceptedSessionId,
-        providerTurnId: acceptedTurnId,
-        conversationId: acceptedConversationId,
-        clientTurnId,
-        pendingRequest: {
-          requestId: pendingRequest.requestId,
-          requestType: pendingRequest.requestType,
-          title: pendingRequest.title,
-          respondCommand: buildApprovalsRespondCommand(
-            acceptedSessionId,
-            pendingRequest.requestId,
-          ),
-        },
-        ...(lifecycleState ? { lifecycleState } : {}),
-      });
-    }
-    process.exit(EXIT_ON_REQUEST_FAIL);
-    return;
-  }
-
   if (jsonMode) {
+    const pendingRequest =
+      lastObservedRequest &&
+      acceptedTurnId &&
+      (!onRequestFailTriggered || observedEventId)
+        ? await confirmPendingRequest(
+            apiBase,
+            acceptedSessionId,
+            acceptedTurnId,
+            onRequestFailTriggered ? observedEventId : undefined,
+          )
+        : undefined;
     printJson({
       agent: agentSlug,
       sessionId: acceptedSessionId,
       providerTurnId: acceptedTurnId,
       conversationId: acceptedConversationId,
       clientTurnId,
-      finishReason,
-      text: accumulatedText,
-      ...(pendingRequest
-        ? {
-            pendingRequest: {
-              requestId: pendingRequest.requestId,
-              requestType: pendingRequest.requestType,
-              title: pendingRequest.title,
-              respondCommand: buildApprovalsRespondCommand(
-                acceptedSessionId,
-                pendingRequest.requestId,
-              ),
-            },
-          }
+      ...(!onRequestFailTriggered
+        ? { finishReason, text: accumulatedText }
         : {}),
+      ...(lastObservedRequest ? { lastObservedRequest } : {}),
+      ...(pendingRequest ? { pendingRequest } : {}),
       ...(lifecycleState ? { lifecycleState } : {}),
     });
+  }
+
+  if (onRequestFailTriggered) {
+    process.exit(EXIT_ON_REQUEST_FAIL);
     return;
   }
+  if (jsonMode) return;
 
   if (accumulatedText.length > 0) {
     process.stdout.write('\n');
@@ -685,21 +745,23 @@ function createRuntimeSessionClient(
       const providerSessions = sessions.filter((session) =>
         sessionProviderMatches(session.provider, provider),
       );
-      const matchingSessions = isAcpFamilyEngine(provider)
-        ? (
-            await Promise.all(
-              providerSessions.map(async (session) => {
-                const detail = await readRuntimeSessionOrNull(
-                  apiBase,
-                  String(session.threadId),
-                );
-                return runtimeSessionMatchesTarget(detail, target)
-                  ? session
-                  : null;
-              }),
-            )
-          ).filter((session): session is Record<string, unknown> => !!session)
-        : providerSessions;
+      const matchingSessions = (
+        await Promise.all(
+          providerSessions.map(async (session) => {
+            if (typeof session.assignedAgentSlug === 'string') {
+              return session.assignedAgentSlug === agentSlug ? session : null;
+            }
+            if (!isAcpFamilyEngine(provider)) {
+              return agentSlug === String(provider) ? session : null;
+            }
+            const detail = await readRuntimeSessionOrNull(
+              apiBase,
+              String(session.threadId),
+            );
+            return runtimeSessionMatchesTarget(detail, target) ? session : null;
+          }),
+        )
+      ).filter((session): session is Record<string, unknown> => !!session);
 
       return matchingSessions.map((session) => ({
         id: String(session.threadId),
@@ -851,7 +913,8 @@ function runtimeSessionMatchesTarget(
   const configuredMetadata = configured?.metadata as
     | Record<string, unknown>
     | undefined;
-  const configuredAgentId = configuredMetadata?.agentSlug;
+  const configuredAgentId =
+    session?.assignedAgentSlug ?? configuredMetadata?.agentSlug;
   if (typeof configuredAgentId === 'string') {
     return configuredAgentId === target.agentSlug;
   }
@@ -860,7 +923,10 @@ function runtimeSessionMatchesTarget(
   // agents (for example Kiro and OpenCode), so an unscoped ACP session must
   // never leak into another Agent's list/read/interrupt surface. The same
   // holds for an engine that runs saved ACP connections (`opencode`).
-  return !isAcpFamilyEngine(target.provider);
+  return (
+    !isAcpFamilyEngine(target.provider) &&
+    target.agentSlug === String(target.provider)
+  );
 }
 
 /**
@@ -1025,7 +1091,10 @@ function consumeOrchestrationEvents({
    * `--on-request=wait` (default) returns nothing and the loop continues
    * exactly as it did before this event existed.
    */
-  onRequestOpened?: (info: PendingRequestNotice) => boolean | undefined;
+  onRequestOpened?: (
+    info: PendingRequestNotice,
+    eventId?: string,
+  ) => boolean | undefined;
   /** station#979 AC7: the latest `sessionState` seen on any frame this turn. */
   onSessionState?: (state: string) => void;
 }) {
@@ -1085,14 +1154,17 @@ function consumeOrchestrationEvents({
         return;
       }
       return (
-        onRequestOpened({
-          requestId,
-          requestType:
-            typeof event.requestType === 'string'
-              ? event.requestType
-              : 'unknown',
-          title: typeof event.title === 'string' ? event.title : '',
-        }) === true
+        onRequestOpened(
+          {
+            requestId,
+            requestType:
+              typeof event.requestType === 'string'
+                ? event.requestType
+                : 'unknown',
+            title: typeof event.title === 'string' ? event.title : '',
+          },
+          typeof event.eventId === 'string' ? event.eventId : undefined,
+        ) === true
       );
     }
 
@@ -1121,6 +1193,7 @@ function consumeOrchestrationEvents({
         'reason',
         'sessionState',
         'requestId',
+        'eventId',
         'requestType',
         'title',
         'finishReason',

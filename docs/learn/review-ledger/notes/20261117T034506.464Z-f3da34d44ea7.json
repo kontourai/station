@@ -1,0 +1,27 @@
+{
+  "revision": "9933f973979395e244bf6b762b769b774fcd878c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"After merging origin/main at 006a1c3b5b: this lane's 'Continuing a chat on a paired Station' section is unchanged and still matches ConversationStationHandoff.tsx (9933f97397 also greys out a paired Station that is not ready, consistent with the merged #5002 text that an offered Station that cannot take work stays listed but disabled). The other changes are main's own reviewed text (#5002, #5039, #5058 and others).","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Merge of origin/main 006a1c3b5b: this lane's continueOnStation and its boundary-dialog prop are unchanged; the rest is main's reviewed work (#5027, #5029, #5037, #5039, #5058, #5059, #5076, #5084, #5097). Checked the nine citing pages for claims about this lane's Station handoff; they stay accurate.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Merge of origin/main 006a1c3b5b: this lane's continueOnStation and its boundary-dialog prop are unchanged; the rest is main's reviewed work (#5027, #5029, #5037, #5039, #5058, #5059, #5076, #5084, #5097). Checked the nine citing pages for claims about this lane's Station handoff; they stay accurate.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Merge of origin/main 006a1c3b5b: this lane's continueOnStation and its boundary-dialog prop are unchanged; the rest is main's reviewed work (#5027, #5029, #5037, #5039, #5058, #5059, #5076, #5084, #5097). Checked the nine citing pages for claims about this lane's Station handoff; they stay accurate.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Merge of origin/main 006a1c3b5b: this lane's continueOnStation and its boundary-dialog prop are unchanged; the rest is main's reviewed work (#5027, #5029, #5037, #5039, #5058, #5059, #5076, #5084, #5097). Checked the nine citing pages for claims about this lane's Station handoff; they stay accurate.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Merge of origin/main 006a1c3b5b: this lane's continueOnStation and its boundary-dialog prop are unchanged; the rest is main's reviewed work (#5027, #5029, #5037, #5039, #5058, #5059, #5076, #5084, #5097). Checked the nine citing pages for claims about this lane's Station handoff; they stay accurate.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Merge of origin/main 006a1c3b5b: this lane's continueOnStation and its boundary-dialog prop are unchanged; the rest is main's reviewed work (#5027, #5029, #5037, #5039, #5058, #5059, #5076, #5084, #5097). Checked the nine citing pages for claims about this lane's Station handoff; they stay accurate.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Merge of origin/main 006a1c3b5b: this lane's continueOnStation and its boundary-dialog prop are unchanged; the rest is main's reviewed work (#5027, #5029, #5037, #5039, #5058, #5059, #5076, #5084, #5097). Checked the nine citing pages for claims about this lane's Station handoff; they stay accurate.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Merge of origin/main 006a1c3b5b: this lane's continueOnStation and its boundary-dialog prop are unchanged; the rest is main's reviewed work (#5027, #5029, #5037, #5039, #5058, #5059, #5076, #5084, #5097). Checked the nine citing pages for claims about this lane's Station handoff; they stay accurate.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Merge of origin/main 006a1c3b5b: this lane's continueOnStation and its boundary-dialog prop are unchanged; the rest is main's reviewed work (#5027, #5029, #5037, #5039, #5058, #5059, #5076, #5084, #5097). Checked the nine citing pages for claims about this lane's Station handoff; they stay accurate.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Pins this lane's five handoff codes and main's project_held (#5098 mapped it without a pin); no mapping changed.","inputs":["packages/contracts/src/__tests__/provider-failure.test.ts"]}
+  ]
+}

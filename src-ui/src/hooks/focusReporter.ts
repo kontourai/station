@@ -10,6 +10,10 @@ import {
   isWatchingRunningTurn,
   subscribeForegroundChat,
 } from './orchestration/chatForeground';
+import {
+  foregroundProjectId,
+  subscribeForegroundProject,
+} from './projectForeground';
 
 /** Collapses a burst of focus/blur/visibility events into one report. */
 export const FOCUS_REPORT_DEBOUNCE_MS = 1_000;
@@ -56,11 +60,23 @@ export interface FocusReporterEnvironment {
   readonly readViewing?: () => readonly string[];
   /** Calls the listener when `readViewing`'s answer may have changed. */
   readonly subscribeViewing?: (listener: () => void) => () => void;
+  /**
+   * The local Project (`ProjectConfig.id`) this document has in the
+   * foreground (#5072), so its work's alerts are quieted while it is shown.
+   * Absent: the report does not say.
+   */
+  readonly readViewingProject?: () => string | undefined;
+  /** Calls the listener when `readViewingProject`'s answer may have changed. */
+  readonly subscribeViewingProject?: (listener: () => void) => () => void;
 }
 
 /** Compares what two reports said is on screen; '' when they said nothing. */
-function viewingKey(viewing: readonly string[] | undefined): string {
-  return viewing === undefined ? '' : JSON.stringify(viewing);
+function viewingKey(
+  viewing: readonly string[] | undefined,
+  project?: string,
+): string {
+  const sessions = viewing === undefined ? '' : JSON.stringify(viewing);
+  return project === undefined ? sessions : `${sessions}\u0000${project}`;
 }
 
 function readFocusState(doc: Document, pageHidden = false): FocusState {
@@ -151,6 +167,7 @@ export function startFocusReporter(
     seq: number,
     signal: AbortSignal,
     viewingSessionIds?: readonly string[],
+    viewingProjectId?: string,
   ) => Promise<FocusReportResponse>,
   env: FocusReporterEnvironment = {
     document,
@@ -179,6 +196,17 @@ export function startFocusReporter(
       return undefined;
     }
   };
+  /** Cleared when the host refuses the Project field (an older Station). */
+  let projectSupported = env.readViewingProject !== undefined;
+  const projectNow = (): string | undefined => {
+    if (!projectSupported) return undefined;
+    try {
+      return env.readViewingProject?.() || undefined;
+    } catch {
+      return undefined;
+    }
+  };
+  const screenKey = () => viewingKey(viewingNow(), projectNow());
   let acked: FocusState | undefined;
   /** `viewingKey` of the acknowledged report. */
   let ackedViewing: string | undefined;
@@ -208,8 +236,7 @@ export function startFocusReporter(
   const currentState = () => readFocusState(doc, pageHidden);
   // What is on screen only matters to the server while focused.
   const needsSend = (state: FocusState) =>
-    state !== acked ||
-    (state === 'focused' && viewingKey(viewingNow()) !== ackedViewing);
+    state !== acked || (state === 'focused' && screenKey() !== ackedViewing);
 
   const clearDebounce = () => {
     if (debounce !== undefined) clearTimeout(debounce);
@@ -227,9 +254,11 @@ export function startFocusReporter(
     seq: number;
     response: FocusReportResponse | undefined;
     viewing: readonly string[] | undefined;
+    project: string | undefined;
   }
   const transmit = async (state: FocusState): Promise<Transmitted> => {
     const viewing = viewingNow();
+    const project = projectNow();
     const seq = nextSeq;
     nextSeq += 1;
     sentAny = true;
@@ -245,15 +274,17 @@ export function startFocusReporter(
     try {
       const response = await Promise.race([
         Promise.resolve().then(() =>
-          viewing === undefined
+          viewing === undefined && project === undefined
             ? send(state, seq, controller.signal)
-            : send(state, seq, controller.signal, viewing),
+            : project === undefined
+              ? send(state, seq, controller.signal, viewing)
+              : send(state, seq, controller.signal, viewing, project),
         ),
         timeout,
       ]);
-      return { seq, response, viewing };
+      return { seq, response, viewing, project };
     } catch {
-      return { seq, response: undefined, viewing };
+      return { seq, response: undefined, viewing, project };
     } finally {
       clearTimeout(timer);
     }
@@ -262,13 +293,13 @@ export function startFocusReporter(
   /** Records one settled send; returns whether it was a 2xx. */
   const settle = (
     state: FocusState,
-    { seq, response, viewing }: Transmitted,
+    { seq, response, viewing, project }: Transmitted,
   ): boolean => {
     const status = response?.status ?? 0;
     if (status >= 200 && status < 300) {
       if (seq > ackedSeq) {
         acked = state;
-        ackedViewing = viewingKey(viewing);
+        ackedViewing = viewingKey(viewing, project);
         ackedSeq = seq;
         ackedAt = now();
       }
@@ -277,7 +308,11 @@ export function startFocusReporter(
       return true;
     }
     if (seq === hiddenSeq) hiddenSeq = 0;
-    if (status === 400 && viewing !== undefined && viewingSupported) {
+    if (status === 400 && project !== undefined && projectSupported) {
+      // A host older than the Project field refuses it: report without it.
+      projectSupported = false;
+      flushQueued = true;
+    } else if (status === 400 && viewing !== undefined && viewingSupported) {
       // An older host refuses the unknown field: report without it.
       viewingSupported = false;
       flushQueued = true;
@@ -415,17 +450,29 @@ export function startFocusReporter(
   // The chat store changes on every streamed token. Only an actual change of
   // what is on screen reschedules, or a streaming chat would keep pushing
   // the debounce back and no report would go out.
-  let lastViewing = viewingKey(viewingNow());
+  let lastViewing = screenKey();
+  const onViewingChange = () => {
+    const next = screenKey();
+    if (next === lastViewing) return;
+    lastViewing = next;
+    if (currentState() === 'focused') schedule();
+  };
   try {
     unsubscribeViewing = env.subscribeViewing?.(() => {
       if (!viewingSupported) return;
-      const next = viewingKey(viewingNow());
-      if (next === lastViewing) return;
-      lastViewing = next;
-      if (currentState() === 'focused') schedule();
+      onViewingChange();
     });
   } catch {
     unsubscribeViewing = undefined;
+  }
+  let unsubscribeProject: (() => void) | undefined;
+  try {
+    unsubscribeProject = env.subscribeViewingProject?.(() => {
+      if (!projectSupported) return;
+      onViewingChange();
+    });
+  } catch {
+    unsubscribeProject = undefined;
   }
   schedule();
 
@@ -447,6 +494,11 @@ export function startFocusReporter(
     } catch {
       /* Presence is advisory. */
     }
+    try {
+      unsubscribeProject?.();
+    } catch {
+      /* Presence is advisory. */
+    }
   };
 }
 
@@ -454,7 +506,7 @@ export function startFocusReporter(
 export function startStationFocusReporter(apiBase: string): () => void {
   const url = `${apiBase}${FOCUS_PRESENCE_REPORT_PATH}`;
   return startFocusReporter(
-    (state, seq, signal, viewingSessionIds) =>
+    (state, seq, signal, viewingSessionIds, viewingProjectId) =>
       authenticatedFetch(url, {
         signal,
         method: 'POST',
@@ -467,6 +519,7 @@ export function startStationFocusReporter(apiBase: string): () => void {
           state,
           seq,
           ...(viewingSessionIds ? { viewingSessionIds } : {}),
+          ...(viewingProjectId ? { viewingProjectId } : {}),
         }),
         keepalive: true,
       }),
@@ -477,6 +530,8 @@ export function startStationFocusReporter(apiBase: string): () => void {
       isWatching: isWatchingRunningTurn,
       readViewing: foregroundChatSessionIds,
       subscribeViewing: subscribeForegroundChat,
+      readViewingProject: foregroundProjectId,
+      subscribeViewingProject: subscribeForegroundProject,
     },
   );
 }

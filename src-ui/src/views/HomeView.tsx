@@ -8,6 +8,7 @@ import { Button } from '../components/Button';
 import { FirstRunHomeChapter } from '../components/first-run/FirstRunHomeChapter';
 import { PageCalloutStack } from '../components/PageCallout';
 import { SkeletonList } from '../components/state';
+import { UsageTelemetryDisclosure } from '../components/UsageTelemetryDisclosure';
 import { useConfig } from '../contexts/ConfigContext';
 import type { NavigationView } from '../types';
 import { RequiredSlotHost } from '../workspace-panes/RequiredSlotHost';
@@ -183,6 +184,7 @@ export function HomeView({
       </WorkspacePaneFrame>
       <PageCalloutStack>
         <FirstRunHomeChapter intentFirst />
+        <UsageTelemetryDisclosure firstRun offerOnHome />
       </PageCalloutStack>
     </section>
   );

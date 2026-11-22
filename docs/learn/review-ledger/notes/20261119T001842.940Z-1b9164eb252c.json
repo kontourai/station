@@ -1,0 +1,19 @@
+{
+  "revision": "3d64b8a2f14b539dc600b655112204f6fc3345b9",
+
+  "notes": [
+    {"path":"docs/design/portable-project-identity.md","note":"Checked workspace-first New Project against the repository acquisition and manifest owners. Blank creation leaves directory provisioning to the server. Acquired checkout creation still uses the confirmed source and existing portable binding path.","inputs":["docs/design/portable-project-identity.md","src-ui/src/components/modals/NewProjectModalContent.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the new workspace choice and existing Git acquisition controls. The same retained acquisition and checkout selection produce Project provenance.","inputs":["docs/guides/connections.md","src-ui/src/components/modals/NewProjectModalContent.tsx"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked blank and repository setup, retained starter selection, and legacy creation recovery. The new creation choices do not dispatch Tasks.","inputs":["docs/guides/starter-work.md","src-ui/src/components/modals/NewProjectModalContent.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the initial blank workspace, repository setup and explicit existing folder control. Documents and connected tools are set up in the created Project.","inputs":["docs/user/getting-started.md","docs/guides/starter-work.md","src-ui/src/components/modals/NewProjectModalContent.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the existing Project creation layout cases. They now choose repository and existing folder before reaching the same Git discovery and starter behavior.","inputs":["tests/project-architecture.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed existing folder derivation, mobile folder picker, and real-click footer journeys. They select the supported existing folder option before interacting with the folder picker.","inputs":["tests/project-forms.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the Project Git starter lifecycle. It now enters the explicit repository and folder options and retains checkout, layout and navigation assertions.","inputs":["tests/project-lifecycle.spec.ts"]}
+  ]
+}

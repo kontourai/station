@@ -71,10 +71,13 @@ export interface WorkFacts {
   chatBinding?: ChatStationBindingV1;
   /** Host-only detail reads and controls must not borrow a bound receiver ID. */
   hostDetails?: boolean;
+  /** A completed local delegation with an idle Session available for follow-up. */
+  resumableDelegationResult?: true;
   /** Recorded run root, resolved against this presentation's row identities. */
   runRootId?: string;
   station?: { id: string; label: string };
   attention?: WorkAttentionKind;
+  attentionStartedAt?: number;
   activity?: WorkActivity;
   ownedWorkState?: NonNullable<
     OrchestrationSessionSummary['ownedWork']
@@ -235,6 +238,18 @@ export function buildWorkFacts({
       hostDetails:
         item.kind !== 'remote-session' && (!chat || chatBelongsToStation(chat)),
     };
+    if (
+      entry.hostDetails &&
+      item.lifecycleLabel === 'Completed' &&
+      session?.delegation?.taskId &&
+      (session.delegation.environmentKind === undefined ||
+        session.delegation.environmentKind === 'current') &&
+      session.controlMode !== 'read-only-attached' &&
+      session.lifecycleState === 'idle' &&
+      session.answerability.answerable
+    ) {
+      entry.resumableDelegationResult = true;
+    }
     if (chat?.stationBinding && chat.stationBinding.affinity.kind !== 'host')
       entry.station = {
         id: chat.stationBinding.environmentId,
@@ -259,6 +274,13 @@ export function buildWorkFacts({
     )
       entry.engineOpenedTurn = true;
     if (item.lifecycleLabel === 'Needs attention') {
+      if (
+        session?.lifecycleState === 'needs_input' &&
+        session.lifecycleChangedAt
+      ) {
+        const start = Date.parse(session.lifecycleChangedAt);
+        if (Number.isFinite(start)) entry.attentionStartedAt = start;
+      }
       const attention = moreUrgentAttention(
         moreUrgentAttention(
           session && orchestrationLifecycleLabel(session) === 'Needs attention'

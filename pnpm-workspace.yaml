@@ -39,8 +39,26 @@ pmOnFail: ignore
 # binary out of every install.
 ignoredOptionalDependencies:
   - '@napi-rs/canvas'
+  # @github/copilot-sdk's per-platform packages embed the proprietary Copilot
+  # CLI runtime and Microsoft OneAuth binaries (whose terms forbid
+  # redistribution) despite an MIT label. Station runs the person's own
+  # installed Copilot CLI instead, so none of them is ever installed or
+  # shipped. See docs/decisions/copilot-sdk-engine.md.
+  - '@github/copilot-sdk-darwin-arm64'
+  - '@github/copilot-sdk-darwin-x64'
+  - '@github/copilot-sdk-linux-arm64'
+  - '@github/copilot-sdk-linux-x64'
+  - '@github/copilot-sdk-linuxmusl-arm64'
+  - '@github/copilot-sdk-linuxmusl-x64'
+  - '@github/copilot-sdk-win32-arm64'
+  - '@github/copilot-sdk-win32-x64'
 overrides:
   '@changesets/cli>launch-editor': 2.14.2
+  # @github/copilot-sdk pins koffi 3.3.6 for its experimental in-process
+  # transport, which Station never uses (copilot-sdk-port.ts). Share the one
+  # reviewed koffi (config/dependency-lifecycle-allowlist.json) instead of
+  # adding a second, unreviewed install hook.
+  '@github/copilot-sdk>koffi': 3.3.7
   '@kontourai/survey>@modelcontextprotocol/server': 2.4.0
   http-cache-semantics: 4.3.0
   '@modelcontextprotocol/client': 2.4.0

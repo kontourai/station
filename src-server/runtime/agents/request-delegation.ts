@@ -24,10 +24,12 @@
  *    this derivation then names THAT session's lineage, which is the most a
  *    copied credential can claim. Treating such callers as unverified would
  *    let every Codex model omit its lineage again.
- *  - Any other Station-internal request (Station's pooled engine child, or
- *    any holder of the internal token) keeps a body context only when
+ *  - Any other Station-internal request keeps a body context only when
  *    Station's runtime attested it (`delegation-attestation.ts`). Otherwise
- *    it claims no lineage: the session it starts is a root.
+ *    it claims no lineage: the session it starts is a root. Since #2377
+ *    slice D Station's own engine calls with a verified caller (above), so
+ *    no runtime path mints an attestation any more, and a caller-less
+ *    station-control request never reaches a dispatch route.
  *  - A request from outside this Station's process passes its context
  *    through unchanged: a peer Station forwarding its own child, or an
  *    operator, paired-device or hosted-user credential. None of those is
@@ -67,14 +69,7 @@ class DelegationLineageUnavailableError extends Error {
   }
 }
 
-/**
- * A delegated child asked to fan out (`delegate_task`, `send_message`). The
- * in-session policy already denies these to Station's own engine; this is the
- * same denial where an external engine's call reaches the route, so a child
- * cannot spawn children or message Sessions by naming a tool the engine's
- * harness never asked Station about. Checked before the depth limit: the tool
- * is refused at any depth, not only at the last one.
- */
+/** A child tried to call a dispatch tool outside its inherited tool policy. */
 class DelegatedToolBlockedError extends Error {
   readonly code = 'delegated_tool_blocked' as const;
   constructor(tool: string) {
@@ -145,6 +140,25 @@ function optionalStrings(value: unknown): string[] | undefined | false {
     : false;
 }
 
+function optionalToolConstraints(
+  value: unknown,
+): string[][] | undefined | false {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length > 64) return false;
+  const groups: string[][] = [];
+  for (const group of value) {
+    const parsed = optionalStrings(group);
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length > 256 ||
+      parsed.some((pattern) => pattern.length > 256)
+    )
+      return false;
+    groups.push(parsed);
+  }
+  return groups;
+}
+
 /**
  * The context the calling session was started with, read back from its own
  * record. `undefined` for a root session; `false` for a record that is not a
@@ -160,6 +174,9 @@ function recordedDelegation(
   const rootAgentSlug = nonEmptyString(record.rootAgentSlug);
   const allowedTools = optionalStrings(record.allowedTools);
   const blockedTools = optionalStrings(record.blockedTools);
+  const toolAllowlistConstraints = optionalToolConstraints(
+    record.toolAllowlistConstraints,
+  );
   if (
     record.mode !== 'isolated-child' ||
     !Number.isInteger(record.depth) ||
@@ -169,7 +186,8 @@ function recordedDelegation(
     !parentAgentSlug ||
     !rootAgentSlug ||
     allowedTools === false ||
-    blockedTools === false
+    blockedTools === false ||
+    toolAllowlistConstraints === false
   )
     return false;
   const parentConversationId = nonEmptyString(record.parentConversationId);
@@ -185,6 +203,7 @@ function recordedDelegation(
     ...(rootConversationId ? { rootConversationId } : {}),
     ...(allowedTools ? { allowedTools } : {}),
     ...(blockedTools ? { blockedTools } : {}),
+    ...(toolAllowlistConstraints ? { toolAllowlistConstraints } : {}),
     ...(record.denyApprovals === true ? { denyApprovals: true } : {}),
   };
 }
@@ -336,12 +355,18 @@ export function createRequestDelegationResolver(
         ),
         provenance: 'caller-derived',
       };
-    return claimed.delegation &&
+    if (
+      claimed.delegation &&
       verifyDelegationContextAttestation(
         claimed.delegation,
         claimed.attestation,
       )
-      ? { context: claimed.delegation, provenance: 'runtime-attested' }
-      : undefined;
+    )
+      return { context: claimed.delegation, provenance: 'runtime-attested' };
+    if (claimed.delegation?.toolAllowlistConstraints?.length)
+      throw new DelegationLineageUnavailableError(
+        'the inherited tool restrictions have no matching runtime attestation.',
+      );
+    return undefined;
   };
 }

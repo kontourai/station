@@ -22,6 +22,36 @@ It does not provide filesystem inspection, create a new skill, or change Project
 configuration by itself. Those require a separately authorized surface; the
 example does not grant one implicitly.
 
+## Help a person set up an engine
+
+With **Guided engine setup** enabled on a personal Station, Station Control's
+Integrations family includes `list_engine_setup` and `open_engine_setup`.
+These are discovery and UI handoff tools. The owner's Agent can inspect the
+bounded setup projection; other principals are refused. Installation and
+credential operations retain their person-only boundaries.
+
+When asked to install, connect or sign in an engine:
+
+1. Read `list_engine_setup` and use the built-in id and `setupPath` it returns.
+2. Call `open_engine_setup` for that id. Check its result. If no client accepted
+   navigation, give the person the returned internal setup link.
+3. Let the person review installation, complete sign-in, and choose **Add Station
+   tools** when the resulting Agent needs them. A saved alias is reused; the pane
+   can repair missing launch arguments without replacing its Agent or history.
+   Let the person return to this chat. Never ask
+   for authorization codes or tokens in ordinary messages, edit Station home
+   files, or run a shell login as a workaround.
+4. Re-read setup and `list_agents` before using the resulting Agent. A recorded
+   handshake or advertised HTTP channel does not establish an authenticated
+   turn or delivery of the Agent's Station tools.
+
+The server runs on the Station computer, which may differ from the device
+holding the chat. The [ACP guide](acp.md#set-up-an-engine-from-chat) describes
+this handoff and saved-connection recovery. If the preview is disabled, offer
+its returned Settings link; an Agent does not enable it for the person.
+With the separate **Station orchestration instructions** preview on, this
+workflow is included only when the Agent is actually offered these tools.
+
 ## Visual replies
 
 Attach `station-control` and select `html_preview` and `html_render` to let an
@@ -71,7 +101,9 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   coordinator's account, not authoritative live status. See [Houston's
   working picture](../user/houston.md#working-picture).
 - `search_sessions` and `rename_session` for finding and naming conversations
-  (see [Searching and renaming conversations](#searching-and-renaming-conversations))
+  (see [Searching and renaming conversations](#searching-and-renaming-conversations)),
+  and `settle_conversation` for settling or reopening one in the person's
+  **Open and Settled inbox** when the person asks
 - `declare_pull_request` for an agent on any engine (Claude Code, Codex, ACP) to
   declare a pull request it opened, by `provider`, `host`, `repository`
   (`owner` and `name`) and `ref`: the identity shape the conversation link
@@ -217,6 +249,13 @@ bound operator caller is not limited to one owner's conversations, as with
 `delete_conversation`, and the `person_title` guard still applies to it. A
 caller that is not bound also stays in its own Session's Project or the global
 space, as dispatch does.
+
+`settle_conversation` takes a `conversationId` and `settled` (`true` settles,
+`false` reopens) and writes the Session owner's own inbox record through the
+person's route, so it needs the **Open and Settled inbox** preview (refused with
+`feature_preview_disabled` otherwise) and a conversation the owner can read
+(another person's reads as not found). An agent settles only when the person
+asks. The person's next message, a question, a failure or a stop reopens it.
 
 ### Dispatch authority
 
@@ -603,8 +642,9 @@ messages have no search index, so discovery scans their existing owner-scoped
 readers. Each call scans metadata for at most 2,000 conversations after Project,
 Agent and read admission filters, and reads at most 32 file-backed conversations
 (including title hits, which still need a readable transcript). Each transcript
-read follows at most 64 Session segments. Indexed native hits remain eligible
-after the metadata scan budget is exhausted. A scan or file-read budget reached,
+read follows at most 64 Session segments. Indexed native hits with no file record remain eligible after the metadata
+scan budget is exhausted. A file record still uses the metadata and transcript
+read budgets even when it also has an indexed hit. A scan or file-read budget reached,
 or a file lineage too long to read, yields `state: partial` with an
 `incompleteSources` entry; the unreadable conversation is skipped. Other reader
 errors report search unavailable. These budgets bound matching and transcript
@@ -1135,9 +1175,11 @@ Delivery depends on the engine:
 - Claude is told to load the tools it names with ToolSearch only when the
   Agent's `tools.mcpLoading` is `on-demand`, which is when Station turns
   Claude's tool search on. Under the harness default, Claude Code decides.
-- The tool-families line appears only when the progressive-tools preview is on
-  and the Session's Station Control is not `bound`: Claude's in-process server
-  and Codex's bound catalog are served without family loading.
+- The tool-families line appears only for a new Codex Session admitted to tool
+  families: the `codex-tool-families` preview is on, Codex is 0.167.0 or later,
+  and its Station Control is on the header-token path. Claude, ACP engines and
+  Codex's bound catalog are served without family loading (see
+  [Admit Codex to tool families](agent-efficiency.md#admit-codex-to-tool-families)).
 
 Known limitations while this is a preview: the delivery check reads the event
 log, so a delivery report that has not yet been stored, or a recovery done by
@@ -1156,9 +1198,11 @@ to Sessions started afterwards.
 
 Use this as an attended Station-engine Agent after configuring a usable Model
 connection and default model in [Connections](connections.md). No engine binding
-is declared, so it uses Station's engine. Only the four listed reads are
-auto-approved; mutations and delegation remain subject to the normal approval
-and authority checks. Start with an existing writable skill and a ready worker.
+is declared, so it uses Station's engine. The example declares delegation in
+`tools.available`. Whether a Session can delegate depends on the caller's
+authority, recorded depth, and inherited tool policy. Only the four listed
+reads are auto-approved. Mutations and delegation still require approval.
+Start with an existing writable skill and a ready worker.
 
 Use the example `agent.json` as a starting point:
 
@@ -1235,20 +1279,16 @@ its Agent, its conversation, and the context that session was started with
 writes into `delegate_task` or `send_message` anyway is ignored. A session already at the depth limit is refused
 before any child starts, on every engine.
 
-A delegated child that calls `delegate_task` or `send_message` is refused
-earlier and at any depth, not only at the last one: the routes behind them
-answer `403` with `delegated_tool_blocked` before the depth limit is read.
-The decision uses the calling session's own recorded context and the built-in
-denials below, so an Agent's `allowedTools` cannot re-allow them, and it applies
-on every engine whose call carries a verified station-control caller (see
-[tool-policy delivery](../conformance/tool-policy-delivery.md)). The
-[orchestration instructions](#orchestration-instructions) never tell a
-delegated child to use either tool.
+A child can use `delegate_task` to start a tracked child in the same
+Project on this Station when its recorded depth and inherited tool policy
+allow it. Station derives the parent and root from the calling Session.
+`send_message` remains blocked for delegated children. See [tool-policy
+delivery](../conformance/tool-policy-delivery.md).
 
 The default policy is `maxDepth` 2, `denyApprovals`, and the built-in
 denials in `BUILTIN_DELEGATION_DENIALS`
 ([`agent.ts`](../../packages/contracts/src/agent.ts)): `send_message`,
-`delegate_task`, `run_job`, and every `add_*`, `create_*`, `update_*`,
+`run_job`, and every `add_*`, `create_*`, `update_*`,
 `delete_*`, `remove_*`, `connect_*` and `disconnect_*` station-control tool.
 
 **Behaviour change.** Before this, `POST /api/orchestration/delegations`
@@ -1257,11 +1297,11 @@ root, including children of Station's own engine and of the default Agents
 (`station`, `claude`, `codex`). A `send_message` child on another engine
 carried whatever context the model wrote, or none. Every such child now gets
 lineage and the default policy. Where Station's pre-tool policy is delivered
-(and, for delegating or messaging further, at the server routes as described
+(and, for dispatching or messaging further, at the server routes as described
 above), the built-in denials prevent a delegated child from:
 
 - calling the matching create, update, delete, add, or remove station-control tools;
-- starting a scheduled job with `run_job`, or delegating or messaging further;
+- starting a scheduled job with `run_job` or messaging further;
 - asking a person for tool approval when `denyApprovals` applies. A call already
   allowed by the applicable policy can still run; otherwise it is refused.
 
@@ -1270,11 +1310,11 @@ Give such work to a top-level conversation instead of a delegated child.
 ### Which requests can name a context
 
 - A station-control tool call with a verified per-session credential gets
-  the derived context.
-- Station's own engine's pooled tool child has no per-session credential. Its
-  context is kept only when Station's runtime attested it.
+  the derived context. That includes Station's own engine, which calls
+  station-control in-process as its session, as in-process Claude does.
 - Any other internal request that is neither verified nor attested starts a
-  root.
+  root. A station-control request with no verified caller is refused before
+  it reaches the route (`station_control_caller_required`).
 - A request from outside this Station's process, such as a peer Station, an
   operator credential, or a paired device, may send a `delegation` body on
   `POST /api/orchestration/delegations`, as on `/chat/delegated`. Its context

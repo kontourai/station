@@ -1,0 +1,9 @@
+{
+  "revision": "c3311b50ea041d8b581c9234f0c30e47666e15c8",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"The manifest only classifies pull-request-head-review.test.ts as a direct child_process importer beside the other real-git review suites; the testing guide and scripts AGENTS.md describe the classification rule, which is unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"The manifest only classifies pull-request-head-review.test.ts as a direct child_process importer beside the other real-git review suites; the testing guide and scripts AGENTS.md describe the classification rule, which is unchanged.","inputs":["scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

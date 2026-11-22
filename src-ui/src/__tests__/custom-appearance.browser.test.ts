@@ -41,9 +41,14 @@ function App() {
   const [open, setOpen] = useState(false);
   showApproval = (value) => flushSync(() => setOpen(value));
   return React.createElement(React.Fragment, null,
-    React.createElement('div', { id: 'probe', 'data-surface': 'sidebar' }, 'Probe'),
+    React.createElement('div', { className: 'main-content' },
+      React.createElement('div', { id: 'probe', 'data-surface': 'sidebar' }, 'Probe'),
+      React.createElement('div', { 'data-surface': 'composer' }, 'Compose')),
     React.createElement('svg', { width: 20, height: 20 },
       React.createElement('path', { id: 'probe-path', d: 'M0 0 L10 10' })),
+    React.createElement('aside', { 'data-region': 'right' },
+      React.createElement('div', { className: 'chat-dock__content-area' },
+        React.createElement('div', { id: 'dock-transcript', 'data-surface': 'transcript' }, 'Conversation'))),
     open && React.createElement(PermissionRequestModal, {
       request: { pluginName: 'demo', permissions: [] },
       onApprove: () => events.push('approve'),
@@ -73,6 +78,7 @@ window.harness = {
     return { text, stripped };
   },
   setActive: (css, palette) => setActiveCustomAppearance(css === null ? null : appearance(css, palette)),
+  setVisual: (visual) => setActiveCustomAppearance({ ...appearance(''), visual }),
   snapshot: () => getCustomAppearanceSnapshot(),
   applyCached: () => applyCachedCustomAppearance(),
   bar: () => {
@@ -137,6 +143,93 @@ describe('custom appearance in Chromium', () => {
   }, 60_000);
   afterAll(async () => {
     await browser?.close();
+  });
+
+  test('typed visual styling reaches its consumers, pauses for approvals, and clears', async () => {
+    await harness('setVisual', { radius: 20, fontSize: 18, panelOpacity: 0.6 });
+    expect(
+      await page.evaluate(
+        () =>
+          getComputedStyle(document.querySelector('[data-surface="composer"]')!)
+            .borderRadius,
+      ),
+    ).toBe('20px');
+    expect(
+      await page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--text-base')
+          .trim(),
+      ),
+    ).toBe('18px');
+    await harness('showApproval', true);
+    expect(
+      await page.evaluate(
+        () =>
+          getComputedStyle(document.querySelector('[data-surface="composer"]')!)
+            .borderRadius,
+      ),
+    ).not.toBe('20px');
+    await harness('showApproval', false);
+    expect(
+      await page.evaluate(
+        () =>
+          getComputedStyle(document.querySelector('[data-surface="composer"]')!)
+            .borderRadius,
+      ),
+    ).toBe('20px');
+    await harness('setActive', null);
+    expect(
+      await page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue('--text-base')
+          .trim(),
+      ),
+    ).not.toBe('18px');
+  });
+
+  test('a typed raster background remains visible in a sibling dock when mobile hides main content', async () => {
+    const image =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jU1sAAAAASUVORK5CYII=';
+    const backdrop = await page.addStyleTag({
+      content: ':root {--k-bg:#101820;--k-panel:#16212c}',
+    });
+    try {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await harness('setVisual', {
+        background: {
+          dataUrl: image,
+          size: 'cover',
+          position: 'center',
+          dim: 0.4,
+        },
+        panelOpacity: 0.7,
+      });
+      await page.locator('.main-content').evaluate((element) => {
+        (element as HTMLElement).style.display = 'none';
+      });
+      expect(await page.locator('#dock-transcript').isVisible()).toBe(true);
+      expect(
+        await page
+          .locator('#dock-transcript')
+          .evaluate((element) => getComputedStyle(element).backgroundImage),
+      ).toContain('data:image/png;base64,');
+      await harness('showApproval', true);
+      expect(
+        await page
+          .locator('#dock-transcript')
+          .evaluate((element) => getComputedStyle(element).backgroundImage),
+      ).toBe('none');
+      await harness('showApproval', false);
+    } finally {
+      await harness('setActive', null);
+      await page.locator('.main-content').evaluate((element) => {
+        (element as HTMLElement).style.display = '';
+      });
+      await page.setViewportSize({ width: 1024, height: 700 });
+      await backdrop.evaluate((element) =>
+        element.parentNode?.removeChild(element),
+      );
+    }
   });
 
   const probe = (property: string) =>
@@ -347,7 +440,8 @@ describe('custom appearance in Chromium', () => {
     expect(report.proposalId).toBe('proposal-1');
     expect(report.mode).toBe('dark');
     expect(report.hooks.find((h) => h.id === 'sidebar')?.matched).toBe(1);
-    expect(report.hooks.find((h) => h.id === 'composer')?.matched).toBe(0);
+    expect(report.hooks.find((h) => h.id === 'composer')?.matched).toBe(1);
+    expect(report.hooks.find((h) => h.id === 'menu')?.matched).toBe(0);
     // The text it made unreadable is reported; a pair it did not touch is not.
     expect(report.contrast).toContainEqual(
       expect.objectContaining({

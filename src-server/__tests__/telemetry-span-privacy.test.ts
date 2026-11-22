@@ -1,92 +1,123 @@
+import { once } from 'node:events';
 import { rm } from 'node:fs/promises';
-import type { ClientRequest, IncomingMessage } from 'node:http';
+import http from 'node:http';
 import { createRequire } from 'node:module';
 import { createStationTempDir } from '@kontourai/station-shared/temp-dir';
-import { HttpInstrumentation } from '@opentelemetry/instrumentation-http';
-import type { NodeSDKConfiguration } from '@opentelemetry/sdk-node';
-import { afterEach, expect, test, vi } from 'vitest';
+import { context, metrics, propagation, trace } from '@opentelemetry/api';
+import { expect, test, vi } from 'vitest';
 
-const captured = vi.hoisted(() => ({
-  options: undefined as Partial<NodeSDKConfiguration> | undefined,
-}));
-let homeDir: string | undefined;
-vi.mock('@opentelemetry/sdk-node', async (original) => {
-  const actual = await original<typeof import('@opentelemetry/sdk-node')>();
-  return {
-    ...actual,
-    NodeSDK: class {
-      constructor(options: Partial<NodeSDKConfiguration>) {
-        captured.options = options;
-      }
-      start() {}
-      async shutdown() {}
-    },
-  };
-});
-
-afterEach(async () => {
-  vi.unstubAllEnvs();
-  vi.resetModules();
-  captured.options = undefined;
-  if (homeDir) await rm(homeDir, { recursive: true, force: true });
-  homeDir = undefined;
-});
-
-test('the installed HTTP span hook removes automation job names from trace fields', async () => {
-  vi.stubEnv('OTEL_EXPORTER_OTLP_ENDPOINT', '');
-  homeDir = await createStationTempDir('scheduler-trace');
-  const telemetry = await import('../telemetry.js');
-  await telemetry.initializeTelemetry({
-    env: { OTEL_EXPORTER_OTLP_ENDPOINT: 'http://127.0.0.1:12345' },
-    homeDir,
-    appConfig: {},
-    log: () => {},
+test('exported HTTP client and server spans omit private scheduler job names and query values', async () => {
+  const homeDir = await createStationTempDir('scheduler-trace');
+  const bodies: string[] = [];
+  const collector = http.createServer(async (request, response) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of request) chunks.push(Buffer.from(chunk));
+    if (request.url === '/v1/traces') {
+      bodies.push(Buffer.concat(chunks).toString('utf8'));
+    }
+    response.writeHead(200, { 'content-type': 'application/json' }).end('{}');
   });
-  const require = createRequire(import.meta.url);
-  const { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } =
-    require('@opentelemetry/sdk-trace-base') as typeof import('@opentelemetry/sdk-trace-base');
-  const exporter = new InMemorySpanExporter();
-  const provider = new BasicTracerProvider({
-    spanProcessors: [new SimpleSpanProcessor(exporter)],
-  });
-  const privatePath = '/scheduler/jobs/private%20job/run?name=private-job';
-  const instrumentation = captured.options?.instrumentations
-    ?.flat()
-    .find(
-      (item): item is HttpInstrumentation =>
-        item instanceof HttpInstrumentation,
+  const receiver = http.createServer((_request, response) => response.end());
+  try {
+    await Promise.all(
+      [collector, receiver].map((server) =>
+        once(server.listen(0, '127.0.0.1'), 'listening'),
+      ),
     );
-  const hook = instrumentation?.getConfig().requestHook;
-  if (!hook) throw new Error('HTTP instrumentation has no request hook');
-  for (const request of [
-    { method: 'POST', url: privatePath } as IncomingMessage,
-    { method: 'POST', path: privatePath } as ClientRequest,
-  ]) {
-    const span = provider.getTracer('test').startSpan('POST');
-    span.setAttributes({
-      'url.path': '/scheduler/jobs/private%20job/run',
-      'url.query': 'name=private-job',
-      'url.full': `http://station.test${privatePath}`,
-      'http.target': privatePath,
-      'http.url': `http://station.test${privatePath}`,
+    const collectorAddress = collector.address();
+    const receiverAddress = receiver.address();
+    if (
+      !collectorAddress ||
+      typeof collectorAddress === 'string' ||
+      !receiverAddress ||
+      typeof receiverAddress === 'string'
+    ) {
+      throw new Error('loopback servers did not bind TCP');
+    }
+    const endpoint = `http://127.0.0.1:${collectorAddress.port}`;
+    vi.stubEnv('STATION_HOME', homeDir);
+    vi.stubEnv('STATION_ROOT', '');
+    vi.stubEnv('OTEL_EXPORTER_OTLP_ENDPOINT', '');
+    vi.stubEnv('OTEL_NODE_RESOURCE_DETECTORS', 'none');
+    vi.stubEnv('OTEL_TRACES_SAMPLER', 'always_on');
+    vi.stubEnv('OTEL_SEMCONV_STABILITY_OPT_IN', 'http/dup');
+    const telemetry = await import('../telemetry.js');
+    const shutdown = new AbortController();
+    try {
+      await telemetry.initializeTelemetry({
+        env: { OTEL_EXPORTER_OTLP_ENDPOINT: endpoint },
+        homeDir,
+        appConfig: {},
+        log: () => {},
+      });
+      const { request: sendRequest }: typeof import('node:http') =
+        createRequire(import.meta.url)('http');
+      for (const path of [
+        '/scheduler/jobs/private%20job/run?name=private-query',
+        '/unrelated/control',
+      ]) {
+        await new Promise<void>((resolve, reject) => {
+          const request = sendRequest(
+            {
+              hostname: '127.0.0.1',
+              port: receiverAddress.port,
+              path,
+              method: 'POST',
+            },
+            (response) => {
+              response.once('error', reject);
+              response.once('end', resolve);
+              response.resume();
+            },
+          );
+          request.once('error', reject);
+          request.end();
+        });
+      }
+      const task = telemetry.configuredTelemetryShutdownTask();
+      if (!task)
+        throw new Error('configured SDK did not register a shutdown task');
+      await task.shutdown(shutdown.signal);
+    } finally {
+      shutdown.abort();
+      await telemetry
+        .configuredTelemetryShutdownTask()
+        ?.shutdown(shutdown.signal);
+    }
+
+    const spans = bodies.flatMap((body) => {
+      const payload = JSON.parse(body) as {
+        resourceSpans: Array<{
+          scopeSpans: Array<{ spans: Array<{ name: string; kind: number }> }>;
+        }>;
+      };
+      return payload.resourceSpans.flatMap(({ scopeSpans }) =>
+        scopeSpans.flatMap((scope) => scope.spans),
+      );
     });
-    hook(span, request);
-    span.end();
+    const schedulerSpans = spans.filter(
+      (span) => span.name === 'POST /scheduler/jobs/:target/run',
+    );
+    expect(
+      schedulerSpans.map((span) => span.kind).sort(),
+      JSON.stringify(spans.map(({ name, kind }) => ({ name, kind }))),
+    ).toEqual([2, 3]);
+    expect(spans).toContainEqual(
+      expect.objectContaining({ name: 'POST /', kind: 3 }),
+    );
+    expect(bodies.join('')).not.toMatch(/private(?:%20| )job|private-query/);
+  } finally {
+    await Promise.all(
+      [receiver, collector].map(
+        (server) =>
+          new Promise<void>((resolve) => server.close(() => resolve())),
+      ),
+    );
+    context.disable();
+    metrics.disable();
+    propagation.disable();
+    trace.disable();
+    vi.unstubAllEnvs();
+    await rm(homeDir, { recursive: true, force: true });
   }
-  expect(exporter.getFinishedSpans()).toHaveLength(2);
-  for (const span of exporter.getFinishedSpans()) {
-    expect(span.name).toBe('POST /scheduler/jobs/:target/run');
-    expect(JSON.stringify(span.attributes)).not.toContain('private');
-  }
-  const unrelated = provider.getTracer('test').startSpan('POST');
-  hook(unrelated, {
-    method: 'POST',
-    path: '/unrelated/private',
-  } as ClientRequest);
-  unrelated.end();
-  expect(exporter.getFinishedSpans()[2].name).toBe('POST /');
-  await provider.shutdown();
-  await telemetry
-    .configuredTelemetryShutdownTask()
-    ?.shutdown(new AbortController().signal);
 });

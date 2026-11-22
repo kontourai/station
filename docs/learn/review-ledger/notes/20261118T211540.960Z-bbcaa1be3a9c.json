@@ -1,0 +1,7 @@
+{
+  "revision": "8ce49812d8eccaf5465b7831039d64ec1b7c8e14",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Followed the Connections links for Add computer, relay and host relationships. The source change documents cancellation of local native engine adoption during shutdown. It adds no device registration, SSH connection or remote activation and changes none of the linked setup steps.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

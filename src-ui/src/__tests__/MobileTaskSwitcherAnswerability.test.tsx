@@ -123,7 +123,7 @@ describe('MobileInboxPanel answerability basis', () => {
         open
         tasks={[]}
         loadError
-        onRetryLoad={retry}
+        refresh={{ run: retry, phase: 'idle', recovering: false }}
         activeChatSessionId={null}
         triggerRef={createRef<HTMLButtonElement>()}
         onClose={vi.fn()}
@@ -208,7 +208,7 @@ describe('MobileInboxPanel lane-move focus', () => {
       const view = render(
         <MobileInboxPanel {...props} tasks={[running, other]} />,
       );
-      const name = 'Moving row, Station';
+      const name = /^Moving row\b/;
       screen.getByRole('button', { name }).focus();
       expect(document.activeElement).toBe(screen.getByRole('button', { name }));
 

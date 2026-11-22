@@ -4,6 +4,11 @@ import {
   denialReason,
   toolNameForDenialMessage,
 } from '../runtime/agents/denial-message.js';
+import {
+  type NativeStationControlRequestRun,
+  openNativeStationControlRequestRun,
+} from '../runtime/mcp/station-control-native-tools.js';
+import { isTrustedNativeStationControlTool } from '../runtime/tools/tool-provenance.js';
 import type { IAgentHooks, ToolCallDenial } from '../runtime/types.js';
 import type {
   VoiceTurnHandle,
@@ -35,6 +40,14 @@ import type {
 import { supportsS2SCorrelatedTurnsV1 } from './s2s-types.js';
 
 type S2SProviderFactory = (config?: any) => IS2SProvider;
+
+/**
+ * #2377 slice D: what a credential-free voice session (a loopback client
+ * that presented no credential) is told. It has no person to act for, so
+ * Station's own tools are left out of its list rather than refused per call.
+ */
+export const VOICE_NO_STATION_TOOLS_NOTE =
+  'This voice session is not signed in, so Station tools are unavailable. If asked to act in Station, say that signing in is needed.\n\n';
 
 const VOICE_PROMPT_PREFIX =
   'You are in voice mode. Be concise — short sentences. Confirm before creating or modifying anything. When you use tools, summarize the result in one or two sentences — never read raw JSON or full tool output aloud.\n\n';
@@ -209,6 +222,11 @@ class VoiceSession {
       reason: VoiceLifecycleReason,
     ) => void,
     private readonly submitTerminalCleanup: SubmitVoiceTerminalCleanup,
+    /**
+     * #2377 slice D: the session's in-process station-control caller, acting
+     * for the person who authenticated the socket. Absent: credential-free.
+     */
+    private readonly stationControl?: NativeStationControlRequestRun,
   ) {
     this.provider = providerFactory();
     const correlatedProvider = supportsS2SCorrelatedTurnsV1(this.provider)
@@ -317,6 +335,8 @@ class VoiceSession {
     if (this.ws.readyState === this.ws.OPEN) {
       this.ws.close(1000, 'Voice session ended');
     }
+    // The person's Station tools end with the session.
+    void this.stationControl?.close();
     const operation = this.stopAdapter();
     this.destroyPromise = operation;
     void operation.catch(() => {
@@ -415,7 +435,9 @@ class VoiceSession {
           });
         } else {
           try {
-            const raw = await tool.execute(event.parameters);
+            const raw = await (this.stationControl
+              ? this.stationControl.run(() => tool.execute(event.parameters))
+              : tool.execute(event.parameters));
             result = typeof raw === 'string' ? raw : JSON.stringify(raw);
           } catch (error) {
             toolUncertain = true;
@@ -748,45 +770,71 @@ export class VoiceSessionService {
 
   createSession(
     ws: WebSocket,
-    config?: Partial<S2SSessionConfig> & { agentSlug?: string },
+    options?: Partial<S2SSessionConfig> & {
+      agentSlug?: string;
+      /**
+       * #2377 slice D: the person who authenticated the socket, the caller of
+       * the session's Station tools. Absent: credential-free, no Station tools.
+       */
+      principalId?: string;
+    },
   ): string {
     const id = randomUUID();
-    const agentSlug = config?.agentSlug ?? this.slug;
+    const { agentSlug: requestedSlug, principalId, ...config } = options ?? {};
+    const agentSlug = requestedSlug ?? this.slug;
 
     const startSession = () => {
       // The authenticated socket can close while first-session bootstrap is
       // still loading tools. Never allocate provider resources for a dead
       // control connection.
       if (ws.readyState !== ws.OPEN) return;
-      const tools = this.opts.agentTools.get(agentSlug) ?? [];
+      const agentTools = this.opts.agentTools.get(agentSlug) ?? [];
+      // #2377 slice D: without a person, Station's own tools are left out.
+      const tools = principalId
+        ? agentTools
+        : agentTools.filter((tool) => !isTrustedNativeStationControlTool(tool));
       const spec = this.opts.agentSpecs.get(agentSlug);
       const hooks = this.opts.agentHooks.get(agentSlug);
       const s2sTools = tools
         .map(toS2STool)
         .filter((tool): tool is S2SToolDefinition => tool !== null);
-      const systemPrompt = VOICE_PROMPT_PREFIX + (spec?.systemPrompt ?? '');
+      const systemPrompt =
+        VOICE_PROMPT_PREFIX +
+        (principalId ? '' : VOICE_NO_STATION_TOOLS_NOTE) +
+        (spec?.systemPrompt ?? '');
+      const stationControl = principalId
+        ? openNativeStationControlRequestRun({ principalId })
+        : undefined;
       const fullConfig: S2SSessionConfig = {
         systemPrompt,
         tools: s2sTools,
         ...config,
       };
 
-      const session = new VoiceSession(
-        id,
-        ws,
-        this.opts.providerFactory,
-        tools,
-        hooks,
-        agentSlug,
-        spec !== undefined,
-        fullConfig,
-        this.opts.voiceTurnRuns,
-        (sessionId, reason) => {
-          void this.destroySession(sessionId, reason).catch(() => undefined);
-        },
-        (key, attempt, onSettled) =>
-          this.terminalCleanup.submit(key, attempt, onSettled),
-      );
+      let session: VoiceSession;
+      try {
+        session = new VoiceSession(
+          id,
+          ws,
+          this.opts.providerFactory,
+          tools,
+          hooks,
+          agentSlug,
+          spec !== undefined,
+          fullConfig,
+          this.opts.voiceTurnRuns,
+          (sessionId, reason) => {
+            void this.destroySession(sessionId, reason).catch(() => undefined);
+          },
+          (key, attempt, onSettled) =>
+            this.terminalCleanup.submit(key, attempt, onSettled),
+          stationControl,
+        );
+      } catch (error) {
+        // The provider factory threw: the person's Station tools end here.
+        void stationControl?.close();
+        throw error;
+      }
       this.sessions.set(id, session);
       observeVoiceMetric(() => voiceOps.add(1, { op: 'ws.connect' }));
 

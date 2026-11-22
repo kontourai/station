@@ -113,6 +113,11 @@ const families: Array<[string, () => Promise<unknown>]> = [
       ),
   ],
   [
+    'plugin update checks',
+    async () =>
+      (await import('../client/plugins')).checkPluginUpdates(BASE, opts),
+  ],
+  [
     'projects (readJsonBody)',
     async () =>
       (await import('../client/projects')).getProject(BASE, 'p', opts),

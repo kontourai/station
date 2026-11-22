@@ -477,6 +477,7 @@ describe('LayoutRenderer component dispatch', () => {
         layout={layout}
         activeTab={layout.tabs[0]}
         activeTabId="main"
+        onLaunchPrompt={vi.fn()}
       />,
     );
 
@@ -703,7 +704,7 @@ describe('LayoutRenderer canLaunchPrompts (#2171)', () => {
     );
   });
 
-  test('absent: the header is not told and the tab receives the host launcher', () => {
+  test('with a launcher: the header and tab can launch prompts', () => {
     const launch = vi.fn();
     render(
       <LayoutRenderer
@@ -713,7 +714,7 @@ describe('LayoutRenderer canLaunchPrompts (#2171)', () => {
         onLaunchPrompt={launch}
       />,
     );
-    expect(headerProps).toEqual([{ canLaunchPrompts: undefined }]);
+    expect(headerProps).toEqual([{ canLaunchPrompts: true }]);
     expect(seen).toEqual([{ onLaunchPrompt: launch }]);
   });
 

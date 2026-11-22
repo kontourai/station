@@ -1,0 +1,7 @@
+{
+  "revision": "98fdc8d5773501eee7ede3273b9741fd02932169",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed against this change: ChatDock adds startSendWaitsForUploads (Start's held first send) threaded to the composer and reuses hasUploadsInFlight; the pendingGoalSend flow is otherwise unchanged. No claim in this document describes those surfaces; prose unchanged.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

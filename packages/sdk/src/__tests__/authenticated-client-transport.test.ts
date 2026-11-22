@@ -1,3 +1,7 @@
+import {
+  STATION_ENVELOPE_HEADER,
+  STATION_ENVELOPE_HEADER_VALUE,
+} from '@kontourai/station-contracts/http';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { _setApiBase } from '../api-core';
 import { fetchAvailableLayouts } from '../api-knowledge';
@@ -14,6 +18,15 @@ import {
 } from '../client/http';
 
 const CREDENTIAL = 'sdk-test-credential-not-for-production';
+
+function stationJson() {
+  return new Response('{}', {
+    headers: {
+      'content-type': 'application/json',
+      [STATION_ENVELOPE_HEADER]: STATION_ENVELOPE_HEADER_VALUE,
+    },
+  });
+}
 
 describe('authenticated client transport', () => {
   afterEach(() => {
@@ -220,7 +233,7 @@ describe('authenticated client transport', () => {
     expect(onUnauthorized).toHaveBeenCalledOnce();
   });
 
-  it('reports every accepted authenticated response so stale connection evidence can clear', async () => {
+  it('reports a Station-owned authenticated success so stale connection evidence can clear', async () => {
     const onAuthenticated = vi.fn();
     setClientCredentialResolver(() => ({
       credential: CREDENTIAL,
@@ -229,7 +242,7 @@ describe('authenticated client transport', () => {
     }));
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response('{}')),
+      vi.fn(async () => stationJson()),
     );
 
     await getJson('https://station.example.test/api/settings');
@@ -281,7 +294,7 @@ describe('authenticated client transport', () => {
     }));
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response('{}')),
+      vi.fn(async () => stationJson()),
     );
 
     await getJson('https://station.example.test/.well-known/station/v1', {
@@ -305,7 +318,7 @@ describe('authenticated client transport', () => {
     }));
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response('{}')),
+      vi.fn(async () => stationJson()),
     );
 
     await mutateJson(
@@ -327,13 +340,65 @@ describe('authenticated client transport', () => {
     }));
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response('{}')),
+      vi.fn(async () => stationJson()),
     );
 
     await getJson('https://elsewhere.example.test/api/settings');
 
     expect(onAuthenticated).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ['headerless', () => new Response(null, { status: 204 })],
+    ['text', () => new Response('fallback')],
+    [
+      'unmarked JSON',
+      () =>
+        new Response('{}', { headers: { 'content-type': 'application/json' } }),
+    ],
+    [
+      'marked text',
+      () => {
+        const response = stationJson();
+        response.headers.set('content-type', 'text/plain');
+        return response;
+      },
+    ],
+    [
+      'same-origin redirect',
+      () =>
+        Object.defineProperties(stationJson(), {
+          url: { value: 'https://station.example.test/api/settings' },
+          redirected: { value: true },
+        }),
+    ],
+    [
+      'foreign final URL',
+      () =>
+        Object.defineProperty(stationJson(), 'url', {
+          value: 'https://elsewhere.example.test/api/settings',
+        }),
+    ],
+  ] as const)(
+    'preserves %s success for the caller without reporting recovery',
+    async (_kind, reply) => {
+      const url = 'https://station.example.test/api/settings';
+      const onAuthenticated = vi.fn();
+      setClientCredentialResolver(() => ({
+        origin: url,
+        credential: CREDENTIAL,
+        onAuthenticated,
+      }));
+      const response = reply();
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => response),
+      );
+
+      expect((await authenticatedFetch(url)).status).toBe(response.status);
+      expect(onAuthenticated).not.toHaveBeenCalled();
+    },
+  );
 
   it('uses a host-owned transport without exposing a bearer to renderer headers', async () => {
     const transport = vi.fn(async () => new Response('{"ok":true}'));
@@ -829,7 +894,7 @@ describe('the response boundary is ordered after the state it reports (#3602 del
     }));
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response('{}')),
+      vi.fn(async () => stationJson()),
     );
 
     let resolved = false;
@@ -916,7 +981,7 @@ describe('the post-response wait for a transition is bounded (#3602 delta review
     }));
     vi.stubGlobal(
       'fetch',
-      vi.fn(async () => new Response('{}')),
+      vi.fn(async () => stationJson()),
     );
 
     await getJson('https://station.example.test/api/settings');

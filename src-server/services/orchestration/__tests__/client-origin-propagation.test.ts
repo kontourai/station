@@ -529,3 +529,53 @@ it('keeps old and untagged starts away from a pending invocation without rewriti
     clientOrigin: origin,
   });
 });
+
+describe('server-owned engine admission classification', () => {
+  it.each([true, false])(
+    'keeps automatic policy separate from interactive attribution (early event: %s)',
+    (early) => {
+      const propagation = new ClientOriginTurnPropagation();
+      const event = {
+        eventId: 'policy-source',
+        provider: 'test',
+        threadId: 'thread-policy',
+        createdAt: '2026-11-06T00:00:00.000Z',
+        method: 'turn.started' as const,
+        turnId: 'turn-policy',
+        dispatchOrigin: 'interactive' as const,
+        resourceAdmissionIntent: 'interactive_user' as const,
+      };
+      propagation.begin(
+        'thread-policy',
+        origin,
+        undefined,
+        undefined,
+        'submission-B',
+        'interactive',
+        undefined,
+        undefined,
+        'queued_background',
+      );
+      const held = early ? propagation.apply(event) : undefined;
+      if (early) expect(held).toBeUndefined();
+      const settled = propagation.settle(
+        'thread-policy',
+        'turn-policy',
+        origin,
+        undefined,
+        undefined,
+        'submission-B',
+        undefined,
+        'interactive',
+        'queued_background',
+      );
+      const attributed = early ? settled : propagation.apply(event);
+      expect(attributed).toMatchObject({
+        method: 'turn.started',
+        clientTurnId: 'submission-B',
+        dispatchOrigin: 'interactive',
+        resourceAdmissionIntent: 'queued_background',
+      });
+    },
+  );
+});

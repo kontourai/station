@@ -7,6 +7,7 @@ import { Hono } from 'hono';
 import { expect, test, vi } from 'vitest';
 import { createBrowserAgentRoutes } from '../../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../../routes/device-agent.js';
+import { createStationControlMcpRoutes } from '../../../routes/mcp/station-control-mcp-route.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import { createStationControlAuthorityGuard } from '../../../security/station-control-authority-guard.js';
 import { createBrowserPrincipalAuthorizer } from '../../../services/browser/browser-agent-authority.js';
@@ -24,8 +25,10 @@ import { bindCodexToolRequest } from '../codex-bound-request.js';
 import { resolveStationControlCallerForRequest } from '../station-control-caller.js';
 import { createCodexBoundToolServer } from '../station-control-in-process.js';
 import {
+  mintStationControlMcpHeaderAuth,
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
+  verifyStationControlMcpToken,
 } from '../station-control-mcp-token.js';
 
 test('a copied request cannot use a Codex tool caller at the browser route', async () => {
@@ -607,7 +610,7 @@ test('the Codex bound channel registers every device tool the orchestration text
  * so a bound-only route (`get_usage`) runs. The header channel's
  * `delegated-custody` caller would be refused there.
  */
-test('the Codex bound catalog reaches the authority guard as a bound caller', async () => {
+test('the Codex bound catalog and header server coexist through rotation and close', async () => {
   const resolveRecord = () => ({
     principal: {
       id: STATION_CONTROL_OPERATOR_PRINCIPAL_ID,
@@ -636,6 +639,17 @@ test('the Codex bound catalog reaches the authority guard as a bound caller', as
       isOperatorPrincipal: (id) => id === STATION_CONTROL_OPERATOR_PRINCIPAL_ID,
     }),
   );
+  app.get('/agents', (c) => {
+    const caller = resolveStationControlCallerForRequest(
+      c.req.raw,
+      resolveRecord,
+    );
+    reached.push({
+      assurance: caller?.assurance,
+      sessionId: caller?.sessionId,
+    });
+    return c.json({ success: true, data: [] });
+  });
   app.get('/api/analytics/usage', (c) => {
     const caller = resolveStationControlCallerForRequest(
       c.req.raw,
@@ -650,6 +664,30 @@ test('the Codex bound catalog reaches the authority guard as a bound caller', as
   const listener = serve({ fetch: app.fetch, hostname: '127.0.0.1', port: 0 });
   if (!listener.listening) await once(listener, 'listening');
   setRuntimeControlApiBase((listener.address() as AddressInfo).port);
+  const header = mintStationControlMcpHeaderAuth(12345, 'bound-catalog-guard');
+  const headerRoutes = createStationControlMcpRoutes({
+    port: (listener.address() as AddressInfo).port,
+    resolveCallerRecord: resolveRecord,
+  });
+  const callHeader = (token: string) =>
+    headerRoutes.request(
+      '/mcp/station-control',
+      {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+          accept: 'application/json, text/event-stream',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'list_agents', arguments: {} },
+        }),
+      },
+      { incoming: { socket: { remoteAddress: '127.0.0.1' } } },
+    );
   const server = await createCodexBoundToolServer({
     sessionId: 'bound-catalog-guard',
     resolveRecord,
@@ -661,6 +699,15 @@ test('the Codex bound catalog reaches the authority guard as a bound caller', as
     },
     isCurrent: () => true,
   });
+  const headerPayload = async (response: Response) => {
+    const data = (await response.text())
+      .split('\n')
+      .find((line) => line.startsWith('data: '));
+    if (!data) throw new Error('Missing MCP response');
+    const message = JSON.parse(data.slice(6));
+    expect(message.result.isError).not.toBe(true);
+    return JSON.parse(message.result.content[0].text);
+  };
   try {
     const result = (await server.call('get_usage', {}, () => true)) as {
       content: { text: string }[];
@@ -671,6 +718,51 @@ test('the Codex bound catalog reaches the authority guard as a bound caller', as
     expect(JSON.parse(result.content[0]!.text)).toMatchObject({
       success: true,
     });
+    const headerResult = await callHeader(header.token);
+    expect(headerResult.status).toBe(200);
+    expect(await headerPayload(headerResult)).toEqual({
+      success: true,
+      data: [],
+    });
+    expect(reached.at(-1)).toEqual({
+      assurance: 'delegated-custody',
+      sessionId: 'bound-catalog-guard',
+    });
+    const rotatedHeader = mintStationControlMcpHeaderAuth(
+      12345,
+      'bound-catalog-guard',
+    );
+    expect((await callHeader(header.token)).status).toBe(401);
+    await server.call('get_usage', {}, () => true);
+    expect(reached.at(-1)?.assurance).toBe('bound');
+    const successor = await createCodexBoundToolServer({
+      sessionId: 'bound-catalog-guard',
+      resolveRecord,
+      includeBrowser: false,
+      includeDevices: false,
+      stationControl: {},
+      dispatch: async () => {
+        throw new Error('unexpected direct dispatch');
+      },
+      isCurrent: () => true,
+    });
+    try {
+      await expect(server.call('get_usage', {}, () => true)).rejects.toThrow();
+      await server.close();
+      await successor.call('get_usage', {}, () => true);
+      expect(reached.at(-1)?.assurance).toBe('bound');
+    } finally {
+      await successor.close();
+    }
+    const survivingHeader = await callHeader(rotatedHeader.token);
+    expect(survivingHeader.status).toBe(200);
+    expect(await headerPayload(survivingHeader)).toEqual({
+      success: true,
+      data: [],
+    });
+    revokeStationControlMcpToken('bound-catalog-guard');
+    expect(verifyStationControlMcpToken(rotatedHeader.token)).toBeUndefined();
+    expect((await callHeader(rotatedHeader.token)).status).toBe(401);
   } finally {
     await server.close();
     setRuntimeControlApiBase(undefined);

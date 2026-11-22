@@ -1,0 +1,13 @@
+{
+  "revision": "4ec99d3ec46ddf29ac5915fa607eceb24b23a821",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Rechecked the catalog scope, destination and preview statements against the final palette wording. The shorter operator disclosure fits the phone layout and leaves selection, source owners and published scope unchanged.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Rechecked the catalog scope, destination and preview statements against the final palette wording. The shorter operator disclosure fits the phone layout and leaves selection, source owners and published scope unchanged.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Rechecked the catalog scope, destination and preview statements against the final palette wording. The shorter operator disclosure fits the phone layout and leaves selection, source owners and published scope unchanged.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]},
+
+    {"path":"docs/user/settings.md","note":"Rechecked the catalog scope, destination and preview statements against the final palette wording. The shorter operator disclosure fits the phone layout and leaves selection, source owners and published scope unchanged.","inputs":["src-ui/src/views/settings/settings-catalog.ts"]}
+  ]
+}

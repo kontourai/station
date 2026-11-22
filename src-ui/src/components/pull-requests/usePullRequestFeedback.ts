@@ -1,6 +1,7 @@
 import type { PullRequestLinkIdentity } from '@kontourai/station-contracts/conversation-pull-request-links';
 import {
   PULL_REQUEST_FEEDBACK_PREVIEW_ID,
+  PULL_REQUEST_HEAD_REVIEW_PREVIEW_ID,
   type PullRequestFeedbackOwner,
   type PullRequestFeedbackView,
   pullRequestFeedbackKey,
@@ -9,8 +10,11 @@ import {
   getConversationPullRequestFeedback,
   getPullRequestFeedbackByPullRequest,
   pullRequestFeedbackOwnerOf,
+  pullRequestHeadReviewRefusal,
   readPullRequestFeedbackCapability,
+  reviewPullRequestHeadAgain,
   sendPullRequestFeedbackAgain,
+  sendPullRequestHeadReviewFindings,
   turnOffPullRequestFeedback,
   writePullRequestFeedback,
 } from '@kontourai/station-sdk/pull-request-feedback';
@@ -39,6 +43,11 @@ const REFRESH_MS = 30_000;
 export type PullRequestFeedbackSwitches = {
   fixFailingChecks: boolean;
   addressReviewComments: boolean;
+  /**
+   * Absent while the head review preview is off: the server then keeps what
+   * the chat stored.
+   */
+  reviewEachHead?: boolean;
 };
 
 /**
@@ -48,9 +57,8 @@ export type PullRequestFeedbackSwitches = {
  */
 export function usePullRequestFeedback(conversationId: string) {
   const scope = useHostRequestAuthorityScope();
-  const preview = useSurfaceVisibilityFlags().has(
-    PULL_REQUEST_FEEDBACK_PREVIEW_ID,
-  );
+  const flags = useSurfaceVisibilityFlags();
+  const preview = flags.has(PULL_REQUEST_FEEDBACK_PREVIEW_ID);
   const capability = useQuery({
     queryKey: ['pull-request-feedback-capability', scope?.apiBase],
     queryFn: () => readPullRequestFeedbackCapability(scope!.apiBase),
@@ -59,6 +67,8 @@ export function usePullRequestFeedback(conversationId: string) {
     retry: false,
   });
   const available = preview && capability.data === true;
+  const headReview =
+    available && flags.has(PULL_REQUEST_HEAD_REVIEW_PREVIEW_ID);
   const feedback = useQuery({
     queryKey: [
       'pull-request-feedback',
@@ -107,14 +117,17 @@ export function usePullRequestFeedback(conversationId: string) {
     } catch (caught) {
       if (!scope.isCurrent()) return false;
       const owner = pullRequestFeedbackOwnerOf(caught);
+      // Display text Station composed for a refused Review again or Send.
+      const refusalDisplayText = pullRequestHeadReviewRefusal(caught);
       if (owner) setConflict({ key, owner });
       else
         setError({
           key,
           text:
-            caught instanceof Error
+            refusalDisplayText ??
+            (caught instanceof Error
               ? userFacingErrorMessage(caught)
-              : 'Pull request feedback could not be changed',
+              : 'Pull request feedback could not be changed'),
         });
       return false;
     } finally {
@@ -124,6 +137,14 @@ export function usePullRequestFeedback(conversationId: string) {
 
   return {
     available,
+    viewerMayChange:
+      available &&
+      scope?.isCurrent() === true &&
+      !feedback.isError &&
+      !feedback.isFetching &&
+      feedback.data?.viewerMayChange === true,
+    /** Station's review of each head is offered (its preview is on). */
+    headReview,
     feedback,
     viewFor: (identity: PullRequestLinkIdentity) =>
       byKey.get(pullRequestFeedbackKey(identity)),
@@ -137,8 +158,12 @@ export function usePullRequestFeedback(conversationId: string) {
     ) =>
       run(identity, () =>
         // The last switch off is turning feedback off: the one path the
-        // Needs-you item's Turn off auto-fix also takes.
-        !move && !settings.fixFailingChecks && !settings.addressReviewComments
+        // Needs-you item's Turn off agent feedback also takes. "Review each new
+        // head" still on keeps the claim.
+        !move &&
+        !settings.fixFailingChecks &&
+        !settings.addressReviewComments &&
+        settings.reviewEachHead !== true
           ? turnOffPullRequestFeedback(
               scope!.apiBase,
               conversationId,
@@ -151,6 +176,24 @@ export function usePullRequestFeedback(conversationId: string) {
               { identity: identityOf(identity), settings, move },
               { requestScope: scope! },
             ),
+      ),
+    reviewAgain: (identity: PullRequestLinkIdentity) =>
+      run(identity, () =>
+        reviewPullRequestHeadAgain(
+          scope!.apiBase,
+          conversationId,
+          identityOf(identity),
+          { requestScope: scope! },
+        ),
+      ),
+    sendFindings: (identity: PullRequestLinkIdentity) =>
+      run(identity, () =>
+        sendPullRequestHeadReviewFindings(
+          scope!.apiBase,
+          conversationId,
+          identityOf(identity),
+          { requestScope: scope! },
+        ),
       ),
     sendAgain: (identity: PullRequestLinkIdentity) =>
       run(identity, () =>

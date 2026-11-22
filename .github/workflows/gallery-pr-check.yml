@@ -90,8 +90,8 @@ name: "PR: Gallery"
 # workflow still reports its contexts on every candidate: making Gallery a
 # required context later would otherwise leave the queue waiting on a check
 # that never arrives. Whoever makes it required must also drop that skip, or
-# the requirement passes vacuously. The classifier and the allowlist ceiling
-# take seconds and keep running there.
+# the requirement passes vacuously. Only the independent allowlist ceiling
+# needs a runner on merge groups.
 #
 # The capture also skips on PR events while a PR is a draft, and for the
 # automation app's same-repository release PR; `ready_for_review` and later
@@ -114,6 +114,7 @@ concurrency:
 jobs:
   classify:
     name: Classify gallery inputs
+    if: github.event_name == 'pull_request_target'
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     outputs:
@@ -267,7 +268,7 @@ jobs:
         run: |
           set -euo pipefail
           bootstrap="$RUNNER_TEMP/install-ci-ubuntu-packages.sh"
-          curl --fail --silent --show-error --connect-timeout 10 --max-time 60 \
+          curl --fail --silent --show-error --connect-timeout 10 --max-time 20 --retry 2 --retry-max-time 40 \
             "https://raw.githubusercontent.com/${BOOTSTRAP_SOURCE_REPOSITORY}/${BOOTSTRAP_SOURCE_SHA}/scripts/install-ci-ubuntu-packages.sh" \
             --output "$bootstrap"
           printf 'Ubuntu bootstrap workflow source: %s@%s\n' "$BOOTSTRAP_SOURCE_REPOSITORY" "$BOOTSTRAP_SOURCE_SHA"

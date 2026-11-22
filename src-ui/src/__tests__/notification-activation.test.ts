@@ -53,7 +53,7 @@ describe('activateNotification (#2587)', () => {
       enveloped({ kind: 'path', path: '/schedule?job=nightly' }),
       d,
     );
-    expect(d.navigate).toHaveBeenCalledWith('/schedule?job=nightly', undefined);
+    expect(d.navigate).toHaveBeenCalledWith('/schedule', { job: 'nightly' });
   });
 
   test('an agent notification with no target opens the calling session', async () => {

@@ -48,7 +48,7 @@ describe('conversation resolution row actions', () => {
       fireEvent.click(action);
       expect(onChange).toHaveBeenCalledOnce();
       expect(document.activeElement).toBe(
-        screen.getByRole('button', { name: 'Review inbox, Station' }),
+        screen.getByRole('button', { name: /^Review inbox\b/ }),
       );
     },
   );
@@ -84,7 +84,7 @@ describe('conversation resolution row actions', () => {
     expect(onChange).toHaveBeenCalledOnce();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(
-      screen.getByRole('button', { name: 'Review inbox, Station' }),
+      screen.getByRole('button', { name: /^Review inbox\b/ }),
     ).toBeTruthy();
   });
 });
