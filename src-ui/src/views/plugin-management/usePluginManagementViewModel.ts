@@ -841,7 +841,7 @@ export function usePluginManagementViewModel() {
           type: 'success',
           text: unloading
             ? kept
-              ? `Removed ${name}, still unloading. Data and code retained.`
+              ? `Removed ${name}, still unloading. Data and code kept.`
               : `Removed ${name}. It finishes unloading in the background.`
             : kept
               ? `Removed ${name}. Its data and code are retained.`

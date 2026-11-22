@@ -1520,7 +1520,7 @@ describe('update and remove saved without being applied', () => {
     [
       'both',
       { ...SAVED, success: false, lifecycle: { reclamation: 'not-proven' } },
-      'Removed marker-d, still unloading. Data and code retained.',
+      'Removed marker-d, still unloading. Data and code kept.',
     ],
   ])(
     'at phone width a removal (%s) is announced by a short toast and not by the inline message',
