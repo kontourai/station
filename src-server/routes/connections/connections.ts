@@ -90,6 +90,9 @@ export function createConnectionRoutes(
   } = {},
 ) {
   const app = new Hono();
+  const validateWrite = validate(connectionSchema, {
+    refusal: connectionAddressRefusal,
+  });
 
   const mutate = <T>(operation: () => Promise<T>) =>
     captureConfigurationMutation(
@@ -235,64 +238,56 @@ export function createConnectionRoutes(
     }
   });
 
-  app.post(
-    '/',
-    validate(connectionSchema, { refusal: connectionAddressRefusal }),
-    async (c) => {
-      try {
-        const body = getBody(c) as ConnectionConfig;
-        const mutation = await saveConnection(
-          restoreConnectionSecrets({
-            ...body,
-            id: body.id || randomUUID(),
-          }),
-          { createOnly: true },
-        );
-        return c.json(
-          {
-            success: true,
-            data: redactConnectionSecrets(mutation.value),
-            ...configurationActivationPayload(mutation.activation),
-          },
-          configurationMutationStatus(mutation.activation, 201),
-        );
-      } catch (error: unknown) {
-        if (isManagedEngineRefusal(error))
-          return c.json(managedEngineRefusalBody(error), 403);
-        return c.json(
-          saveErrorPayload(error),
-          error instanceof ConnectionAlreadyExistsError ? 409 : 400,
-        );
-      }
-    },
-  );
+  app.post('/', validateWrite, async (c) => {
+    try {
+      const body = getBody(c) as ConnectionConfig;
+      const mutation = await saveConnection(
+        restoreConnectionSecrets({
+          ...body,
+          id: body.id || randomUUID(),
+        }),
+        { createOnly: true },
+      );
+      return c.json(
+        {
+          success: true,
+          data: redactConnectionSecrets(mutation.value),
+          ...configurationActivationPayload(mutation.activation),
+        },
+        configurationMutationStatus(mutation.activation, 201),
+      );
+    } catch (error: unknown) {
+      if (isManagedEngineRefusal(error))
+        return c.json(managedEngineRefusalBody(error), 403);
+      return c.json(
+        saveErrorPayload(error),
+        error instanceof ConnectionAlreadyExistsError ? 409 : 400,
+      );
+    }
+  });
 
-  app.put(
-    '/:id',
-    validate(connectionSchema, { refusal: connectionAddressRefusal }),
-    async (c) => {
-      try {
-        const body = getBody(c) as ConnectionConfig;
-        const id = param(c, 'id');
-        const existing = await connectionService.getConnection(id);
-        const mutation = await saveConnection(
-          restoreConnectionSecrets({ ...body, id }, existing),
-        );
-        return c.json(
-          {
-            success: true,
-            data: redactConnectionSecrets(mutation.value),
-            ...configurationActivationPayload(mutation.activation),
-          },
-          configurationMutationStatus(mutation.activation, 200),
-        );
-      } catch (error: unknown) {
-        if (isManagedEngineRefusal(error))
-          return c.json(managedEngineRefusalBody(error), 403);
-        return c.json(saveErrorPayload(error), 400);
-      }
-    },
-  );
+  app.put('/:id', validateWrite, async (c) => {
+    try {
+      const body = getBody(c) as ConnectionConfig;
+      const id = param(c, 'id');
+      const existing = await connectionService.getConnection(id);
+      const mutation = await saveConnection(
+        restoreConnectionSecrets({ ...body, id }, existing),
+      );
+      return c.json(
+        {
+          success: true,
+          data: redactConnectionSecrets(mutation.value),
+          ...configurationActivationPayload(mutation.activation),
+        },
+        configurationMutationStatus(mutation.activation, 200),
+      );
+    } catch (error: unknown) {
+      if (isManagedEngineRefusal(error))
+        return c.json(managedEngineRefusalBody(error), 403);
+      return c.json(saveErrorPayload(error), 400);
+    }
+  });
 
   app.delete('/:id', async (c) => {
     try {
