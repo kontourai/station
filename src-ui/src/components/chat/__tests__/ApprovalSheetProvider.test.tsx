@@ -522,13 +522,13 @@ describe('the conversation approval sheet', () => {
     });
 
     test.each([
-      ['Deny', bashAsk, 'deny'],
-      ['Allow once', bashAsk, 'once'],
-      [PREFIX, bashAsk, 'trust-rule'],
-      [WHOLE, bashAsk, 'trust'],
-      [BROWSER_TOOL, browserCall, 'trust'],
-      [BROWSER_SERVER, browserCall, 'trust-server'],
-    ] as const)('"%s" sends %s', async (label, make, action) => {
+      ['Deny', 'deny', bashAsk],
+      ['Allow once', 'once', bashAsk],
+      [PREFIX, 'trust-rule', bashAsk],
+      [WHOLE, 'trust', bashAsk],
+      [BROWSER_TOOL, 'trust', browserCall],
+      [BROWSER_SERVER, 'trust-server', browserCall],
+    ] as const)('"%s" sends %s', async (label, action, make) => {
       const pending = make();
       const approve = vi.fn(async () => 'answered' as const);
       render(
