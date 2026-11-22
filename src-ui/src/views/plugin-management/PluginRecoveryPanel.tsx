@@ -227,7 +227,7 @@ export function PluginRecoveryPanel({
               ? 'This plugin is still reported as activating. Refresh status to check again.'
               : 'Station is activating this plugin now. Its workspace panes and actions appear once it is ready.'
             : pending
-              ? 'This plugin is installed but not active: its activation did not finish, and Station does not retry it on its own. Its workspace panes and actions stay unavailable until you recover it.'
+              ? 'Installed but not active: its activation did not finish, and Station does not retry it. Its panes and actions stay off until you recover it.'
               : 'Station cannot verify this installation. Refresh its status before using it.'}
         </p>
         {!activating && (

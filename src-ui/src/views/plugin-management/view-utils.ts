@@ -317,7 +317,7 @@ export function consentFailureMessage(
   pending: Array<{ tier: string }>,
 ) {
   if (pending.some((permission) => permission.tier === 'trusted')) {
-    return `${pluginName} is active, but its server features stay off until you approve its trusted permissions. Open Plugins, select it, and review its request under Requested and not granted.`;
+    return `${pluginName} is active, but its server features stay off until you approve its trusted permissions. Review its request under Plugins.`;
   }
 
   return `${pluginName} was installed, but required permissions were not approved.`;
