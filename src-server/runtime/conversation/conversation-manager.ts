@@ -8,11 +8,11 @@ import {
   CONVERSATION_REPORTED_COST_UNITS_MAX,
   type ConversationEngineUsage,
 } from '@kontourai/station-contracts/runtime';
-import {
-  type EngineUsageAggregate,
-  isValidContextObservation,
-  type SessionUsageAggregate,
-} from '@kontourai/station-shared/usage-fold';
+import { isValidContextObservation } from '@kontourai/station-shared/usage-fold';
+import type {
+  EngineUsageAggregate,
+  LineageUsageAggregate,
+} from '@kontourai/station-shared/usage-lineage-fold';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
@@ -44,7 +44,8 @@ interface UserMessage {
 }
 
 /**
- * Fold an orchestration `SessionUsageAggregate` (archive#1299) into the
+ * Fold an orchestration usage aggregate (archive#1299; a conversation's
+ * `LineageUsageAggregate`, #5389) into the
  * shape `buildConversationStatsView` expects.
  *
  * Field-for-field pass-through, deliberately: whatever the engine did not
@@ -56,7 +57,7 @@ interface UserMessage {
  * the provider's own `reportedCostUsd` verbatim when there is one.
  */
 function usageAggregateToConversationStats(
-  aggregate: SessionUsageAggregate,
+  aggregate: LineageUsageAggregate,
 ): ConversationStats {
   return {
     inputTokens: aggregate.inputTokens,
@@ -100,7 +101,7 @@ function engineUsageForWire({
 }
 
 /** True when a folded aggregate carries any real signal worth surfacing. */
-function hasUsageSignal(aggregate: SessionUsageAggregate): boolean {
+function hasUsageSignal(aggregate: LineageUsageAggregate): boolean {
   return (
     aggregate.turns > 0 ||
     aggregate.toolCalls > 0 ||
@@ -214,7 +215,7 @@ export async function getConversationStats(
    * on a memory-store miss. Returns `undefined` when there is nothing to
    * fold (no reader wired, or the session has no events at all).
    */
-  readSessionUsage?: (threadId: string) => SessionUsageAggregate | undefined,
+  readSessionUsage?: (threadId: string) => LineageUsageAggregate | undefined,
   /**
    * archive#1299 item 3a: resolves a model's real context-window size (e.g.
    * from the launchable-model-inventory's cached `effectiveContextTokens`)

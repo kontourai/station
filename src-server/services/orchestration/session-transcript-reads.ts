@@ -13,13 +13,16 @@ import type {
   SessionUsageAggregate,
 } from '@kontourai/station-shared/usage-fold';
 import {
-  foldLineageUsageEvents,
   foldUsageEvents,
   foldUsageObservationProjection,
   providerCostScope,
   providerReportsContextOccupancyOnly,
   providerUsageScope,
 } from '@kontourai/station-shared/usage-fold';
+import {
+  foldLineageUsageEvents,
+  type LineageUsageAggregate,
+} from '@kontourai/station-shared/usage-lineage-fold';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
 import {
   CatalogUsagePricingSnapshotReader,
@@ -262,7 +265,7 @@ export class SessionTranscriptReads {
   readConversationUsage(
     threadIds: readonly string[],
     authority: SessionReadScope,
-  ): SessionUsageAggregate {
+  ): LineageUsageAggregate {
     return foldLineageUsageEvents(
       threadIds
         .filter((threadId) => this.deps.canReadSession(threadId, authority))
