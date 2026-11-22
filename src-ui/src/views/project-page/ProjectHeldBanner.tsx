@@ -1,14 +1,12 @@
 import type { ProjectLifecycle } from '@kontourai/station-contracts/project-lifecycle';
 import { useProjectLifecycleMutation } from '@kontourai/station-sdk';
 import { Button } from '../../components/Button';
-import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import '../project-settings/ProjectLifecycleSection.css';
 
 /**
  * #5069: a paused or archived Project says so at the top of its page, with
- * the one action that lifts the hold. It belongs to the
- * `project-pause-archive` preview: with that preview off it stays hidden.
+ * the one action that lifts the hold.
  */
 export function ProjectHeldBanner({
   slug,
@@ -18,10 +16,7 @@ export function ProjectHeldBanner({
   lifecycle: ProjectLifecycle | undefined;
 }) {
   const mutation = useProjectLifecycleMutation(slug);
-  const pauseArchiveOn = useSurfaceVisibilityFlags().has(
-    'project-pause-archive',
-  );
-  if (!lifecycle || !pauseArchiveOn) return null;
+  if (!lifecycle) return null;
   const paused = lifecycle.state === 'paused';
   return (
     <div className="project-paused-banner" role="status">

@@ -1,7 +1,0 @@
-{
-  "revision": "1c30ac865f25326abcb4d568f790792ff5aec636",
-
-  "notes": [
-    {"path":"docs/guides/distribution-profiles.md","note":"Added one sentence: Add Layout pickers list Session Board only with a Builder run; matches mergeAvailableProjectLayouts and its tests.","inputs":["docs/guides/distribution-profiles.md"]}
-  ]
-}

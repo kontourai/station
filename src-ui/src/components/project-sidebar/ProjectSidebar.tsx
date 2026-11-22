@@ -34,7 +34,6 @@ import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
-import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { FOCUSABLE_SELECTOR, wrapTabFocus } from '../../utils/focusable';
 import {
@@ -168,14 +167,9 @@ function ProjectSidebarImpl() {
     () => projects.map((project) => project.slug),
     [projects],
   );
-  // Archiving belongs to the `project-pause-archive` preview. With it off the
-  // list shows every Project, so an archived one is never hidden behind a
-  // toggle that is not offered.
-  const archiveOn = useSurfaceVisibilityFlags().has('project-pause-archive');
-  const archivedCount = archiveOn
-    ? projects.filter((project) => project.lifecycle?.state === 'archived')
-        .length
-    : 0;
+  const archivedCount = projects.filter(
+    (project) => project.lifecycle?.state === 'archived',
+  ).length;
   const [showArchived, setShowArchived] = useState(false);
   // archive#3315: server-owned order. The list arrives pre-sorted by the
   // persisted positions; a commit sends the full desired slug order back.
@@ -449,7 +443,6 @@ function ProjectSidebarImpl() {
               // or the person shows archived ones. The row keeps its index,
               // so a reorder still sends the whole order.
               if (
-                archiveOn &&
                 project.lifecycle?.state === 'archived' &&
                 !isActive &&
                 !showArchived

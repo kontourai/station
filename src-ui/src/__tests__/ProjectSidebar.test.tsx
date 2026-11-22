@@ -451,33 +451,25 @@ describe('ProjectSidebar Boards section mounts (#2062)', () => {
   });
 });
 
-describe('ProjectSidebar archived projects follow the project-pause-archive preview', () => {
-  const archivedProject = {
-    id: 'p2',
-    slug: 'ferry',
-    name: 'Ferry',
-    lifecycle: { state: 'archived', changedAt: '2026-11-16T09:00:00Z' },
-  } as (typeof projects)[number];
-
-  function seed() {
+// An archived Project stays archived on the server whatever the
+// `project-pause-archive` preview says (its chats refuse turns, its schedules
+// wait); the preview gates only starting a hold. So the sidebar keeps the
+// "Archived (n)" toggle that reaches it with the preview off as well as on.
+describe.each([
+  ['off', []],
+  ['on', [{ id: 'project-pause-archive', enabled: true }]],
+])('ProjectSidebar archived projects with the pause-and-archive preview %s', (_label, previews) => {
+  test('an archived Project waits behind the Archived toggle, which reveals it', () => {
     resetState();
-    projects.push(
-      { id: 'p1', slug: 'station', name: 'Station' },
-      archivedProject,
-    );
-  }
-
-  test('with the preview off there is no Archived toggle and no project is hidden', () => {
-    seed();
+    featurePreviews.push(...previews);
+    projects.push({ id: 'p1', slug: 'station', name: 'Station' }, {
+      id: 'p2',
+      slug: 'ferry',
+      name: 'Ferry',
+      lifecycle: { state: 'archived', changedAt: '2026-11-16T09:00:00Z' },
+    } as (typeof projects)[number]);
     renderSidebar(<ProjectSidebar />);
-    expect(screen.queryByText(/^Archived \(/)).toBeNull();
-    expect(screen.getByRole('button', { name: 'Ferry' })).toBeTruthy();
-  });
-
-  test('with the preview on the toggle appears and the archived project waits behind it', () => {
-    seed();
-    featurePreviews.push({ id: 'project-pause-archive', enabled: true });
-    renderSidebar(<ProjectSidebar />);
+    expect(screen.getByRole('button', { name: 'Station' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Ferry' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Archived (1)' }));
     expect(screen.getByRole('button', { name: 'Ferry' })).toBeTruthy();

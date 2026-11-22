@@ -19,7 +19,6 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 const sdkMocks = vi.hoisted(() => ({
   available: [] as unknown[],
-  hasBuilderRun: false,
   projectLayouts: [] as unknown[],
   mutateAsync: vi.fn(),
   removeMutate: vi.fn(),
@@ -70,9 +69,6 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
       refetch: sdkMocks.refetch,
     };
   },
-  useBoardAvailabilityQuery: () => ({
-    data: { hasBuilderRun: sdkMocks.hasBuilderRun },
-  }),
   useDeleteProjectLayoutMutation: (
     _slug: string,
     options?: typeof sdkMocks.removeOptions,
@@ -216,7 +212,6 @@ beforeEach(() => {
     }),
   });
   sdkMocks.available = [eligibleLayout];
-  sdkMocks.hasBuilderRun = false;
   sdkMocks.projectLayouts = [];
   sdkMocks.mutateAsync.mockReset();
   sdkMocks.mutateAsync.mockResolvedValue(undefined);
@@ -696,79 +691,6 @@ describe('ProjectAddLayoutModal', () => {
       'station:open-connections-modal',
       openConnections,
     );
-  });
-});
-
-const sessionBoardLayout = {
-  ...eligibleLayout,
-  id: 'builtin:session-board',
-  name: 'Session Board',
-  slug: 'session-board',
-  type: 'session-board',
-  lifecycle: {
-    itemId: 'builtin:session-board',
-    state: 'installed' as const,
-    source: 'builtin',
-  },
-};
-
-// The Session Board opens only where a Builder run exists; offering it
-// anywhere else lands on "Layout not found".
-describe('Session Board in the Add Layout catalogue', () => {
-  beforeEach(() => {
-    sdkMocks.available = [eligibleLayout, sessionBoardLayout];
-  });
-
-  test('the Settings picker omits it without a Builder run', () => {
-    render(<LayoutsSection slug="demo" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Add Layout' }));
-    expect(screen.getByRole('button', { name: /Coding/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /Session Board/ })).toBeNull();
-  });
-
-  test('the Settings picker offers it with a Builder run', () => {
-    sdkMocks.hasBuilderRun = true;
-    render(<LayoutsSection slug="demo" />);
-    fireEvent.click(screen.getByRole('button', { name: 'Add Layout' }));
-    expect(screen.getByRole('button', { name: /Session Board/ })).toBeTruthy();
-  });
-
-  test('the Project Page picker follows the same fact', () => {
-    const { rerender } = render(
-      <ProjectAddLayoutModal
-        show
-        available={[eligibleLayout, sessionBoardLayout]}
-        adding={null}
-        loading={false}
-        catalogError={null}
-        onClose={vi.fn()}
-        onRetry={vi.fn()}
-        onAddLayout={vi.fn()}
-      />,
-    );
-    expect(screen.queryByRole('button', { name: /Session Board/ })).toBeNull();
-    rerender(
-      <ProjectAddLayoutModal
-        show
-        boardAvailable
-        available={[eligibleLayout, sessionBoardLayout]}
-        adding={null}
-        loading={false}
-        catalogError={null}
-        onClose={vi.fn()}
-        onRetry={vi.fn()}
-        onAddLayout={vi.fn()}
-      />,
-    );
-    expect(screen.getByRole('button', { name: /Session Board/ })).toBeTruthy();
-  });
-
-  test('the new-Project starter, which has no Project, never offers it', () => {
-    expect(
-      mergeAvailableProjectLayouts([eligibleLayout, sessionBoardLayout]).map(
-        (item) => item.slug,
-      ),
-    ).toEqual(['coding']);
   });
 });
 

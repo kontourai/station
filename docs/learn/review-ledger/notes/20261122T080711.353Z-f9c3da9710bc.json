@@ -1,7 +1,0 @@
-{
-  "revision": "1c30ac865f25326abcb4d568f790792ff5aec636",
-
-  "notes": [
-    {"path":"docs/guides/knowledge.md","note":"Test-only change: added preview-off cases and one SDK mock export; cited claims about this test file are unaffected.","inputs":["src-ui/src/__tests__/ProjectSettingsView.test.tsx"]}
-  ]
-}
