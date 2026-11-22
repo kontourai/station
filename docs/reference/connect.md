@@ -724,8 +724,9 @@ created it. Use a reachable HTTPS endpoint for that scan flow. Browser camera
 and mixed-content restrictions still apply. The
 QR contains that offer only—never a bearer credential. A 10-character manual
 code plus the Station address is available when camera access is unavailable.
-Where the browser has no camera, or no camera API outside a secure context, the
-pairing dialog opens on that code entry and does not offer the scanner.
+Where the browser has no camera API (outside a secure context), the pairing
+dialog opens on that code entry and does not offer the scanner; where a capture
+attempt finds no camera, it switches to code entry without an error.
 
 For another browser, set **Browser app address** to a reachable Station web
 address and choose **Copy browser link**. That address must serve the web UI
@@ -1320,12 +1321,14 @@ not accepted. Camera access requires a secure context (HTTPS or localhost); the
 connection modal always exposes the accessible manual-code fallback.
 
 With `onUnavailable`, a browser with no camera is not shown an error: no camera
-API, an empty video device list, or a capture refusal that means no camera
-(`NotFoundError`, `NotSupportedError`, `OverconstrainedError`) calls
-`onUnavailable` instead. A camera that exists but is refused or busy still
+API, or a capture refusal that means no camera (`NotFoundError`,
+`NotSupportedError`, `OverconstrainedError`), calls `onUnavailable` instead.
+The device list is not consulted, because before a grant some engines list no
+camera even when one exists. A camera that exists but is refused or busy still
 shows the error, with **Enter the pairing code manually** when `onManualEntry`
-is set. `JoinDevicePairingPanel` uses this to drop the scanner and open on code
-entry, with the cursor in the first empty field.
+is set. `JoinDevicePairingPanel` opens on code entry without mounting the
+scanner when there is no camera API, and drops the scanner when capture reports
+no camera; either way the cursor goes to the first empty field.
 
 **props**
 
