@@ -92,6 +92,7 @@ import {
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   PENDING_TURN_INTERRUPT_TTL_MS,
+  SESSION_CONFIGURATION_REPLACED_CODE,
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { projectEffortApplies } from '@kontourai/station-contracts/project';
@@ -1095,6 +1096,24 @@ class ConversationSeedTurnRefusedError extends SendTurnRefusedError {
 }
 
 /**
+ * A turn on a Session whose launch configuration (its Agent, tool servers or
+ * engine connection) was replaced, refused before anything reaches the
+ * engine, with what the person can do.
+ */
+export class PolicyReplacedSessionRefusedError extends SendTurnRefusedError {
+  readonly code = SESSION_CONFIGURATION_REPLACED_CODE;
+  constructor(reason: 'busy' | 'successor') {
+    super(
+      reason === 'busy'
+        ? "This agent's settings changed while the chat was still working. That work can no longer use tools. When it finishes, send your message again: the chat continues this conversation with the new settings."
+        : "This agent's settings changed and this chat's engine can't pick up where it left off. Send your message again: the chat continues this conversation in a new session with the new settings.",
+      reason === 'busy' ? 'busy' : 'conflict',
+    );
+    this.name = 'PolicyReplacedSessionRefusedError';
+  }
+}
+
+/**
  * A `sendTurn` refused because the session's folded lifecycle state is
  * terminal (`completed`). This used to be a bare
  * `Error('Session state completed is terminal')` — an internal lifecycle
@@ -1386,6 +1405,12 @@ interface OrchestrationServiceOptions {
    * which case `startSession` input reaches the adapter exactly as before.
    */
   coordinatorGenerationForSession?: (threadId: string) => number;
+  /**
+   * Whether an external engine Session's own Agent definition changed after
+   * its pre-tool policy was bound. Such a Session refuses every tool call and
+   * cannot re-bind, so the conversation's next turn starts a successor.
+   */
+  preToolPolicyReplaced?: (threadId: string) => Promise<boolean>;
   /** #3628: the `coordinator-session` preview; absent reads as off. */
   coordinatorEnabled?: () => boolean;
   resolveSessionAgent?: (
@@ -3675,6 +3700,17 @@ export class OrchestrationService {
       perTurnModelOverride: (provider) =>
         options.adapterRegistry.get(provider)?.metadata.modelLaunch
           ?.overridePerTurn !== false,
+      ...(options.preToolPolicyReplaced
+        ? {
+            // A replaced Session whose engine can restart in place is parked
+            // by the turn's own dispatch instead (`policyRelaunch`); only one
+            // that cannot resume needs a successor.
+            needsPolicySuccessor: async (threadId: string) =>
+              (await this.policyReplacement(threadId)) === 'successor',
+            retireReplacedSession: (threadId: string) =>
+              this.retirePolicyReplacedEngine(threadId),
+          }
+        : {}),
       needsCoordinatorToolsSuccessor: (conversationId, detail) => {
         const store = options.eventStore;
         const provider = detail.session.provider;
@@ -4719,6 +4755,83 @@ export class OrchestrationService {
    * reattach never enter this path and stay best-effort). Starts without a
    * server-owned agent slug remain genuinely agent-less.
    */
+  /**
+   * The resolved Agent definition a start of this input would launch with,
+   * from the same resolver every start uses, read again now. The runtime
+   * compares it with a running external Session's launch to tell whether
+   * that Session's configuration was replaced.
+   */
+  async resolveLaunchAgent(
+    input: ProviderSessionStartInput,
+  ): Promise<ProviderSessionStartInput['agent']> {
+    const resolver = this.options.resolveSessionAgent;
+    if (!resolver) return input.agent;
+    // The resolver reads the Agent from the metadata slug. A start that named
+    // its agent only through `input.agent` would otherwise resolve to no
+    // definition and bind as unbound, refused as replaced on every restart.
+    const slug = input.agent?.slug;
+    const metadata =
+      slug && typeof input.metadata?.agentSlug !== 'string'
+        ? { ...input.metadata, agentSlug: slug }
+        : input.metadata;
+    return (await resolver({ ...input, metadata, agent: undefined })).agent;
+  }
+
+  /**
+   * What a turn on this Session must do when what its engine was launched
+   * with was replaced:
+   * - `restart`: at rest with a resume cursor; park it and restart in place.
+   * - `successor`: at rest but cannot resume; a successor takes the turn and
+   *   this engine is retired.
+   * - `busy`: still running work started under the old configuration (an
+   *   active turn, child or engine work, an open request). Its tools are
+   *   refused, so that work ends; the turn is refused until it does, so the
+   *   conversation never has two engines and keeps its native context.
+   */
+  private async policyReplacement(
+    threadId: string,
+  ): Promise<'none' | 'restart' | 'successor' | 'busy'> {
+    if ((await this.options.preToolPolicyReplaced?.(threadId)) !== true)
+      return 'none';
+    // No live engine (parked, exited, never attached here): whatever starts
+    // next binds the current configuration.
+    const status = this.sessionReadModel.get(threadId)?.status;
+    if (
+      !this.sessionAdapters.has(threadId) ||
+      status === 'closed' ||
+      status === 'dead'
+    )
+      return 'none';
+    const now = Date.now();
+    if (!this.isParkableIdleSession(threadId, now, 0, true, true))
+      return 'busy';
+    return this.isParkableIdleSession(threadId, now, 0, false, true)
+      ? 'restart'
+      : 'successor';
+  }
+
+  /**
+   * Stops the engine of a Session a policy successor replaced, the way an
+   * idle engine is parked: its exit is absorbed, so the conversation records
+   * no failure. Only a Session whose launch was replaced is stopped. A
+   * Session still running work (a turn, engine work, an open request) is
+   * not: parking refuses it and this returns without stopping anything, so
+   * that engine stays resident, its tools refused, until the idle sweep parks
+   * it (never, with idle parking turned off).
+   */
+  private async retirePolicyReplacedEngine(threadId: string): Promise<void> {
+    const adapter = this.sessionAdapters.get(threadId);
+    if (!adapter) return;
+    if ((await this.options.preToolPolicyReplaced?.(threadId)) !== true) return;
+    try {
+      await this.parkIdleSession(threadId, adapter, Date.now(), 0, undefined, {
+        resumable: false,
+      });
+    } catch (error) {
+      if (!(error instanceof SessionLifecycleClaimRefusedError)) throw error;
+    }
+  }
+
   private async resolveSessionAgentForStart(
     input: ProviderSessionStartInput,
     admission?: ForegroundInvocationAdmission,
@@ -10698,12 +10811,29 @@ export class OrchestrationService {
               // place, from its resume cursor, at the recorded posture. A
               // session parking refuses (open request, running child work)
               // keeps its engine, and the adapter reports the refusal.
+              // Likewise an engine whose launch configuration was replaced
+              // (its own Agent, tool servers or connection changed): it
+              // refuses every tool, and a restart in place binds the current
+              // configuration on the same native conversation.
+              const replacement = await this.policyReplacement(
+                turnInput.threadId,
+              );
+              if (replacement === 'busy' || replacement === 'successor')
+                throw new PolicyReplacedSessionRefusedError(replacement);
+              const policyRelaunch = replacement === 'restart';
               if (
-                adapter.turnNeedsEngineRelaunch?.(
+                (policyRelaunch ||
+                  adapter.turnNeedsEngineRelaunch?.(
+                    turnInput.threadId,
+                    turnInput.modelOptions,
+                  )) &&
+                this.isParkableIdleSession(
                   turnInput.threadId,
-                  turnInput.modelOptions,
-                ) &&
-                this.isParkableIdleSession(turnInput.threadId, Date.now(), 0)
+                  Date.now(),
+                  0,
+                  false,
+                  policyRelaunch,
+                )
               ) {
                 try {
                   await this.parkIdleSession(
@@ -10711,6 +10841,8 @@ export class OrchestrationService {
                     adapter,
                     Date.now(),
                     0,
+                    undefined,
+                    policyRelaunch ? { freshAtRest: true } : undefined,
                   );
                 } catch (error) {
                   // A turn or transition holds the session: the send goes on
@@ -10718,7 +10850,9 @@ export class OrchestrationService {
                   if (!(error instanceof SessionLifecycleClaimRefusedError))
                     throw error;
                   this.options.logger.warn(
-                    'Engine was not relaunched for full access',
+                    policyRelaunch
+                      ? 'Engine was not relaunched under the current configuration'
+                      : 'Engine was not relaunched for full access',
                     {
                       threadId: turnInput.threadId,
                       error: errorMessage(error),
@@ -17437,6 +17571,13 @@ export class OrchestrationService {
     threadId: string,
     now: number,
     parkAfterMs: number,
+    /** Retiring, not parking: no restart follows, so no cursor is needed. */
+    retiring = false,
+    /**
+     * A Session that has not run a turn yet (`queued`) also counts as at
+     * rest: nothing it does can be lost by a restart.
+     */
+    freshAtRest = false,
   ): boolean {
     const owned = this.readOwnedWork(threadId);
     if (owned && (owned.runningChildCount > 0 || owned.pendingStopCount > 0))
@@ -17463,11 +17604,15 @@ export class OrchestrationService {
     // in-place restart resumes from this cursor, and without one (or on an
     // engine observed unable to resume) it would restart without the
     // conversation's context.
-    if (session.resumeCursor === undefined || session.resumeCursor === null)
+    if (
+      !retiring &&
+      (session.resumeCursor === undefined || session.resumeCursor === null)
+    )
       return false;
     const connectionId =
       this.latestStartedMetadataOfThread(threadId)?.connectionId;
     if (
+      !retiring &&
       this.options.resumeCursorSupport?.({
         provider: session.provider,
         ...(typeof connectionId === 'string' ? { connectionId } : {}),
@@ -17486,7 +17631,11 @@ export class OrchestrationService {
     // At rest only — a session waiting on the user (an open request) keeps
     // its engine, which is what holds that request.
     const lifecycle = this.readCurrentLifecycleState(threadId);
-    return lifecycle !== undefined && isSessionLifecycleStateAtRest(lifecycle);
+    return (
+      lifecycle !== undefined &&
+      (isSessionLifecycleStateAtRest(lifecycle) ||
+        (freshAtRest && lifecycle === 'queued'))
+    );
   }
 
   /**
@@ -17555,6 +17704,11 @@ export class OrchestrationService {
     parkAfterMs: number,
     /** The finished-session park's own refusal, re-read under the lock. */
     refusedEarly?: () => boolean,
+    /**
+     * `resumable: false` retires an engine whose Session a successor
+     * replaced: no resume cursor is needed, since nothing restarts it.
+     */
+    retire?: { resumable?: false; freshAtRest?: true },
   ): Promise<boolean> {
     // Serialized with turn starts: a send that arrives first wins, and the
     // park re-checks everything under the lock before touching the engine.
@@ -17563,7 +17717,13 @@ export class OrchestrationService {
       async () => {
         if (
           this.sessionAdapters.get(threadId) !== adapter ||
-          !this.isParkableIdleSession(threadId, now, parkAfterMs) ||
+          !this.isParkableIdleSession(
+            threadId,
+            now,
+            parkAfterMs,
+            retire?.resumable === false,
+            retire?.freshAtRest === true,
+          ) ||
           refusedEarly?.()
         )
           return false;

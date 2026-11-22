@@ -1,0 +1,7 @@
+{
+  "revision": "0785eee3d8c53a0a6fe97ae97b2d236452c80ef8",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Checked claims about ACP and OpenCode connection-provided tool servers, Codex bound tools and policy, engine connection settings and credential recovery, and conversation turn refusals against this change: provideToolServers resolution moved unchanged into acp-launch-tool-servers.ts and is now fingerprinted; Codex resolves and holds its launch policy for every Agent session but decides only bound tools; the fingerprint keeps only launch-bound connection fields; a replaced session still running work refuses the next turn. No other claim on these pages depends on the changed lines.","inputs":["docs/guides/agent-configuration.md"]}
+  ]
+}

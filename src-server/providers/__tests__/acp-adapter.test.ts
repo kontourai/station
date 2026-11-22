@@ -5024,7 +5024,9 @@ describe('AcpAdapter', () => {
       turnId: started.turnId,
       code: 'stale_generation',
       kind: 'permission_denied',
-      message: expect.stringContaining('Start a new chat'),
+      // The conversation's next message restarts it under the current
+      // configuration; a new chat is not needed.
+      message: expect.stringContaining('Send your next message to continue'),
     });
   });
 

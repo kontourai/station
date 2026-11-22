@@ -1,0 +1,61 @@
+{
+  "revision": "a0b72485028d87716fcf28756ee3000071f677dd",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked the page's claims against this change: the two replaced-session refusal texts are reworded and resolveLaunchAgent fills the agent slug from input.agent; no documented behavior, route or contract changed.","inputs":["src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

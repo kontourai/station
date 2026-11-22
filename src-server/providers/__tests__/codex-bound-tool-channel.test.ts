@@ -872,3 +872,114 @@ test('credential expiry during approval returns a restart instruction on the wir
     await iterator.return?.();
   }
 });
+
+test('a replaced-configuration refusal reaches the engine as the tool result with its reason', async () => {
+  const process = new FakeCodexProcess();
+  const reason =
+    'Tool "browser_status" was blocked because this agent\'s configuration changed after this session started.';
+  let mode: 'stale' | 'settling' | 'other' = 'stale';
+  const settlingReason =
+    'Tool "browser_status" was blocked while Station re-reads this agent\'s configuration after a change. Retry it in a moment.';
+  const execute = vi.fn(async () => ({
+    content: [{ type: 'text', text: 'ok' }],
+  }));
+  const adapter = new CodexAdapter({
+    processFactory: () => process as never,
+    boundToolsEnabled: () => true,
+    resolveBoundToolPolicy: async () => async () =>
+      mode === 'stale'
+        ? {
+            behavior: 'deny',
+            denial: { allowed: false, reason },
+            staleGeneration: true,
+          }
+        : mode === 'settling'
+          ? {
+              behavior: 'deny',
+              denial: { allowed: false, reason: settlingReason },
+              generationSettling: true,
+            }
+          : {
+              behavior: 'deny',
+              denial: { allowed: false, reason: 'Project policy refused.' },
+            },
+    createBoundTools: async () => ({
+      tools: [
+        {
+          name: 'browser_status',
+          description: 'status',
+          inputSchema: { type: 'object' },
+        },
+      ],
+      call: execute,
+      expired: () => false,
+      close: async () => {},
+    }),
+  });
+  const events: any[] = [];
+  const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  void (async () => {
+    for (;;) {
+      const event = await iterator.next();
+      if (event.done) return;
+      events.push(event.value);
+    }
+  })();
+  const session = adapter.startSession({
+    provider: 'codex',
+    threadId: 'session-a',
+    cwd: '/tmp',
+    agent: {} as never,
+  });
+  await flushIo();
+  await emit(process, { id: '1', result: { userAgent: 'test' } });
+  await emit(process, { id: '2', result: { thread: { id: 'native-a' } } });
+  await withTimeout(session, 'start');
+  const turn = adapter.sendTurn({ threadId: 'session-a', input: 'go' });
+  await flushIo();
+  await emit(process, { id: '3', result: { turn: { id: 'turn-a' } } });
+  await withTimeout(turn, 'turn');
+  const params = {
+    threadId: 'native-a',
+    turnId: 'turn-a',
+    tool: 'browser_status',
+    arguments: {},
+  };
+  await emit(process, {
+    id: 30,
+    method: 'item/tool/call',
+    params: { ...params, callId: 'stale' },
+  });
+  const reply = await waitFor(() => repliesTo(process, 30)[0], 'reply');
+  expect(reply.error).toBeUndefined();
+  expect(reply.result).toEqual({
+    success: false,
+    contentItems: [{ type: 'inputText', text: reason }],
+  });
+  expect(execute).not.toHaveBeenCalled();
+  // A change still being applied carries its "retry" advice the same way.
+  mode = 'settling';
+  await emit(process, {
+    id: 32,
+    method: 'item/tool/call',
+    params: { ...params, callId: 'settling' },
+  });
+  const settling = await waitFor(() => repliesTo(process, 32)[0], 'reply');
+  expect(settling.error).toBeUndefined();
+  expect(settling.result).toEqual({
+    success: false,
+    contentItems: [{ type: 'inputText', text: settlingReason }],
+  });
+  // Other denials keep their existing wire shape.
+  mode = 'other';
+  await emit(process, {
+    id: 31,
+    method: 'item/tool/call',
+    params: { ...params, callId: 'policy' },
+  });
+  const other = await waitFor(() => repliesTo(process, 31)[0], 'reply');
+  expect(other.error?.message).toBe('Bound tool refused');
+  expect(events.some((event) => event.method === 'runtime.error')).toBe(false);
+  await adapter.stopSession('session-a');
+  await iterator.return?.();
+});

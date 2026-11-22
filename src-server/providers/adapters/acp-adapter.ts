@@ -300,6 +300,10 @@ import {
   readKiroPermission,
 } from './acp-kiro-permissions.js';
 import {
+  acpLaunchToolServerIds,
+  acpLaunchToolServerResolver,
+} from './acp-launch-tool-servers.js';
+import {
   type AcpToolServerSkip,
   type AcpToolServerSkipReason,
   resolveAcpPassthroughMcpServers,
@@ -344,7 +348,6 @@ import {
   AcpToolUpdateSupervisor,
   engineToolKind,
 } from './acp-tool-update-supervisor.js';
-import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 import {
   assertExecutionOverrideDelivery,
   mergeCapabilityDeliveryMetadata,
@@ -2123,17 +2126,10 @@ export class AcpAdapter implements ProviderAdapterShape {
       const agentToolServers = input.agent?.toolServers;
       const passthroughSource: 'agent' | 'connection-default' =
         agentToolServers !== undefined ? 'agent' : 'connection-default';
-      const requestedToolServerIds =
-        agentToolServers !== undefined
-          ? [
-              ...new Set([
-                ...(input.agent?.toolServerMode === 'add'
-                  ? (config.provideToolServers ?? [])
-                  : []),
-                ...agentToolServers.map((server) => server.id),
-              ]),
-            ]
-          : config.provideToolServers;
+      const requestedToolServerIds = acpLaunchToolServerIds(
+        input.agent,
+        config,
+      );
 
       // archive#1684 — THE LIVE GATE for the built-in station-control server.
       //
@@ -2270,19 +2266,10 @@ export class AcpAdapter implements ProviderAdapterShape {
           ...(stationKnowledgeAuth ? { stationKnowledgeAuth } : {}),
           stationKnowledgeUnavailable,
           ...(stationControlUnavailable ? { stationControlUnavailable } : {}),
-          resolveToolServer:
-            agentToolServers !== undefined
-              ? async (id) => {
-                  const match = agentToolServers.find(
-                    (server) => server.id === id,
-                  );
-                  return match
-                    ? toPassthroughToolDef(match)
-                    : input.agent?.toolServerMode === 'add'
-                      ? (this.options.resolveToolServer?.(id) ?? null)
-                      : null;
-                }
-              : (this.options.resolveToolServer ?? (async () => null)),
+          resolveToolServer: acpLaunchToolServerResolver(
+            input.agent,
+            this.options.resolveToolServer,
+          ),
           logger,
         });
         passthroughMcpServers = resolved.servers;
@@ -6550,7 +6537,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       severity: 'error',
       code: 'stale_generation',
       message:
-        'Station blocked this tool because the Agent configuration changed. Start a new chat to retry with the current configuration.',
+        "Station blocked this tool because the Agent's configuration changed after this session started. Send your next message to continue this conversation under the current configuration.",
     } satisfies ProviderRuntimeErrorEvent);
     record.session.status = 'error';
     record.session.updatedAt = new Date().toISOString();

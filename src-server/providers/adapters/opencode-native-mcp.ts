@@ -29,8 +29,11 @@ import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { CapabilityUndelivered } from '@kontourai/station-contracts/provider';
 import type { ProviderSessionStartInput } from '../adapter-shape.js';
 import type { AcpAdapterOptions } from './acp-adapter.js';
+import {
+  acpLaunchToolServerIds,
+  acpLaunchToolServerResolver,
+} from './acp-launch-tool-servers.js';
 import { resolveAcpPassthroughMcpServers } from './acp-mcp-passthrough.js';
-import { toPassthroughToolDef } from './agent-tool-server-mapping.js';
 
 /** OpenCode's `Mcp.ServerConfig`, as Station sends it. */
 export type OpenCodeMcpConfig =
@@ -151,17 +154,7 @@ export async function resolveOpenCodeNativeMcp(
   options: MintOptions,
 ): Promise<OpenCodeNativeMcp> {
   const agentToolServers = input.agent?.toolServers;
-  const requested =
-    agentToolServers !== undefined
-      ? [
-          ...new Set([
-            ...(input.agent?.toolServerMode === 'add'
-              ? (config.provideToolServers ?? [])
-              : []),
-            ...agentToolServers.map((server) => server.id),
-          ]),
-        ]
-      : config.provideToolServers;
+  const requested = acpLaunchToolServerIds(input.agent, config);
   if (!requested?.length)
     return { servers: [], undelivered: [], sessionScoped: false };
   if (
@@ -222,17 +215,10 @@ export async function resolveOpenCodeNativeMcp(
             },
           }
         : {}),
-      resolveToolServer:
-        agentToolServers !== undefined
-          ? async (id) => {
-              const match = authored(id);
-              return match
-                ? toPassthroughToolDef(match)
-                : input.agent?.toolServerMode === 'add'
-                  ? (options.resolveToolServer?.(id) ?? null)
-                  : null;
-            }
-          : (options.resolveToolServer ?? (async () => null)),
+      resolveToolServer: acpLaunchToolServerResolver(
+        input.agent,
+        options.resolveToolServer,
+      ),
       // The resolver's own warnings name ids and reasons, never configs.
       logger: { warn: () => undefined, info: () => undefined },
     });
