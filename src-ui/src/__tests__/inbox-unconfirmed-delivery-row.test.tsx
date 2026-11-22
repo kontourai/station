@@ -214,7 +214,7 @@ describe('the inbox row flag for an unconfirmed delivery (#5398)', () => {
     rerender(view(settled));
     expect(screen.queryByTestId('inbox-row-unconfirmed-flag')).toBeNull();
     expect(toastStore.getSnapshot().map((toast) => toast.message)).toEqual([
-      `${TITLE}: Station did not receive it. Retry sends it with the same message key.`,
+      'Say hello in one short line: Station did not receive it. Retry sends it with the same message key.',
     ]);
   });
 

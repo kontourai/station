@@ -73,7 +73,7 @@ export function UnconfirmedDeliveryFlag({
     () => () => {
       const answer = latest.current;
       if (answer && Date.now() - answer.at < RESULT_FRESH_MS)
-        toastStore.show(`${title}: ${answer.text}`);
+        toastStore.show(`${title.replace(/[.!?]+$/, '')}: ${answer.text}`);
     },
     [title],
   );
