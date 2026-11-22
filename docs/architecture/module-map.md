@@ -553,7 +553,10 @@ refuses corrupt/unsupported or nonregular files and bounds the file to 8 MiB
 and retained snapshots to 32. [Installed-state projection](../../src-server/providers/registries/registry-catalog-installed-state.ts)
 uses the current local inventory and source ownership aliases for live and
 offline plugin rows. Manifest providers supply one fresh coherent observation
-for rows, source locations and untrusted publisher claims. A snapshot is discovery evidence; source removal/disable and
+for rows, source locations and untrusted publisher claims. Each local plugin
+row also carries [what the app is](../../src-server/providers/registries/registry-app-facts.ts),
+read from its package's manifest and layouts within fixed bounds and cached
+until those files change; a remote package is not fetched to list it. A snapshot is discovery evidence; source removal/disable and
 plugin generation replacement/revocation are checked again before publication
 and use. A revoked provider cannot publish its in-flight result or fall back to
 its previously cached rows. Plugin-owned Skill catalogs also use the route's

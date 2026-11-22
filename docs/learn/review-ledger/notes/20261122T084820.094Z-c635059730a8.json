@@ -1,0 +1,7 @@
+{
+  "revision": "4d94c706434bd7cec0a14dfae27a4b3bd2a5b5b0",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"The bundle changed only by regeneration for the module map's RegistrySourceManager paragraph; this page's description of the docs bundle and its topics is unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

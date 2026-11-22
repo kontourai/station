@@ -1,0 +1,7 @@
+{
+  "revision": "fe3aafb9d61f45ec7e5403f36f84041486ac96cc",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"The new catalog helpers follow this page: pure, environment-free, in the owning contract module, with no copy in shared.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}
