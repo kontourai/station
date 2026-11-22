@@ -255,7 +255,7 @@ Customize items, framed by `CustomizeSectionFrame.tsx`), and Project Settings ha
 | 2 | Deleted tool-management view | No live UI surface | SplitPaneLayout | Historical port completed in archive#245; server routes and CLI remain live without a UI consumer |
 | 3 | Deleted workflow-management view | No live UI surface | SplitPaneLayout | Deleted; server routes and CLI remain live without a UI consumer |
 | 4 | `src-ui/src/views/ProjectSettingsView.tsx` | `project-settings` | page-layout, sectioned | Remaining — tracked by the ratchet ceiling |
-| 5 | `src-ui/src/views/ConnectionsHub.tsx` | `connections-hub` (9,160-byte CSS + 15,970-byte TSX) | page-layout, hub | Remaining — tracked by the ratchet ceiling |
+| 5 | `ConnectionsHub.tsx` (removed in first-release slice 1.2) | `connections-hub` (9,160-byte CSS + 15,970-byte TSX) | page-layout, hub | Remaining — tracked by the ratchet ceiling |
 | 6 | `src-ui/src/views/MonitoringView.tsx` | `monitoring-view` (32,014-byte CSS — the largest of the six) | page-layout, dashboard | Remaining — tracked by the ratchet ceiling |
 
 This is the exact steal-list §3 port order (Knowledge → Tool → Workflow → ProjectSettings →
@@ -275,7 +275,7 @@ Knowledge, reasoning from a surveyed knowledge-browser tree+reader pattern. This
   list-select interaction that doesn't correspond to anything the current UI does — that is a
   **redesign**, not a structural convergence, and would violate the parity requirement this port
   is judged against (before/after screenshots must match).
-- It would also require touching `src-ui/src/views/ConnectionsHub.tsx` (the list this view is
+- It would also require touching `ConnectionsHub.tsx` (since removed; the list this view is
   reached from) to wire a new selectable-item affordance — `ConnectionsHub.tsx` is explicitly out
   of scope for this PR (its own separate archive#193 port, mapping row 5 above).
 
