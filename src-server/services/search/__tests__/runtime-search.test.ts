@@ -334,6 +334,12 @@ describe('runtime search HTTP composition', () => {
       title: 'cobalt task',
       createdBy: 'user',
     });
+    // Another Project's Task matches the query too and must stay out.
+    await f.graph.createTask({
+      projectId: 'other',
+      title: 'cobalt task elsewhere',
+      createdBy: 'user',
+    });
     for (let index = 0; index < 12; index++)
       f.message(`other-${index}`, 'other');
     f.message('wanted', 'alpha');

@@ -29,7 +29,9 @@ export default function WorkspaceSearchPalette({
   query: string;
   onQueryChange: (query: string) => void;
   onClose: () => void;
-  onCommands: () => void;
+  /** Return to the command palette; omitted where search was not opened from it. */
+  onCommands?: () => void;
+  /** The Project slug to scope Tasks and messages to. */
   projectId?: string;
 }) {
   const scope = useHostRequestAuthorityScope();
@@ -184,15 +186,17 @@ export default function WorkspaceSearchPalette({
       size="lg"
       subtitle="Tasks and messages"
       footer={
-        <Button
-          variant="secondary"
-          onClick={() => {
-            invalidate();
-            onCommands();
-          }}
-        >
-          Back to commands
-        </Button>
+        onCommands && (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              invalidate();
+              onCommands();
+            }}
+          >
+            Back to commands
+          </Button>
+        )
       }
     >
       <input
@@ -257,7 +261,14 @@ export default function WorkspaceSearchPalette({
         query.trim().length >= 2 &&
         !search.isError &&
         search.data?.state === 'complete' && (
-          <Empty variant="compact" label="No matching work on this Station" />
+          <Empty
+            variant="compact"
+            label={
+              projectId
+                ? 'No matching work in this Project'
+                : 'No matching work on this Station'
+            }
+          />
         )}
       <div
         id="workspace-search-results"
