@@ -1184,12 +1184,8 @@ describe('external engine pre-tool policy generation', () => {
     await w.turn('conversation', 'This turn fails.');
     fail = false;
     expect(
-      (
-        await w.service.readSession(
-          'conversation',
-          INTERNAL_SESSION_READ_SCOPE,
-        )
-      )?.session.status,
+      (await w.service.readSession('conversation', INTERNAL_SESSION_READ_SCOPE))
+        ?.session.status,
     ).toBe('error');
     await w.saveAgent('claude', {
       name: 'Claude',
