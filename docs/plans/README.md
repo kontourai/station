@@ -12,6 +12,7 @@ Concrete execution plans that expand roadmap phases or major initiatives into im
 - [browser-activity-inline.md](browser-activity-inline.md) — Inline browser activity
 - [continuity-epic-followthrough.md](continuity-epic-followthrough.md) — Continuity and existing-client follow-through
 - [documentation-code-audit.md](documentation-code-audit.md) — Documentation and architecture audit
+- [first-release-ui.md](first-release-ui.md) — First-release UI: execution plan
 - [integration-completion-program.md](integration-completion-program.md) — Integration completion program
 - [issue-class-prevention.md](issue-class-prevention.md) — Issue class prevention
 - [live-surface-input-safety.md](live-surface-input-safety.md) — Live surface input safety: requirements for a spec-first redesign
