@@ -167,7 +167,7 @@ test.describe('Keyboard shortcuts cheatsheet', () => {
     // as openCheatsheet does for the same app-shell registration boundary.
     await expect(async () => {
       await page.keyboard.press('Escape');
-      await expect(page).toHaveURL(/\/connections\/models$/, {
+      await expect(page).toHaveURL(/\/customize\/providers$/, {
         timeout: 1_000,
       });
     }).toPass({ timeout: 15_000 });

@@ -26,7 +26,7 @@ function createStatus(overrides: Partial<SystemStatus> = {}): SystemStatus {
     recommendation: {
       code: 'unconfigured',
       type: 'connections',
-      actionLabel: 'Open Connections',
+      actionLabel: 'Open Providers',
       title: 'No usable AI path is configured yet',
       detail:
         'Start Ollama locally or add a provider/runtime connection to make Station ready for first-run chat.',
@@ -47,7 +47,7 @@ describe('onboardingGateUtils', () => {
       title: 'Choose what powers Station',
       description:
         'Add a model connection or engine for chat, agents, or both.',
-      actionLabel: 'Open Connections',
+      actionLabel: 'Open Providers',
       badges: [],
       actionTarget: 'providers',
     });
@@ -209,7 +209,7 @@ describe('onboardingGateUtils', () => {
       title: 'Ollama is available',
       description:
         'Create a model connection for the detected local Ollama server to make first-run chat explicit.',
-      actionLabel: 'Review Connections',
+      actionLabel: 'Review Providers',
       badges: ['Detected: Ollama'],
       actionTarget: 'providers',
     });
@@ -235,7 +235,7 @@ describe('onboardingGateUtils', () => {
       recommendation: {
         code: 'unconfigured',
         type: 'connections',
-        actionLabel: 'Open Connections',
+        actionLabel: 'Open Providers',
         title: 'No usable AI path is configured yet',
         detail:
           'Start Ollama locally or add a provider/runtime connection to make Station ready for first-run chat.',
@@ -248,7 +248,7 @@ describe('onboardingGateUtils', () => {
       title: 'Choose what powers Station',
       description:
         'Add a model connection or engine for chat, agents, or both.',
-      actionLabel: 'Open Connections',
+      actionLabel: 'Open Providers',
       badges: [],
       actionTarget: 'providers',
     });
@@ -365,7 +365,7 @@ describe('onboardingGateUtils', () => {
     expect(buildSetupBannerContent(status)).toEqual({
       title: 'No model connection is ready for chat',
       description:
-        'Enable or repair a model connection in Connections before starting a chat.',
+        'Enable or repair a model connection in Providers before starting a chat.',
       actionLabel: 'Manage connections',
       badges: ['Disabled: Amazon Bedrock'],
       actionTarget: 'providers',
@@ -413,7 +413,7 @@ describe('onboardingGateUtils', () => {
       expect.objectContaining({
         title: 'No model connection is ready for chat',
         description:
-          'Enable or repair a model connection in Connections before starting a chat.',
+          'Enable or repair a model connection in Providers before starting a chat.',
       }),
     );
   });
@@ -554,7 +554,7 @@ describe('onboardingGateUtils', () => {
         recommendation: {
           code: 'unconfigured',
           type: 'connections',
-          actionLabel: 'Open Connections',
+          actionLabel: 'Open Providers',
           title: 'No usable AI path is configured yet',
           detail:
             'Start a local model or add a Model or engine connection to make Station ready for first-run chat.',

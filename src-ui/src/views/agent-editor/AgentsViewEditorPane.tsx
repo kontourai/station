@@ -198,7 +198,7 @@ export function AgentsViewEditorPane({
             ? { actionLabel: 'Enable', onAction: onEnable }
             : selectedAgent?.execution?.agentConnectionId
               ? {
-                  actionLabel: 'Configure in Connections',
+                  actionLabel: 'Configure in Customize',
                   onAction: onConfigureConnection,
                 }
               : {})}
@@ -522,7 +522,7 @@ export function AgentsViewEditorPane({
                   className="editor__lock-btn"
                   onClick={onConfigureConnection}
                 >
-                  Configure in Connections
+                  Configure in Customize
                 </button>
               )}
             </div>
@@ -555,7 +555,7 @@ export function AgentsViewEditorPane({
                   className="editor__lock-btn"
                   onClick={onConfigureConnection}
                 >
-                  Configure in Connections
+                  Configure in Customize
                 </button>
               ) : (
                 // archive#4521 items 1/2: Station's own engine has no

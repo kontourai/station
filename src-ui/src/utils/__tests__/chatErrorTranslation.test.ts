@@ -172,7 +172,7 @@ describe('translateChatError', () => {
 
     expect(result.title).toMatch(/credentials/i);
     expect(result.body).not.toContain('UnrecognizedClientException');
-    expect(result.hint).toMatch(/Connections.*Models/);
+    expect(result.hint).toMatch(/Customize.*Providers/);
   });
 
   it('classifies a credential-shaped message even without a 401 status', () => {

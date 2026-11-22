@@ -957,7 +957,7 @@ describe('OnboardingGate', () => {
   });
 
   test('does not cover visible provider actions on the 390px connections route', () => {
-    currentPathname = '/connections/providers';
+    currentPathname = '/customize/providers';
     const onAddProvider = vi.fn();
     Object.defineProperty(window, 'innerWidth', {
       configurable: true,
@@ -984,9 +984,9 @@ describe('OnboardingGate', () => {
       </OnboardingGate>,
     );
 
-    fireEvent.click(screen.getByText('Open Connections'));
+    fireEvent.click(screen.getByText('Open Providers'));
 
-    expect(navigate).toHaveBeenCalledWith('/connections/models');
+    expect(navigate).toHaveBeenCalledWith('/customize/providers');
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
     expect(screen.queryByText('Connection manager')).toBeNull();
   });
@@ -995,14 +995,14 @@ describe('OnboardingGate', () => {
   // navigated to Connections to do the setup, so it vanished for good — while
   // Connections still read "chat: setup needed" and its own copy promised it
   // "disappears automatically once chat is ready".
-  test('navigating to Connections defers the launcher without recording a dismissal', () => {
+  test('navigating to Customize defers the launcher without recording a dismissal', () => {
     render(
       <OnboardingGate>
         <div>App</div>
       </OnboardingGate>,
     );
 
-    fireEvent.click(screen.getByText('Open Connections'));
+    fireEvent.click(screen.getByText('Open Providers'));
 
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
     expect(deviceSettingsStore.get('onboardingSetupDismissed')).toBe(false);
@@ -1026,17 +1026,17 @@ describe('OnboardingGate', () => {
   // archive#794: a deferral covers the trip into Connections. Leaving that
   // area without finishing setup must bring the launcher back, or the same
   // "gone while chat is still unready" complaint returns, session-scoped.
-  test('re-arms the launcher when the user leaves the Connections area', async () => {
+  test('re-arms the launcher when the user leaves the Customize area', async () => {
     const { rerender } = render(
       <OnboardingGate>
         <div>App</div>
       </OnboardingGate>,
     );
 
-    fireEvent.click(screen.getByText('Open Connections'));
+    fireEvent.click(screen.getByText('Open Providers'));
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
 
-    currentPathname = '/connections/providers';
+    currentPathname = '/customize/providers';
     rerender(
       <OnboardingGate>
         <div>App</div>
@@ -1382,7 +1382,7 @@ describe('OnboardingGate', () => {
 
     fireEvent.click(screen.getByText('All connections'));
 
-    expect(navigate).toHaveBeenCalledWith('/connections');
+    expect(navigate).toHaveBeenCalledWith('/customize');
     expect(screen.queryByTestId('setup-launcher')).toBeNull();
   });
 

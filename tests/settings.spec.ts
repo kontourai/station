@@ -130,7 +130,7 @@ test.describe('Settings', () => {
   test.describe('mobile Customize', () => {
     test.use({ viewport: { width: 390, height: 844 } });
 
-    test('Customize offers management links at a thumb-sized target', async ({
+    test('the Customize landing lists its items at a thumb-sized target', async ({
       page,
     }) => {
       // Chromium can report 43.99998 for a 44px CSS border box.
@@ -140,16 +140,23 @@ test.describe('Settings', () => {
       await page
         .getByRole('button', { name: 'Customize', exact: true })
         .click();
-      const chooser = page.getByRole('dialog', { name: 'Customize' });
+      await expect(page).toHaveURL(/\/customize$/);
+      // On a phone the left list is hidden; the landing's list is the way in.
+      await expect(
+        page.getByRole('navigation', { name: 'Customize' }),
+      ).toBeHidden();
+      const chooser = page.locator('.customize-landing');
       for (const label of [
         'Agents',
         'Skills',
-        'Connections',
-        'Plugins',
-        'Appearance',
-        'Settings',
+        'Engines',
+        'Providers',
+        'Tools',
+        'Knowledge',
       ]) {
-        const entry = chooser.getByRole('link', { name: label, exact: true });
+        const entry = chooser.getByRole('link', {
+          name: new RegExp(`^${label}\\b`),
+        });
         await expect(entry).toBeVisible();
         await entry.scrollIntoViewIfNeeded();
         expect(
@@ -181,12 +188,11 @@ test.describe('Settings', () => {
           )
           .toBe(true);
       }
-      await expect(
-        chooser.getByRole('link', { name: 'Registry', exact: true }),
-      ).toHaveCount(0);
-      await expect(
-        chooser.getByRole('link', { name: 'Developer', exact: true }),
-      ).toHaveCount(0);
+      for (const gone of ['Registry', 'Developer', 'Plugins', 'Connections']) {
+        await expect(
+          chooser.getByRole('link', { name: new RegExp(`^${gone}`) }),
+        ).toHaveCount(0);
+      }
     });
   });
 
@@ -212,17 +218,17 @@ test.describe('Settings', () => {
     }
   });
 
-  test('Customize opens Plugins and Settings remains easy to return to', async ({
+  test('Customize opens an item and Settings remains easy to return to', async ({
     page,
   }) => {
     await page.getByRole('button', { name: 'Customize', exact: true }).click();
     await page
-      .getByRole('dialog', { name: 'Customize' })
-      .getByRole('link', { name: 'Plugins', exact: true })
+      .getByRole('navigation', { name: 'Customize' })
+      .getByRole('link', { name: /^Tools\b/ })
       .click();
-    await expect(page).toHaveURL(/\/plugins$/);
+    await expect(page).toHaveURL(/\/customize\/tools$/);
     // The way back is the sidebar footer's account menu, which stays on
-    // screen beside Plugins.
+    // screen beside the Customize page.
     await page
       .getByRole('navigation', { name: 'Primary navigation' })
       .getByRole('button', { name: /^Profile and settings:/ })
@@ -1142,7 +1148,7 @@ test.describe('Settings discovery and preferences', () => {
     await models
       .getByRole('button', { name: 'Open model connections' })
       .click();
-    await expect(page).toHaveURL(/\/connections\/models$/);
+    await expect(page).toHaveURL(/\/customize\/providers$/);
     await page
       .getByRole('button', { name: 'Settings test models', exact: true })
       .click();

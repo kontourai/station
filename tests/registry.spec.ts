@@ -277,16 +277,18 @@ test.describe('Registry page', () => {
     await expect(detail.getByRole('button', { name: 'Use' })).toBeVisible();
   });
 
-  // #2059: Registry is configuration, so it left the left panel for Settings.
-  // #2144 decision 4 then FOLDED it into Plugins: browsing the catalogue and
-  // managing what it installed are one errand, so Settings offers one row for
-  // both and the Plugins surface carries the step to the catalogue.
+  // #2059: Registry is configuration, so it left the left panel. #2144
+  // decision 4 FOLDED it into Plugins, and the first-release design took
+  // Plugins out of the Customize list (installable things become Apps). Until
+  // that lands, the command palette is the advertised control.
   //
   // The guarantee is unchanged — an advertised control someone can press
   // reaches this surface — and the whole path is walked by pressing, because a
   // fold is exactly the shape that can drop a surface while every individual
   // list still looks complete.
-  test('Customize reaches Registry through Plugins', async ({ page }) => {
+  test('the command palette reaches Registry through Plugins', async ({
+    page,
+  }) => {
     const navigation = page.getByRole('navigation', {
       name: 'Primary navigation',
     });
@@ -294,14 +296,29 @@ test.describe('Registry page', () => {
     await expect(
       navigation.getByRole('button', { name: 'Registry', exact: true }),
     ).toHaveCount(0);
-    await navigation
-      .getByRole('button', { name: 'Customize', exact: true })
+    const palette = page.getByRole('dialog', { name: 'Command palette' });
+    // The real registered ⌘K shortcut, dispatched on `window` because
+    // Chromium swallows a pressed Meta+K on macOS (see command-palette.spec).
+    await expect(async () => {
+      await page.evaluate(() => {
+        window.dispatchEvent(
+          new KeyboardEvent('keydown', {
+            key: 'k',
+            metaKey: true,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      });
+      await expect(palette).toBeVisible({ timeout: 1000 });
+    }).toPass({ timeout: 15_000 });
+    await page
+      .getByRole('combobox', { name: 'Search commands' })
+      .fill('Plugins');
+    await page
+      .getByRole('option', { name: /^Plugins/ })
+      .first()
       .click();
-    const chooser = page.getByRole('dialog', { name: 'Customize' });
-    await expect(
-      chooser.getByRole('link', { name: 'Registry', exact: true }),
-    ).toHaveCount(0);
-    await chooser.getByRole('link', { name: 'Plugins', exact: true }).click();
     await expect(page).toHaveURL(/\/plugins$/);
     await page
       .getByRole('button', { name: 'Browse Registry', exact: true })

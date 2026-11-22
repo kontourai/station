@@ -553,7 +553,7 @@ export function NewChatModal({
       ),
     onCancel: onClose,
     onLeave,
-    allowedPaths: ['/registry', '/connections', '/agents'],
+    allowedPaths: ['/registry', '/customize', '/agents'],
     revalidate: async () => {
       // Visual skills can show in the composer (opened there, or handed
       // over from Home with a message), so a Registry round trip refetches
@@ -1173,10 +1173,10 @@ export function NewChatModal({
       route === 'edit'
         ? `/agents/${encodeURIComponent(agent.slug)}`
         : route === 'models'
-          ? '/connections/models'
+          ? '/customize/providers'
           : agent.execution?.agentConnectionId
-            ? `/connections/engines/${encodeURIComponent(agent.execution.agentConnectionId)}`
-            : '/connections/engines',
+            ? `/customize/engines/${encodeURIComponent(agent.execution.agentConnectionId)}`
+            : '/customize/engines',
       agent.slug,
     );
   };
@@ -1314,7 +1314,7 @@ export function NewChatModal({
     (agent: AgentData, route: AgentFixRoute) => repairAgent(agent, route),
   );
   const runHandoffSetup = useEffectEvent(() =>
-    beginSetup('/connections/engines'),
+    beginSetup('/customize/engines'),
   );
   useEffect(() => {
     if (!handoff || handoffRan.current || !showStart) return;
@@ -1584,7 +1584,7 @@ export function NewChatModal({
               label="The engine is still starting"
               description={startingNotice}
               action={
-                <Button onClick={() => beginSetup('/connections/engines')}>
+                <Button onClick={() => beginSetup('/customize/engines')}>
                   Open engines
                 </Button>
               }
@@ -1607,7 +1607,7 @@ export function NewChatModal({
               label="Connect an engine"
               description="Station needs an engine or model connection before it can help."
               action={
-                <Button onClick={() => beginSetup('/connections/engines')}>
+                <Button onClick={() => beginSetup('/customize/engines')}>
                   Connect an engine
                 </Button>
               }
@@ -1994,13 +1994,13 @@ export function NewChatModal({
                   onSetup={(agent) =>
                     beginSetup(
                       agent?.execution?.agentConnectionId
-                        ? `/connections/engines/${encodeURIComponent(agent.execution.agentConnectionId)}`
-                        : '/connections/engines',
+                        ? `/customize/engines/${encodeURIComponent(agent.execution.agentConnectionId)}`
+                        : '/customize/engines',
                       agent?.slug ?? draftAgent?.slug,
                     )
                   }
                   onModels={() =>
-                    beginSetup('/connections/models', draftAgent?.slug)
+                    beginSetup('/customize/providers', draftAgent?.slug)
                   }
                   onCheck={() => {
                     if (refreshSetup)
@@ -2221,9 +2221,9 @@ export function NewChatModal({
                   <button
                     type="button"
                     className="new-chat-modal__setup-action"
-                    onClick={() => beginSetup('/connections')}
+                    onClick={() => beginSetup('/customize')}
                   >
-                    Set up Connections
+                    Open Customize
                   </button>
                 }
               />
@@ -2302,7 +2302,7 @@ export function NewChatModal({
             search={agentSearch}
             onSearch={setAgentSearch}
             onFeedbackClear={() => setSelectFeedback(null)}
-            onSetup={() => beginSetup('/connections')}
+            onSetup={() => beginSetup('/customize')}
             onRepair={repairAgent}
             enablePending={enableInFlight}
             interactionDisabled={checkingSetup || setupReturn.pending}

@@ -647,7 +647,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
       await emptyState
         .getByRole('button', { name: 'Open Connections' })
         .click();
-      await expect(page).toHaveURL(/\/connections\/models(?:\?|$)/);
+      await expect(page).toHaveURL(/\/customize\/providers(?:\?|$)/);
 
       await waitForRouteViewTarget(
         {
@@ -669,7 +669,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
       );
     });
     await addModelConnection.click();
-    await expect(page).toHaveURL(/\/connections\/models\/new(?:\?|$)/);
+    await expect(page).toHaveURL(/\/customize\/providers\/new(?:\?|$)/);
     // Scope inside the picker — the background stack overview also renders an
     // Ollama quickstart entry.
     await page
@@ -680,7 +680,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
     await page.getByLabel('Name').fill('First Run Ollama');
     await page.getByLabel('Base URL').fill(ollama.origin);
     await page.getByRole('button', { name: 'Create' }).click();
-    await expect(page).toHaveURL(/\/connections\/models\/[^/?]+(?:\?|$)/);
+    await expect(page).toHaveURL(/\/customize\/providers\/[^/?]+(?:\?|$)/);
     await page.getByRole('button', { name: 'Test connection' }).click();
     await expect(page.getByText('Connection healthy')).toBeVisible();
 

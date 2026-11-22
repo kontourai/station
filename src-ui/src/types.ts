@@ -620,7 +620,8 @@ export type NavigationView =
       selectedId?: string;
       redirectFromAlias?: boolean;
     }
-  | { type: 'connections' }
+  /** The Customize page's landing. Its items keep their own view types. */
+  | { type: 'customize' }
   | { type: 'connections-models' }
   | { type: 'connections-model-edit'; id: string }
   | { type: 'connections-engines' }

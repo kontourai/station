@@ -2,14 +2,15 @@ import { expect, type Page, test } from '@playwright/test';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 
 /**
- * Coverage for the Connections IA (`src-ui/src/views/connections-hub/connection-sections.ts`
- * + `ConnectionsSectionFrame.tsx`): the five sections it defines, the
- * `/connections` resolver, legacy-path redirects, and the frame contract each
- * section shares (one H1, one `Connections` eyebrow — archive#4463:
- * unlinked parent-context text, not the retired `Connections / <Section>`
- * breadcrumb-as-eyebrow — exactly one add action). Also covers the Models
- * add+test journey (b) and the Tools built-in-vs-user-server distinction (d)
- * that live inside those sections.
+ * Coverage for the Customize page and the connection-backed items it hosts
+ * (`src-ui/src/views/connections-hub/connection-sections.ts`,
+ * `CustomizeSectionFrame.tsx`, `views/customize/`): the page by address and
+ * by Back, old Connections addresses landing on their Customize item, and the
+ * frame contract each item shares (one H1, a `Customize` eyebrow that goes
+ * back to the list, exactly one add action). Computers left Connections
+ * without becoming a Customize item and keeps its own address. Also covers
+ * the Providers add+test journey (b) and the Tools built-in-vs-user-server
+ * distinction (d) that live inside those items.
  *
  * The E2E regression lane adds (c): the Engines section's rows — named by the
  * ENGINE, carrying the server's state, offering the one inline repair — plus
@@ -92,35 +93,46 @@ const SECTIONS: ReadonlyArray<{
   addPath?: string;
 }> = [
   {
-    path: '/connections/models',
-    title: 'Models',
+    path: '/customize/providers',
+    title: 'Providers',
     addLabel: 'Add model connection',
-    addPath: '/connections/models/new',
+    addPath: '/customize/providers/new',
   },
   {
-    path: '/connections/engines',
+    path: '/customize/engines',
     title: 'Engines',
     addLabel: 'Add engine',
-    addPath: '/connections/engines/new',
+    addPath: '/customize/engines/new',
   },
   {
-    path: '/connections/tools',
+    path: '/customize/tools',
     title: 'Tools',
     addLabel: 'Add tool server',
-    addPath: '/connections/tools/new',
+    addPath: '/customize/tools/new',
   },
   {
-    path: '/connections/knowledge',
+    path: '/customize/knowledge',
     title: 'Knowledge',
     addLabel: 'Add knowledge source',
     addPath: '/settings?view=knowledge',
   },
+  // Not a Customize item: devices move to the Station page, and until it
+  // exists this address keeps today's Computers screen.
   {
     path: '/connections/computers',
     title: 'Computers',
     addLabel: 'Add computer',
   },
 ];
+
+const CUSTOMIZE_ITEMS = [
+  ['Agents', '/agents'],
+  ['Skills', '/guidance'],
+  ['Engines', '/customize/engines'],
+  ['Providers', '/customize/providers'],
+  ['Tools', '/customize/tools'],
+  ['Knowledge', '/customize/knowledge'],
+] as const;
 
 const MODEL_TEST_FAILURE_REASON =
   'The endpoint returned 401 Unauthorized for the configured API key.';
@@ -292,37 +304,75 @@ async function seedRoutes(
   });
 }
 
-test.describe('Connections IA', () => {
+test.describe('Customize page', () => {
   test.beforeEach(async ({ page }) => {
     await seedRoutes(page);
   });
 
-  test('the /connections resolver lands on a section, and legacy paths redirect into their owning section', async ({
+  test('the sidebar opens Customize, each item opens from its list, and Back returns through them', async ({
     page,
   }) => {
-    await page.goto('/connections');
-    // The seeded Station's Knowledge status needs attention.
-    await expect(page).toHaveURL(/\/connections\/knowledge$/);
+    await page.goto('/');
+    await page
+      .getByRole('navigation', { name: 'Primary navigation' })
+      .getByRole('button', { name: 'Customize', exact: true })
+      .click();
+    await expect(page).toHaveURL((url) => url.pathname === '/customize');
     await expect(
-      page.getByRole('heading', { name: 'Knowledge', level: 1, exact: true }),
+      page.getByRole('heading', { name: 'Customize', level: 1, exact: true }),
     ).toBeVisible();
-
-    // Legacy path for Models.
-    await page.goto('/connections/providers');
-    await expect(page).toHaveURL(/\/connections\/models$/);
-    await expect(
-      page.getByRole('heading', { name: 'Models', level: 1, exact: true }),
-    ).toBeVisible();
-
-    // Legacy path for Engines.
-    await page.goto('/connections/acp');
-    await expect(page).toHaveURL(/\/connections\/engines$/);
-    await expect(
-      page.getByRole('heading', { name: 'Engines', level: 1, exact: true }),
-    ).toBeVisible();
+    const list = page.getByRole('navigation', { name: 'Customize' });
+    for (const group of [
+      'Your agents',
+      'What they run on',
+      'What they can reach',
+    ]) {
+      await expect(
+        list.getByRole('heading', { name: group, exact: true }),
+      ).toBeVisible();
+    }
+    await expect(list.getByRole('link', { name: /^Plugins/ })).toHaveCount(0);
+    for (const [label, path] of CUSTOMIZE_ITEMS) {
+      await list
+        .getByRole('link', { name: new RegExp(`^${label}\\b`) })
+        .click();
+      await expect(page).toHaveURL((url) => url.pathname === path);
+      await expect(
+        list.getByRole('link', { name: new RegExp(`^${label}\\b`) }),
+      ).toHaveAttribute('aria-current', 'page');
+    }
+    for (const [label, path] of [...CUSTOMIZE_ITEMS].reverse().slice(1)) {
+      await page.goBack();
+      await expect(page).toHaveURL((url) => url.pathname === path);
+      await expect(
+        list.getByRole('link', { name: new RegExp(`^${label}\\b`) }),
+      ).toHaveAttribute('aria-current', 'page');
+    }
+    await page.goBack();
+    await expect(page).toHaveURL((url) => url.pathname === '/customize');
   });
 
-  test('each of the five sections renders its own H1, its Connections eyebrow, and exactly one add action', async ({
+  test('old Connections addresses land on the matching Customize item', async ({
+    page,
+  }) => {
+    for (const [legacy, current, title] of [
+      ['/connections', '/customize', 'Customize'],
+      ['/connections/models', '/customize/providers', 'Providers'],
+      ['/connections/providers', '/customize/providers', 'Providers'],
+      ['/connections/engines', '/customize/engines', 'Engines'],
+      ['/connections/acp', '/customize/engines', 'Engines'],
+      ['/connections/tools', '/customize/tools', 'Tools'],
+      ['/connections/knowledge', '/customize/knowledge', 'Knowledge'],
+    ] as const) {
+      await page.goto(legacy);
+      await expect(page).toHaveURL((url) => url.pathname === current);
+      await expect(
+        page.getByRole('heading', { name: title, level: 1, exact: true }),
+      ).toBeVisible();
+    }
+  });
+
+  test('each item renders its own H1, a Customize eyebrow back to the list, and exactly one add action', async ({
     page,
   }) => {
     for (const section of SECTIONS) {
@@ -334,26 +384,27 @@ test.describe('Connections IA', () => {
           exact: true,
         }),
       ).toBeVisible();
-      // archive#4463: 'Connections' only, unlinked — not
-      // the retired 'Connections / <Section>' breadcrumb-as-eyebrow. Static
-      // parent-context text, not a link: `/connections` is a redirect-only
-      // resolver, so a click here would be a no-op or a sibling jump dressed
-      // up as "go up".
-      await expect(page.locator('.page__label')).toHaveText('Connections');
-      // Role-based, not class-based: both eyebrow-producing paths
-      // (PageEyebrowTrail and SplitPaneLayout's trail) expose role=link iff
-      // they carry a handler, so this holds even if the frame's suppression
-      // of the child trail is ever removed.
-      await expect(page.locator('.page__label').getByRole('link')).toHaveCount(
-        0,
-      );
-      await expect(page.locator('.page__label-link')).toHaveCount(0);
-
-      const tabs = page.getByRole('tab');
-      await expect(tabs).toHaveCount(5);
-      const activeTab = page.locator('[role="tab"][aria-selected="true"]');
-      await expect(activeTab).toHaveCount(1);
-      await expect(activeTab).toContainText(section.title);
+      // The old section rail is gone: the Customize list replaces it.
+      await expect(page.getByRole('tab')).toHaveCount(0);
+      if (section.path === '/connections/computers') {
+        // Not a Customize item: no eyebrow into it, no Customize list.
+        await expect(page.locator('.page__label')).toHaveCount(0);
+        await expect(
+          page.getByRole('navigation', { name: 'Customize' }),
+        ).toHaveCount(0);
+      } else {
+        await expect(
+          page.locator('.page__label').getByRole('link', {
+            name: 'Customize',
+            exact: true,
+          }),
+        ).toBeVisible();
+        await expect(
+          page
+            .getByRole('navigation', { name: 'Customize' })
+            .getByRole('link', { name: new RegExp(`^${section.title}\\b`) }),
+        ).toHaveAttribute('aria-current', 'page');
+      }
 
       const actionButtons = page.locator('.page__actions').getByRole('button');
       await expect(actionButtons).toHaveCount(1);
@@ -367,6 +418,13 @@ test.describe('Connections IA', () => {
           .getByRole('button', { name: section.addLabel, exact: true }),
       ).toBeVisible();
     }
+    // The eyebrow goes back to the Customize landing.
+    await page.goto('/customize/tools');
+    await page
+      .locator('.page__label')
+      .getByRole('link', { name: 'Customize', exact: true })
+      .click();
+    await expect(page).toHaveURL((url) => url.pathname === '/customize');
   });
 
   test("the Add-provider picker offers OpenAI-Compatible, and testing an existing model connection renders the server's own failure sentence", async ({
@@ -385,12 +443,12 @@ test.describe('Connections IA', () => {
       lastCheckedAt: null,
     };
     await seedRoutes(page, { models: [stub] });
-    await page.goto('/connections/models');
+    await page.goto('/customize/providers');
 
     // Drive the real Add affordance: it opens the picker with the
     // OpenAI-Compatible type genuinely reachable.
     await page.getByRole('button', { name: 'Add model connection' }).click();
-    await expect(page).toHaveURL(/\/connections\/models\/new$/);
+    await expect(page).toHaveURL(/\/customize\/providers\/new$/);
     await expect(
       page.getByRole('heading', { name: 'Add model connection' }),
     ).toBeVisible();
@@ -402,7 +460,7 @@ test.describe('Connections IA', () => {
 
     // Drive the real Test affordance against the seeded connection.
     await page.getByRole('button', { name: /Custom OpenAI/ }).click();
-    await expect(page).toHaveURL(/\/connections\/models\/oa-compat-1$/);
+    await expect(page).toHaveURL(/\/customize\/providers\/oa-compat-1$/);
 
     const testButton = page.getByRole('button', {
       name: 'Test connection',
@@ -442,10 +500,10 @@ test.describe('Connections IA', () => {
     };
     await seedRoutes(page, { integrations: [builtin, userServer] });
 
-    await page.goto('/connections/tools');
+    await page.goto('/customize/tools');
 
     await page.getByRole('button', { name: /Station Docs/ }).click();
-    await expect(page).toHaveURL(/\/connections\/tools\/station-docs$/);
+    await expect(page).toHaveURL(/\/customize\/tools\/station-docs$/);
     const detailPanel = page.locator('.integration-editor-panel');
     await expect(
       detailPanel.getByText('Built in', { exact: true }),
@@ -455,7 +513,7 @@ test.describe('Connections IA', () => {
     ).toHaveCount(0);
 
     await page.getByRole('button', { name: /Browser Tools/ }).click();
-    await expect(page).toHaveURL(/\/connections\/tools\/browser-tools$/);
+    await expect(page).toHaveURL(/\/customize\/tools\/browser-tools$/);
     await expect(
       detailPanel.getByText('Built in', { exact: true }),
     ).toHaveCount(0);
@@ -511,7 +569,7 @@ const RETIRED_HUB_WORDS = [
   'Developer services',
 ];
 
-test.describe('Connections — Engines section', () => {
+test.describe('Customize — Engines item', () => {
   test.beforeEach(async ({ page }) => {
     await seedRoutes(page, { engines: [...ENGINES] });
   });
@@ -519,7 +577,7 @@ test.describe('Connections — Engines section', () => {
   test('every engine row is named by its engine and prints no internal type slug', async ({
     page,
   }) => {
-    await page.goto('/connections/engines');
+    await page.goto('/customize/engines');
     await expect(
       page.getByRole('heading', { name: 'Engines', level: 1, exact: true }),
     ).toBeVisible();
@@ -540,7 +598,7 @@ test.describe('Connections — Engines section', () => {
   test('the Engines section speaks none of the retired hub vocabulary', async ({
     page,
   }) => {
-    await page.goto('/connections/engines');
+    await page.goto('/customize/engines');
     await expect(
       page.getByRole('heading', { name: 'Engines', level: 1, exact: true }),
     ).toBeVisible();
@@ -555,7 +613,7 @@ test.describe('Connections — Engines section', () => {
   });
 });
 
-test.describe('Connections sections at 390x844', () => {
+test.describe('Customize items at 390x844', () => {
   test.use({
     viewport: { width: 390, height: 844 },
     isMobile: true,
@@ -564,6 +622,34 @@ test.describe('Connections sections at 390x844', () => {
 
   test.beforeEach(async ({ page }) => {
     await seedRoutes(page);
+  });
+
+  test('the landing is the list: the left list is hidden, and each item opens from the landing and comes back', async ({
+    page,
+  }) => {
+    await page.goto('/customize');
+    await expect(
+      page.getByRole('navigation', { name: 'Customize' }),
+    ).toBeHidden();
+    const landing = page.locator('.customize-landing');
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+    for (const [label, path] of CUSTOMIZE_ITEMS) {
+      const link = landing.getByRole('link', {
+        name: new RegExp(`^${label}\\b`),
+      });
+      const box = (await link.boundingBox())!;
+      expect(box.height, `${label} row`).toBeGreaterThanOrEqual(
+        MIN_TOUCH_TARGET_PX - 0.001,
+      );
+      await link.tap();
+      await expect(page).toHaveURL((url) => url.pathname === path);
+      await page.goBack();
+      await expect(page).toHaveURL((url) => url.pathname === '/customize');
+    }
   });
 
   test('every section opens its single visible add action without horizontal scroll', async ({
@@ -633,7 +719,7 @@ test.describe('Connections sections at 390x844', () => {
       lastCheckedAt: null,
     };
     await seedRoutes(page, { models: [stub] });
-    await page.goto('/connections/models');
+    await page.goto('/customize/providers');
 
     await page.getByRole('button', { name: 'Add model connection' }).click();
     await expect(
@@ -642,9 +728,9 @@ test.describe('Connections sections at 390x844', () => {
 
     // At 390 the list and the open picker occupy separate mobile sheets —
     // return to the list before selecting the existing connection.
-    await page.goto('/connections/models');
+    await page.goto('/customize/providers');
     await page.getByRole('button', { name: /Custom OpenAI/ }).click();
-    await expect(page).toHaveURL(/\/connections\/models\/oa-compat-1$/);
+    await expect(page).toHaveURL(/\/customize\/providers\/oa-compat-1$/);
 
     const testButton = page.getByRole('button', {
       name: 'Test connection',
@@ -672,7 +758,7 @@ test.describe('Connections sections at 390x844', () => {
     };
     await seedRoutes(page, { integrations: [builtin] });
 
-    await page.goto('/connections/tools');
+    await page.goto('/customize/tools');
     await page.getByRole('button', { name: /Station Docs/ }).click();
 
     const detailPanel = page.locator('.integration-editor-panel');
@@ -688,7 +774,7 @@ test.describe('Connections sections at 390x844', () => {
     page,
   }) => {
     await seedRoutes(page, { engines: [...ENGINES] });
-    await page.goto('/connections/engines');
+    await page.goto('/customize/engines');
     await expect(
       page.getByRole('heading', { name: 'Engines', level: 1, exact: true }),
     ).toBeVisible();
@@ -760,7 +846,7 @@ test.describe('Engines vocabulary', () => {
       );
     });
 
-    await page.goto('/connections/engines');
+    await page.goto('/customize/engines');
     const list = page.locator('.split-pane__list');
     await expect(list.getByText('Muse Code').first()).toBeVisible({
       timeout: 15_000,

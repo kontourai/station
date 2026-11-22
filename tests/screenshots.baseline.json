@@ -152,12 +152,6 @@
       "sha256": "49f139aa55e2a59d48d1842f94bb0e2f4fca09142ab57f9eb2f2cc09db00cb6e"
     },
     {
-      "name": "connections",
-      "width": 1440,
-      "height": 900,
-      "sha256": "d9a850166ad4767359e03da82c6a770984dd170dbfb8f797c6153be99e74e421"
-    },
-    {
       "name": "connections-agent-apps",
       "width": 1440,
       "height": 900,
@@ -300,12 +294,6 @@
       "width": 320,
       "height": 568,
       "sha256": "18517dd404a6e13bf58a80e6828af634786b56e37dc0f57db83c49358a3281b4"
-    },
-    {
-      "name": "mobile-connections",
-      "width": 390,
-      "height": 844,
-      "sha256": "942c1cb55c405c579936893fd63a3e7c0b01f0e0b9a794da10c2e4a7c6dad6c8"
     },
     {
       "name": "mobile-conversation-resync",

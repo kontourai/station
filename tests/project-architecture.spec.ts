@@ -277,14 +277,16 @@ function alphaProjectButton(page: Page) {
   return page.getByRole('button', { name: 'Alpha', exact: true });
 }
 
+/** Opens the Customize page from the sidebar and returns its item list. */
 async function openCustomize(page: Page) {
   await page
     .getByRole('navigation', { name: 'Primary navigation' })
     .getByRole('button', { name: 'Customize', exact: true })
     .click();
-  const chooser = page.getByRole('dialog', { name: 'Customize' });
-  await expect(chooser).toBeVisible();
-  return chooser;
+  await expect(page).toHaveURL(/\/customize$/);
+  const list = page.getByRole('navigation', { name: 'Customize' });
+  await expect(list).toBeVisible();
+  return list;
 }
 
 test.describe('Project Sidebar', () => {
@@ -316,19 +318,17 @@ test.describe('Project Sidebar', () => {
         navigation.getByRole('button', { name: gone, exact: true }),
       ).toHaveCount(0);
     }
-    // …and the configuration destinations are behind Customize. Connections is
-    // listed as 'Engines & Models' (#2144 decision 7): the row names what a
-    // reader is looking for and opens the hub at that tab.
+    // …and the configuration destinations are items on the Customize page.
+    // Connections is not one of them: its parts are.
     const sections = await openCustomize(page);
+    for (const item of ['Agents', 'Skills', 'Engines', 'Providers', 'Tools']) {
+      await expect(
+        sections.getByRole('link', { name: new RegExp(`^${item}\\b`) }),
+      ).toBeVisible();
+    }
     await expect(
-      sections.getByRole('link', { name: 'Agents', exact: true }),
-    ).toBeVisible();
-    await expect(
-      sections.getByRole('link', {
-        name: 'Engines & Models',
-        exact: true,
-      }),
-    ).toBeVisible();
+      sections.getByRole('link', { name: /^Connections/ }),
+    ).toHaveCount(0);
   });
 
   test('the fullscreen chat layout publishes no dock-slot clearance', async ({
@@ -877,17 +877,15 @@ test.describe('Provider Settings', () => {
     });
   });
 
-  test('connections view renders', async ({ page }) => {
+  test('the Engines item renders from the Customize list', async ({ page }) => {
     const sections = await openCustomize(page);
-    await sections
-      .getByRole('link', { name: 'Engines & Models', exact: true })
-      .click();
-    // The row opens the hub AT its Engines tab, so the landed page is the
-    // section — 'Engines' is the h1 there, with 'Connections' as the eyebrow
-    // (src-ui/src/app-shell/page-frame-registry.ts). Asserting the section
-    // rather than the hub root is what would catch the row quietly reverting
-    // to /connections and leaving the reader a redirect short.
-    await expect(page).toHaveURL(/\/connections\/engines$/);
+    await sections.getByRole('link', { name: /^Engines\b/ }).click();
+    // 'Engines' is the h1 there, under a Customize eyebrow; the item stays
+    // marked current in the list beside it.
+    await expect(page).toHaveURL(/\/customize\/engines$/);
+    await expect(
+      sections.getByRole('link', { name: /^Engines\b/ }),
+    ).toHaveAttribute('aria-current', 'page');
     await expect(
       page.getByRole('heading', { name: 'Engines', exact: true }),
     ).toBeVisible({ timeout: 5000 });

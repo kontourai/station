@@ -109,6 +109,6 @@ test.describe('First-run zero-provider chat rescue (#191 R1)', () => {
     await expect(page.getByText(/HTTP 5\d\d/)).toHaveCount(0);
 
     await emptyState.getByRole('button', { name: 'Open Connections' }).click();
-    await expect(page).toHaveURL(/\/connections\/models/);
+    await expect(page).toHaveURL(/\/customize\/providers/);
   });
 });

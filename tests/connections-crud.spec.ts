@@ -819,7 +819,7 @@ test.describe('Connections CRUD', () => {
       ),
     );
 
-    await page.goto('/connections/models');
+    await page.goto('/customize/providers');
     await expect(
       page.getByRole('heading', { name: 'Models', level: 1, exact: true }),
     ).toBeVisible();
@@ -837,7 +837,7 @@ test.describe('Connections CRUD', () => {
     // Keyboard activation: also pins that the entry is a real button.
     await detected.focus();
     await detected.press('Enter');
-    await expect(page).toHaveURL(/\/connections\/models\/new$/);
+    await expect(page).toHaveURL(/\/customize\/providers\/new$/);
     // A detected provider is already known, so this entry skips the generic
     // picker and opens the provider-specific draft with its local endpoint.
     await expect(
@@ -862,7 +862,7 @@ test.describe('Connections CRUD', () => {
       // `[data-provider-id]` have no producer left in `src-ui` at all — the
       // count of 4 was the OLD hub's aggregate of models and runtimes. Models
       // is a `SplitPaneLayout`, so its rows are what a phone user touches.
-      await page.goto('/connections/models');
+      await page.goto('/customize/providers');
 
       const rows = page.locator('.split-pane__item');
       await expect(rows).toHaveCount(1);
@@ -913,7 +913,7 @@ test.describe('Connections CRUD', () => {
         applyLongEntrance();
       });
     });
-    await page.goto('/connections/models/new?dock=open');
+    await page.goto('/customize/providers/new?dock=open');
 
     const dock = page.locator('#chat-dock');
     await expect(dock).toBeVisible();
@@ -1065,7 +1065,7 @@ test.describe('Connections CRUD', () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await installVisualViewportFixture(page);
-    await page.goto('/connections/models');
+    await page.goto('/customize/providers');
 
     const row = page.getByRole('button', { name: /Local Ollama/ });
     await row.focus();
@@ -1073,7 +1073,7 @@ test.describe('Connections CRUD', () => {
     const back = page.getByRole('button', { name: '← Back to list' });
     await expect(back).toBeFocused();
     await page.goBack();
-    await expect(page).toHaveURL(/\/connections\/models$/);
+    await expect(page).toHaveURL(/\/customize\/providers$/);
     await expect(row).toBeFocused();
 
     const add = page.getByRole('button', {
@@ -1082,11 +1082,11 @@ test.describe('Connections CRUD', () => {
     });
     await add.focus();
     await add.press('Enter');
-    await expect(page).toHaveURL(/\/connections\/models\/new$/);
+    await expect(page).toHaveURL(/\/customize\/providers\/new$/);
     await expect(back).toBeFocused();
     // The picker owns a real route close, not the split pane's Back button.
     await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await expect(page).toHaveURL(/\/connections\/models$/);
+    await expect(page).toHaveURL(/\/customize\/providers$/);
     await expect(add).toBeFocused();
 
     // Drive the route authority directly, without activating a row. This is a
@@ -1094,10 +1094,10 @@ test.describe('Connections CRUD', () => {
     // detail has no semantic opener. Back must fall back to its own list,
     // never resurrect the Add chain the picker close already consumed.
     await page.evaluate(() => {
-      window.history.pushState({}, '', '/connections/models/ollama-local');
+      window.history.pushState({}, '', '/customize/providers/ollama-local');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
-    await expect(page).toHaveURL(/\/connections\/models\/ollama-local$/);
+    await expect(page).toHaveURL(/\/customize\/providers\/ollama-local$/);
     await expect(back).toBeFocused();
     await back.click();
     await expect(page.locator('.split-pane__list')).toBeFocused();
@@ -1107,10 +1107,10 @@ test.describe('Connections CRUD', () => {
     page,
   }) => {
     // Add engine is one journey in the Engines detail pane: the frame's one
-    // "Add engine" action opens the catalogue at `/connections/engines/new`,
+    // "Add engine" action opens the catalogue at `/customize/engines/new`,
     // and a choice's confirm step, Checking and result all stay in that pane
     // (`EngineAddFlow`) with no route change and no second catalogue.
-    await page.goto('/connections/engines');
+    await page.goto('/customize/engines');
     await expect(page.getByRole('button', { name: /Kiro CLI/ })).toHaveCount(0);
 
     // The frame's one add action is the only entry point.
@@ -1118,7 +1118,7 @@ test.describe('Connections CRUD', () => {
       .locator('.page__actions')
       .getByRole('button', { name: 'Add engine', exact: true });
     await add.click();
-    await expect(page).toHaveURL(/\/connections\/engines\/new$/);
+    await expect(page).toHaveURL(/\/customize\/engines\/new$/);
 
     const kiroRow = page
       .locator('.engine-catalog__row')
@@ -1133,7 +1133,7 @@ test.describe('Connections CRUD', () => {
     await kiro.press('Enter');
 
     // CI-R8: the choice confirms before writing anything, in place.
-    await expect(page).toHaveURL(/\/connections\/engines\/new$/);
+    await expect(page).toHaveURL(/\/customize\/engines\/new$/);
     const setup = page.getByRole('region', { name: 'Engine setup' });
     await expect(
       setup.getByRole('heading', { name: 'Connect Kiro CLI' }),
@@ -1142,7 +1142,7 @@ test.describe('Connections CRUD', () => {
 
     await expect(setup.getByRole('status')).toContainText('Ready');
     await setup.getByRole('button', { name: 'Done' }).click();
-    await expect(page).toHaveURL(/\/connections\/engines\/kiro$/);
+    await expect(page).toHaveURL(/\/customize\/engines\/kiro$/);
     await expect(setup).toBeHidden();
   });
 
@@ -1164,7 +1164,7 @@ test.describe('Connections CRUD', () => {
       );
     });
     // A deep link to the custom entry opens on its form.
-    await page.goto('/connections/engines/new/custom');
+    await page.goto('/customize/engines/new/custom');
     const setup = page.getByRole('region', { name: 'Engine setup' });
     await expect(
       setup.getByRole('heading', { name: 'Custom engine' }),
@@ -1240,7 +1240,7 @@ test.describe('Connections CRUD', () => {
       page,
     }) => {
       await installVisualViewportFixture(page);
-      await page.goto('/connections/engines');
+      await page.goto('/customize/engines');
       // On a phone the page's one add action floats rather than taking a
       // header row (PageCreateAction); its name is the same.
       const add = page.getByRole('button', { name: 'Add engine', exact: true });
@@ -1249,7 +1249,7 @@ test.describe('Connections CRUD', () => {
         MIN_TOUCH_TARGET_PX,
       );
       await add.click();
-      await expect(page).toHaveURL(/\/connections\/engines\/new$/);
+      await expect(page).toHaveURL(/\/customize\/engines\/new$/);
 
       const kiroRow = page
         .locator('.engine-catalog__row')
@@ -1294,7 +1294,7 @@ test.describe('Connections CRUD', () => {
       }
 
       await kiro.click();
-      await expect(page).toHaveURL(/\/connections\/engines\/new$/);
+      await expect(page).toHaveURL(/\/customize\/engines\/new$/);
       const setup = page.getByRole('region', { name: 'Engine setup' });
       const connect = setup.getByRole('button', { name: 'Connect Kiro CLI' });
       await expect(connect).toBeVisible();
@@ -1354,7 +1354,7 @@ test.describe('Connections CRUD', () => {
       ),
     );
 
-    await page.goto('/connections/engines');
+    await page.goto('/customize/engines');
     // The section's own empty copy (`views/AgentConnectionView.tsx:257`), and
     // its ONE add action, which the frame owns (`ConnectionsSectionFrame.tsx`).
     await expect(page.getByText('Add an engine to get started')).toBeVisible();
@@ -1362,7 +1362,7 @@ test.describe('Connections CRUD', () => {
       .locator('.page__actions')
       .getByRole('button', { name: 'Add engine', exact: true })
       .click();
-    await expect(page).toHaveURL(/\/connections\/engines\/new$/);
+    await expect(page).toHaveURL(/\/customize\/engines\/new$/);
     const claudeRow = page.locator('.engine-catalog__row').filter({
       has: page.locator('.engine-catalog__name', {
         hasText: 'Claude Code',
@@ -1434,17 +1434,22 @@ test.describe('Connections CRUD', () => {
     );
 
     // The claim is now split across the two sections that own the two halves.
-    await page.goto('/connections/models');
+    await page.goto('/customize/providers');
     const modelRows = page.locator('.split-pane__list .split-pane__item');
     await expect(modelRows).toHaveCount(1);
     await expect(modelRows.first()).toHaveAccessibleName(/^Local Ollama/);
     // Both counts come from one derivation
     // (`views/connections-hub/connection-section-signals.ts`), so this also
-    // pins that nothing was invented in the rail.
-    await expect(page.getByRole('tab', { name: /^Models 1/ })).toBeVisible();
-    await expect(page.getByRole('tab', { name: /^Engines 0/ })).toBeVisible();
+    // pins that nothing was invented in the Customize list.
+    const customizeList = page.getByRole('navigation', { name: 'Customize' });
+    await expect(
+      customizeList.getByRole('link', { name: /^Providers 1\b/ }),
+    ).toBeVisible();
+    await expect(
+      customizeList.getByRole('link', { name: /^Engines 0\b/ }),
+    ).toBeVisible();
 
-    await page.goto('/connections/engines');
+    await page.goto('/customize/engines');
     await expect(page.getByText('Add an engine to get started')).toBeVisible();
     await expect(
       page.locator('.split-pane__list .split-pane__item'),
@@ -1460,7 +1465,7 @@ test.describe('Connections CRUD', () => {
     const desktopViewport = page.viewportSize()!;
     await page.setViewportSize({ width: 390, height: 844 });
     await installVisualViewportFixture(page);
-    await page.goto('/connections/models/ollama-local');
+    await page.goto('/customize/providers/ollama-local');
     await expect(
       page.getByText('Choose Test connection to check the saved settings.'),
     ).toBeVisible();
@@ -1498,7 +1503,7 @@ test.describe('Connections CRUD', () => {
     // `/connections/providers` redirects to Models. The add flow is a ROUTE
     // now, not a dialog: the frame's action navigates to `/models/new`, where
     // the split pane's detail is the provider type picker.
-    await page.goto('/connections/models');
+    await page.goto('/customize/providers');
     await expect(
       page.getByRole('heading', { name: 'Models', level: 1, exact: true }),
     ).toBeVisible();
@@ -1507,7 +1512,7 @@ test.describe('Connections CRUD', () => {
       .locator('.page__actions')
       .getByRole('button', { name: 'Add model connection', exact: true })
       .click();
-    await expect(page).toHaveURL(/\/connections\/models\/new$/);
+    await expect(page).toHaveURL(/\/customize\/providers\/new$/);
     await expect(
       page.getByRole('heading', { name: 'Add model connection' }),
     ).toBeVisible();
@@ -1525,13 +1530,13 @@ test.describe('Connections CRUD', () => {
 
     // The create settles: the route moves to the persisted id and the primary
     // action becomes Save.
-    await expect(page).toHaveURL(/\/connections\/models\/[0-9a-f-]{36}$/);
+    await expect(page).toHaveURL(/\/customize\/providers\/[0-9a-f-]{36}$/);
     await expect(nameField).toHaveValue('Team Ollama');
     await expect(
       page.getByRole('button', { name: 'Save', exact: true }),
     ).toBeVisible();
 
-    await page.goto('/connections/engines/codex');
+    await page.goto('/customize/engines/codex');
     await page.getByText('Advanced', { exact: true }).click();
     // By accessible name: inside the Advanced disclosure the old
     // `.editor-field .editor-input` also matches the read-only Type/Status/
@@ -1558,12 +1563,12 @@ test.describe('Connections CRUD', () => {
   test('preset click resolves to openai-compat with prefilled config', async ({
     page,
   }) => {
-    await page.goto('/connections/models');
+    await page.goto('/customize/providers');
     await page
       .locator('.page__actions')
       .getByRole('button', { name: 'Add model connection', exact: true })
       .click();
-    await expect(page).toHaveURL(/\/connections\/models\/new$/);
+    await expect(page).toHaveURL(/\/customize\/providers\/new$/);
     await expect(
       page.getByRole('heading', { name: 'Add model connection' }),
     ).toBeVisible();
@@ -1582,7 +1587,7 @@ test.describe('Connections CRUD', () => {
   });
 
   test('tool server create and delete flows settle', async ({ page }) => {
-    await page.goto('/connections/tools');
+    await page.goto('/customize/tools');
 
     // The section H1 is "Tools"; the view's own `+ Add Tool Server` was
     // deliberately deleted so the frame owns the section's single add action
@@ -1594,7 +1599,7 @@ test.describe('Connections CRUD', () => {
       .locator('.page__actions')
       .getByRole('button', { name: 'Add tool server', exact: true })
       .click();
-    await expect(page).toHaveURL(/\/connections\/tools\/new$/);
+    await expect(page).toHaveURL(/\/customize\/tools\/new$/);
     await page.waitForSelector('#int-id', { timeout: 15_000 });
     await fillStable(page, '#int-id', 'browser-tools');
     await fillStable(page, '#int-name', 'Browser Tools');
@@ -1626,7 +1631,7 @@ test.describe('Connections CRUD', () => {
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await installVisualViewportFixture(page);
-    await page.goto('/connections/tools');
+    await page.goto('/customize/tools');
 
     await page.getByRole('button', { name: /Filesystem Tools/ }).click();
     await page.waitForSelector('#int-name', { timeout: 15_000 });
@@ -1691,15 +1696,10 @@ test.describe('Connections CRUD', () => {
       await route.fulfill(json({ success: true, data: [vectorDbConnection] }));
     });
 
-    await page.goto('/connections/knowledge');
-    // The view renders inside `ConnectionsSectionFrame`'s own
-    // `PageHeaderScope`, so the frame's header wins: eyebrow `Connections`
-    // (archive#4463: unlinked parent-context text, not a
-    // breadcrumb trail and not a link — `/connections` is a redirect-only
-    // resolver, so a click would be a no-op or a sibling jump), H1
-    // `Knowledge`. Nothing on the page says "Knowledge infrastructure" any
-    // more, and the eyebrow has no link affordance — so the exit affordance
-    // this test used is gone too.
+    await page.goto('/customize/knowledge');
+    // The view renders inside `CustomizeSectionFrame`'s own
+    // `PageHeaderScope`, so the frame's header wins: eyebrow `Customize`,
+    // H1 `Knowledge`. Nothing on the page says "Knowledge infrastructure".
     await expect(
       page.getByRole('heading', { name: 'Knowledge', level: 1, exact: true }),
     ).toBeVisible();
@@ -1710,12 +1710,14 @@ test.describe('Connections CRUD', () => {
     await expect(dataDirInput).toHaveValue('/data/lancedb');
     await dataDirInput.fill('/data/lancedb-edited');
 
-    // Leaving via the section rail. `useUnsavedGuard` registers a GLOBAL
+    // Leaving via the Customize list. `useUnsavedGuard` registers a GLOBAL
     // navigation guard while dirty and `navigationStore.navigate` runs every
-    // guard on any pathname change, so the rail tab — a real `role="tab"` that
-    // navigates (`ConnectionsSectionFrame.tsx`) — is arbitrated by it exactly
-    // as the old breadcrumb was.
-    const breadcrumb = page.getByRole('tab', { name: /^Models/ });
+    // guard on any pathname change, so the list's link — which navigates in
+    // place (`views/customize/CustomizeItemLink.tsx`) — is arbitrated by it
+    // exactly as the old rail tab was.
+    const breadcrumb = page
+      .getByRole('navigation', { name: 'Customize' })
+      .getByRole('link', { name: /^Providers\b/ });
 
     await breadcrumb.click();
     const dialog = page.getByRole('dialog');
@@ -1728,7 +1730,7 @@ test.describe('Connections CRUD', () => {
     await dialog.getByRole('button', { name: 'Cancel' }).click();
     await expect(dialog).not.toBeVisible();
     await expect(dataDirInput).toHaveValue('/data/lancedb-edited');
-    await expect(page).toHaveURL(/\/connections\/knowledge$/);
+    await expect(page).toHaveURL(/\/customize\/knowledge$/);
 
     // Discard proceeds with the navigation.
     await breadcrumb.click();
@@ -1737,6 +1739,6 @@ test.describe('Connections CRUD', () => {
       .getByRole('dialog')
       .getByRole('button', { name: 'Discard' })
       .click();
-    await expect(page).toHaveURL(/\/connections\/models$/);
+    await expect(page).toHaveURL(/\/customize\/providers$/);
   });
 });

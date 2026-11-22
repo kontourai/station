@@ -17,7 +17,7 @@ const ROUTES: NavigationView[] = [
   { type: 'agent-new' },
   { type: 'agent-edit', slug: 'a' },
   { type: 'guidance' },
-  { type: 'connections' },
+  { type: 'customize' },
   { type: 'connections-models' },
   { type: 'connections-model-edit', id: 'p' },
   { type: 'connections-engines' },
@@ -212,7 +212,7 @@ describe('page-frame registry', () => {
     expect(resolvePageFrame({ type: 'developer' })?.eyebrow).toBe('Developer');
     for (const route of [{ type: 'connections-knowledge' }] as const) {
       const spec = resolvePageFrame(route as NavigationView);
-      expect(spec?.eyebrow, `${route.type} eyebrow`).toBe('Connections');
+      expect(spec?.eyebrow, `${route.type} eyebrow`).toBe('Customize');
     }
   });
 });

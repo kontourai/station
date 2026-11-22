@@ -302,9 +302,9 @@ describe('the CLI list carries the retired engine picker’s outstanding propert
     fireEvent.click(screen.getByRole('button', { name: 'Set one up' }));
 
     expect(window.location.pathname + window.location.search).toBe(
-      '/connections/engines',
+      '/customize/engines',
     );
-    expect(navigationStore.getSnapshot().pathname).toBe('/connections/engines');
+    expect(navigationStore.getSnapshot().pathname).toBe('/customize/engines');
   });
 });
 

@@ -459,6 +459,7 @@ describe('noun-consistency-gate', () => {
       'Rewind conversation': 'Rewind conversation to here?',
       'Restore workspace': 'Restore workspace?',
       'Reset agent context': 'Reset agent context',
+      'Connections as a place': 'Configure in Connections',
     };
     // Plural and lowercase forms of the same terms.
     const VARIANTS: Record<string, string> = {
@@ -483,6 +484,7 @@ describe('noun-consistency-gate', () => {
       'Rewind conversation': 'rewind conversation',
       'Restore workspace': 'restore workspace',
       'Reset agent context': 'reset agent context',
+      'Connections as a place': 'Open Connections › Models, then retry',
     };
 
     it('pins the retired terms, independently of the script', () => {
@@ -491,15 +493,23 @@ describe('noun-consistency-gate', () => {
       );
     });
 
-    it('keeps every entry pending until the copy lanes merge', () => {
+    it('keeps every entry pending until the copy lanes merge, except those already enforced', () => {
       // Flip-on is deleting `pending`; when that happens this expectation
       // changes with it, deliberately.
-      expect(RETIRED_USER_TERMS.every(({ pending }) => pending)).toBe(true);
-      expect(ACTIVE_RETIRED_USER_TERMS).toEqual([]);
-      for (const text of Object.values(VIOLATIONS)) {
-        expect(scanFileContent('Pending.tsx', `<p>${text}</p>`), text).toEqual(
-          [],
-        );
+      const ENFORCED = ['Connections as a place'];
+      expect(
+        RETIRED_USER_TERMS.filter(({ pending }) => !pending).map(
+          ({ term }) => term,
+        ),
+      ).toEqual(ENFORCED);
+      expect(ACTIVE_RETIRED_USER_TERMS.map(({ term }) => term)).toEqual(
+        ENFORCED,
+      );
+      for (const [term, text] of Object.entries(VIOLATIONS)) {
+        expect(
+          scanFileContent('Pending.tsx', `<p>${text}</p>`),
+          text,
+        ).toHaveLength(ENFORCED.includes(term) ? 1 : 0);
       }
     });
 
@@ -588,6 +598,11 @@ describe('noun-consistency-gate', () => {
         '<p>Rewind chat to here</p>',
         '<p>Restore files to here</p>',
         '<p>Start fresh context</p>',
+        '<p>Open Customize</p>',
+        '<p>Configure in Customize</p>',
+        '<p>Open Customize › Providers, then retry</p>',
+        // The Station menu keeps its Connections label until Phase 2.
+        '<p>Connections</p>',
       ]) {
         expect(scanFileContent('Clean.tsx', source, all), source).toEqual([]);
       }

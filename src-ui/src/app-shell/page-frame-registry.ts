@@ -43,10 +43,9 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   // an ancestor and duplicated the title instead.
   guidance: SPLIT_PANE,
 
-  connections: {
-    title: 'Connections',
-    subtitle: 'Where work runs and what powers it',
-    width: 'narrow',
+  customize: {
+    title: 'Customize',
+    subtitle: 'The agents you run, what they run on, and what they can reach.',
   },
   'connections-models': SPLIT_PANE,
   'connections-model-edit': SPLIT_PANE,
@@ -60,12 +59,20 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'connections-tools': SPLIT_PANE,
   'connections-tool-edit': SPLIT_PANE,
   'connections-knowledge': {
-    eyebrow: 'Connections',
+    eyebrow: 'Customize',
     title: 'Knowledge',
     subtitle: 'What agents can look up',
     width: 'narrow',
   },
-  'connections-computers': { width: 'full', body: 'flow', flush: true },
+  // Not a Customize item: devices and other Stations move to the Station
+  // page. Until then this keeps today's Computers screen at its address.
+  'connections-computers': {
+    title: 'Computers',
+    subtitle: 'Devices and computers Station can reach or run work on',
+    width: 'full',
+    body: 'flow',
+    flush: true,
+  },
 
   plugins: SPLIT_PANE,
   registry: {

@@ -315,6 +315,17 @@ export const RETIRED_USER_TERMS = Object.freeze([
     pattern: /\breset agent context\b/i,
     pending: true,
   },
+  // Navigation area (first-release-navigation.md, slice 1.2): Connections is
+  // no longer a destination, so copy that sends a reader to it or to one of
+  // its tabs names a place that is gone. Enforced: slice 1.2 removed the last
+  // uses. The bare word stays legal: the header's Station menu is still
+  // labelled Connections until the Station page slices rename it.
+  {
+    term: 'Connections as a place',
+    use: 'Customize, or the Customize item',
+    pattern:
+      /\b(?:(?:configure in|set up|review) connections|connections\s*[›→>]\s*(?:models|engines|tools|knowledge))\b/i,
+  },
 ]);
 
 /** The retired user-facing terms the gate enforces today. */

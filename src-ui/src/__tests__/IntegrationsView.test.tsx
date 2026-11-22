@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 let integrations: unknown[] = [];
 let integrationsError: Error | null = null;
 const refetchIntegrations = vi.fn();
-let pathname = '/connections/tools';
+let pathname = '/customize/tools';
 let detail: any;
 let trustPreview = false;
 
@@ -98,7 +98,7 @@ describe('IntegrationsView (#771)', () => {
   beforeEach(() => {
     integrations = [];
     integrationsError = null;
-    pathname = '/connections/tools';
+    pathname = '/customize/tools';
     detail = undefined;
     trustPreview = false;
     refetchIntegrations.mockReset();
@@ -132,7 +132,7 @@ describe('IntegrationsView (#771)', () => {
       ),
     );
     vi.stubGlobal('fetch', fetchMock);
-    pathname = '/connections/tools/new';
+    pathname = '/customize/tools/new';
 
     renderView();
     fireEvent.change(screen.getByPlaceholderText('my-tool-server'), {
@@ -201,7 +201,7 @@ describe('IntegrationsView (#771)', () => {
       }),
     );
     vi.stubGlobal('fetch', fetchMock);
-    pathname = '/connections/tools/mail';
+    pathname = '/customize/tools/mail';
     trustPreview = true;
     detail = {
       id: 'mail',
@@ -247,7 +247,7 @@ describe('IntegrationsView (#771)', () => {
         }),
       );
       vi.stubGlobal('fetch', fetchMock);
-      pathname = '/connections/tools/mail';
+      pathname = '/customize/tools/mail';
       detail = {
         id: 'mail',
         kind: 'mcp',
