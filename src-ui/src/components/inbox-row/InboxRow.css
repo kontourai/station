@@ -69,6 +69,27 @@
 .inbox-row__flag-glyph {
   flex: 0 0 auto;
 }
+/* A flagged hover row: the flag belongs to the row, so the hover and current
+   treatment moves from the open button to the whole row, as on a touch row,
+   instead of stopping short of the flag. */
+.inbox-row--hover:has(> .inbox-row__flag) {
+  border: 1px solid transparent;
+}
+.inbox-row--hover:has(> .inbox-row__flag):is(
+  :has(.inbox-row__open:hover),
+  :has(.inbox-row__open:focus-visible),
+  .is-current
+) {
+  border-color: var(--border-secondary);
+  background: var(--bg-tertiary);
+}
+.inbox-row--hover.is-current:has(> .inbox-row__flag) {
+  border-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+}
+.inbox-row--hover:has(> .inbox-row__flag) .inbox-row__open {
+  border-color: transparent;
+  background: transparent;
+}
 .inbox-row__flag-result:empty {
   display: none;
 }
