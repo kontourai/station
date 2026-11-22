@@ -451,7 +451,7 @@ store.
 
 - **#790 — paired peers are first-class delegation targets in the UI.** A peer
   provisioned in the outbound `PeerCredentialStore` (`station environment peers
-  add`) appears on Connections → Computers as a `Peer Station` row (name,
+  add`) appears on the Computers page (`/connections/computers`) as a `Peer Station` row (name,
   endpoint, credential-present state — never the credential) and as a selectable
   entry in the Delegate dialog's Station menu. Selection dispatches the
   existing `{ kind: 'saved', id: <environmentId> }` execution target;

@@ -1476,7 +1476,7 @@ See [operator passkeys](../guides/operator-passkeys.md#change-device-access-from
 
 #### `useConnectionsQuery()`
 
-Returns the merged Connections list used by the Connections hub. The result includes both model and runtime rows from `GET /api/connections`.
+Returns the merged connections list that Customize's connection items read. The result includes both model and runtime rows from `GET /api/connections`.
 
 #### `useModelConnectionsQuery()`
 
