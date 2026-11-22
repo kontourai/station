@@ -1,0 +1,7 @@
+{
+  "revision": "07323a9c82896bb5f1fbb9f867b2f5bfa40bad92",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Added the projectId id-or-slug resolution and 400 refusal, checked against routes/search.ts and projectSlugFor; updated useKnowledgeScanMutation to name the namespace invalidation and the indexed, alreadyIndexed and skipped counts, checked against projectData.ts and knowledge-filesystem.ts.","inputs":["docs/reference/sdk.md","packages/sdk/src/query-domains/projectData.ts","src-server/routes/search.ts","src-server/runtime/routes/runtime-routes.ts","src-ui/src/components/search/WorkspaceSearchPalette.tsx"]}
+  ]
+}

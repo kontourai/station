@@ -1966,6 +1966,11 @@ read-only. Both require a host-captured scope matching `apiBase`, rejecting abse
 or mismatched scopes before transport. Older servers return `UnifiedSearchRequestError.kind: 'unsupported'`
 on 404/405, never fabricated empty results.
 
+`filters.projectId` names a Project by its id or its slug. The server resolves
+it to the slug that Tasks and messages are scoped by, and answers `400` for one
+that names no Project rather than an empty result. A Project whose slug starts
+with another's is a different Project.
+
 Import `searchStation`, `resolveSearchOpen`, and `UnifiedSearchRequestError`
 from `@kontourai/station-sdk/client`. The root `@kontourai/station-sdk` entry
 exports `useUnifiedSearchQuery` and `unifiedSearchQueries`; its hook loads the
@@ -2556,7 +2561,9 @@ Fetches the namespace's `KnowledgeDocumentMeta[]` matching `filters`, such as
 ### `useKnowledgeScanMutation(projectSlug)`
 
 Requests the directory scan with optional extensions/include/exclude patterns
-and invalidates document/status queries. A completed file-store scan is not
+and invalidates document, status and namespace queries. The result counts
+`indexed` (new files), `alreadyIndexed` (paths already in the namespace, left
+as they were) and `skipped` (empty, oversized or failed files). A completed file-store scan is not
 proof that every root is indexed for semantic search; indexing has separate
 owners described in the [Knowledge guide](../guides/knowledge.md).
 

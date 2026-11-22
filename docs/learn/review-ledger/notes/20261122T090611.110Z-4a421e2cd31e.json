@@ -1,0 +1,7 @@
+{
+  "revision": "78f97e0a8c1aaf882e2bca3b8f36dc9538cd4fca",
+
+  "notes": [
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"The knowledge guide gained one sentence on the older namespace API: a directory scan registers the code namespace. The ADR routes to the guide and describes per-project namespaces generally; nothing here names the scan's namespace, so it stays accurate.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","docs/guides/knowledge.md"]}
+  ]
+}

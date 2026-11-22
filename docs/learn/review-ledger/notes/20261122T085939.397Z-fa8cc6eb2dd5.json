@@ -1,0 +1,7 @@
+{
+  "revision": "a46df40a2bef79288a97a4cb4ead44e5325e4b44",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Added that a directory scan naming no namespace registers the code RAG namespace before writing, so the Project-wide list, status counts and unscoped search include it; checked against knowledge-service.ts scanDirectories and knowledge-filesystem.ts listKnowledgeDocuments.","inputs":["docs/guides/knowledge.md","src-server/services/knowledge/knowledge-service.ts"]}
+  ]
+}

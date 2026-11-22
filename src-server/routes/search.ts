@@ -2,6 +2,10 @@ import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy'
 import { UNIFIED_SEARCH_V1 } from '@kontourai/station-contracts/unified-search';
 import { Hono } from 'hono';
 import { z } from 'zod/v3';
+import {
+  type ProjectIdentityLookup,
+  projectSlugFor,
+} from '../services/projects/project-local-id.js';
 import type { RuntimeSearch } from '../services/search/runtime-search.js';
 import { unifiedSearchReads } from '../telemetry/metrics.js';
 import { getBody, validate } from './schemas/schemas.js';
@@ -63,6 +67,12 @@ export function createSearchRoutes(
   options: {
     readAuthorityForRequest: (request: Request) => SessionReadAuthority;
     isRequestPrincipalCurrent: (request: Request) => boolean;
+    /**
+     * Resolves `filters.projectId`, which callers may give as a Project id or
+     * slug, to the slug Tasks and messages are scoped by. A filter that names
+     * no Project is refused rather than answered as "no results".
+     */
+    projects?: ProjectIdentityLookup;
   },
 ) {
   const app = new Hono();
@@ -109,7 +119,21 @@ export function createSearchRoutes(
     async (c) => {
       if (!search || !options.isRequestPrincipalCurrent(c.req.raw))
         return c.json({ success: false, error: 'Search unavailable' }, 503);
-      const result = await search.search(getBody(c), context(c.req.raw));
+      let request = getBody(c);
+      const projectIdentity = request.filters?.projectId;
+      if (projectIdentity !== undefined && options.projects) {
+        const projectSlug = projectSlugFor(options.projects, projectIdentity);
+        if (!projectSlug)
+          return c.json(
+            { success: false, error: 'Invalid search request' },
+            400,
+          );
+        request = {
+          ...request,
+          filters: { ...request.filters, projectId: projectSlug },
+        };
+      }
+      const result = await search.search(request, context(c.req.raw));
       unifiedSearchReads.add(1, { operation: 'search', outcome: result.state });
       if (!options.isRequestPrincipalCurrent(c.req.raw))
         return c.json({ success: false, error: 'Search unavailable' }, 503);

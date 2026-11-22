@@ -1,0 +1,7 @@
+{
+  "revision": "07323a9c82896bb5f1fbb9f867b2f5bfa40bad92",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"KnowledgeSection.tsx change only alters the scan result line; this page's Knowledge concepts and the link to Knowledge sources are unaffected.","inputs":["docs/user/concepts.md","src-ui/src/views/project-settings/KnowledgeSection.tsx"]}
+  ]
+}

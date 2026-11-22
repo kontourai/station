@@ -75,6 +75,13 @@ async function fixture(
     createSearchRoutes(search, {
       readAuthorityForRequest: () => authority,
       isRequestPrincipalCurrent: () => current,
+      projects: {
+        listProjects: () => [
+          { id: 'project-alpha', slug: 'alpha' },
+          { id: 'project-alpha-site', slug: 'alpha-site' },
+          { id: 'project-other', slug: 'other' },
+        ],
+      },
     }),
   );
   cleanup.push(async () => {
@@ -334,8 +341,21 @@ describe('runtime search HTTP composition', () => {
       title: 'cobalt task',
       createdBy: 'user',
     });
+    // Other Projects' Tasks and messages match the query too and must stay
+    // out, including one whose slug starts with this Project's slug.
+    await f.graph.createTask({
+      projectId: 'other',
+      title: 'cobalt task elsewhere',
+      createdBy: 'user',
+    });
+    await f.graph.createTask({
+      projectId: 'alpha-site',
+      title: 'cobalt task in a longer slug',
+      createdBy: 'user',
+    });
     for (let index = 0; index < 12; index++)
       f.message(`other-${index}`, 'other');
+    f.message('prefixed', 'alpha-site');
     f.message('wanted', 'alpha');
     const response = await f.request({
       ...query,
@@ -384,6 +404,42 @@ describe('runtime search HTTP composition', () => {
     expect(f.createTasks).toHaveBeenCalledTimes(1);
     expect(f.createTranscripts).toHaveBeenCalledTimes(1);
   });
+  test('a Project filter given as the id scopes like its slug, and one naming no Project is refused', async () => {
+    const f = await fixture();
+    await f.graph.createTask({
+      projectId: 'alpha',
+      title: 'cobalt task',
+      createdBy: 'user',
+    });
+    await f.graph.createTask({
+      projectId: 'alpha-site',
+      title: 'cobalt task in a longer slug',
+      createdBy: 'user',
+    });
+    f.message('prefixed', 'alpha-site');
+    f.message('wanted', 'alpha');
+    const byId = (await (
+      await f.request({ ...query, filters: { projectId: 'project-alpha' } })
+    ).json()) as any;
+    expect(byId.data.state).toBe('complete');
+    expect(
+      byId.data.results.map((row: any) => [row.kind, row.scope.projectId]),
+    ).toEqual(
+      expect.arrayContaining([
+        ['task', 'alpha'],
+        ['message', 'alpha'],
+      ]),
+    );
+    expect(
+      byId.data.results.every((row: any) => row.scope.projectId === 'alpha'),
+    ).toBe(true);
+    const unknown = await f.request({
+      ...query,
+      filters: { projectId: 'no-such-project' },
+    });
+    expect(unknown.status).toBe(400);
+  });
+
   test('hosted composition never invokes Task search and excludes wrong tenant messages', async () => {
     const f = await fixture(true);
     f.hosted('alpha');
