@@ -65,6 +65,38 @@ describe('translateChatError', () => {
     expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
   });
 
+  it.each([
+    "This agent's settings changed while the chat was still working. That work can no longer use tools. When it finishes, send your message again: the chat continues this conversation with the new settings.",
+    "This agent's settings changed and this chat's engine can't pick up where it left off. Send your message again: the chat continues this conversation in a new session with the new settings.",
+  ])(
+    'shows a replaced-configuration refusal as the server wrote it, with no hint repeating it: %s',
+    (message) => {
+      const result = translateChatError({
+        status: 409,
+        code: 'session_configuration_replaced',
+        message,
+      });
+      expect(result.title).toBe("This agent's settings changed");
+      expect(result.body).toBe(message);
+      expect(result.hint).toBeUndefined();
+      expect(formatChatErrorDisplay(result)).not.toMatch(/retrying may help/i);
+      expect(result.title).not.toBe('Error');
+    },
+  );
+
+  it('falls back to a one-sentence hint when the server sent no text for a replaced configuration', () => {
+    const result = translateChatError({
+      status: 409,
+      code: 'session_configuration_replaced',
+      message: '',
+    });
+    expect(result.title).toBe("This agent's settings changed");
+    expect(result.body).toBe('');
+    expect(result.hint).toBe(
+      'Send your message again once any work still running has finished: the chat continues this conversation with the new settings.',
+    );
+  });
+
   it('classifies an ended-session refusal by backend code as a Station-side end, not an error', () => {
     const result = translateChatError({
       code: 'session_ended',

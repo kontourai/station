@@ -1695,6 +1695,16 @@ export const CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE =
 export const CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE =
   'conversation_predecessor_engine_live';
 
+/**
+ * A turn refused because what its Session's engine was launched with (its
+ * Agent, tool servers or engine connection) changed while the engine was
+ * still running work started under the old configuration. Sending again
+ * once that work ends restarts the Session in place under the current
+ * configuration.
+ */
+export const SESSION_CONFIGURATION_REPLACED_CODE =
+  'session_configuration_replaced';
+
 export const CONVERSATION_HANDOFF_RESET_FIELDS = Object.freeze([
   'providerNativeCursor',
   'toolState',

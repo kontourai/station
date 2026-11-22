@@ -103,6 +103,7 @@ import { FULL_TELEMETRY_ACKNOWLEDGEMENT_REVISION } from '../../services/usage-te
 import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import * as fakeGh from '../../services/work-item-providers/__tests__/fixtures/fake-gh.js';
 import type { TaskFollowUpStoreHolder } from '../../services/work-item-providers/task-follow-up-store.js';
+import { preToolPolicyLaunchFingerprint } from '../agents/pre-tool-policy-generation.js';
 import { builtinStationControlServerPath } from '../bootstrap/station-control-runtime-env.js';
 import { stationControlDisclosureForToken } from '../mcp/station-control-mcp-token.js';
 import { installSignedStartupProvider } from './fixtures/signed-provider-startup.js';
@@ -620,6 +621,10 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         cwd: home,
         agent: { slug: 'bound-test' },
         metadata: {
+          // As every Station start carries it: without it the launch cannot
+          // be read again, the session starts unbound, and every call is
+          // refused as replaced rather than by the delegation's own policy.
+          agentSlug: 'bound-test',
           delegation: {
             mode: 'isolated-child',
             depth: 1,
@@ -898,6 +903,265 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       expect(kept?.has('Agents')).toBe(true);
     } finally {
       await stopAll();
+    }
+  });
+
+  // The owner's Station, 2026-11-21: a Codex turn's Station tool calls were
+  // refused after an `Agents reloaded` nobody caused. Real runtime, real
+  // ConfigLoader on a real home, real Codex adapter over a fake process:
+  // each reload Station causes by itself lands while a turn runs with a tool
+  // call pending, and none may move the session's launch fingerprint.
+  it('a reload Station causes by itself leaves a running Codex session, its fingerprint and its tools alone', async () => {
+    home = await createSchemaHome('station-codex-no-person-reload-');
+    const agentDir = join(home, 'agents', 'reload-test');
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(
+      join(agentDir, 'agent.json'),
+      JSON.stringify({
+        name: 'Reload Test',
+        prompt: 'Test agent.',
+        model: 'anthropic.test-model',
+        tools: { mcpServers: ['station-control', 'github'] },
+      }),
+    );
+    const githubDir = join(home, 'integrations', 'github');
+    mkdirSync(githubDir, { recursive: true });
+    writeFileSync(
+      join(githubDir, 'integration.json'),
+      JSON.stringify({
+        id: 'github',
+        kind: 'mcp',
+        displayName: 'GitHub',
+        transport: 'stdio',
+        command: 'gh-mcp',
+        args: ['--stdio'],
+        disabledTools: ['delete_repo'],
+        probe: {
+          ok: true,
+          toolCount: 2,
+          toolNames: ['list', 'delete_repo'],
+          tools: [],
+          checkedAt: '2026-11-21T18:50:00.000Z',
+        },
+      }),
+    );
+    routeMocks.armRoutesConfigured();
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    await runtime.initialize();
+    await routeMocks.routesConfigured;
+    const subject = runtime as any;
+    await subject.featurePreviews.setEnabled(
+      'codex-bound-browser-device-tools',
+      true,
+    );
+    await subject.featurePreviews.setEnabled(
+      'station-orchestration-instructions',
+      true,
+    );
+    const adapter = subject.codexAdapter;
+    const child = new FakeCodexProcess();
+    const spawned = vi.fn(() => child);
+    adapter.processFactory = spawned;
+    const write = child.stdin._write.bind(child.stdin);
+    child.stdin._write = (chunk: any, encoding: any, callback: any) => {
+      write(chunk, encoding, callback);
+      child.emit('wire-write');
+    };
+    // Event-driven: the start resolves its policy (real config reads)
+    // before it writes `thread/start`, longer than a fixed poll allows.
+    const wire = async (method: string): Promise<any> => {
+      const deadline = Date.now() + 10_000;
+      for (;;) {
+        const found = child.stdin.lines
+          .map((line: string) => JSON.parse(line))
+          .find((line: any) => line.method === method);
+        if (found) return found;
+        if (Date.now() > deadline)
+          throw new Error(
+            `Never observed: ${method}; wire: ${child.stdin.lines.join(' | ').slice(0, 3000)}`,
+          );
+        await new Promise<void>((resolve) => {
+          const timer = setTimeout(resolve, 50);
+          child.once('wire-write', () => {
+            clearTimeout(timer);
+            resolve();
+          });
+        });
+      }
+    };
+    const threadId = 'no-person-reload';
+    const base = {
+      provider: 'codex' as const,
+      threadId,
+      cwd: home,
+      metadata: { agentSlug: 'reload-test', conversationId: threadId },
+    };
+    const input = {
+      ...base,
+      agent: await subject.orchestrationService.resolveLaunchAgent(base),
+    };
+    expect(
+      input.agent.toolServers.map((server: any) => server.id).sort(),
+    ).toEqual(['github', 'station-control']);
+    const started = adapter.startSession(input);
+    await emit(child, {
+      id: (await wire('initialize')).id,
+      result: { userAgent: 'test' },
+    });
+    await emit(child, {
+      id: (await wire('config/read')).id,
+      result: { config: { mcp_servers: {} } },
+    });
+    await emit(child, {
+      id: (await wire('thread/start')).id,
+      result: { thread: { id: `native-${threadId}` } },
+    });
+    await withTimeout(started, 'reload start');
+    const record = adapter.transport.sessions.get(threadId);
+    const fingerprint = async () => {
+      const read = await subject.readExternalSessionLaunch(input);
+      expect(read.state).toBe('read');
+      return preToolPolicyLaunchFingerprint(read);
+    };
+    const bound = await fingerprint();
+    // The turn starts and stays open: no `turn/completed` in this test.
+    const turn = adapter.sendTurn({ threadId, input: 'go' });
+    await emit(child, {
+      id: (await wire('turn/start')).id,
+      result: { turn: { id: 'turn-a' } },
+    });
+    await withTimeout(turn, 'reload turn');
+    let callId = 0;
+    const toolCall = async (tool = 'browser_status') => {
+      callId += 1;
+      await emit(child, {
+        id: 100 + callId,
+        method: 'item/tool/call',
+        params: {
+          threadId: `native-${threadId}`,
+          turnId: 'turn-a',
+          callId: `call-${callId}`,
+          tool,
+          arguments: {},
+        },
+      });
+      return 100 + callId;
+    };
+    // A call left pending at its approval while every reload lands.
+    const pendingCall = await toolCall();
+    // Station's orchestration consumes the adapter's events; the adapter's
+    // own approval table shows the call waiting for a person.
+    const approvals = () => record.boundToolApprovals?.size ?? 0;
+    await waitFor(() => approvals() === 1 || undefined, 'pending approval');
+    const reload = vi.spyOn(subject, 'reloadConfigurationFromDisk');
+    const loadAgent = vi.spyOn(subject.configLoader, 'loadAgent');
+    const decide = () =>
+      record.launchPolicy(
+        { toolName: 'mcp__github__list', toolCallId: 'x', toolArgs: {} },
+        { agentSlug: 'reload-test', conversationId: threadId },
+        { interaction: 'external' },
+      );
+    const assertUntouched = async (trigger: string) => {
+      const reads = loadAgent.mock.calls.length;
+      const decision = await decide();
+      // The evaluator re-read the launch inputs under the moved revision.
+      expect(loadAgent.mock.calls.length, trigger).toBeGreaterThan(reads);
+      expect(decision.behavior, trigger).not.toBe('deny');
+      expect(await fingerprint(), trigger).toBe(bound);
+      expect(await subject.preToolPolicyGenerations.replaced(threadId)).toBe(
+        false,
+      );
+      expect(adapter.transport.sessions.get(threadId), trigger).toBe(record);
+      expect(record.stopped, trigger).toBeFalsy();
+    };
+    try {
+      // (a) The MCP service's probe write: same tools, a new `checkedAt`,
+      // through the same writer, then the watcher's reload.
+      const revisionBefore = subject.agentConfigurationRevision;
+      await subject.configLoader.updateIntegration(
+        'github',
+        (current: any) => ({
+          ...current,
+          probe: {
+            ok: true,
+            toolCount: 2,
+            toolNames: ['delete_repo', 'list'],
+            tools: [],
+            checkedAt: '2026-11-21T18:57:22.000Z',
+          },
+        }),
+      );
+      expect(
+        (await subject.configLoader.loadIntegration('github')).probe.checkedAt,
+      ).toBe('2026-11-21T18:57:22.000Z');
+      await subject.reloadAgents();
+      expect(subject.agentConfigurationRevision).toBeGreaterThan(
+        revisionBefore,
+      );
+      await assertUntouched('probe write');
+      // (b) Another session's tools create an unrelated Agent on disk; the
+      // watcher reloads every Agent.
+      const otherDir = join(home, 'agents', 'other-agent');
+      mkdirSync(otherDir, { recursive: true });
+      writeFileSync(
+        join(otherDir, 'agent.json'),
+        JSON.stringify({ name: 'Other', prompt: 'Something else.' }),
+      );
+      await subject.reloadAgents();
+      // The real reload ran and read the new Agent from disk.
+      expect(subject.agentMetadataMap.has('other-agent')).toBe(true);
+      await assertUntouched('unrelated agent');
+      // (c) A connection refresh that changes no launch input, then the
+      // reconciliation rail's full reload.
+      await subject.providerService.saveProviderConnection({
+        id: 'unrelated-llm',
+        type: 'openai-compat',
+        name: 'Unrelated',
+        enabled: true,
+        capabilities: ['llm'],
+        config: { baseUrl: 'https://llm.example/v1', apiKey: 'key' },
+      });
+      await expect(subject.reconcileAgentConfigurationSources()).resolves.toBe(
+        true,
+      );
+      await assertUntouched('reconciliation');
+      expect(reload).toHaveBeenCalledTimes(3);
+      // The pending call and a new one still go to the person, not refused.
+      const second = await toolCall();
+      await waitFor(() => approvals() === 2 || undefined, 'second approval');
+      expect(repliesTo(child, pendingCall)).toEqual([]);
+      expect(repliesTo(child, second)).toEqual([]);
+      expect(spawned).toHaveBeenCalledOnce();
+      // Chosen: a probe that finds a genuinely new tool IS a different
+      // launch when the session was given the server's tool list (here,
+      // because a tool is disabled by name), so it replaces the session, and
+      // the engine is told why as the tool's result.
+      await subject.configLoader.updateIntegration(
+        'github',
+        (current: any) => ({
+          ...current,
+          probe: {
+            ...current.probe,
+            toolNames: ['list', 'delete_repo', 'merge'],
+          },
+        }),
+      );
+      await subject.reloadAgents();
+      expect(await fingerprint()).not.toBe(bound);
+      expect(await decide()).toMatchObject({ behavior: 'deny' });
+      // A Station Control catalog tool, as in the incident.
+      const refused = await toolCall('list_wake_ups');
+      const reply = await waitFor(() => repliesTo(child, refused)[0], 'reply');
+      expect(reply.result.success).toBe(false);
+      expect(reply.result.contentItems[0].text).toContain(
+        "this agent's configuration changed after this session started",
+      );
+    } finally {
+      await adapter.stopSession(threadId).catch(() => undefined);
     }
   });
 

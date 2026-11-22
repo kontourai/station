@@ -1,0 +1,25 @@
+{
+  "revision": "a0b72485028d87716fcf28756ee3000071f677dd",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked: the Codex bound-tool channel also returns the settling denial's text as the tool result; every other denial keeps its wire shape.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked: the Codex bound-tool channel also returns the settling denial's text as the tool result; every other denial keeps its wire shape.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Checked: the Codex bound-tool channel also returns the settling denial's text as the tool result; every other denial keeps its wire shape.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked: the Codex bound-tool channel also returns the settling denial's text as the tool result; every other denial keeps its wire shape.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked: the Codex bound-tool channel also returns the settling denial's text as the tool result; every other denial keeps its wire shape.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Checked: the Codex bound-tool channel also returns the settling denial's text as the tool result; every other denial keeps its wire shape.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked: the Codex bound-tool channel also returns the settling denial's text as the tool result; every other denial keeps its wire shape.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked: the Codex bound-tool channel also returns the settling denial's text as the tool result; every other denial keeps its wire shape.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked: the Codex bound-tool channel also returns the settling denial's text as the tool result; every other denial keeps its wire shape.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked: the Codex bound-tool channel also returns the settling denial's text as the tool result; every other denial keeps its wire shape.","inputs":["src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}

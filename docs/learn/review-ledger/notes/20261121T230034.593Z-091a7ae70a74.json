@@ -1,0 +1,7 @@
+{
+  "revision": "09e5febf7c2f1a737baaaad901e55554bb087ccf",
+
+  "notes": [
+    {"path":"docs/reference/backlog-disposition-policy.md","note":"Edited the sentence on watching: Main: Health now watches Repo: Backlog policy (listed in main-health.yml), so a red daily run opens a tracker; the rest of the page is unchanged.","inputs":["docs/reference/backlog-disposition-policy.md",".github/workflows/backlog-priority-policy.yml"]}
+  ]
+}

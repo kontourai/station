@@ -1,0 +1,7 @@
+{
+  "revision": "4909ef0d44a82c1813b3fec4638e377b0f41fa13",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Added the launch-bound Station settings (Claude Artifact tool, confined network for a confined start), new-chat defaults as start-only, the raced-start restart, and the known limits (Codex keeps its launch tools for the turn in progress; nothing shows a replaced session until its next message). Checked against station-runtime.ts, pre-tool-policy-generation.ts and orchestration-service.ts.","inputs":["docs/guides/agent-configuration.md"]}
+  ]
+}

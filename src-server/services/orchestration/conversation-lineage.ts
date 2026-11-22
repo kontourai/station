@@ -288,6 +288,21 @@ interface ConversationLineageDeps {
    * process still running (`engineEnded` false). Absent or unknown: false.
    */
   engineStillRunning?: (threadId: string) => boolean;
+  /**
+   * Whether this Session's launch configuration was replaced and its engine
+   * cannot restart in place (no resume cursor). Its engine cannot re-bind,
+   * so the next ordinary turn starts a successor under the current
+   * configuration. A resumable one is restarted in place by the turn's
+   * dispatch instead.
+   */
+  needsPolicySuccessor?: (threadId: string) => Promise<boolean>;
+  /**
+   * Stops the engine of the Session a policy successor replaced, when it is
+   * idle, so it does not stay resident under the configuration it was
+   * launched with. A busy one is left running; it does nothing for a
+   * predecessor whose launch was not replaced.
+   */
+  retireReplacedSession?: (threadId: string) => Promise<void>;
   nativeReturnSupported?: (provider: EngineId) => boolean;
   nativeMemoryOwnsTranscriptFor?: (provider: EngineId) => boolean;
   nativeIdentityRequiredFor?: (provider: EngineId) => boolean;
@@ -470,6 +485,10 @@ export class ConversationLineage {
         const predecessor = current.predecessorSessionId
           ? await this.deps.readSession(current.predecessorSessionId, authority)
           : null;
+        // A reset (or any reserved successor) of a Session whose launch was
+        // replaced retires that engine too, as an ordinary successor does.
+        if (current.predecessorSessionId)
+          await this.deps.retireReplacedSession?.(current.predecessorSessionId);
         return {
           sessionId: current.sessionId,
           startRequired: true,
@@ -501,6 +520,8 @@ export class ConversationLineage {
       const predecessor = current.predecessorSessionId
         ? await this.deps.readSession(current.predecessorSessionId, authority)
         : null;
+      if (current.predecessorSessionId)
+        await this.deps.retireReplacedSession?.(current.predecessorSessionId);
       return {
         sessionId: current.sessionId,
         startRequired: true,
@@ -554,11 +575,15 @@ export class ConversationLineage {
     const needsToolsSuccessor =
       this.deps.needsCoordinatorToolsSuccessor?.(conversationId, detail) ===
       true;
+    const needsPolicySuccessor =
+      (await this.deps.needsPolicySuccessor?.(detail.session.threadId)) ===
+      true;
     if (
       delivery !== 'redeliver' &&
       sessionTakesNextTurn(detail.session) &&
       !needsModelRestart &&
-      !needsToolsSuccessor
+      !needsToolsSuccessor &&
+      !needsPolicySuccessor
     ) {
       observeConversationContinuation('current_open');
       return { sessionId: current.sessionId, startRequired: false };
@@ -575,6 +600,13 @@ export class ConversationLineage {
       ...(needsToolsSuccessor ? { coordinatorToolsRestart: true } : {}),
     });
     observeConversationContinuation(child.outcome);
+    // Whatever reserved the child (a replaced launch, or an engine that
+    // ended its turn in error over a replaced policy), a predecessor engine
+    // still bound to a replaced configuration is retired here when it is
+    // idle. One still running work is not stopped (that would kill the
+    // work): it stays resident, its tools refused, until the idle sweep parks
+    // it (never, with idle parking turned off). A predecessor that was not replaced is never stopped here.
+    await this.deps.retireReplacedSession?.(current.sessionId);
     return {
       sessionId: child.lineage.sessionId,
       startRequired: true,
@@ -675,6 +707,8 @@ export class ConversationLineage {
       delivery === 'redeliver' ||
       !sessionTakesNextTurn(described.session) ||
       this.deps.needsCoordinatorToolsSuccessor?.(conversationId, described) ===
+        true ||
+      (await this.deps.needsPolicySuccessor?.(described.session.threadId)) ===
         true
     );
   }

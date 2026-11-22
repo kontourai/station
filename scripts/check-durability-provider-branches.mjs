@@ -233,6 +233,20 @@ const REVIEWED_PROTOCOL_BRANCHES = [
       'Reads the ACP initialize/loadSession handshake for that connection; not a fidelity default.',
   },
   {
+    file: 'src-server/runtime/bootstrap/station-runtime.ts',
+    expression: "input.provider === 'claude'",
+    count: 1,
+    reason:
+      'Selects which connection settings a launch binds (engine settings and credential profile, or an ACP connection record) for the pre-tool policy fingerprint; no conversation durability decision.',
+  },
+  {
+    file: 'src-server/runtime/bootstrap/station-runtime.ts',
+    expression: "input.provider === 'codex'",
+    count: 1,
+    reason:
+      'Selects which connection settings a launch binds (engine settings and credential profile, or an ACP connection record) for the pre-tool policy fingerprint; no conversation durability decision.',
+  },
+  {
     file: 'src-server/services/orchestration/event-store.ts',
     expression: "forkEvent.provider === 'station'",
     count: 1,

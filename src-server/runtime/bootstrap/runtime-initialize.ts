@@ -324,6 +324,8 @@ export interface InitializeRuntimeDeps {
   resolveAcpPreToolPolicy?: (
     input: ProviderSessionStartInput,
   ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
+  /** Whether an external session's own Agent changed after its policy was bound. */
+  preToolPolicyReplaced?: (threadId: string) => Promise<boolean>;
   /** #3994: an ACP agent's terminals as command terminal sessions. */
   acpAgentTerminals?: AcpAdapterOptions['agentTerminals'];
   modelCatalog?: BedrockModelCatalog;
@@ -750,6 +752,9 @@ export async function initializeRuntime(
   );
   const orchestrationService = new OrchestrationService({
     recoverDurableTurn: (input) => durableOwner.recover(input),
+    ...(deps.preToolPolicyReplaced
+      ? { preToolPolicyReplaced: deps.preToolPolicyReplaced }
+      : {}),
     nativeForkStoredReadVerifier: nativeForkStoredReadDomain.verifyForService,
     ...(deps.hostImagesPreview
       ? { hostImagesPreview: deps.hostImagesPreview }
