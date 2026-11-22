@@ -137,6 +137,7 @@ fn capture_path(mut command: Command, budget: Duration) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
     use std::path::Path;
 
     fn shell(script: &str) -> Command {
@@ -148,12 +149,13 @@ mod tests {
     fn write_shell_fixture(path: &Path, script: &str) {
         // A parallel fork from the test process must not inherit a writable
         // descriptor to the script that the login-path lookup will execute.
-        let status = shell(r#"printf '%s' "$1" > "$2" && chmod 700 "$2""#)
+        let status = shell(r#"printf '%s' "$1" > "$2""#)
             .args(["shell-fixture", script])
             .arg(path)
             .status()
             .expect("start shell fixture writer");
         assert!(status.success(), "shell fixture writer failed: {status}");
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
     }
 
     #[test]
