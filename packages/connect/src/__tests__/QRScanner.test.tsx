@@ -163,6 +163,49 @@ describe('QRScanner camera lifecycle', () => {
     expect(queryByText(/Camera error/)).toBeNull();
   });
 
+  test('a refused camera is an announced error, never reported unavailable', async () => {
+    getUserMedia.mockRejectedValue(
+      Object.assign(new Error('denied'), { name: 'NotAllowedError' }),
+    );
+    const onUnavailable = vi.fn();
+    const { findByRole } = render(
+      <QRScanner
+        onScan={vi.fn()}
+        onCancel={vi.fn()}
+        onManualEntry={vi.fn()}
+        onUnavailable={onUnavailable}
+      />,
+    );
+
+    const alert = await findByRole('alert');
+    expect(alert.textContent).toBe(
+      'Camera permission denied. Please allow camera access.',
+    );
+    expect(onUnavailable).not.toHaveBeenCalled();
+  });
+
+  test('a granted camera whose video fails to play is an error, never reported unavailable', async () => {
+    vi.spyOn(HTMLMediaElement.prototype, 'play').mockRejectedValue(
+      Object.assign(new Error('Not supported'), { name: 'NotSupportedError' }),
+    );
+    const onUnavailable = vi.fn();
+    const { findByRole, getByRole } = render(
+      <QRScanner
+        onScan={vi.fn()}
+        onCancel={vi.fn()}
+        onManualEntry={vi.fn()}
+        onUnavailable={onUnavailable}
+      />,
+    );
+
+    expect((await findByRole('alert')).textContent).toBe(
+      'Camera error: Not supported',
+    );
+    expect(getByRole('button', { name: 'Try camera again' })).toBeTruthy();
+    expect(onUnavailable).not.toHaveBeenCalled();
+    expect(stopTrack).toHaveBeenCalledOnce();
+  });
+
   test('a busy camera is still an error with manual entry, not unavailable', async () => {
     getUserMedia.mockRejectedValue(
       Object.assign(new Error('Could not start video source'), {

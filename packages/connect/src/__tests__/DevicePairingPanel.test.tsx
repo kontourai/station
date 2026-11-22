@@ -4179,7 +4179,12 @@ describe('pairing by code without a camera', () => {
     expect(screen.getByLabelText('Pairing code')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
     expect(screen.queryByText(/Camera error/)).toBeNull();
-    expect(screen.queryByText(/Camera scanning requires/)).toBeNull();
+    // Say why scanning is missing, as a note rather than an error.
+    const reason = screen.getByText(
+      'Camera scanning requires HTTPS or localhost.',
+    );
+    expect(reason.closest('[role="alert"]')).toBeNull();
+    expect(reason.className).not.toContain('pairing-error');
     expect(document.querySelector('video')).toBeNull();
   });
 
@@ -4210,7 +4215,26 @@ describe('pairing by code without a camera', () => {
     expect(document.querySelector('video')).toBeTruthy();
   });
 
-  test('falls back to code entry when capture is unsupported, as a camera-less browser reports it', async () => {
+  test('falls back to code entry, silently, when capture finds no camera (NotFoundError, as Chrome and Firefox report it)', async () => {
+    installCamera({
+      getUserMedia: vi.fn(async () => {
+        throw Object.assign(new Error('Requested device not found'), {
+          name: 'NotFoundError',
+        });
+      }),
+    });
+    render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+
+    const address = await screen.findByLabelText('Station server address');
+    expect(document.activeElement).toBe(address);
+    expect(screen.queryByText(/not found|Camera error/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
+    // The camera API exists, so no secure-connection reason is given.
+    expect(screen.queryByText(/Camera scanning requires/)).toBeNull();
+  });
+
+  // Headless Chromium reports a missing camera as NotSupportedError.
+  test('falls back to code entry when capture is unsupported (NotSupportedError, as headless Chromium reports it)', async () => {
     installCamera({
       getUserMedia: vi.fn(async () => {
         throw Object.assign(new Error('Not supported'), {
@@ -4278,7 +4302,10 @@ describe('pairing by code without a camera', () => {
     expect(document.activeElement).toBe(
       screen.getByLabelText('Station server address'),
     );
-    // The camera exists, so scanning stays on offer.
+    // The camera exists, so scanning stays on offer and needs no reason.
     expect(screen.getByRole('button', { name: 'Scan code' })).toBeTruthy();
+    expect(
+      screen.queryByText(/Camera scanning requires HTTPS or localhost\.$/),
+    ).toBeNull();
   });
 });

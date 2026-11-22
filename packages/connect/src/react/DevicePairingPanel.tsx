@@ -25,6 +25,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { hasCameraApi } from '../core/cameraSupport';
 import { isLoopbackUrl } from '../core/connectionProfile';
 import { describeDeviceScope, deviceRevokeError } from '../core/deviceActivity';
 import {
@@ -81,7 +82,7 @@ import {
   useHttpConnectionConsent,
 } from './HttpConnectionConsent';
 import { QRDisplay } from './QRDisplay';
-import { hasCameraApi, QRScanner } from './QRScanner';
+import { QRScanner } from './QRScanner';
 import {
   defaultKeptScope,
   elevatedLabels,
@@ -303,9 +304,9 @@ export function JoinDevicePairingPanel({
   // camera API there is nothing to attempt, so open straight on code entry
   // without mounting the scanner. Otherwise only a capture attempt that finds
   // no camera drops it; the device list is not trusted before a grant.
-  const [cameraUnavailable, setCameraUnavailable] = useState(
-    () => !hasCameraApi(),
-  );
+  // Fixed for the page's life: the API exists only in a secure context.
+  const [noCameraApi] = useState(() => !hasCameraApi());
+  const [cameraUnavailable, setCameraUnavailable] = useState(noCameraApi);
   const [mode, setMode] = useState<'direct' | 'scan' | 'manual'>(() =>
     initialMode === 'scan' && cameraUnavailable ? 'manual' : initialMode,
   );
@@ -1197,6 +1198,19 @@ export function JoinDevicePairingPanel({
             if (manualReady) void beginManual();
           }}
         >
+          {noCameraApi && (
+            // Say why scanning is missing; the other device may still suggest
+            // scanning. A missing camera found at capture time stays silent.
+            <p
+              style={{
+                margin: 0,
+                color: 'var(--text-secondary, #999)',
+                fontSize: 12,
+              }}
+            >
+              Camera scanning requires HTTPS or localhost.
+            </p>
+          )}
           <button
             type="button"
             onClick={pastePairingPayload}
