@@ -348,8 +348,11 @@ describe('the inbox row flag for an unconfirmed delivery (#5398)', () => {
     });
     await waitFor(() => expect(recheck).toHaveBeenCalled());
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    // The first Check is still running, untouched by the later presses: one
+    // lookup, still busy, and no other run has written an answer.
     expect(recheck).toHaveBeenCalledTimes(1);
     expect(check.getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByRole('status').textContent).toBe('');
     // Never disabled: a disabled button would drop focus to the page.
     expect(check.hasAttribute('disabled')).toBe(false);
     for (const resolve of pending) resolve('indeterminate');
