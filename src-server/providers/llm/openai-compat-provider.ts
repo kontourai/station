@@ -36,7 +36,7 @@ const logger = createLogger({ name: 'openai-compat-provider' });
  * request ran against `undefined/models` and the runtime's URL parse error
  * became the connection's readiness text.
  */
-export const OPENAI_COMPAT_NO_ADDRESS_REASON =
+const OPENAI_COMPAT_NO_ADDRESS_REASON =
   'This connection has no server URL. Add one, or delete the connection.';
 
 export class OpenAICompatLLMProvider extends AiSdkLLMProvider {

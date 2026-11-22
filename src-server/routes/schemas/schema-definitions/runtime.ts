@@ -544,8 +544,8 @@ export const rateSchema = z.object({
  * `capabilities`, not readiness. Refusing the write here covers create and
  * update on both connection routes.
  */
-export const CONNECTION_ADDRESS_REQUIRED_CODE = 'connection_address_required';
-export const CONNECTION_ADDRESS_REQUIRED_MESSAGE =
+const CONNECTION_ADDRESS_REQUIRED_CODE = 'connection_address_required';
+const CONNECTION_ADDRESS_REQUIRED_MESSAGE =
   'A server URL is required to save this connection.';
 
 function refuseMissingOpenAICompatAddress(
