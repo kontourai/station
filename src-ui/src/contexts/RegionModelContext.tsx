@@ -579,7 +579,9 @@ const REGION_ARRANGEMENT_PERSIST_DELAY_MS = 150;
  * is a Chat deep-link fact and maximizes Chat's region whichever path placed
  * it — with Chat's tab selected there when the maximize is the URL's doing,
  * since a maximized region showing another pane is not what the link named;
- * otherwise the record's own `maximized` (and selection) stands; the legacy
+ * otherwise nothing is maximized at mount: the record's own `maximized` is not
+ * restored, because a maximize belongs to the page where it was made and a
+ * fresh load is another page (its selection stands); the legacy
  * seed carries none of its own (navigation's flag IS the URL param).
  *
  * A mount is not a write: nothing here reaches navigation or device settings.
@@ -592,7 +594,13 @@ function initialRegionArrangement(
   isDockOpen: boolean,
   isDockMaximized: boolean,
 ): RegionArrangement {
-  const arrangement = initialRegionPlacement(settings, dockMode, isDockOpen);
+  // A maximize belongs to the page where the person made it. The device
+  // record keeps `maximized` for other tabs, but a page that loads fresh opens
+  // every region at its normal size; only this page's own `maximize=true`
+  // (applied below) maximizes at mount.
+  const arrangement = restoreMaximizedDocks(
+    initialRegionPlacement(settings, dockMode, isDockOpen),
+  ).arrangement;
   if (!isDockMaximized) return arrangement;
   const chatAt = chatRegion(arrangement);
   if (!chatAt) return arrangement;

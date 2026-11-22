@@ -327,7 +327,7 @@ region adopts it.
 | **Layout** | a project's named view the sidebar navigates between (Coding, Tasks, Session board, a plugin's) | `LayoutConfig` server record; renderer resolution considers type and plugin contribution |
 | **Pane** | the smallest addressable UI unit; what plugins contribute | `WorkspacePaneDescriptor`, `WorkspacePaneInstance` |
 | **Pane host** | a tree of panes arranged as splits and tab groups, inside a region or a layout | `WorkspacePaneHost`, `WorkspacePaneHostDocumentV1` |
-| **Arrangement** | the user's placement choices: which surfaces in which region and in what order, which of them is selected, each region's size and visibility, which region (at most one) is maximized, each pane host's tree | `RegionArrangement` for the region half; persisted per device by #928 slice D, `maximized` added by slice iii (#1385), `panes` and the selection by #2046 2a, written by the tab strip since 2b |
+| **Arrangement** | the user's placement choices: which surfaces in which region and in what order, which of them is selected, each region's size and visibility, which region (at most one) is maximized for the current page (a freshly loaded page opens every region at normal size; only its own `maximize=true` maximizes), each pane host's tree | `RegionArrangement` for the region half; persisted per device by #928 slice D, `maximized` added by slice iii (#1385), `panes` and the selection by #2046 2a, written by the tab strip since 2b |
 | **Destination** | a navigable place in the app the palette and sidebar can send you to | `APP_DESTINATION_REGISTRY` (`src-ui/src/app-shell/destination-registry.ts`) |
 | **Panel** | a bounded visual grouping inside a page or pane (Trust panel, inspector) | unchanged; see the glossary |
 
@@ -437,7 +437,8 @@ Two facts that follow from the map and are easy to get wrong:
   the same holds for the inbound `dock=open` and `maximize` a
   `focusSession` reveal writes later; then the
   record, when it differs from the registry default, for every surface's
-  placement, size, visibility and maximize, Chat's included; then the legacy dock seed
+  placement, size and visibility, Chat's included (never maximize: a maximize
+  belongs to the page where it was made, so only the URL maximizes at load); then the legacy dock seed
   (`chatDockHeight`/`chatDockWidth`, the `dockSlotPlacement` device setting),
   which is all a pre-record device has. A record equal to the default is
   treated as absent, even if it was explicitly written, which carries a

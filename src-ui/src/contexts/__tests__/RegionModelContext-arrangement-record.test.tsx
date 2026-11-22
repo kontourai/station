@@ -557,7 +557,7 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     expectNoWrites(spies);
   });
 
-  test('a record with right.maximized and Activity in right mounts maximized, and the URL says nothing', async () => {
+  test('a record that holds a maximized region mounts every region at normal size when the URL does not maximize', async () => {
     seedEnvelope({
       regionArrangement: activityRightRecord({
         right: {
@@ -579,12 +579,39 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
       size: 517,
       panes: ['workspace-agents'],
       occupant: 'workspace-agents',
-      maximized: true,
+      maximized: false,
     });
     expect(model?.regions.bottom.maximized).toBe(false);
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
     await settle();
     expectNoWrites(spies);
+  });
+
+  test('a dock maximized on one page opens at normal size on a freshly loaded page', async () => {
+    setUrl('/?dock=open');
+    const first = render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+
+    act(() => model?.setRegion('bottom', { maximized: true }));
+    await waitFor(() =>
+      expect(
+        deviceSettingsStore.get('regionArrangement').regions.bottom.maximized,
+      ).toBe(true),
+    );
+    first.unmount();
+    const mountedModel = () => model;
+    model = null;
+
+    // Another page, loaded fresh: no `maximize` in its URL.
+    setUrl('/automations?dock=open');
+    render(<Harness />);
+    await waitFor(() => expect(mountedModel()).not.toBeNull());
+
+    expect(mountedModel()?.regions.bottom).toMatchObject({
+      visible: true,
+      maximized: false,
+    });
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
   });
 
   test('the URL’s maximize=true beats a record maximizing another region', async () => {
