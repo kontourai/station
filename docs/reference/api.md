@@ -585,12 +585,17 @@ provider calls and at response-body release.
 responses. This host-local operation uses the operator's Git configuration;
 operator authority is required for every read and write. Agent-originated
 internal requests and delegated or paired-device credentials are refused, even
-when the device can run commands.
+when the device can run commands. That refusal is 403 with
+`code: "repository_operator_required"`; other 403s on these paths come from
+request admission (origin, device scope, sign-in) and carry their own codes.
 
 The response is `{success:true,data}` where `data.phase` is `acquiring`, `ready`,
 `failed` or `cancelled`. A ready receipt includes `checkoutPath`, `canonicalRemote` and
 `resolvedCommit`. Failed acquisition is a recorded domain result, returned with
-HTTP 200 and a fixed safe explanation. Invalid input is 400, reuse of an ID for
+HTTP 200 and a fixed safe explanation. Invalid input is 400 and records nothing;
+`details` carries the validation reasons. For a refused source, `error` names
+the rule it broke; a body that fails the request schema answers
+`Validation failed`. Reuse of an ID for
 a different source/ref is 409, and unavailable storage is 503.
 
 `GET /api/projects/repository-acquisitions/:id` reads the receipt (404 when

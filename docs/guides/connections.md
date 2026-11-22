@@ -1844,6 +1844,9 @@ preserves them and asks you to reacquire or deliberately choose the folder.
 Acquisition uses this host's Git credentials and currently requires the Station
 operator. URLs containing HTTPS user information, passwords, query strings or
 fragments are refused. An absolute local mirror path is also supported.
+If Station refuses the source or the clone fails, the form stays open with the
+reason under the URL. Correct the source and choose **Acquire repository**
+again; each attempt is a new acquisition.
 Station verifies the clone's origin, resolves its commit and checks it out in
 detached state. For a monorepo, the selected subdirectory becomes the Project
 working directory while the receipt retains the repository root and exact commit.
