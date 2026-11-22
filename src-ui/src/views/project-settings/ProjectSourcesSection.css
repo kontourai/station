@@ -3,6 +3,10 @@
   display: grid;
   gap: var(--k-space-4);
 }
+/* The grid's gap already separates the repository source fields. */
+.project-sources__form > .editor-field {
+  margin-bottom: 0;
+}
 .project-sources__list {
   padding: 0;
   list-style: none;
