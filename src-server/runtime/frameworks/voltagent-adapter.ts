@@ -17,6 +17,7 @@ import {
   type AgentHooks,
   createHooks,
   createTool,
+  isAbortError,
   Memory,
   type StorageAdapter,
   type Tool,
@@ -1151,7 +1152,7 @@ export function createVoltAgentLifecycleHooks(
           ),
       );
     },
-    onEnd: async ({ context, output }) => {
+    onEnd: async ({ context, output, error }) => {
       try {
         // Abort and error arrive here with no output; the turn still ends.
         try {
@@ -1164,8 +1165,17 @@ export function createVoltAgentLifecycleHooks(
         } catch {
           /* Releasing turn state never fails the invocation. */
         }
-        if (!context.conversationId || !output) return;
-        const usage = 'usage' in output ? output.usage : undefined;
+        // What VoltAgent hands this hook (#5390): a stream that fails before
+        // any content arrives with `error` and no output; one whose provider
+        // sent an error part, before or after partial text, arrives WITH
+        // output and `finishReason: 'error'` but no `error`; a person's Stop
+        // arrives as an abort `error` with no output. A failure is passed on
+        // as one, so a failed turn that reported nothing is not counted; a
+        // stopped turn ran, so it counts, with nothing reported.
+        const stopped = !output && isAbortError(error);
+        if (!context.conversationId || (!output && !stopped)) return;
+        const failed = output?.finishReason === 'error';
+        const usage = output && 'usage' in output ? output.usage : undefined;
         const toolCallCount =
           (context.context.get('toolCallCount') as number) || 0;
         await sharedHooks?.afterInvocation?.({
@@ -1199,6 +1209,9 @@ export function createVoltAgentLifecycleHooks(
               }
             : undefined,
           toolCallCount,
+          ...(failed
+            ? { error: new Error('The model stream ended with an error.') }
+            : {}),
         });
       } finally {
         pendingToolCalls.delete(context);

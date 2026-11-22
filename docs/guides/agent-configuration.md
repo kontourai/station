@@ -677,7 +677,7 @@ approval paths; these hooks do not establish external policy enforcement.
 | `endInvocation` | Once when the turn ends, including on error and abort | Releases the turn's untrusted-content state; the conversation's mark stays until a person clears it |
 | `afterInvocation` | After the full turn completes | Updates conversation stats (turns, tool call count, tokens, cost) in the memory adapter |
 
-`afterInvocation` also enriches the last assistant message with model metadata and pricing from the Bedrock model catalog. A turn whose model reported no usage still counts as a turn with its tool calls; its token counts and cost stay absent and read "Not reported". A failed turn with nothing reported records nothing. The Strands framework reports no error to the hook (it fires on success, failure and a cancelled invocation alike), so there a turn that ends without an assistant answer counts as failed.
+`afterInvocation` also enriches the last assistant message with model metadata and pricing from the Bedrock model catalog. A turn whose model reported no usage still counts as a turn with its tool calls; its token counts and cost stay absent and read "Not reported". A failed turn with nothing reported records nothing; one that failed after reporting usage keeps its tokens. The Strands framework reports no error to the hook (it fires on success, failure and a cancelled invocation alike), so there a turn that ends without an assistant answer counts as failed. VoltAgent ends a stream whose provider sent an error with an output whose finish reason is `error`, which the adapter passes on as a failure; a person's Stop arrives as an abort and counts as a turn with nothing reported.
 
 ---
 

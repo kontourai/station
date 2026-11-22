@@ -3083,14 +3083,15 @@ rather than zero, including for a conversation with no stored stats and for
 the empty view, and a system prompt Station cannot see is absent too.
 
 For a Station-agent conversation, the stored stats count every turn that
-ended with an answer, including turns whose model reported no usage, so
-per-turn averages divide by all counted turns. `systemPromptTokens` there is
+ended with an answer or reported usage, including answered turns whose model
+reported no usage and turns a person stopped, so per-turn averages divide by
+all counted turns. A turn that failed with nothing reported is not counted;
+one that failed after reporting usage keeps its tokens. `systemPromptTokens` there is
 an estimate of the prompt the Agent was built with (its configured or
 bootstrap prompt, a quarter token per character), as for a persisted Agent.
-Before this release the built-in Station Assistant recorded no stats at all,
-so an older conversation with it counts turns, tokens and the user-message
-estimate only from its next turn on; the response does not yet say when
-counting started.
+The built-in Station Assistant records stats from #5390 on, so a conversation
+with it that began earlier counts turns, tokens and the user-message estimate
+only from its next turn on; the response does not say when counting started.
 
 `engineMcp`, present when the engine reported its MCP servers, is the latest
 `engine-mcp.status` reports folded per Session of the lineage (a later

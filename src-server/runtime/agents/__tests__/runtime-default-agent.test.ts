@@ -427,6 +427,41 @@ describe('bootstrapRuntimeDefaultAgent', () => {
     expect(reviewToolCall).toHaveBeenCalledOnce();
   });
 
+  test('a failed agent build leaves the previous prompt estimate untouched (#5390)', async () => {
+    const previous = { systemPromptTokens: 199, mcpServerTokens: 9 };
+    const agentFixedTokens = new Map([['default', previous]]);
+
+    await expect(
+      bootstrapRuntimeDefaultAgent({
+        appConfig: { defaultModel: 'claude-sonnet' } as any,
+        configLoader: {
+          saveIntegration: vi.fn(async () => {}),
+          hasIntegration: vi.fn(async () => true),
+          getProjectHomeDir: vi.fn(() => '/tmp/project'),
+        } as any,
+        framework: {
+          createTempAgent: vi.fn(async () => {
+            throw new Error('build failed');
+          }),
+        } as any,
+        logger: { info: vi.fn(), warn: vi.fn() } as any,
+        defaultSystemPrompt: 'a different prompt',
+        autoApproveTools: [],
+        replaceTemplateVariables: (text) => text,
+        resolveDefaultModelHint: () => 'claude-sonnet',
+        createModel: vi.fn(async () => ({ id: 'model-1' })),
+        loadAgentTools: vi.fn(async () => [{ name: 'tool-1' }]),
+        activeAgents: new Map(),
+        agentTools: new Map(),
+        memoryAdapters: new Map() as any,
+        agentMetadataMap: new Map(),
+        agentFixedTokens,
+      }),
+    ).rejects.toThrow('build failed');
+
+    expect(agentFixedTokens.get('default')).toBe(previous);
+  });
+
   test('removes stale default-agent state when no launchable model remains', async () => {
     const activeAgents = new Map([['default', { id: 'stale-default' }]]);
     const agentTools = new Map([['default', [{ name: 'stale-tool' }]]]);

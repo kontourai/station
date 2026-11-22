@@ -406,7 +406,14 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
         // reports no usage still has a turn. Its token counts and cost stay
         // absent ("not reported"). A failed invocation with nothing reported
         // records nothing, as before.
-        if (!usage && error) return;
+        // A usage object can arrive with every figure absent (a provider
+        // that sent no usage); that is nothing reported.
+        const reported =
+          usage !== undefined &&
+          [usage.promptTokens, usage.completionTokens, usage.totalTokens].some(
+            (value) => value !== undefined,
+          );
+        if (!reported && error) return;
 
         const conversation = await adapter.getConversation(
           invocation.conversationId,
