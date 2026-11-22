@@ -1,10 +1,4 @@
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { mkdtemp, realpath } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -241,9 +235,10 @@ describe('setup import routes', () => {
     // Undo removes only what the import created.
     expect(service.hasSkill('changelog')).toBe(true);
     expect(skillExists('changelog')).toBe(true);
-    // No imported skill remains: the person's own skill is the only one left.
-    expect(
-      readdirSync(join(project, 'skills')).filter((name) => skillExists(name)),
-    ).toEqual(['changelog']);
+    // No imported skill remains, under its source name or the chosen one.
+    for (const name of ['review-pr', 'changelog-codex', 'write-tests']) {
+      expect(service.hasSkill(name), name).toBe(false);
+      expect(skillExists(name), name).toBe(false);
+    }
   });
 });
