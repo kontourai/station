@@ -61,6 +61,21 @@ async function seedScheduleCrudApi(page: Page) {
     ],
   ]);
   const runCalls: string[] = [];
+  /** Every create body the form sent, in order. */
+  const createBodies: Array<Record<string, unknown>> = [];
+
+  // The handshake is this Station's own, and it must advertise that the
+  // host picks a display name's slug: the duplicate step below proves that
+  // path, which the form takes only on this flag.
+  await page.route('**/.well-known/station/v1', async (route) => {
+    const response = await route.fetch();
+    const handshake = await response.json();
+    if (handshake.capabilities?.schedulerJobDisplayName !== true)
+      throw new Error(
+        'this Station does not advertise schedulerJobDisplayName',
+      );
+    await route.fulfill({ response, json: handshake });
+  });
 
   // archive#947: this suite mocks every scheduler endpoint but left `/api/system/status`
   // to the live instance, so whether the first-run setup launcher rendered was
@@ -167,6 +182,7 @@ async function seedScheduleCrudApi(page: Page) {
   await page.route('**/scheduler/jobs', async (route) => {
     if (route.request().method() === 'POST') {
       const body = route.request().postDataJSON();
+      createBodies.push(body);
       // As the scheduler does: an explicit slug that is taken is refused; a
       // create that names only a display name gets the first unused slug.
       const name: string | undefined = body.name
@@ -182,7 +198,9 @@ async function seedScheduleCrudApi(page: Page) {
           json: {
             success: false,
             code: 'job_name_taken',
-            error: `Job '${body.name}' already exists`,
+            error: body.name
+              ? `Job '${body.name}' already exists`
+              : `Too many automations already have names like '${body.displayName}'. Choose a different name.`,
           },
         });
         return;
@@ -201,7 +219,12 @@ async function seedScheduleCrudApi(page: Page) {
         retryDelaySecs: body.retryDelaySecs ?? 60,
       });
       jobs.set(job.name, job);
-      await route.fulfill({ json: { success: true, data: job } });
+      await route.fulfill({
+        json: {
+          success: true,
+          data: { output: `Job '${job.name}' created`, name: job.name },
+        },
+      });
       return;
     }
     await route.fulfill({
@@ -261,7 +284,7 @@ async function seedScheduleCrudApi(page: Page) {
     route.fulfill({ json: { success: true, data: [] } }),
   );
 
-  return { runCalls };
+  return { runCalls, createBodies };
 }
 
 async function fillCron(
@@ -453,7 +476,7 @@ test.describe('Schedule Page', () => {
   test('covers add, edit, duplicate, run, filter, toggle, and delete', async ({
     page,
   }) => {
-    const { runCalls } = await seedScheduleCrudApi(page);
+    const { runCalls, createBodies } = await seedScheduleCrudApi(page);
     await page.goto('/automations');
 
     await expect(
@@ -494,6 +517,9 @@ test.describe('Schedule Page', () => {
     await expect(page.getByTestId('job-row-daily-report-2')).toContainText(
       'daily-report',
     );
+    // The host picked that slug: the form sent only the name people read.
+    expect(createBodies.at(-1)).toMatchObject({ displayName: 'daily-report' });
+    expect(createBodies.at(-1)).not.toHaveProperty('name');
     await expect(page.getByTestId('job-row-daily-report')).toBeVisible();
 
     await page

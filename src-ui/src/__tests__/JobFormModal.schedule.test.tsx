@@ -605,6 +605,8 @@ describe('JobFormModal schedule compatibility', () => {
     ).toBeTruthy();
     const name = screen.getByLabelText('Name') as HTMLInputElement;
     expect(name.value).toBe('Repo digest');
+    expect(name.readOnly).toBe(false);
+    expect(name.getAttribute('aria-describedby')).toBeNull();
     fireEvent.change(name, { target: { value: 'Morning repo digest' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
 
@@ -642,6 +644,46 @@ describe('JobFormModal schedule compatibility', () => {
     expect(editMutate).toHaveBeenCalledWith(
       { target: 'older-host-job', prompt: 'Summarize more' },
       expect.any(Object),
+    );
+  });
+
+  test('Edit keeps the name read-only without a reason when the host has not answered', () => {
+    hostCapability.displayName = null;
+    render(
+      <JobFormModal
+        job={{
+          name: 'unknown-host-job',
+          provider: 'built-in',
+          cron: '0 9 * * *',
+          prompt: 'Summarize',
+          agent: 'station',
+          enabled: true,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+    const name = screen.getByLabelText('Name') as HTMLInputElement;
+    expect(name.readOnly).toBe(true);
+    expect(name.getAttribute('aria-describedby')).toBeNull();
+    expect(
+      screen.queryByText('Renaming needs a newer version of this Station.'),
+    ).toBeNull();
+  });
+
+  test('an older host’s 409 without a code still reads as a taken name', () => {
+    hostCapability.displayName = false;
+    mutationState.addError = Object.assign(
+      new Error("Job 'daily-report' already exists"),
+      { status: 409 },
+    );
+    render(
+      <JobFormModal
+        prefill={{ name: 'daily-report', prompt: 'Duplicate' }}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('alert').textContent).toBe(
+      'Another automation already uses this name. Choose a different name.',
     );
   });
 

@@ -541,16 +541,19 @@ export function JobFormModal({
         ? 'Use letters, numbers or symbols, on one line.'
         : 'Give the automation a name.'
       : undefined;
-  // Only an existing name here can be the conflict: the form names no slug
-  // on a host that picks one, so a taken name means that host ran out of
-  // numbered slugs for it, or an older host already had the slug.
+  // A create's 409 is always a taken name: an older host refuses only a
+  // duplicate slug with it (and sends no code), and this form never sends a
+  // proposal, the route's other 409. A newer host says `job_name_taken`.
+  const createError = addJob.error;
   const nameTaken =
-    mutationError instanceof Error &&
-    'code' in mutationError &&
-    mutationError.code === SCHEDULER_JOB_NAME_TAKEN;
+    createError instanceof Error &&
+    (('code' in createError && createError.code === SCHEDULER_JOB_NAME_TAKEN) ||
+      ('status' in createError && createError.status === 409));
   const renameLocked = isEdit && !displayNames;
-  // While the host's answer is arriving the field waits without a reason.
-  const renameUnsupported = renameLocked && displayNameSupport !== undefined;
+  // Only a host that answered without the flag is known to be older. While
+  // its answer is arriving, or when its handshake could not be read, the
+  // field waits without claiming why.
+  const renameUnsupported = renameLocked && displayNameSupport === false;
   const scheduleValid =
     form.scheduleKind === 'cron'
       ? form.cron.trim().length > 0
