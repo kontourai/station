@@ -29,7 +29,10 @@ import {
   deriveConnectionHealth,
   modelHealthInput,
 } from './connections-hub/connection-health';
-import { ProviderConnectionForm } from './provider-settings/ProviderConnectionForm';
+import {
+  CONNECTION_ADDRESS_REQUIRED_ID,
+  ProviderConnectionForm,
+} from './provider-settings/ProviderConnectionForm';
 import { ProviderStackOverview } from './provider-settings/ProviderStackOverview';
 import { ProviderTypePicker } from './provider-settings/ProviderTypePicker';
 import type { ProviderConnection } from './provider-settings/types';
@@ -40,6 +43,7 @@ import {
   describeProvider,
   filterModelProviders,
   finalizeConnectionConfig,
+  hasConnectionAddress,
   isConnectionConfigValid,
   mergeServerIntoEdit,
   readFormPath,
@@ -661,7 +665,15 @@ export function ProviderSettingsView({
               className="editor-btn editor-btn--primary"
               onClick={handleSave}
               aria-describedby={
-                isNew ? 'provider-create-disclosure' : undefined
+                [
+                  isNew ? 'provider-create-disclosure' : null,
+                  form.type === 'openai-compat' &&
+                  !hasConnectionAddress(form.config)
+                    ? CONNECTION_ADDRESS_REQUIRED_ID
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(' ') || undefined
               }
               disabled={
                 saveMutation.isPending ||

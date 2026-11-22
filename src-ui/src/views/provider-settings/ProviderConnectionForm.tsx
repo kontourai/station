@@ -16,6 +16,10 @@ import { modelOptionLabel } from '../../utils/modelCapabilities';
 import { describeStationFailure } from '../../utils/stationFailure';
 import { PROVIDER_TYPES, resolveProviderPresentation } from './providerCatalog';
 import type { ProviderConnection } from './types';
+import { hasConnectionAddress } from './utils';
+
+/** The inline reason Create/Save is unavailable; the header button points at it. */
+export const CONNECTION_ADDRESS_REQUIRED_ID = 'provider-address-required';
 
 /**
  * The connection's default model (archive#3652, archive#3654, and their review's).
@@ -588,10 +592,21 @@ export function ProviderConnectionForm({
               type="text"
               value={(form.config.baseUrl as string) ?? ''}
               placeholder="https://api.openai.com/v1"
+              aria-invalid={!hasConnectionAddress(form.config) || undefined}
+              aria-describedby={
+                hasConnectionAddress(form.config)
+                  ? undefined
+                  : CONNECTION_ADDRESS_REQUIRED_ID
+              }
               onChange={(event) =>
                 onSetConfigField('baseUrl', event.target.value)
               }
             />
+            {!hasConnectionAddress(form.config) && (
+              <div id={CONNECTION_ADDRESS_REQUIRED_ID} className="editor-error">
+                A server URL is required to save this connection.
+              </div>
+            )}
           </div>
           <div className="editor-field">
             <label className="editor-label" htmlFor={apiKeyId}>

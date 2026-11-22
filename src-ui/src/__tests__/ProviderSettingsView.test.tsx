@@ -692,6 +692,73 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     });
   });
 
+  test('Create stays unavailable, with the reason, while an OpenAI-compatible connection has no server URL', async () => {
+    render(
+      <ProviderSettingsView selectedProviderId="new" onNavigate={onNavigate} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /OpenAI-Compatible/ }));
+    await screen.findByRole('heading', { name: 'Connect OpenAI-Compatible' });
+
+    const create = screen.getByRole('button', {
+      name: 'Create',
+    }) as HTMLButtonElement;
+    const reason = 'A server URL is required to save this connection.';
+    expect(create.disabled).toBe(true);
+    const describedBy = (create.getAttribute('aria-describedby') ?? '').split(
+      ' ',
+    );
+    const reasonNode = screen.getByText(reason);
+    expect(describedBy).toContain(reasonNode.id);
+    expect(
+      screen.getByLabelText('Server URL').getAttribute('aria-describedby'),
+    ).toBe(reasonNode.id);
+    fireEvent.click(create);
+    expect(saveMutate).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Server URL'), {
+      target: { value: '   ' },
+    });
+    expect(create.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Server URL'), {
+      target: { value: 'http://localhost:8080/v1' },
+    });
+    expect(create.disabled).toBe(false);
+    expect(screen.queryByText(reason)).toBeNull();
+    fireEvent.click(create);
+    expect(saveMutate).toHaveBeenCalledOnce();
+  });
+
+  test('an already-saved OpenAI-compatible connection with no server URL cannot be saved until one is entered', () => {
+    modelConnections = [
+      {
+        id: 'compat-broken',
+        kind: 'model',
+        type: 'openai-compat',
+        name: 'OpenAI-Compatible',
+        config: { baseUrl: '' },
+        enabled: true,
+        capabilities: ['llm', 'embedding'],
+        status: 'missing_prerequisites',
+        prerequisites: [],
+        lastCheckedAt: null,
+      },
+    ];
+    render(
+      <ProviderSettingsView
+        selectedProviderId="compat-broken"
+        onNavigate={onNavigate}
+      />,
+    );
+    const save = screen.getByRole('button', {
+      name: 'Save',
+    }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    expect(
+      screen.getByText('A server URL is required to save this connection.'),
+    ).toBeTruthy();
+  });
+
   test('defers a dirty draft selection change until discard is confirmed', () => {
     modelConnections = [
       {
