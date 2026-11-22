@@ -159,3 +159,19 @@
 .integration-account__status {
   margin: 0 0 var(--k-space-4);
 }
+
+/* The tool server editor and the Secret bindings section share one scrolling
+   column. Without it the split pane shrinks to nothing once the section opens
+   and the section is painted over the editor. The pane keeps a usable height
+   and the column scrolls to reach the section. */
+.integration-editor-stack {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.integration-editor-stack > .split-pane {
+  flex: 1 0 32rem;
+}
