@@ -438,7 +438,10 @@ export function registerOperationsTools(
     SCHEDULER_OPERATOR_SURFACE.create.mcp,
     'Create a cron, interval, or one-shot agent wake-up',
     {
-      name: z.string(),
+      // At least one of `name` and `displayName`: the route refuses neither,
+      // and derives an unused slug from `displayName` when `name` is omitted.
+      name: z.string().optional().describe('Slug'),
+      displayName: z.string().optional().describe('Readable name'),
       cron: z.string().optional().describe('Cron expression'),
       schedule: schedulerScheduleSchema
         .optional()

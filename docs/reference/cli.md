@@ -2384,7 +2384,10 @@ station schedule disable <job> [--api-base=<url>]
 station schedule delete <job> [--api-base=<url>]
 ```
 
-`create` and `update` accept either the compatible `cron` field or a canonical
+`create` needs a `prompt` and a slug `name`, a `displayName`, or both; with
+only `displayName` the host picks an unused slug, and the host judges what a
+display name may contain. The Station Control `add_job` tool takes the same
+fields. `create` and `update` accept either the compatible `cron` field or a canonical
 schedule object: `{kind:"cron",expr,timezone?}`,
 `{kind:"every",everyMs}`, or `{kind:"at",timeMs,deleteAfterRun?}`, and an
 optional `target` that runs each time in a conversation (see

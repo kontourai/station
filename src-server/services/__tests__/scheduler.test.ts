@@ -2612,6 +2612,111 @@ describe('Scheduler Routes', () => {
     expect((await jobNamed('daily-briefing'))?.prompt).toBe('theirs');
   });
 
+  test('Station Control add_job creates a job from a display name alone, through the tool schema and this route', async () => {
+    const { Client, InMemoryTransport } = await import(
+      '@modelcontextprotocol/client'
+    );
+    const { createSelectedStationControlMcpServer } = await import(
+      '../../tools/station-control-mcp-server.js'
+    );
+    const { stationControlCallerPrincipal, withStationControlCallerContext } =
+      await import('../../tools/station-control-shared.js');
+    const { STATION_CONTROL_OPERATOR_PRINCIPAL_ID } = await import(
+      '../../tools/station-control-policy.js'
+    );
+    const apiBase = 'http://add-job-tool.local';
+    vi.stubEnv('STATION_API_BASE', apiBase);
+    // The tool's HTTP call reaches this file's real scheduler route.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(
+          String(input instanceof Request ? input.url : input),
+        );
+        if (!url.pathname.startsWith('/scheduler/'))
+          return Response.json({ success: false }, { status: 404 });
+        return app.request(
+          `${url.pathname.slice('/scheduler'.length)}${url.search}`,
+          {
+            method: init?.method,
+            headers: { 'Content-Type': 'application/json' },
+            body: init?.body,
+          },
+        );
+      }),
+    );
+    const server = createSelectedStationControlMcpServer(
+      undefined,
+      undefined,
+      'station-control',
+      'bound',
+    );
+    const [clientTransport, serverTransport] =
+      InMemoryTransport.createLinkedPair();
+    await server.connect(serverTransport);
+    const client = new Client({ name: 'add-job-tool', version: '1' });
+    await client.connect(clientTransport);
+    const addJob = (args: Record<string, unknown>) =>
+      withStationControlCallerContext(
+        {
+          token: undefined,
+          resolve: () => ({
+            sessionId: 'add-job-session',
+            assurance: 'bound',
+            principal: stationControlCallerPrincipal(
+              STATION_CONTROL_OPERATOR_PRINCIPAL_ID,
+              'session-owner',
+            ),
+          }),
+        },
+        () => client.callTool({ name: 'add_job', arguments: args }),
+      ) as Promise<{ isError?: boolean; content: Array<{ text: string }> }>;
+    try {
+      const created = await addJob({
+        displayName: 'Daily briefing',
+        prompt: 'Summarize the day',
+        schedule: { kind: 'every', everyMs: 3_600_000 },
+      });
+      expect(created.isError).toBeFalsy();
+      expect(JSON.parse(created.content[0]!.text)).toMatchObject({
+        success: true,
+        data: { name: 'daily-briefing' },
+      });
+      expect(await jobNamed('daily-briefing')).toMatchObject({
+        displayName: 'Daily briefing',
+        prompt: 'Summarize the day',
+      });
+
+      // The route's own sentence, for a reordering mark and for a blank name.
+      for (const displayName of ['invoice\u202Etxt.exe', '   ']) {
+        const refused = await addJob({ displayName, prompt: 'x' });
+        expect(refused.isError, JSON.stringify(displayName)).toBe(true);
+        expect(refused.content[0]!.text).toContain(
+          'A name needs a visible character and cannot contain line breaks or invisible formatting characters',
+        );
+      }
+      const neither = await addJob({ prompt: 'x' });
+      expect(neither.isError).toBe(true);
+      expect(neither.content[0]!.text).toContain(
+        'A job needs a name or a display name',
+      );
+
+      // The slug alone still works.
+      const bySlug = await addJob({ name: 'slug-only', prompt: 'x' });
+      expect(bySlug.isError).toBeFalsy();
+      expect(await jobNamed('slug-only')).toMatchObject({ prompt: 'x' });
+      expect((await service.listJobs()).map((job) => job.name).sort()).toEqual([
+        'daily-briefing',
+        'slug-only',
+      ]);
+    } finally {
+      await client.close();
+      await server.close();
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
   test('POST /jobs refuses an explicit slug that is taken, and a display name whose every slug is taken', async () => {
     await app.request('/jobs', {
       method: 'POST',
