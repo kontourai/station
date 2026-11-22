@@ -14,8 +14,8 @@ export interface QRScannerProps {
   onManualEntry?: () => void;
   /**
    * Invoked instead of showing an error when this browser has no camera to
-   * scan with: no camera API, no video input, or a capture request the
-   * browser refuses as unsupported or finds no device for. A person who only
+   * scan with: no camera API, or a capture request the browser refuses as
+   * unsupported or finds no device for. A person who only
    * meant to type a code should not meet a camera error. Without a handler
    * the scanner shows the failure like any other.
    */
@@ -31,23 +31,6 @@ export function hasCameraApi(): boolean {
     typeof navigator !== 'undefined' &&
     typeof navigator.mediaDevices?.getUserMedia === 'function'
   );
-}
-
-/**
- * Whether the browser lists a camera: true or false when it can say, null
- * when it cannot (no device list, or the listing failed). Before permission
- * is granted, browsers still list one entry per kind of device present, so an
- * empty video list means there is no camera.
- */
-export async function hasVideoInput(): Promise<boolean | null> {
-  if (!hasCameraApi()) return false;
-  if (typeof navigator.mediaDevices.enumerateDevices !== 'function') {
-    return null;
-  }
-  const devices = await navigator.mediaDevices
-    .enumerateDevices()
-    .catch(() => null);
-  return devices ? devices.some((d) => d.kind === 'videoinput') : null;
 }
 
 // Capture failures that mean "there is no camera to use here", as opposed to
@@ -126,15 +109,8 @@ function CameraScanner({
             { name: 'InsecureContext' },
           );
         }
-        // Ask for the camera only when the browser lists one. When it cannot
-        // say, let capture decide.
-        if (onUnavailableRef.current && (await hasVideoInput()) === false) {
-          if (cancelled) return;
-          throw Object.assign(new Error('No camera found.'), {
-            name: 'NotFoundError',
-          });
-        }
-        if (cancelled) return;
+        // The device list is not consulted: before a grant some engines list
+        // no camera even when one exists, so only a capture attempt decides.
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: 'environment' },
         });

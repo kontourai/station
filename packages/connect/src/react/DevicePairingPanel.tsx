@@ -81,7 +81,7 @@ import {
   useHttpConnectionConsent,
 } from './HttpConnectionConsent';
 import { QRDisplay } from './QRDisplay';
-import { hasCameraApi, hasVideoInput, QRScanner } from './QRScanner';
+import { hasCameraApi, QRScanner } from './QRScanner';
 import {
   defaultKeptScope,
   elevatedLabels,
@@ -299,27 +299,20 @@ export function JoinDevicePairingPanel({
     directConnectionId,
     accountBoundDeviceRequest?.clientInstanceId,
   ]);
-  // The scanner is offered only where this browser has a camera. With no
-  // camera API, no listed camera, or a capture that finds none, the panel
-  // drops the scanner and moves to code entry.
+  // The scanner is offered only where this browser can have a camera. With no
+  // camera API there is nothing to attempt, so open straight on code entry
+  // without mounting the scanner. Otherwise only a capture attempt that finds
+  // no camera drops it; the device list is not trusted before a grant.
   const [cameraUnavailable, setCameraUnavailable] = useState(
     () => !hasCameraApi(),
   );
-  const [mode, setMode] = useState<'direct' | 'scan' | 'manual'>(initialMode);
+  const [mode, setMode] = useState<'direct' | 'scan' | 'manual'>(() =>
+    initialMode === 'scan' && cameraUnavailable ? 'manual' : initialMode,
+  );
   const markCameraUnavailable = useCallback(() => {
     setCameraUnavailable(true);
     setMode((current) => (current === 'scan' ? 'manual' : current));
   }, []);
-  useEffect(() => {
-    if (cameraUnavailable) return;
-    let current = true;
-    void hasVideoInput().then((found) => {
-      if (current && found === false) markCameraUnavailable();
-    });
-    return () => {
-      current = false;
-    };
-  }, [cameraUnavailable, markCameraUnavailable]);
   const [deviceName, setDeviceName] = useState(
     hostAppName ? 'This device' : 'This browser',
   );

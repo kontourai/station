@@ -120,7 +120,8 @@ describe('QRScanner camera lifecycle', () => {
     },
   );
 
-  test('reports an empty device list as unavailable without requesting the camera', async () => {
+  test('an empty device list alone does not report the camera unavailable: capture is still attempted', async () => {
+    // Before a grant some engines list no camera even when one exists.
     const enumerateDevices = vi.fn(async () => [
       { kind: 'audioinput', deviceId: '', groupId: '', label: '' },
     ]);
@@ -137,20 +138,20 @@ describe('QRScanner camera lifecycle', () => {
       />,
     );
 
-    await waitFor(() => expect(onUnavailable).toHaveBeenCalledOnce());
-    expect(getUserMedia).not.toHaveBeenCalled();
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(document.querySelector('video')?.srcObject).toBeTruthy(),
+    );
+    expect(onUnavailable).not.toHaveBeenCalled();
   });
 
-  test('a listed camera goes on to capture', async () => {
-    const enumerateDevices = vi.fn(async () => [
-      { kind: 'videoinput', deviceId: '', groupId: '', label: '' },
-    ]);
+  test('a missing camera API reports unavailable without an error', async () => {
     Object.defineProperty(navigator, 'mediaDevices', {
       configurable: true,
-      value: { getUserMedia, enumerateDevices },
+      value: undefined,
     });
     const onUnavailable = vi.fn();
-    render(
+    const { queryByText } = render(
       <QRScanner
         onScan={vi.fn()}
         onCancel={vi.fn()}
@@ -158,8 +159,8 @@ describe('QRScanner camera lifecycle', () => {
       />,
     );
 
-    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
-    expect(onUnavailable).not.toHaveBeenCalled();
+    await waitFor(() => expect(onUnavailable).toHaveBeenCalledOnce());
+    expect(queryByText(/Camera error/)).toBeNull();
   });
 
   test('a busy camera is still an error with manual entry, not unavailable', async () => {

@@ -4150,9 +4150,29 @@ test('a pairing code needs both fields, submits on Return, and names a bad addre
 });
 
 describe('pairing by code without a camera', () => {
-  test('opens on code entry with no camera API: field focused, no scanner, no camera error', () => {
+  test('opens on code entry with no camera API, focus in the first empty field (the address), never mounting the scanner', () => {
     expect(navigator.mediaDevices).toBeUndefined();
+    // Record every node ever added, so a scanner that mounts for one commit
+    // and is then replaced (a visible "Starting camera…" frame) is caught.
+    const added: Node[] = [];
+    const observer = new MutationObserver((records) => {
+      for (const record of records) added.push(...record.addedNodes);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
+    observer.takeRecords().forEach((record) => {
+      added.push(...record.addedNodes);
+    });
+    observer.disconnect();
+    expect(
+      added.some(
+        (node) =>
+          node instanceof Element &&
+          (node.matches('video') ||
+            node.querySelector('video') !== null ||
+            /Starting camera/.test(node.textContent ?? '')),
+      ),
+    ).toBe(false);
 
     const address = screen.getByLabelText('Station server address');
     expect(document.activeElement).toBe(address);
@@ -4163,7 +4183,7 @@ describe('pairing by code without a camera', () => {
     expect(document.querySelector('video')).toBeNull();
   });
 
-  test('focuses the code field when the address is already known', () => {
+  test('focuses the first empty field: the code, when the address is already known', () => {
     render(
       <JoinDevicePairingPanel
         initialManualEndpoint="https://station.example.ts.net"
@@ -4176,18 +4196,18 @@ describe('pairing by code without a camera', () => {
     expect(screen.queryByText(/Camera error/)).toBeNull();
   });
 
-  test('falls back to code entry when the browser lists no camera, without asking for one', async () => {
-    const { getUserMedia, enumerateDevices } = installCamera({
-      videoInputs: 0,
-    });
+  test('an empty device list alone does not hide the scanner: capture is still attempted', async () => {
+    // Before a grant some engines list no camera even when one exists.
+    const { getUserMedia } = installCamera({ videoInputs: 0 });
     render(<JoinDevicePairingPanel onPaired={vi.fn()} onCancel={vi.fn()} />);
 
-    const address = await screen.findByLabelText('Station server address');
-    expect(enumerateDevices).toHaveBeenCalled();
-    expect(document.activeElement).toBe(address);
-    expect(getUserMedia).not.toHaveBeenCalled();
-    expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
-    expect(screen.queryByText(/Camera error/)).toBeNull();
+    await waitFor(() => expect(getUserMedia).toHaveBeenCalledOnce());
+    expect(
+      screen
+        .getByRole('button', { name: 'Scan code' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(document.querySelector('video')).toBeTruthy();
   });
 
   test('falls back to code entry when capture is unsupported, as a camera-less browser reports it', async () => {
@@ -4206,8 +4226,8 @@ describe('pairing by code without a camera', () => {
     expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull();
   });
 
-  test('a code-entry panel stops offering the scanner once the browser lists no camera', async () => {
-    installCamera({ videoInputs: 0 });
+  test('a code-entry panel keeps offering the scanner when the device list is empty', async () => {
+    const { enumerateDevices } = installCamera({ videoInputs: 0 });
     render(
       <JoinDevicePairingPanel
         initialMode="manual"
@@ -4215,10 +4235,12 @@ describe('pairing by code without a camera', () => {
         onCancel={vi.fn()}
       />,
     );
+    // Let any device-list lookup settle before asserting nothing changed.
+    await Promise.resolve();
+    await Promise.resolve();
 
-    await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Scan code' })).toBeNull(),
-    );
+    expect(enumerateDevices).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Scan code' })).toBeTruthy();
     expect(document.activeElement).toBe(
       screen.getByLabelText('Station server address'),
     );
@@ -4239,7 +4261,7 @@ describe('pairing by code without a camera', () => {
     expect(screen.queryByLabelText('Pairing code')).toBeNull();
   });
 
-  test('a camera that exists but is refused still says so, with a way to type the code', async () => {
+  test('a camera that exists but is refused still says so; typing the code instead focuses the first empty field', async () => {
     installCamera({
       getUserMedia: vi.fn(async () => {
         throw Object.assign(new Error('denied'), { name: 'NotAllowedError' });
