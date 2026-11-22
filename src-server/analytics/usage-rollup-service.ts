@@ -31,6 +31,8 @@ export interface UsageRollupRequest {
   connectionId?: string;
   /** Only receipts whose accepted launch plan named this model connection. */
   modelConnectionId?: string;
+  /** Only receipts whose Session ran in this Project of this Station (#5068). */
+  projectSlug?: string;
   from: string;
   to: string;
   groupBy?: UsageRollupGroupBy;
@@ -142,10 +144,13 @@ export class UsageRollupService {
       (request.connectionId === undefined ||
         receipt.connectionId === request.connectionId) &&
       (request.modelConnectionId === undefined ||
-        receipt.modelConnectionId === request.modelConnectionId);
+        receipt.modelConnectionId === request.modelConnectionId) &&
+      (request.projectSlug === undefined ||
+        receipt.projectSlug === request.projectSlug);
     const connectionFiltered =
       request.connectionId !== undefined ||
-      request.modelConnectionId !== undefined;
+      request.modelConnectionId !== undefined ||
+      request.projectSlug !== undefined;
     const narrowed = Boolean(request.provider) || connectionFiltered;
     const pageSize = Math.min(
       Math.max(request.pageSize ?? 50, 1),

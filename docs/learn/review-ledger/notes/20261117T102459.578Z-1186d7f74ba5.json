@@ -1,0 +1,11 @@
+{
+  "revision": "a671213494d04e3dc7f59407b159b48d5855c4a3",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked the citing pages: the spec adds the project-overview groups and settings screens (dark/light x 1440/390) through the existing Screen hooks, with fixture routes and the preview toggled and restored like the repository-sources screens. Capture mechanics, animation freezing, volatile-chrome hiding and usage-telemetry fixtures that motion.md, testing.md and usage-telemetry.md describe are unchanged.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the citing pages: the spec adds the project-overview groups and settings screens (dark/light x 1440/390) through the existing Screen hooks, with fixture routes and the preview toggled and restored like the repository-sources screens. Capture mechanics, animation freezing, volatile-chrome hiding and usage-telemetry fixtures that motion.md, testing.md and usage-telemetry.md describe are unchanged.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the citing pages: the spec adds the project-overview groups and settings screens (dark/light x 1440/390) through the existing Screen hooks, with fixture routes and the preview toggled and restored like the repository-sources screens. Capture mechanics, animation freezing, volatile-chrome hiding and usage-telemetry fixtures that motion.md, testing.md and usage-telemetry.md describe are unchanged.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

@@ -1,0 +1,47 @@
+{
+  "revision": "0047cd25916e6bb738eabfdd3778d0739ec06e89",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the two mobile Inbox entry points, the paginated saved conversation list, and the per-chat timeline against their distinct handlers. Replaced the retired picker description.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the embedded Inbox entry via Chat actions and the separate Browse all conversations command. The guide describes the mounted behavior, and earlier captures keep their original scope.","inputs":["docs/guides/responsive-ui.md","src-ui/src/__tests__/ChatDockHeader.identityGeometry.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Traced the changed mobile menu calls to the same Inbox switch as the header and the same saved-list opener as desktop. The content mount condition is equivalent. No changes to conversation connections, sending, Project guards, panes, or evidence rendering.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Traced the changed mobile menu calls to the same Inbox switch as the header and the same saved-list opener as desktop. The content mount condition is equivalent. No changes to conversation connections, sending, Project guards, panes, or evidence rendering.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Traced the changed mobile menu calls to the same Inbox switch as the header and the same saved-list opener as desktop. The content mount condition is equivalent. No changes to conversation connections, sending, Project guards, panes, or evidence rendering.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Traced the changed mobile menu calls to the same Inbox switch as the header and the same saved-list opener as desktop. The content mount condition is equivalent. No changes to conversation connections, sending, Project guards, panes, or evidence rendering.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Traced the changed mobile menu calls to the same Inbox switch as the header and the same saved-list opener as desktop. The content mount condition is equivalent. No changes to conversation connections, sending, Project guards, panes, or evidence rendering.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Traced the changed mobile menu calls to the same Inbox switch as the header and the same saved-list opener as desktop. The content mount condition is equivalent. No changes to conversation connections, sending, Project guards, panes, or evidence rendering.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Traced the changed mobile menu calls to the same Inbox switch as the header and the same saved-list opener as desktop. The content mount condition is equivalent. No changes to conversation connections, sending, Project guards, panes, or evidence rendering.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Traced the changed mobile menu calls to the same Inbox switch as the header and the same saved-list opener as desktop. The content mount condition is equivalent. No changes to conversation connections, sending, Project guards, panes, or evidence rendering.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Traced the changed mobile menu calls to the same Inbox switch as the header and the same saved-list opener as desktop. The content mount condition is equivalent. No changes to conversation connections, sending, Project guards, panes, or evidence rendering.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked that the Inbox icon remains the direct header control. The menu receives separate optional Inbox and Browse all conversations actions, and the active chat header still leaves Project choice to New chat.","inputs":["src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked that the Inbox icon remains the direct header control. The menu receives separate optional Inbox and Browse all conversations actions, and the active chat header still leaves Project choice to New chat.","inputs":["src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked that the Inbox icon remains the direct header control. The menu receives separate optional Inbox and Browse all conversations actions, and the active chat header still leaves Project choice to New chat.","inputs":["src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The Inbox item shows the embedded list and Browse all conversations opens saved chat management. The distinct History item retains its per-chat timeline. The shared sheet still owns closing and focus return.","inputs":["src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"The Inbox item shows the embedded list and Browse all conversations opens saved chat management. The distinct History item retains its per-chat timeline. The shared sheet still owns closing and focus return.","inputs":["src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"The Inbox item shows the embedded list and Browse all conversations opens saved chat management. The distinct History item retains its per-chat timeline. The shared sheet still owns closing and focus return.","inputs":["src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the removal of the obsolete History toggle. The separate Inbox state and the saved-list open and close owner retain their existing lifetimes.","inputs":["src-ui/src/components/chat-dock/useChatDockOverlays.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the removal of the obsolete History toggle. The separate Inbox state and the saved-list open and close owner retain their existing lifetimes.","inputs":["src-ui/src/components/chat-dock/useChatDockOverlays.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Removed an unused fixture callback tied to the old menu wiring. The geometry assertions are unchanged.","inputs":["src-ui/src/__tests__/ChatDockHeader.identityGeometry.test.tsx"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The Inbox journey now opens the work list from Chat actions, checks a row beyond the initial group, returns to the chat, then opens and closes saved conversation management via Browse all conversations. The pre-fix browser run failed at Inbox visibility and the repaired run passed at 390px.","inputs":["tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

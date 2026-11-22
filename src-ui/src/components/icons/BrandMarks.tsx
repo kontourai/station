@@ -1,9 +1,7 @@
-import type { InlineBrandKey } from './BrandIcon';
+import type { BrandKey } from './BrandIcon';
 
-// The inline brand marks, split from `BrandIcon` so their path data loads
-// with the first rendered mark instead of in the UI entry chunk (epic #61).
-// Inline SVG (not <img>) so a mark can take `currentColor` and theme tokens.
-export function BrandMark({ brand }: { brand: InlineBrandKey }) {
+// Load mark rendering on demand so its SVG paths and markup stay out of the UI entry chunk.
+export function BrandMark({ brand }: { brand: BrandKey }) {
   switch (brand) {
     case 'station':
       return (
@@ -71,6 +69,15 @@ export function BrandMark({ brand }: { brand: InlineBrandKey }) {
             d="M384 416H128V96H384V416ZM320 160H192V352H320V160Z"
           />
         </svg>
+      );
+    case 'hermes':
+      return <img src="/provider-icons/hermes.svg" alt="" />;
+    default:
+      return (
+        <span
+          className="brand-icon__mask"
+          style={{ maskImage: `url(/provider-icons/${brand}.svg)` }}
+        />
       );
   }
 }

@@ -1,0 +1,7 @@
+{
+  "revision": "e2226976a25d507cc6a5e142f068dee965d9d38c",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"Reviewed the two-stage Atlas load against the documented lazy assets and metadata search. The existing browser journey now holds the real manifest response while entering the query, then releases it before checking the search result, body title and outline.","inputs":["docs/learn/README.md","scripts/__tests__/learning-atlas.browser.test.ts"]}
+  ]
+}

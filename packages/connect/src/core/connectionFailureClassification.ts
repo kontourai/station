@@ -1,5 +1,6 @@
 import { CLIENT_PROTOCOL_UNSUPPORTED_ERROR_CODE } from '@kontourai/station-contracts/environment-security';
 import { AUTH_RATE_LIMITED_ERROR_CODE } from '@kontourai/station-contracts/http';
+import type { ConnectionHealthCheckResult } from './ConnectionHealthCoordinator';
 import type { FailureClassification } from './ConnectionSupervisor';
 import type { ConnectionFailureReason } from './types';
 
@@ -11,21 +12,9 @@ import type { ConnectionFailureReason } from './types';
  * for this domain, so the two mechanisms can never classify the same
  * failure reason differently.
  *
- * Only `authentication-failed` (401/403 — the case #303 and station#1094
- * single out as the hot-loop risk) is terminal today. Every other reason
- * ('offline', 'mixed-content', 'invalid-endpoint', 'identity-mismatch',
- * 'access-method-mismatch', 'unsupported-capability-version', 'timeout',
- * 'unreachable', 'server-restarted', 'host-unavailable', 'busy',
- * 'awaiting-approval') stays transient:
- * they are either genuinely retriable (network/timeout/server-restarted), a
- * healthy host simply waiting on a human (`awaiting-approval` — station#1713;
- * never terminal, since nothing about it should stop the retry ladder that
- * eventually notices approval landed), or already have their own non-retry
- * UI treatment upstream (e.g. `unsupported-capability-version` renders a
- * version-mismatch BannerHost item via ConnectionBannerSource instead of
- * the generic retry banner) so they do not need a second no-retry mechanism
- * here. Broadening this list is a disclosed follow-up, not a blocker for
- * closing the auth hot-loop this issue exists to fix.
+ * Only `authentication-failed` stops the automatic retry ladder. Connect
+ * normalizes detailed probes through `connectionProbeFailureReason` before
+ * this check so temporary rate limits do not stop recovery.
  */
 export function classifyConnectionFailure(
   reason: ConnectionFailureReason,
@@ -57,6 +46,9 @@ const REASONS_NEEDING_A_DECISION: ReadonlySet<ConnectionFailureReason> =
     'identity-mismatch',
     'access-method-mismatch',
     'authentication-failed',
+    'access-scope-refused',
+    'relay-authority-unavailable',
+    'access-check-unavailable',
     'unsupported-capability-version',
     'client-protocol-unsupported',
     'origin-not-allowed',
@@ -70,44 +62,12 @@ export function connectionFailureNeedsDecision(
 }
 
 /**
- * station#3297 — the derivation behind an HTTP failure response.
- *
- * Every caller here has already observed a response, so `unreachable` is off
- * the table by construction: something at that address answered. What remains
- * is what the answer actually proves.
- *
- * - **401** (`authentication_required`) — the server rejected this device's
- *   credential, or was given none. Pairing again is the fix.
- * - **403 `insufficient_scope`** — a credential the server *recognized* but
- *   will not accept for this request. Also an authentication outcome about
- *   this device, and pairing again re-mints it at the current scope. The
- *   status alone does not say this: `runtime-http.ts` answers 403 for origin
- *   policy too, which is why this reads the coded body rather than the number.
- * - **403 `origin_forbidden` / `origin_required`** — origin policy. Nothing
- *   about a credential; a distinct remedy on the host.
- * - **403 with no readable code** — an intermediary, or a Station whose
- *   vocabulary this classifier has not been taught. Do not guess which of the
- *   two 403 meanings applies; report only that the answer was unusable.
- * - **429 `authentication_rate_limited`** — the auth-failure limiter, which is
- *   reachable only after this device's credential has been REFUSED ten times
- *   in a minute (`runtime-http.ts`). It is the same authentication outcome as
- *   the 401s that fed it, arriving throttled, and station#3903 is what
- *   happened while it was not: a revoked phone's row settled on this status
- *   within seconds and read "answered, but not as a Station. Something else
- *   may be answering at that address" — a wrong-server diagnosis, from the
- *   right server, refusing that exact device. The MUTATION budget's 429 keeps
- *   its own `rate_limited` code and stays out of this branch: an authorised
- *   principal writing too fast is not a fact about access, and inventing one
- *   would be the same defect pointed the other way.
- * - **426 `client_protocol_unsupported`** — the host no longer serves the
- *   client API protocol this app speaks (#2962). This app is the side to
- *   update; the status alone is not enough, so the code is required.
- * - **anything else** (404, 5xx, a 200 whose body will not parse) — the
- *   address answered, and not as a Station.
- *
- * `errorCode` is `undefined` whenever the body could not be read or carried
- * no `error.code`. That is a real state, not a lookup miss, and it lands on
- * `unexpected-response` rather than borrowing a neighbouring reason's meaning.
+ * Classify a failed HTTP response for existing probe callers. The
+ * authentication family historically includes 401, insufficient-scope 403,
+ * and the authentication limiter's 429. The limiter can be shared across
+ * callers and its answer alone cannot establish an invalid credential.
+ * Detailed probes retain the observed response so client remedies can
+ * distinguish the cases. An uncoded 403 keeps the unexpected-response reason.
  */
 export function classifyHttpFailureResponse(
   status: number,
@@ -128,6 +88,29 @@ export function classifyHttpFailureResponse(
     return 'client-protocol-unsupported';
   }
   return 'unexpected-response';
+}
+
+/** Use observed probe facts to choose the status and remedy shown to the client. */
+export function connectionProbeFailureReason(
+  result: Extract<ConnectionHealthCheckResult, { ok: false }>,
+): ConnectionFailureReason {
+  const evidence = result.evidence;
+  if (evidence?.kind === 'local-authority')
+    return 'relay-authority-unavailable';
+  if (evidence?.kind !== 'http') return result.reason;
+  if (
+    evidence.status === 429 &&
+    evidence.code === AUTH_RATE_LIMITED_ERROR_CODE
+  ) {
+    return 'authentication-rate-limited';
+  }
+  if (evidence.status === 403 && evidence.code === 'insufficient_scope') {
+    return 'access-scope-refused';
+  }
+  if (evidence.status === 401 && evidence.phase === 'handshake') {
+    return 'access-check-unavailable';
+  }
+  return result.reason;
 }
 
 /**

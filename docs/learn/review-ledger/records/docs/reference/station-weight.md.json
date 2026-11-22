@@ -20,7 +20,13 @@
 
     "scripts/lib/owned-process.mjs",
 
-    "scripts/__tests__/helpers/station-weight-daemon.ts"
+    "scripts/__tests__/helpers/station-weight-daemon.ts",
+
+    "scripts/__tests__/station-weight.test.ts",
+
+    "scripts/__tests__/station-weight.end-to-end.process.test.ts",
+
+    "scripts/bench/station-weight-wakeups.mjs"
   ],
 
   "checks": [

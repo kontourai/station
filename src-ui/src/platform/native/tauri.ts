@@ -924,6 +924,9 @@ export class TauriNativePlatformAdapter implements NativePlatformAdapter {
     listener: (event: NativeTrayNavigationEvent) => void,
     onError?: (error: NativePlatformError) => void,
   ): NativeEventSubscription {
+    if (this.reportedTarget === 'android' || this.reportedTarget === 'ios') {
+      return { dispose() {} };
+    }
     let disposed = false;
     let unlisten: UnlistenFn | undefined;
     let drainInFlight = false;

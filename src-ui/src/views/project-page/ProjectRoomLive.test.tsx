@@ -13,6 +13,13 @@ import {
   within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+
+// The coordinator (#5063) has its own tests; these rooms run with its
+// preview off, as a Station that never turned it on.
+vi.mock('../../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () => new Set<string>(),
+}));
+
 import { setClientCredentialResolver } from '../../../../packages/sdk/src/client/http';
 import { navigationStore } from '../../contexts/navigation-store';
 
@@ -220,6 +227,38 @@ async function mount() {
   push('subscribed', { roomId, lastSeq: messages.length, activity: 0 });
   return screen.findByRole('list', { name: 'Conversation' });
 }
+
+test('a live rollover keeps the previously shown row without an immediate history read', async () => {
+  const first = message(1, 'Earlier message still on screen');
+  messages.push(first);
+  const list = await mount();
+  await within(list).findByText('Earlier message still on screen');
+  const historyReads = () =>
+    vi
+      .mocked(fetch)
+      .mock.calls.filter(
+        ([input, init]) =>
+          String(input).includes('/messages?') && init?.method !== 'POST',
+      ).length;
+  await waitFor(() => expect(historyReads()).toBeGreaterThanOrEqual(2));
+  const before = historyReads();
+  await act(async () => {
+    for (let seq = 2; seq <= 502; seq++) {
+      const next = message(seq, `Live message ${seq}`);
+      messages.push(next);
+      push('append', { message: next });
+    }
+  });
+  // jsdom does not measure the scrollport. The production virtualizer's row
+  // count includes the 500 live messages and the earlier row already shown.
+  const history = await within(list).findByTestId(
+    'virtualized-transcript-spacer',
+  );
+  await waitFor(() =>
+    expect(history.getAttribute('data-transcript-row-count')).toBe('501'),
+  );
+  expect(historyReads()).toBe(before);
+}, 20_000);
 
 test('a mention renders by person id with their current name, and the reader’s own stands out', async () => {
   messages.push(

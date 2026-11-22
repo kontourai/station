@@ -1,0 +1,15 @@
+{
+  "revision": "8cbe9bbfd1addb45446dce86d51850f87b118b7a",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"Subagent scan now bounds transcripts and entries apart, refusing one past either, and reuses a scan for 25 seconds while the directory time is unchanged; citing pages' discovery, mapping and usage claims are unchanged.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Subagent scan now bounds transcripts and entries apart, refusing one past either, and reuses a scan for 25 seconds while the directory time is unchanged; citing pages' discovery, mapping and usage claims are unchanged.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Subagent scan now bounds transcripts and entries apart, refusing one past either, and reuses a scan for 25 seconds while the directory time is unchanged; citing pages' discovery, mapping and usage claims are unchanged.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Subagent scan now bounds transcripts and entries apart, refusing one past either, and reuses a scan for 25 seconds while the directory time is unchanged; citing pages' discovery, mapping and usage claims are unchanged.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Subagent scan now bounds transcripts and entries apart, refusing one past either, and reuses a scan for 25 seconds while the directory time is unchanged; citing pages' discovery, mapping and usage claims are unchanged.","inputs":["src-server/providers/sessions/claude-transcript-session-source.ts"]}
+  ]
+}

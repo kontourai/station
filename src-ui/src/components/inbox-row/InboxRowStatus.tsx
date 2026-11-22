@@ -1,8 +1,4 @@
-import {
-  absoluteTime,
-  formatDuration,
-  relativeTime,
-} from '../../utils/relativeTime';
+import { formatDuration } from '../../utils/relativeTime';
 import {
   type WorkStatus,
   type WorkStatusRung,
@@ -83,9 +79,34 @@ export function WorkStatusLineText({ status }: { status: WorkStatus }) {
   );
 }
 
-/** Screen-reader duration stays coarse on the list's 30-second clock. */
-function coarseDuration(elapsedMs: number): string {
-  return `for ${formatDuration(elapsedMs, 'coarse')}`;
+/** Keep the ticking visual out of the accessible name. The list supplies a coarse description. */
+export function InboxRowDuration({
+  since,
+  now,
+  durationId,
+  standalone = false,
+}: {
+  since: number;
+  now: number;
+  durationId?: string;
+  standalone?: boolean;
+}) {
+  const description = `for ${formatDuration(now - since, 'coarse')}`;
+  return (
+    <>
+      <span aria-hidden="true" className="inbox-row__elapsed">
+        {standalone ? 'for ' : <span className="inbox-row__sep">{' · '}</span>}
+        <ElapsedDuration since={since} />
+      </span>
+      <span
+        id={durationId}
+        className="sr-only"
+        aria-hidden={durationId ? true : undefined}
+      >
+        {durationId ? description : `, ${description}`}
+      </span>
+    </>
+  );
 }
 
 /** The detail's test id names what it is the basis for, where one exists. */
@@ -110,6 +131,40 @@ const REASON_RUNGS: ReadonlySet<WorkStatusRung> = new Set([
   'childWork',
 ]);
 
+export function CompactStatusExplanation({
+  status,
+  reasonId,
+}: {
+  status: WorkStatus;
+  reasonId: string;
+}) {
+  return (
+    <>
+      {status.reason && (
+        <span
+          id={reasonId}
+          className="sr-only"
+          data-testid={REASON_TEST_IDS[status.rung]}
+          title={status.reason}
+        >
+          {status.reason}
+        </span>
+      )}
+      {status.detail && (
+        <span
+          className={
+            REASON_RUNGS.has(status.rung) ? 'inbox-row__reason' : 'sr-only'
+          }
+          data-testid={DETAIL_TEST_IDS[status.rung]}
+          title={status.detail}
+        >
+          {status.detail}
+        </span>
+      )}
+    </>
+  );
+}
+
 /**
  * The row's single status line: icon, word, then whatever the ladder says
  * the word is about, then a ticking duration while a turn is open.
@@ -118,18 +173,15 @@ export function InboxRowStatusLine({
   status,
   now,
   id,
-  lastActivityAt,
+  reasonId,
+  durationId,
 }: {
   status: WorkStatus;
   now: number;
   id: string;
-  /**
-   * A host that hides the row's time slot (the phone picker puts the status
-   * where the time was) hands the time here, and it trails the line in the
-   * same compact form the slot would show. Never while a turn is open: the
-   * ticking duration is that line's one number.
-   */
-  lastActivityAt?: number;
+  /** References from a control whose visible content already includes the status. */
+  reasonId?: string;
+  durationId?: string;
 }) {
   const wraps = REASON_RUNGS.has(status.rung) && Boolean(status.detail);
   return (
@@ -144,9 +196,11 @@ export function InboxRowStatusLine({
       <span className="inbox-row__word">{status.word}</span>
       {status.reason && (
         <>
-          <span className="sr-only">{' · '}</span>
+          {!reasonId && <span className="sr-only">{' · '}</span>}
           <span
+            id={reasonId}
             className="sr-only"
+            aria-hidden={reasonId ? true : undefined}
             data-testid={REASON_TEST_IDS[status.rung]}
             title={status.reason}
           >
@@ -156,7 +210,8 @@ export function InboxRowStatusLine({
       )}
       {status.detail && (
         <>
-          <span className="inbox-row__sep">{' · '}</span>
+          {' '}
+          <span className="inbox-row__sep">·</span>{' '}
           <span
             className="inbox-row__detail"
             data-testid={DETAIL_TEST_IDS[status.rung]}
@@ -166,40 +221,12 @@ export function InboxRowStatusLine({
           </span>
         </>
       )}
-      {status.since === undefined && lastActivityAt !== undefined && (
-        // One element with its separator, like the elapsed time below: the
-        // phone picker hides the line's direct separators (it folds the
-        // detail away), and the time keeps its dot the way the duration does.
-        <span>
-          <span className="inbox-row__sep">{' · '}</span>
-          <span
-            className="inbox-row__recency"
-            title={absoluteTime(lastActivityAt)}
-          >
-            {relativeTime(lastActivityAt, now)}
-          </span>
-        </span>
-      )}
       {status.since !== undefined && (
-        <>
-          {/* The ticking number is for the eye only. This line is the row
-              button's description; a value that changes every second would
-              be re-read or go stale mid-sentence. */}
-          <span aria-hidden="true">
-            <span className="inbox-row__sep">{' · '}</span>
-            <span className="inbox-row__elapsed">
-              {/* The shared clock, never the list's coarse `now`: that
-                  advances every 30 seconds, so anchoring to it showed "0s"
-                  for a turn already 20-30 seconds old, and a second surface
-                  on its own clock read a different number for the same
-                  turn. */}
-              <ElapsedDuration since={status.since} />
-            </span>
-          </span>
-          <span className="sr-only">
-            {`, ${coarseDuration(now - status.since)}`}
-          </span>
-        </>
+        <InboxRowDuration
+          since={status.since}
+          now={now}
+          durationId={durationId}
+        />
       )}
     </span>
   );
@@ -229,8 +256,7 @@ export function InboxRowChips({ chips }: { chips: readonly InboxRowChip[] }) {
             data-chip={chip.kind}
             title={chip.title ?? chip.label}
           >
-            <Glyph />
-            <bdi>{chip.label}</bdi>
+            <Glyph /> <bdi>{chip.label}</bdi>
           </span>
         );
       })}

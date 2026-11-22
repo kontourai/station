@@ -12,16 +12,26 @@ import { toastStore } from '../../contexts/ToastContext';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
   dismissInboxItem,
+  dropInboxDismissals,
   hasInboxDismissal,
   inboxDismissalsVersion,
   isInboxDismissed,
+  readHostThirdPartyDismissals,
   readInboxDismissals,
   restoreInboxItems,
   subscribeInboxDismissals,
 } from '../../utils/inbox-dismissal-store';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
+import {
+  inboxHideTarget,
+  isHostHidden,
+  useConversationWorkState,
+} from './useConversationWorkState';
 import { useHeldLifecycles } from './useHeldLifecycles';
+
+/** Migrations in flight, by namespace and host authority. */
+const migrating = new Set<string>();
 
 export function useInboxDismissals(
   items: HomeWorkItem[],
@@ -39,20 +49,39 @@ export function useInboxDismissals(
     [version, namespace],
   );
   const heldItems = useHeldLifecycles(items);
-  const { visible, dismissed, woken } = useMemo(() => {
+  const workState = useConversationWorkState();
+  const { hidden, hideSupported } = workState;
+  const { visible, dismissed, woken, adopted } = useMemo(() => {
     const visible: HomeWorkItem[] = [];
     const dismissed: HomeWorkItem[] = [];
     const woken: HomeWorkItem[] = [];
+    // Hidden on the host, but no longer a third-party Session here: it was
+    // adopted into Station, so its hidden record has served its purpose.
+    const adopted: string[] = [];
     for (const item of heldItems) {
-      if (isInboxDismissed(item, entries, facts?.get(item.id)))
+      const itemFacts = facts?.get(item.id);
+      if (
+        isHostHidden(item, hidden, itemFacts) ||
+        isInboxDismissed(item, entries, itemFacts)
+      )
         dismissed.push(item);
       else {
         visible.push(item);
         if (hasInboxDismissal(item, entries)) woken.push(item);
+        const threadId =
+          item.kind === 'orchestration' && !item.environmentId
+            ? (item.orchestrationThreadId ?? item.id)
+            : undefined;
+        if (
+          threadId &&
+          item.controlMode !== 'read-only-attached' &&
+          Object.hasOwn(hidden, threadId)
+        )
+          adopted.push(threadId);
       }
     }
-    return { visible, dismissed, woken };
-  }, [heldItems, entries, facts]);
+    return { visible, dismissed, woken, adopted };
+  }, [heldItems, entries, facts, hidden]);
   useEffect(() => {
     if (!woken.length) return;
     try {
@@ -61,6 +90,41 @@ export function useInboxDismissals(
       // Visibility follows the current observation even if storage is unavailable.
     }
   }, [woken, namespace]);
+  const unhideAdopted = workState.hide.mutate;
+  useEffect(() => {
+    for (const sessionId of adopted)
+      unhideAdopted({ sessionId, hidden: false });
+  }, [adopted, unhideAdopted]);
+  // Local third-party dismissals move to the host, then leave this browser;
+  // another Station's rows stay local. Moved entries are gone, so this runs
+  // again only when local dismissals or host support change.
+  const migrateHidden = useRef(workState.migrateHidden);
+  migrateHidden.current = workState.migrateHidden;
+  const { scopeKey } = workState;
+  useEffect(() => {
+    void version;
+    if (!hideSupported) return;
+    const marker = JSON.stringify([namespace, scopeKey]);
+    if (migrating.has(marker)) return;
+    let local: string[];
+    try {
+      local = readHostThirdPartyDismissals(namespace);
+    } catch {
+      return;
+    }
+    if (!local.length) return;
+    migrating.add(marker);
+    void migrateHidden
+      .current(local)
+      .then((done) => {
+        try {
+          dropInboxDismissals(done, namespace);
+        } catch {
+          // A later change retries what this one could not drop.
+        }
+      })
+      .finally(() => migrating.delete(marker));
+  }, [hideSupported, namespace, scopeKey, version]);
   return { visible, dismissed };
 }
 
@@ -75,8 +139,24 @@ export function useInboxDismissActions(
   // A toast can outlive the render where a local draft gained a durable ID.
   const currentItems = useRef(items);
   currentItems.current = items;
+  // An Undo toast outlives the render that hid the row; read the latest map.
+  const workState = useConversationWorkState();
+  const workStateRef = useRef(workState);
+  workStateRef.current = workState;
+  /** The host Session this row hides on, when the host keeps hidden Sessions. */
+  const hostTarget = (item: HomeWorkItem) =>
+    workStateRef.current.hideSupported
+      ? inboxHideTarget(item, facts?.get(item.id))
+      : null;
   const restore = (item: HomeWorkItem) => {
     if (currentNamespace.current !== namespace) return;
+    const target = hostTarget(item);
+    if (target && Object.hasOwn(workStateRef.current.hidden, target)) {
+      workStateRef.current.hide.mutate({ sessionId: target, hidden: false });
+      if (lastDismissToast) toastStore.dismiss(lastDismissToast);
+      lastDismissToast = null;
+      undoLastDismiss = null;
+    }
     try {
       const current =
         currentItems.current.find(
@@ -98,7 +178,33 @@ export function useInboxDismissActions(
     }
   };
   return {
+    async dismissSelected(item: HomeWorkItem) {
+      if (currentNamespace.current !== namespace)
+        throw new Error('Station changed');
+      const target = hostTarget(item);
+      if (target) {
+        if (!workState.hide.mutateAsync) throw new Error('Hide unavailable');
+        await workState.hide.mutateAsync({ sessionId: target, hidden: true });
+      } else dismissInboxItem(item, facts?.get(item.id), namespace);
+    },
     dismiss: (item: HomeWorkItem) => {
+      const target = hostTarget(item);
+      if (target) {
+        workState.hide.mutate({ sessionId: target, hidden: true });
+        undoLastDismiss = () => restore(item);
+        setError(null);
+        if (lastDismissToast) toastStore.dismiss(lastDismissToast);
+        lastDismissToast = null;
+        try {
+          lastDismissToast = toastStore.show(
+            'Session hidden',
+            undefined,
+            8000,
+            [{ label: 'Undo', onClick: () => restore(item) }],
+          );
+        } catch {}
+        return;
+      }
       try {
         dismissInboxItem(item, facts?.get(item.id), namespace);
       } catch {

@@ -90,10 +90,7 @@ fn validate_route(route: &RelayGrantRouteKey) -> Result<(), String> {
 
 fn validate_binding(binding: &RelayGrantBinding) -> Result<(), String> {
     validate_route(&binding.route)?;
-    if !matches!(
-        binding.owner.channel.as_str(),
-        "dev" | "stable" | "nightly"
-    ) {
+    if !matches!(binding.owner.channel.as_str(), "dev" | "stable" | "nightly") {
         return Err("invalid relay grant channel".to_string());
     }
     validate_uuid(&binding.owner.client_instance_id, "client instance id")?;

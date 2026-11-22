@@ -246,7 +246,7 @@ it('discloses compaction ownership independently of recovery support', () => {
   ).toContain('Compaction owner — Unknown');
 });
 
-it('qualifies ACP steering as command-only instead of promising a composer action', () => {
+it('labels ACP steering as a Station fallback', () => {
   render(
     <EngineCapabilitySummary
       matrix={ENGINE_CAPABILITY_MATRICES.acp}
@@ -254,9 +254,8 @@ it('qualifies ACP steering as command-only instead of promising a composer actio
     />,
   );
   fireEvent.click(screen.getByText('Recovery and delivery'));
-  expect(
-    screen.getByText(
-      'Orchestration commands can steer through a live extension or cancel and reprompt. The chat composer does not offer ACP steering.',
-    ),
-  ).toBeTruthy();
+  const steering = screen.getByText('Steering', { selector: 'strong' });
+  expect(steering.parentElement?.textContent).toMatch(
+    /^Steering — Station fallback:/,
+  );
 });

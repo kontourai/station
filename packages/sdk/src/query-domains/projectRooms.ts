@@ -317,6 +317,44 @@ async function readProjectRoomWindow(
   );
 }
 /**
+ * The rolling tail can cover more messages than one ordinary history page.
+ * Read it as 25-message spans so a byte-limited response cannot consume the
+ * whole per-window request budget while there are still rows in that span.
+ */
+async function readProjectRoomTail(
+  scope: ApiRequestScope,
+  slug: string,
+  identity: { projectId: string; roomId: string },
+  { after, end }: { after: number; end: number },
+  signal: AbortSignal,
+  channelId: string | undefined,
+) {
+  let through = Math.min(end, after + 25);
+  let page = await readProjectRoomWindow(
+    scope,
+    slug,
+    identity,
+    { after, end: through },
+    signal,
+    channelId,
+  );
+  const messages = [...page.messages];
+  while (through < end && through < page.checkpoint.lastSeq) {
+    after = through;
+    through = Math.min(end, after + 25);
+    page = await readProjectRoomWindow(
+      scope,
+      slug,
+      identity,
+      { after, end: through },
+      signal,
+      channelId,
+    );
+    messages.push(...page.messages);
+  }
+  return { ...page, messages };
+}
+/**
  * One order for every Project-room history read, taken when the read starts:
  * the live windows, the retained re-read and the immediate span read all draw
  * from it (#4852 review). A caller keeps, per message, the number of the read
@@ -332,6 +370,8 @@ function nextHistoryRead() {
 /** One cached history window and its place in the SDK read order. */
 type HistoryPage = Awaited<ReturnType<typeof readProjectRoomWindow>> & {
   readSeq: number;
+  windowAfter: number;
+  rolledByLiveAppend?: boolean;
 };
 /** Messages with `after` < seq <= `end`. */
 export interface ProjectRoomHistorySpan {
@@ -553,20 +593,18 @@ export function useProjectRoom(
     enabled: !!roomId && !stopped,
     retry: false,
     gcTime: 0,
-    initialPageParam: { after: tailAfter, end: tailAfter + 25 },
+    initialPageParam: { after: tailAfter, end: tailAfter + 25, newest: true },
     queryFn: async ({ pageParam, signal }) => {
-      // The newest window starts at `tailAfter`; live appends grow it.
-      const newest = pageParam.after === tailAfter;
+      const { newest } = pageParam;
       let readSeq = 0;
+      let after = pageParam.after;
       let page: Awaited<ReturnType<typeof readProjectRoomWindow>> | undefined;
       for (let attempt = 0; !page; attempt++) {
         readSeq = nextHistoryRead();
         const watch = { outlived: false };
         pendingReads.current.set(readSeq, watch);
-        // The newest window reads as far as the cached newest window already
-        // reaches. TanStack keeps each page's original param, so this is what
-        // carries a window that merges or a re-read widened into every later
-        // read of it; a re-read also reaches every row it must not undo.
+        // TanStack's initial cursor stays fixed. Re-anchor each read to the
+        // recent rows already in the cache, including a widened re-read.
         const cachedTail = client.getQueryData<InfiniteData<HistoryPage>>([
           ...contentKey,
           tailAfter,
@@ -578,13 +616,21 @@ export function useProjectRoom(
             ? [...liveRows.current.values()].map((row) => row.message.seq)
             : []),
         );
+        if (newest)
+          after = Math.max(
+            pageParam.after,
+            reach - PROJECT_ROOM_RETAINED_REREAD_MESSAGES,
+          );
         let read: Awaited<ReturnType<typeof readProjectRoomWindow>>;
         try {
-          read = await readProjectRoomWindow(
+          const readWindow = newest
+            ? readProjectRoomTail
+            : readProjectRoomWindow;
+          read = await readWindow(
             scope,
             slug,
             { projectId, roomId: roomId! },
-            newest ? { after: pageParam.after, end: reach } : pageParam,
+            newest ? { after, end: reach } : pageParam,
             signal,
             channelId,
           );
@@ -600,26 +646,35 @@ export function useProjectRoom(
           );
       }
       // Rows merged after this read began are newer than what it read. The
-      // newest window takes every newer row past its start; an older window
-      // only the rows inside it.
+      // newest window can move beyond the range read by this request. An older
+      // window only takes changes within its fixed range.
       const newer = [...liveRows.current.values()]
         .filter(
           (row) =>
             row.readSeq > readSeq &&
-            row.message.seq > pageParam.after &&
+            row.message.seq > after &&
             (newest || row.message.seq <= pageParam.end),
         )
         .map((row) => row.message);
-      if (!newer.length) return { ...page, readSeq };
+      if (!newer.length) return { ...page, readSeq, windowAfter: after };
       const byId = new Map(newer.map((m) => [m.messageId, m]));
       const read = new Set(page.messages.map((m) => m.messageId));
-      const messages = [
+      const combined = [
         ...page.messages.map((m) => byId.get(m.messageId) ?? m),
         ...newer.filter((m) => !read.has(m.messageId)),
       ].sort((a, b) => a.seq - b.seq);
+      const windowAfter = newest
+        ? Math.max(
+            after,
+            (combined[combined.length - 1]?.seq ?? 0) -
+              PROJECT_ROOM_RETAINED_REREAD_MESSAGES,
+          )
+        : after;
+      const messages = combined.filter((message) => message.seq > windowAfter);
       return {
         ...page,
         messages,
+        windowAfter,
         checkpoint: {
           ...page.checkpoint,
           lastSeq: Math.max(
@@ -630,8 +685,14 @@ export function useProjectRoom(
         readSeq,
       };
     },
-    getNextPageParam: (_last, _pages, { after }) =>
-      after > 0 ? { after: Math.max(0, after - 25), end: after } : undefined,
+    getNextPageParam: ({ windowAfter }) =>
+      windowAfter > 0
+        ? {
+            after: Math.max(0, windowAfter - 25),
+            end: windowAfter,
+            newest: false,
+          }
+        : undefined,
     maxPages: PROJECT_ROOM_HISTORY_MAX_PAGES,
   });
   const historyKey = useMemo(
@@ -685,31 +746,34 @@ export function useProjectRoom(
           const rows = [...tail.messages, ...fresh].sort(
             (a, b) => a.seq - b.seq,
           );
+          const lastSeq = rows[rows.length - 1]!.seq;
+          const windowAfter = Math.max(
+            tail.windowAfter,
+            lastSeq - PROJECT_ROOM_RETAINED_REREAD_MESSAGES,
+          );
+          const rolledByLiveAppend = windowAfter > tail.windowAfter;
           pages[0] = {
             ...tail,
-            messages: rows,
+            messages: rows.filter((message) => message.seq > windowAfter),
             checkpoint: {
               ...tail.checkpoint,
-              lastSeq: Math.max(
-                tail.checkpoint.lastSeq,
-                rows[rows.length - 1]!.seq,
-              ),
+              lastSeq: Math.max(tail.checkpoint.lastSeq, lastSeq),
             },
+            windowAfter,
+            rolledByLiveAppend,
             readSeq,
           };
+          // The previous older pages no longer join the tail. Move them to
+          // the caller's retained history and page earlier from the new
+          // boundary instead of leaving a gap between cached pages.
+          if (rolledByLiveAppend)
+            return {
+              ...data,
+              pages: pages.slice(0, 1),
+              pageParams: data.pageParams.slice(0, 1),
+            };
         }
-        // The newest window now ends at its newest row, so a refetch of it
-        // reads the merged rows again rather than dropping them.
-        const pageParams = [...data.pageParams];
-        const first = pageParams[0] as
-          | { after: number; end: number }
-          | undefined;
-        if (fresh.length && first)
-          pageParams[0] = {
-            ...first,
-            end: Math.max(first.end, pages[0]!.checkpoint.lastSeq),
-          };
-        return { ...data, pages, pageParams };
+        return { ...data, pages };
       });
       if (!append)
         client.setQueryData(

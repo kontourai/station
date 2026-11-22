@@ -21,6 +21,7 @@ import { errorMessage } from '../../utils/error-message.js';
 import type { CommandEvidenceRoutingPolicy } from '../evidence/command-evidence-routing-policy.js';
 import { flowRunArtifactReference } from '../evidence/local-artifact-paths.js';
 import type { FlowCommandEvidenceBridge } from './flow-command-evidence-bridge.js';
+import { projectFlowGateDiagnostics } from './flow-gate-diagnostics.js';
 import {
   type FlowReadinessBridge,
   READINESS_CLAIM_TYPE,
@@ -193,7 +194,7 @@ export async function attachFlowRunForSessionStart(options: {
     // Once per run, not once per attach: the diagnostic describes the
     // definition, which cannot change under a deterministic run id, so a
     // resumed attach would only repeat a warning already in history.
-    if (!resumed && options.routingPolicy && options.emitWarning) {
+    if (!resumed && options.emitWarning) {
       const diagnostic = detectUnreachableGateClaims(
         run.definition,
         options.routingPolicy,
@@ -441,6 +442,7 @@ export async function evaluateFlowCompletionGate(options: {
   }
 
   const { state, lastOutcome } = evaluation;
+  const diagnostics = projectFlowGateDiagnostics(lastOutcome?.diagnostics);
   // Derived here, once, from the run as it stands AFTER this evaluation, and
   // carried on every verdict. The client cannot compute this: a single
   // completion request can settle several gates but emits one verdict naming
@@ -467,9 +469,17 @@ export async function evaluateFlowCompletionGate(options: {
     // would assert and retract in the same payload.
     await flowRunService.getReport(binding.cwd, binding.runId, 'json');
     return buildVerdictEvent(options, {
-      verdict: 'pass',
-      gateId: lastOutcome?.gate_id,
-      summary: lastOutcome?.summary ?? 'all gates passed',
+      ...(lastOutcome?.status === 'pass'
+        ? {
+            verdict: 'pass' as const,
+            gateId: lastOutcome.gate_id,
+            summary: lastOutcome.summary,
+          }
+        : {
+            verdict: 'not-evaluated' as const,
+            summary:
+              'Flow run is already complete. No gate outcome was recorded for this check.',
+          }),
       currentStep: state.current_step,
       ...(freshness ? { freshness } : {}),
       reportPaths: {
@@ -493,6 +503,7 @@ export async function evaluateFlowCompletionGate(options: {
     verdict,
     gateId: lastOutcome?.gate_id,
     summary: lastOutcome?.summary,
+    ...(diagnostics ? { diagnostics } : {}),
     nextAction: state.next_action,
     currentStep: state.current_step,
     ...(freshness ? { freshness } : {}),

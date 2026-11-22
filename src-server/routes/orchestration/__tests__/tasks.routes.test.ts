@@ -21,7 +21,9 @@ import { describe, expect, type Mock, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
+import { AnswerNarrativeBindingModule } from '../../../services/evidence/answer-narrative-binding-module.js';
 import { createExactAnswerBasisModule } from '../../../services/evidence/exact-answer-basis-module.js';
+import { FlowAgentsRetainedNarrativeOwner } from '../../../services/evidence/flow-agents-retained-narrative-owner.js';
 import { TaskAnswerSupportUnavailableError } from '../../../services/evidence/task-answer-support-module.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import type { SessionToolResultQueryOutcome } from '../../../services/orchestration/session-query-module.js';
@@ -661,6 +663,42 @@ describe('Task routes', () => {
     expect(readTaskBasis).toHaveBeenCalledOnce();
     readTaskBasis.mockResolvedValueOnce({ status: 'unavailable' });
     expect((await app.request(`/${task.id}/basis`)).status).toBe(503);
+  });
+  test('Task reads carry the server-derived automation mandate; a failed read omits it, never the Task (#4511)', async () => {
+    const service = createRouteService();
+    const task = await service.createTask({
+      projectId: 'project-alpha',
+      title: 'Automation: Diagnose',
+    });
+    const automation = {
+      mandate: { ruleId: 'rule-1', ruleName: 'Diagnose' },
+      state: 'running',
+      amendments: [],
+    } as never;
+    let fail = false;
+    const app = createTaskRoutes(service, {
+      taskDispatcher: inertTaskDispatcher,
+      readAuthorityForRequest: () =>
+        sessionReadAuthorityFromRequest('owner', undefined, undefined),
+      readAutomationTask: (read) => {
+        if (fail) throw new Error('ledger unavailable');
+        return read.id === task.id ? automation : undefined;
+      },
+    });
+    for (const path of [`/${task.id}`, `/${task.id}/graph`]) {
+      const body = (await readJson(await app.request(path))) as {
+        data: { automation?: unknown; task?: { automation?: unknown } };
+      };
+      expect(body.data.automation ?? body.data.task?.automation, path).toEqual(
+        automation,
+      );
+    }
+    fail = true;
+    const response = await app.request(`/${task.id}`);
+    expect(response.status).toBe(200);
+    expect(
+      ((await readJson(response)) as { data: Record<string, unknown> }).data,
+    ).not.toHaveProperty('automation');
   });
   test('attaches and reopens a task-owned safe tool-result projection', async () => {
     const service = createRouteService();
@@ -1703,6 +1741,149 @@ describe('Task routes', () => {
       [],
     );
   });
+
+  test.each([
+    { source: 'projectless', status: 201 },
+    { source: 'foreign Project', status: 404 },
+    { source: 'foreign Project after preflight', status: 404 },
+    { source: 'foreign Project at the Task lock', status: 404 },
+  ])(
+    'handles a completed $source answer with the narrative owner mounted',
+    async ({ source, status }) => {
+      const home = makeTempDir('station-task-answer-pin-');
+      const store = new EventStore(join(home, 'orchestration.sqlite'));
+      try {
+        const threadId = 'session-a';
+        const turnId = 'turn-a';
+        const createdAt = '2026-08-25T00:00:00.000Z';
+        const session = { provider: 'claude' as const, threadId, createdAt };
+        store.upsertSession({
+          ...session,
+          status: 'ready',
+          updatedAt: createdAt,
+        });
+        const assignForeignProject = () =>
+          store.appendEvent({
+            ...session,
+            eventId: 'session-started',
+            method: 'session.started',
+            sessionId: threadId,
+            metadata: { projectSlug: 'project-bravo' },
+          });
+        if (source === 'foreign Project') assignForeignProject();
+        const turn = { ...session, turnId };
+        store.appendEvent({
+          ...turn,
+          eventId: 'start',
+          method: 'turn.started',
+          prompt: 'Write a brief',
+        });
+        store.appendEvent({
+          ...turn,
+          eventId: 'answer',
+          itemId: 'assistant-text',
+          method: 'content.text-delta',
+          delta: 'The completed brief',
+        });
+        store.appendEvent({
+          ...turn,
+          eventId: 'done',
+          method: 'turn.completed',
+        });
+        const authority = sessionReadAuthorityFromRequest(
+          'owner',
+          undefined,
+          undefined,
+        );
+        const canReadSession = (id: string) => id === threadId;
+        const queries = createSessionQueryModule({
+          findSession: async (id) => store.readSessionByThread(id) ?? null,
+          projectConversation: () => null,
+          canReadSession,
+          listEvents: () => [],
+          listEventsForTurn: (id, requestedTurn) =>
+            store
+              .listEventsForTurn(id, requestedTurn)
+              .map((row) => row.payload),
+          listBasisEventsForTurn: (id, requestedTurn) =>
+            store.listBasisEventsForTurn(id, requestedTurn),
+          projectSlugForSession: (_session, id) =>
+            store.readConversationProjectSlug(id),
+        });
+        let taskLocks = 0;
+        const service = createRouteService({
+          acquireMutationLock: () => {
+            taskLocks += 1;
+            if (
+              source === 'foreign Project at the Task lock' &&
+              taskLocks === 2
+            )
+              assignForeignProject();
+            return () => {};
+          },
+        });
+        const task = await service.createTask({
+          projectId: 'project-alpha',
+          title: 'Basis',
+        });
+        const app = createTaskRoutes(service, {
+          taskDispatcher: inertTaskDispatcher,
+          isRequestPrincipalCurrent: () => true,
+          canReadSession,
+          readAuthorityForRequest: () => authority,
+          readAssistantTurn: async ({ sessionId, turnId, authority }) => {
+            const result = await queries.readAssistantTurn(
+              { type: 'assistant-turn', threadId: sessionId, turnId },
+              authority,
+            );
+            if (source === 'foreign Project after preflight')
+              assignForeignProject();
+            return result;
+          },
+          answerNarrativeBindingModule: new AnswerNarrativeBindingModule(
+            home,
+            {
+              read: (id, requestedTurn, authority) =>
+                queries.readAnswerBasis!(
+                  { type: 'answer-basis', threadId: id, turnId: requestedTurn },
+                  authority,
+                ),
+              readProjectScope: (id) => store.readConversationProjectScope(id),
+            },
+            new FlowAgentsRetainedNarrativeOwner(() => undefined),
+          ),
+        });
+        const response = await app.request(`/${task.id}/references`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ kind: 'turn', sessionId: threadId, turnId }),
+        });
+        if (source === 'foreign Project at the Task lock') {
+          expect(taskLocks).toBe(2);
+          expect(store.readConversationProjectSlug(threadId)).toBe(
+            'project-bravo',
+          );
+        }
+        expect(response.status).toBe(status);
+        const links = service.readTaskTurnReferenceLinks(task.id);
+        const targetId = `turn/${threadId}/${turnId}`;
+        if (status === 201) {
+          expect(links).toEqual([expect.objectContaining({ targetId })]);
+        } else {
+          expect(await readJson(response)).toEqual({
+            success: false,
+            error: 'Assistant answer not found',
+          });
+          expect(links).toEqual([]);
+        }
+        expect(
+          service.readTaskAnswerNarrativePin(task.id, targetId),
+        ).toBeUndefined();
+      } finally {
+        store.close();
+      }
+    },
+  );
 
   test.each([
     'principal',

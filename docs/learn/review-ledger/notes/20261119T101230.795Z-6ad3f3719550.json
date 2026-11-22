@@ -1,0 +1,9 @@
+{
+  "revision": "57e68e1e70bb7f5dfcebf7928a2762b78ebea1f6",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the newest-window maximum and live append boundary after replacing Array.at with the existing SDK indexing pattern. Message ordering, current row selection, and older pagination are identical.","inputs":["packages/sdk/src/query-domains/projectRooms.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the newest-window maximum and live append boundary after replacing Array.at with the existing SDK indexing pattern. Message ordering, current row selection, and older pagination are identical.","inputs":["packages/sdk/src/query-domains/projectRooms.ts"]}
+  ]
+}

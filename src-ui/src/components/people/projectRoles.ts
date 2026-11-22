@@ -1,15 +1,17 @@
 import {
+  GRANTABLE_PROJECT_ROLES,
   PROJECT_MEMBER_ROLES,
   type ProjectMemberRole,
   type ProjectMemberView,
 } from '@kontourai/station-contracts/project-membership';
 
 /** The Project roles a member or invitation can be given; ownership moves only by transfer. */
-export const GRANTABLE_ROLES = ['viewer', 'contributor', 'admin'] as const;
+export const GRANTABLE_ROLES = GRANTABLE_PROJECT_ROLES;
 export type GrantableProjectRole = (typeof GRANTABLE_ROLES)[number];
 
 export const ROLE_NAMES: Record<ProjectMemberRole, string> = {
   viewer: 'Viewer',
+  commenter: 'Commenter',
   contributor: 'Contributor',
   admin: 'Project admin',
   owner: 'Owner',

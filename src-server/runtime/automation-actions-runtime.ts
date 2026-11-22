@@ -2,15 +2,18 @@ import type { SessionStartResult } from '@kontourai/monument';
 import {
   AUTOMATION_EXECUTION_LIMITS,
   type AutomationActionIntent,
+  type AutomationRevocationCause,
   type AutomationRule,
 } from '@kontourai/station-contracts/automation';
 import { UNKNOWN_CLIENT_ORIGIN } from '@kontourai/station-contracts/client-origin';
 import { PROVIDER_SESSION_START_FAILED_CODE } from '@kontourai/station-contracts/provider';
 import { SessionStartRefusedError } from '../providers/adapter-shape.js';
-import { sourceGrantsRuleAction } from '../services/automation/automation-config-validation.js';
 import {
+  automationAmendmentMessage,
   automationIntentMessage,
-  automationPolicyFingerprint,
+  automationMandate,
+  automationRevocationMessage,
+  classifyAutomationPolicy,
 } from '../services/automation/automation-intent.js';
 import type { AutomationLedger } from '../services/automation/automation-ledger.js';
 import type { AutomationStore } from '../services/automation/automation-store.js';
@@ -43,11 +46,17 @@ interface AutomationActionsOptions {
   isProjectCurrent: (projectId: string) => boolean;
   ledger: () => AutomationLedger;
   existingLedger: () => AutomationLedger | undefined;
-  taskGraph: Pick<TaskGraphService, 'createTaskIdempotent' | 'readTaskView'>;
+  taskGraph: Pick<
+    TaskGraphService,
+    'createTaskIdempotent' | 'readTaskView' | 'updateTaskStatus'
+  >;
   taskDispatcher: TaskDispatcher;
   orchestration: Pick<
     OrchestrationService,
-    'registerTurnAdmission' | 'interruptTurn'
+    | 'registerTurnAdmission'
+    | 'interruptTurn'
+    | 'recordSessionBlocked'
+    | 'recordAskWhereUndecided'
   >;
   eventStore: Pick<
     EventStore,
@@ -63,6 +72,25 @@ interface AutomationActionsOptions {
 export interface AutomationActions extends AutomationInboxPlacement {
   tick(): Promise<void>;
   close(): void;
+}
+
+/**
+ * What the action's current authority allows (#4511). `revoked` names a
+ * policy change; `stopped` is any other reason the action may no longer act
+ * (a closed Task, a stale event, a superseded episode), which is not the
+ * operator's policy and so posts no revocation notice.
+ */
+type ActionAuthority =
+  | Readonly<{ kind: 'current'; rule: AutomationRule }>
+  | Readonly<{ kind: 'revoked'; cause: AutomationRevocationCause }>
+  | Readonly<{ kind: 'stopped'; reason: 'stale_event' | 'policy_changed' }>;
+
+/** The inbox key of an action's first turn and of its amendment notices. */
+function startTurnKey(intentId: string): string {
+  return `automation:${intentId}`;
+}
+function amendmentTurnKey(intentId: string, index: number): string {
+  return `automation:${intentId}:amendment:${index}`;
 }
 
 /** Automation actions have a separate operator opt-in from observe-only intake. */
@@ -106,7 +134,16 @@ class AutomationActionsRuntime implements AutomationActions {
       eventBus: options.eventBus,
       registerTurnAdmission: (admission) =>
         options.orchestration.registerTurnAdmission((input) => {
-          const id = this.sessionIntents.get(input.threadId);
+          const id = this.sessionIntentId(input.threadId);
+          // #4511: a person's own turn (the server classifies it from the
+          // authenticated client origin, never from the request body) is
+          // admitted under that person's authority, even after a revocation.
+          // It never runs under the rule's budget or approval posture: the
+          // Session is handed over to the person.
+          if (input.dispatchOrigin === 'interactive') {
+            this.takeOver(input.threadId, id);
+            return { allowed: true };
+          }
           if (!id && (!this.journalObserved || this.recoveryUnavailable)) {
             const binding =
               options.eventStore.readProjectTaskRoomExecutionBinding(
@@ -124,6 +161,12 @@ class AutomationActionsRuntime implements AutomationActions {
           if (id) {
             try {
               const intent = options.ledger().readIntent(id);
+              if (intent?.personTakeoverAt)
+                return {
+                  allowed: false,
+                  reason:
+                    'A person took over this automation Session; automation turns are no longer admitted.',
+                };
               if (
                 !intent ||
                 (intent.state !== 'queued' && intent.state !== 'running') ||
@@ -131,7 +174,9 @@ class AutomationActionsRuntime implements AutomationActions {
               )
                 return {
                   allowed: false,
-                  reason: 'Automation authority changed before turn dispatch.',
+                  reason: intent?.revocation
+                    ? `${intent.revocation.message} Automation turns are no longer admitted.`
+                    : 'Automation authority changed before turn dispatch.',
                 };
             } catch {
               return {
@@ -171,6 +216,26 @@ class AutomationActionsRuntime implements AutomationActions {
     }
   }
 
+  private sessionIntentId(sessionId: string): string | undefined {
+    const known = this.sessionIntents.get(sessionId);
+    if (known) return known;
+    // Settled intents leave the active map, but their Sessions retain their
+    // authority boundary across settlement and runtime restart.
+    const binding =
+      this.options.eventStore.readProjectTaskRoomExecutionBinding(sessionId);
+    if (!binding) return undefined;
+    const task = this.options.taskGraph.readTaskView(binding.taskId);
+    if (task?.createdBy !== 'automation-rule') return undefined;
+    const intent = this.options.existingLedger()?.intentForTask(binding.taskId);
+    if (
+      !intent ||
+      intent.sessionId !== sessionId ||
+      intent.taskCreatedAt !== task.createdAt
+    )
+      throw new Error('Automation recovery authority is unavailable.');
+    return intent.intentId;
+  }
+
   private enabled(): boolean {
     return (
       !this.closed &&
@@ -179,20 +244,30 @@ class AutomationActionsRuntime implements AutomationActions {
     );
   }
 
-  private currentRule(
-    intent: AutomationActionIntent,
-  ): AutomationRule | undefined {
-    if (!nativeIntent(intent)) return undefined;
+  /**
+   * The action's current authority (#4511). Only authority-bearing fields
+   * count (see `automationPolicyFingerprint`), so renaming a rule or changing
+   * its rate limit leaves a running action `current`. An amendment (the
+   * action's instructions or budget only) is adopted here, durably, before
+   * `current` is returned, so every caller acts under the newest version;
+   * a running Session is told at its next turn boundary.
+   */
+  private authority(intent: AutomationActionIntent): ActionAuthority {
+    if (!nativeIntent(intent))
+      return { kind: 'stopped', reason: 'policy_changed' };
+    if (intent.revocation)
+      return { kind: 'revoked', cause: intent.revocation.cause };
+    if (!this.enabled()) return { kind: 'revoked', cause: 'preview-disabled' };
+    if (!this.options.isProjectCurrent(intent.action.projectId))
+      return { kind: 'revoked', cause: 'project-unavailable' };
     const occurredAt = Date.parse(intent.event.occurredAt);
     const now = Date.now();
     if (
-      !this.enabled() ||
-      !this.options.isProjectCurrent(intent.action.projectId) ||
       !Number.isFinite(occurredAt) ||
       occurredAt > now ||
       occurredAt < now - AUTOMATION_EXECUTION_LIMITS.maxEventAgeMs
     )
-      return undefined;
+      return { kind: 'stopped', reason: 'stale_event' };
     if (intent.taskId) {
       const task = this.options.taskGraph.readTaskView(intent.taskId);
       if (
@@ -202,31 +277,194 @@ class AutomationActionsRuntime implements AutomationActions {
         task.status === 'done' ||
         task.status === 'canceled'
       )
-        return undefined;
+        return { kind: 'stopped', reason: 'policy_changed' };
     }
     const config = this.options.store.read();
     const source = config.sources.find(
       (source) => source.id === intent.sourceId,
     );
     const rule = config.rules.find((rule) => rule.id === intent.ruleId);
-    // Only a `live` rule may act; an `observe` rule never retains an intent,
-    // and one switched to `observe` or `off` refuses any intent it left.
+    // Only a `live` rule may act; one switched to `observe` or `off` (or
+    // deleted, or moved to another action kind) revokes what it left.
+    const classified = classifyAutomationPolicy(intent, source, rule);
+    if (classified.kind === 'revoked') return classified;
     if (
-      !source ||
-      rule?.mode !== 'live' ||
-      rule.action.kind !== 'dispatch-task' ||
-      !sourceGrantsRuleAction(source, rule) ||
-      automationPolicyFingerprint(source, rule) !== intent.policyFingerprint ||
-      automationPolicyFingerprint(source, {
-        ...rule,
-        action: intent.action,
-      }) !== intent.policyFingerprint ||
-      source.repository !== intent.event.fields.repository ||
       this.options.ledger().episode(intent.episodeKey)?.episodeId !==
-        intent.episodeId
+      intent.episodeId
     )
-      return undefined;
-    return rule;
+      return { kind: 'stopped', reason: 'policy_changed' };
+    if (classified.kind === 'amended') {
+      const amended = this.options.ledger().amendIntent(
+        intent.intentId,
+        {
+          action: classified.action,
+          policyFingerprint: classified.policyFingerprint,
+          changed: classified.changed,
+        },
+        Date.now(),
+      );
+      this.adoptAmendment(amended, intent.action.budget.maxWallRuntimeMs);
+    }
+    return { kind: 'current', rule: classified.rule };
+  }
+
+  private currentRule(
+    intent: AutomationActionIntent,
+  ): AutomationRule | undefined {
+    const authority = this.authority(intent);
+    return authority.kind === 'current' ? authority.rule : undefined;
+  }
+
+  /**
+   * #4511: an adopted amendment applies to the running action now. The
+   * budget supervisor takes the new limits, and a Session that has started
+   * is sent the new text as its next turn (an internal, automation-origin
+   * entry the placement check below recognizes), so it continues under the
+   * new version rather than being stopped.
+   */
+  private adoptAmendment(
+    intent: AutomationActionIntent,
+    previousWallRuntimeMs: number,
+  ): void {
+    if (!nativeIntent(intent) || intent.personTakeoverAt) return;
+    const latest = intent.amendments?.at(-1);
+    if (!latest) return;
+    if (intent.deadlineAt !== undefined) {
+      const deadlineAt =
+        intent.deadlineAt -
+        previousWallRuntimeMs +
+        intent.action.budget.maxWallRuntimeMs;
+      if (deadlineAt !== intent.deadlineAt && deadlineAt > intent.createdAt)
+        this.options
+          .ledger()
+          .updateIntent(intent.intentId, { deadlineAt }, Date.now());
+    }
+    const current = this.options.ledger().readIntent(intent.intentId) ?? intent;
+    if (current.sessionId && current.deadlineAt !== undefined)
+      this.supervisor.update(current.sessionId, {
+        deadlineAt: current.deadlineAt,
+        limits: {
+          maxTurns: intent.action.budget.maxTurns,
+          maxTokens: intent.action.budget.maxTokens,
+        },
+      });
+    if (
+      current.conversationId &&
+      (current.state === 'queued' || current.state === 'running')
+    )
+      this.submitAmendment(current);
+  }
+
+  private submitAmendment(intent: AutomationActionIntent): void {
+    const index = intent.amendments?.length ?? 0;
+    if (!intent.conversationId || !intent.mandate || index === 0) return;
+    this.options.inbox()?.submit({
+      conversationId: intent.conversationId,
+      clientTurnId: amendmentTurnKey(intent.intentId, index),
+      payload: {
+        message: this.amendmentNotice(intent),
+        serverAutomationIntentId: intent.intentId,
+        actor: {
+          userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
+        },
+        clientOrigin: { ...UNKNOWN_CLIENT_ORIGIN, actor: { kind: 'internal' } },
+      },
+    });
+  }
+
+  private amendmentNotice(intent: AutomationActionIntent): string {
+    const latest = intent.amendments?.at(-1);
+    return automationAmendmentMessage(
+      intent.mandate?.ruleName ?? intent.ruleId,
+      intent.action,
+      latest?.changed ?? [],
+    );
+  }
+
+  /**
+   * #4511: a person sent a turn into this Session. It becomes theirs: the
+   * action's budget no longer supervises it, the rule's approval posture is
+   * not inherited (Ask is recorded unless someone already chose a mode), and
+   * no automation turn is admitted into it again. Recorded durably so a
+   * restart keeps the hand-over.
+   */
+  private takeOver(sessionId: string, intentId: string | undefined): void {
+    if (!intentId) return;
+    try {
+      const ledger = this.options.existingLedger();
+      const intent = ledger?.readIntent(intentId);
+      if (!ledger || !nativeIntent(intent))
+        throw new Error('Automation hand-over authority is unavailable.');
+      if (!intent.personTakeoverAt)
+        ledger.updateIntent(
+          intent.intentId,
+          { personTakeoverAt: new Date().toISOString() },
+          Date.now(),
+        );
+      this.supervisor.abandon(sessionId);
+      if (intent.action.approvalMode === 'auto')
+        this.options.orchestration.recordAskWhereUndecided(sessionId);
+    } catch (error) {
+      this.options.logger.warn('Automation hand-over was not recorded', {
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+      throw new Error('Automation hand-over could not be completed.');
+    }
+  }
+
+  /**
+   * #4511: a revocation stops automatic work and says why, once: the
+   * Session is marked blocked with the reason (so it shows in Needs you),
+   * the Task moves to `blocked`, and the reason is kept on the intent for
+   * the Task's "Started by automation" block.
+   */
+  private async recordRevocation(
+    intent: AutomationActionIntent,
+    cause: AutomationRevocationCause,
+  ): Promise<void> {
+    if (intent.revocation || intent.personTakeoverAt) return;
+    const message = automationRevocationMessage(
+      cause,
+      intent.mandate?.ruleName ?? intent.ruleId,
+    );
+    this.options.ledger().updateIntent(
+      intent.intentId,
+      {
+        revocation: { at: new Date().toISOString(), cause, message },
+        reason: 'policy_changed',
+      },
+      Date.now(),
+    );
+    if (intent.sessionId)
+      try {
+        this.options.orchestration.recordSessionBlocked({
+          threadId: intent.sessionId,
+          message,
+        });
+      } catch {
+        /* The Task and intent still carry the reason. */
+      }
+    if (intent.taskId)
+      try {
+        const task = this.options.taskGraph.readTaskView(intent.taskId);
+        if (
+          task &&
+          task.createdAt === intent.taskCreatedAt &&
+          task.status !== 'blocked' &&
+          task.status !== 'done' &&
+          task.status !== 'canceled'
+        )
+          await this.options.taskGraph.updateTaskStatus(
+            intent.taskId,
+            'blocked',
+          );
+      } catch (error) {
+        this.options.logger.warn('Automation Task could not be blocked', {
+          intentId: intent.intentId,
+          error: error instanceof Error ? error.message : 'unknown',
+        });
+      }
   }
 
   placementRefusal(input: {
@@ -239,12 +477,23 @@ class AutomationActionsRuntime implements AutomationActions {
       const intent = this.options
         .ledger()
         .readIntent(input.payload.serverAutomationIntentId);
+      const amendmentIndex = intent?.amendments?.length ?? 0;
+      const expectedMessage = !intent
+        ? undefined
+        : input.clientTurnId === startTurnKey(intent.intentId)
+          ? automationIntentMessage(intent)
+          : amendmentIndex > 0 &&
+              input.clientTurnId ===
+                amendmentTurnKey(intent.intentId, amendmentIndex)
+            ? this.amendmentNotice(intent)
+            : undefined;
       if (
         intent &&
+        !intent.personTakeoverAt &&
         (intent.state === 'queued' || intent.state === 'running') &&
         intent.conversationId === input.conversationId &&
-        input.clientTurnId === `automation:${intent.intentId}` &&
-        input.payload.message === automationIntentMessage(intent) &&
+        expectedMessage !== undefined &&
+        input.payload.message === expectedMessage &&
         input.payload.actor.userId === LOCAL_OPERATOR_PRINCIPAL_ID &&
         input.payload.actor.ownerAttribution ===
           UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION &&
@@ -327,26 +576,32 @@ class AutomationActionsRuntime implements AutomationActions {
           continue;
         }
         if (intent.state !== 'pending' || !this.enabled()) continue;
-        const rule = this.currentRule(intent);
-        if (!rule) {
+        const authority = this.authority(intent);
+        if (authority.kind !== 'current') {
           ledger.updateIntent(
             intent.intentId,
-            { state: 'refused', reason: 'policy_changed' },
+            {
+              state: 'refused',
+              reason:
+                authority.kind === 'stopped'
+                  ? authority.reason
+                  : 'policy_changed',
+            },
             Date.now(),
           );
           continue;
         }
-        const claim = ledger.claimAction({
-          episodeKey: intent.episodeKey,
-          expectedEpisodeId: intent.episodeId,
-          deliveryKey: intent.deliveryKey,
+        const rule = authority.rule;
+        // #4513: a held claim records why; only a claim starts work.
+        const receipt = ledger.claimIntent(intent, {
           now: Date.now(),
           maxStartsPerHour: rule.rateLimit.maxStartsPerHour,
-          maxConcurrentActions:
-            AUTOMATION_EXECUTION_LIMITS.maxConcurrentActions,
         });
-        if (claim.kind !== 'claimed') continue;
-        await this.dispatch(intent, claim.receipt);
+        if (!receipt) continue;
+        await this.dispatch(
+          ledger.readIntent(intent.intentId) as NativeAutomationIntent,
+          receipt,
+        );
       }
     } catch (error) {
       this.recoveryUnavailable = true;
@@ -370,6 +625,9 @@ class AutomationActionsRuntime implements AutomationActions {
         claim.release();
         return;
       }
+      // An amendment adopted just now is the version this Task starts under.
+      intent = (ledger.readIntent(intent.intentId) ??
+        intent) as NativeAutomationIntent;
       const task = await this.options.taskGraph.createTaskIdempotent(
         {
           projectId: intent.action.projectId,
@@ -383,9 +641,19 @@ class AutomationActionsRuntime implements AutomationActions {
       );
       ledger.updateIntent(
         intent.intentId,
-        { taskId: task.id, taskCreatedAt: task.createdAt },
+        {
+          taskId: task.id,
+          taskCreatedAt: task.createdAt,
+          // Captured once: a capacity-deferred retry reuses its Task and
+          // keeps the mandate it was first created under.
+          ...(intent.mandate
+            ? {}
+            : { mandate: automationMandate(intent, rule.name) }),
+        },
         Date.now(),
       );
+      intent = (ledger.readIntent(intent.intentId) ??
+        intent) as NativeAutomationIntent;
       if (!this.currentRule(intent)) {
         claim.release();
         return;
@@ -543,7 +811,7 @@ class AutomationActionsRuntime implements AutomationActions {
     if (!intent.conversationId) return;
     const result = this.options.inbox()?.submit({
       conversationId: intent.conversationId,
-      clientTurnId: `automation:${intent.intentId}`,
+      clientTurnId: startTurnKey(intent.intentId),
       payload: {
         message: automationIntentMessage(intent),
         serverAutomationIntentId: intent.intentId,
@@ -560,7 +828,9 @@ class AutomationActionsRuntime implements AutomationActions {
         intent.intentId,
         {
           state: result.outcome === 'conflict' ? 'indeterminate' : 'refused',
-          reason: `inbox_${result.outcome}`,
+          reason: intent.revocation
+            ? 'policy_changed'
+            : `inbox_${result.outcome}`,
         },
         Date.now(),
       );
@@ -585,6 +855,8 @@ class AutomationActionsRuntime implements AutomationActions {
       this.active.set(intent.intentId, controller);
     }
     this.sessionIntents.set(intent.sessionId, intent.intentId);
+    // #4511: a Session a person took over is theirs; no action budget applies.
+    if (intent.personTakeoverAt) return;
     this.supervisor.arm({
       triggerId: intent.intentId,
       taskId: intent.taskId,
@@ -620,7 +892,10 @@ class AutomationActionsRuntime implements AutomationActions {
     if (entry?.state === 'refused' || entry?.state === 'cancelled') {
       ledger.updateIntent(
         intent.intentId,
-        { state: 'refused', reason: `inbox_${entry.state}` },
+        {
+          state: 'refused',
+          reason: intent.revocation ? 'policy_changed' : `inbox_${entry.state}`,
+        },
         Date.now(),
       );
       this.releaseKnown(intent.intentId);
@@ -638,15 +913,54 @@ class AutomationActionsRuntime implements AutomationActions {
       );
       intent = ledger.readIntent(intent.intentId) ?? intent;
     }
-    if (
-      !this.currentRule(intent) ||
-      (intent.deadlineAt !== undefined && Date.now() >= intent.deadlineAt)
-    ) {
+    // A Session a person took over is theirs: nothing here may interrupt
+    // their turn, whatever happens to the rule afterwards.
+    const authority = intent.personTakeoverAt
+      ? undefined
+      : this.authority(intent);
+    const deadlinePassed =
+      intent.deadlineAt !== undefined && Date.now() >= intent.deadlineAt;
+    if (authority && (authority.kind !== 'current' || deadlinePassed)) {
       this.active.get(intent.intentId)?.abort();
       await this.options.orchestration
         .interruptTurn(sessionId)
         .catch(() => undefined);
+      if (authority.kind === 'revoked')
+        await this.recordRevocation(
+          ledger.readIntent(intent.intentId) ?? intent,
+          authority.cause,
+        );
     }
+    intent = ledger.readIntent(intent.intentId) ?? intent;
+    // An amendment notice is the action's next turn: once the turn before it
+    // ends, follow the notice's turn instead of completing the action.
+    const amendments = intent.amendments?.length ?? 0;
+    const notice =
+      amendments > 0 && intent.conversationId && !intent.personTakeoverAt
+        ? this.options
+            .inbox()
+            ?.entry(
+              intent.conversationId,
+              amendmentTurnKey(intent.intentId, amendments),
+            )
+        : undefined;
+    if (
+      notice?.state === 'sent' &&
+      notice.turnId &&
+      notice.sessionId === intent.sessionId &&
+      notice.turnId !== intent.turnId
+    ) {
+      ledger.updateIntent(
+        intent.intentId,
+        { state: 'running', turnId: notice.turnId },
+        Date.now(),
+      );
+      intent = ledger.readIntent(intent.intentId) ?? intent;
+    }
+    const noticePending =
+      !deadlinePassed &&
+      authority?.kind === 'current' &&
+      (notice?.state === 'queued' || notice?.state === 'sending');
     const events = this.options.eventStore
       .listEvents(sessionId)
       .map((event) => event.payload);
@@ -659,7 +973,7 @@ class AutomationActionsRuntime implements AutomationActions {
               canonicalTerminalOutcome(event) !== undefined,
           )
       : undefined;
-    if (terminal) {
+    if (terminal && !noticePending) {
       ledger.updateIntent(
         intent.intentId,
         {

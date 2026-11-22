@@ -65,11 +65,23 @@ test('the approval picker replaces Run setup and stays inside the chat column on
       );
       await page.setViewportSize({ width, height: 1100 });
       await page.getByTestId('run-setup-trigger').click();
-      const runSetup = page.getByRole('dialog', { name: 'Run setup' });
+      const runSetup = page.getByRole('dialog', {
+        name: 'Agent & model',
+      });
       await runSetup.waitFor();
-      await runSetup
-        .getByRole('button', { name: /^Approval mode:/ })
-        .click({ force: width === 390 });
+      const approval = runSetup.getByRole('button', {
+        name: /^Approval mode:.*Full access/,
+      });
+      const mark = await approval
+        .locator('.composer-choice__safety')
+        .boundingBox();
+      const label = await approval
+        .locator('.chat-input__chip-stack')
+        .boundingBox();
+      expect(mark).not.toBeNull();
+      expect(label).not.toBeNull();
+      expect(mark!.x + mark!.width).toBeLessThanOrEqual(label!.x);
+      await approval.click({ force: width === 390 });
       const sheet = page.getByRole('dialog', { name: 'Approval mode' });
       await sheet.getByRole('radiogroup').waitFor();
       await page.evaluate(() =>
@@ -141,7 +153,7 @@ test('the approval picker replaces Run setup and stays inside the chat column on
         .toBe('Approval mode:');
       await page.keyboard.press('Escape');
       await page
-        .getByRole('dialog', { name: 'Run setup' })
+        .getByRole('dialog', { name: 'Agent & model' })
         .waitFor({ state: 'hidden' });
     }
     expect(errors).toEqual([]);
@@ -150,3 +162,64 @@ test('the approval picker replaces Run setup and stays inside the chat column on
   }
   // Four renders of a real bundle; slow on a loaded host.
 }, 120_000);
+
+test('the Codex reviewer disclosure is visible and keyboard-accessible in the approval sheet', async () => {
+  const { browser, page, errors } = await scrollBrowserFixture(`
+    import React from 'react';
+    import {createRoot} from 'react-dom/client';
+    import {DialogHistoryHostBoundary} from './src-ui/src/components/DialogHistoryHost';
+    import {ApprovalModeChip} from './src-ui/src/components/badges/ApprovalModeChip';
+    createRoot(document.getElementById('root')).render(
+      <DialogHistoryHostBoundary><ApprovalModeChip engineConnectionId="codex"
+        sessionOverride="ask" lastAppliedApprovalMode="ask"
+        reportedApprovalReviewer="automatic" onChange={()=>{}} />
+      </DialogHistoryHostBoundary>);
+  `);
+  try {
+    await page.addStyleTag({
+      content: resolveCssImports(resolve(import.meta.dirname, '../index.css')),
+    });
+    const output = resolve('.kontourai/shell-chrome');
+    mkdirSync(output, { recursive: true });
+    for (const width of [390, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const theme of ['dark', 'light']) {
+        await page.evaluate(
+          (value) => document.documentElement.setAttribute('data-theme', value),
+          theme,
+        );
+        const trigger = page.getByRole('button', {
+          name: /^Approval mode:.*Automatic/,
+        });
+        await trigger.press('Enter');
+        const sheet = page.getByRole('dialog', { name: 'Approval mode' });
+        const disclosure = sheet.getByText(
+          'Codex approval reviewer: Automatic.',
+        );
+        await disclosure.waitFor({ state: 'visible' });
+        await page.evaluate(() =>
+          Promise.all(
+            document.getAnimations().map((animation) => animation.finished),
+          ),
+        );
+        const box = await disclosure.boundingBox();
+        expect(box).not.toBeNull();
+        expect(box!.x).toBeGreaterThanOrEqual(0);
+        expect(box!.x + box!.width).toBeLessThanOrEqual(width);
+        await page.screenshot({
+          path: `${output}/codex-reviewer-${width}-${theme}.png`,
+        });
+        await page.keyboard.press('Escape');
+        await sheet.waitFor({ state: 'hidden' });
+        await expect
+          .poll(() =>
+            trigger.evaluate((element) => element === document.activeElement),
+          )
+          .toBe(true);
+      }
+    }
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});

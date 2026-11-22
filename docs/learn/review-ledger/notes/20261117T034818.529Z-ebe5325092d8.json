@@ -1,0 +1,9 @@
+{
+  "revision": "f91b85f21e1d09b17d2ceb5f1f0d246746848cdc",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"integrating-station.md and packages/sdk/AGENTS.md route to the SDK reference generally; the added sentence is confined to Personal conversation resolution and changes no tutorial or export rule.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"integrating-station.md and packages/sdk/AGENTS.md route to the SDK reference generally; the added sentence is confined to Personal conversation resolution and changes no tutorial or export rule.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

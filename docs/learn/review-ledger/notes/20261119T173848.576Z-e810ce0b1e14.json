@@ -1,0 +1,15 @@
+{
+  "revision": "76810e3e6d188381c626614fd271d7b1d8dbab15",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the new shared refresh action inventory row against the coarse-pointer trigger floor, keyboard access, touch arbitration, and use of the existing overflow menu.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked that the refresh status uses the shared subdued text and focus colors, keeps a static glyph across motion settings, and sizes its trigger on coarse pointers independent of density.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the responsive-actions inventory addition against the existing read boundary. It places a client action only. Backend ownership, write rules, and API contracts remain as described.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the shared list refresh row against the owned overflow, touch target, and quiet visual feedback guidance. The three callers supply their existing list reads.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked current Chromium gesture coverage including the coarse-pointer target, keyboard menu action, and retained rows. The three documented refresh surfaces are unchanged.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-swipe.browser.test.tsx"]}
+  ]
+}

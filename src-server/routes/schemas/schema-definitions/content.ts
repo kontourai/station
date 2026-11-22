@@ -2,6 +2,7 @@ import { CLEAN_ID_PATTERN } from '@kontourai/station-contracts/agent-identity';
 import { LAYOUT_CATALOG_ITEM_ID_PATTERN } from '@kontourai/station-contracts/distribution';
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import {
+  PROJECT_EFFORTS,
   PROJECT_ICON_PROBLEM_MESSAGES,
   projectIconProblem,
 } from '@kontourai/station-contracts/project';
@@ -10,9 +11,14 @@ import {
   PROJECT_CHAT_DEFAULT_SELECTIONS,
 } from '@kontourai/station-contracts/project-chat-defaults';
 import {
+  PROJECT_GOAL_MAX_CHARS,
+  PROJECT_INSTRUCTIONS_MAX_CHARS,
+} from '@kontourai/station-contracts/project-session-context';
+import {
   SKILL_COMMAND_NAME_PATTERN,
   SKILL_COMMAND_NAME_RULE,
 } from '@kontourai/station-contracts/skill-command';
+import { TASK_OVERVIEW_AUTO_RESOLVE_MAX_DAYS } from '@kontourai/station-contracts/task-overview';
 import { isSafeToolServerId } from '@kontourai/station-contracts/tool';
 import {
   SETUP_IMPORT_MAX_ITEMS,
@@ -236,6 +242,25 @@ export const projectCreateSchema = z
       .nullable()
       .optional(),
     description: z.string().optional(),
+    // #5062: the Project brief. `null` or an empty string drops it.
+    goal: z
+      .string()
+      .max(PROJECT_GOAL_MAX_CHARS)
+      .refine((value) => !/[\r\n]/.test(value), {
+        message: 'The goal is one line',
+      })
+      .nullable()
+      .optional(),
+    instructions: z
+      .string()
+      .max(PROJECT_INSTRUCTIONS_MAX_CHARS)
+      .nullable()
+      .optional(),
+    // #5068: coordinator and Task model and effort. `null` drops each.
+    coordinatorEffort: z.enum(PROJECT_EFFORTS).nullable().optional(),
+    taskModel: z.string().max(256).nullable().optional(),
+    taskProviderId: z.string().max(128).nullable().optional(),
+    taskEffort: z.enum(PROJECT_EFFORTS).nullable().optional(),
     defaultEnvironment: projectEnvironmentRefSchema.optional(),
     toolDefaults: z
       .object({
@@ -279,6 +304,13 @@ export const projectCreateSchema = z
     defaultApprovalModeSelection: z
       .enum(PROJECT_CHAT_DEFAULT_SELECTIONS)
       .nullable()
+      .optional(),
+    // #5064: days before the Overview auto-resolves an Idle Task; 0 never.
+    overviewAutoResolveDays: z
+      .number()
+      .int()
+      .min(0)
+      .max(TASK_OVERVIEW_AUTO_RESOLVE_MAX_DAYS)
       .optional(),
   })
   .passthrough();
@@ -488,7 +520,7 @@ export const agentCreateSchema = z
     description: z.string().max(500).optional(),
     model: z.string().max(200).optional(),
     region: z.string().max(50).optional(),
-    maxSteps: z.number().int().nonnegative().optional(),
+    maxSteps: z.number().int().min(1).max(100).nullable().optional(),
     icon: z.string().max(10).optional(),
   })
   .passthrough();

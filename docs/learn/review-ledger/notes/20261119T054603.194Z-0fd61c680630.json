@@ -1,0 +1,7 @@
+{
+  "revision": "a634493db5f65c0957808281954a22288be445a3",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Rechecked the exhaustive wire inventory against the shared provider failure map. The new ACP transport-close row explicitly pins unavailable and its existing retryable metadata. Sorted exact key comparison and the other independent expected rows remain in force.","inputs":["docs/reference/contracts.md","packages/contracts/src/__tests__/provider-failure.test.ts"]}
+  ]
+}

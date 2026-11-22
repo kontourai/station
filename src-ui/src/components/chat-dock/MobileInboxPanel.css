@@ -4,6 +4,7 @@
   flex-direction: column;
   min-width: 0;
   min-height: 0;
+  padding-block-start: var(--notification-stack-clearance, 0px);
   color: var(--k-text);
   background: var(--k-panel);
 }
@@ -71,161 +72,6 @@
 .mobile-inbox .inbox-row--touch {
   display: block;
 }
-.mobile-inbox .inbox-row--touch .inbox-row__open {
-  display: grid;
-  width: 100%;
-  /* #4266: the second line reads [engine mark] Codex [project] from the
-     start of the row. Two equal halves put the project mid-row. */
-  grid-template-columns: auto auto minmax(0, 1fr);
-  gap: var(--k-space-1) 0;
-  padding-left: calc(var(--k-space-3) + var(--k-space-6) + var(--k-space-2));
-  padding-right: calc(var(--k-space-3) + 44px);
-}
-.mobile-inbox .inbox-row__meta,
-.mobile-inbox .inbox-row__headline {
-  display: contents;
-}
-.mobile-inbox .inbox-row__meta-text {
-  grid-column: 2;
-  grid-row: 2;
-  align-self: center;
-  min-width: 0;
-  margin-right: var(--k-space-2);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-/* The engine is named in words beside its mark, not only drawn: the mark
-   alone left "Codex" a 1px clipped label nobody could read. */
-.mobile-inbox .identity-marks {
-  grid-column: 1;
-  grid-row: 2;
-  align-self: center;
-  margin-right: var(--k-space-1);
-}
-.mobile-inbox .inbox-row__time {
-  position: absolute;
-  right: var(--k-space-3);
-  top: var(--k-space-3);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--k-text-xs);
-}
-
-.mobile-inbox .inbox-row__open:has(.inbox-row__elapsed) .inbox-row__time {
-  display: none;
-}
-
-.mobile-inbox .inbox-row__elapsed {
-  position: absolute;
-  right: var(--k-space-3);
-  top: var(--k-space-3);
-  color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
-}
-.mobile-inbox .inbox-row__title {
-  grid-column: 1 / -1;
-  grid-row: 1;
-  display: -webkit-box;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-/* #3075: the row leads with its identity mark, so the unread dot hangs in
-   the row's outer margin, left of the mark (the same place the title's
-   first line sits vertically), never over the mark or the text. */
-.mobile-inbox .inbox-row[data-unread] .inbox-row__title[data-title]::before,
-.mobile-inbox
-  .inbox-row[data-read-unknown]
-  .inbox-row__title[data-title]::before {
-  left: calc(
-    var(--k-space-1) /
-    2 -
-    (var(--k-space-3) + var(--k-space-6) + var(--k-space-2))
-  );
-}
-/* #3075: a two-layer title (InboxRow.css) clamps on its layers, so the bold
-   copy keeps deciding the height in both read states. */
-.mobile-inbox .inbox-row__title[data-title] {
-  display: grid;
-  align-content: start;
-}
-.mobile-inbox .inbox-row__title[data-title] > .inbox-row__title-text,
-.mobile-inbox .inbox-row__title[data-title]::after {
-  display: -webkit-box;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-.mobile-inbox .inbox-row__project-context {
-  grid-column: 3;
-  grid-row: 2;
-  display: flex;
-  align-items: center;
-  gap: var(--k-space-1);
-  min-width: 0;
-  color: var(--k-text-muted);
-  font-size: var(--k-text-sm);
-}
-.mobile-inbox .inbox-row__project-context > svg,
-.mobile-inbox .inbox-row__project-context > .inbox-row__project-accent {
-  position: absolute;
-  top: var(--k-space-3);
-  left: var(--k-space-3);
-  display: grid;
-  place-items: center;
-  width: var(--k-space-6);
-  height: var(--k-space-6);
-  padding: var(--k-space-1);
-  border-radius: var(--k-radius-md);
-  background: var(--k-panel-raised);
-  color: var(--k-text-muted);
-}
-.mobile-inbox .inbox-row__project-context .inbox-row__project {
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-.mobile-inbox .inbox-row__status {
-  grid-column: 1 / -1;
-  grid-row: 3;
-  height: auto;
-  min-height: var(--k-space-4);
-  flex-wrap: wrap;
-  white-space: normal;
-  font-size: var(--k-text-sm);
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--k-space-2);
-}
-.mobile-inbox .inbox-row__chips {
-  grid-column: 1 / -1;
-}
-.mobile-inbox
-  .inbox-row__status:not(.inbox-row__status--reason)
-  .inbox-row__detail {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-}
-.mobile-inbox
-  .inbox-row__status:not(.inbox-row__status--reason)
-  > .inbox-row__sep {
-  display: none;
-}
-.mobile-inbox .inbox-row__status--reason .inbox-row__detail {
-  position: static;
-}
-.mobile-inbox .inbox-row--touch .inbox-row__actions {
-  position: absolute;
-  right: var(--k-space-2);
-  bottom: var(--k-space-2);
-  top: auto;
-}
 .mobile-inbox .chat-dock-inbox__group-label,
 .mobile-inbox .chat-dock-inbox__section-toggle {
   min-height: 44px;
@@ -233,7 +79,7 @@
   align-items: center;
   gap: var(--k-space-2);
   --work-group-label-size: var(--k-text-sm);
-  margin: var(--k-space-3) 0 var(--k-space-2);
+  margin: 0;
 }
 .mobile-inbox .chat-dock-inbox__group-label::after,
 .mobile-inbox .chat-dock-inbox__section-toggle::after {
@@ -241,4 +87,184 @@
   flex: 1;
   height: var(--k-border-thin);
   background: var(--k-line);
+}
+.mobile-inbox {
+  position: relative;
+}
+.mobile-inbox__new-chat {
+  position: absolute;
+  bottom: calc(var(--safe-bottom, 0px) + var(--k-space-3));
+  right: var(--k-space-4);
+  z-index: 1;
+  min-height: calc(var(--touch-target-min) + var(--k-space-2));
+  border-radius: var(--k-radius-xl, var(--k-space-4));
+  padding-inline: var(--k-space-4);
+  box-shadow: var(--k-shadow);
+}
+.mobile-inbox:has(.mobile-inbox__new-chat) .mobile-inbox__list {
+  padding-bottom: calc(
+    var(--touch-target-min) +
+    var(--k-space-6) +
+    var(--safe-bottom, 0px)
+  );
+  scroll-padding-bottom: calc(var(--touch-target-min) + var(--k-space-6));
+}
+.mobile-inbox:has(.mobile-inbox__new-chat)
+  > .list-refresh__status
+  .list-refresh__pill {
+  inset-block-end: calc(
+    var(--touch-target-min) +
+    var(--k-space-6) +
+    var(--safe-bottom, 0px)
+  );
+}
+.mobile-inbox__filter-glyph {
+  width: 14px;
+  height: 2px;
+  background: currentColor;
+  position: relative;
+}
+.mobile-inbox__filter-glyph::before,
+.mobile-inbox__filter-glyph::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  translate: -50% 0;
+  height: 2px;
+  background: currentColor;
+}
+.mobile-inbox__filter-glyph::before {
+  width: 20px;
+  top: -5px;
+}
+.mobile-inbox__filter-glyph::after {
+  width: 7px;
+  top: 5px;
+}
+.mobile-inbox__direct-tool[data-filtered] {
+  color: var(--k-action);
+}
+.mobile-inbox__filter-summary,
+.mobile-inbox-filters__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  padding: var(--k-space-1) var(--k-space-3);
+  font-size: var(--k-text-sm);
+}
+.mobile-inbox-selection {
+  padding: var(--k-space-2) var(--k-space-3)
+    max(var(--k-space-2), var(--safe-bottom, 0px));
+  background: var(--k-panel-raised);
+  border-block-start: var(--k-border-thin) solid var(--k-line);
+}
+.mobile-inbox-selection__commands {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--k-space-1);
+}
+.mobile-inbox-selection__commands .mobile-inbox-selection__action {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: var(--touch-target-min);
+  padding: var(--k-space-1);
+  border: 0;
+  border-radius: var(--k-radius-control);
+  background: transparent;
+  color: var(--k-text);
+  font: inherit;
+  cursor: pointer;
+}
+.mobile-inbox-selection__action > span {
+  display: grid;
+  justify-items: center;
+  gap: var(--k-space-1);
+  font-size: var(--k-text-sm);
+  line-height: 1.25;
+}
+.mobile-inbox-selection__action svg {
+  width: var(--k-space-5);
+  height: var(--k-space-5);
+}
+.mobile-inbox-selection__commands .mobile-inbox-selection__action:disabled {
+  color: var(--k-text-muted);
+  opacity: 0.55;
+  cursor: default;
+}
+.mobile-inbox-selection__commands
+  .mobile-inbox-selection__action:enabled:is(:hover, :focus-visible) {
+  background: var(--k-panel);
+}
+.mobile-inbox-selection__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  color: var(--k-text-muted);
+}
+.mobile-inbox-selection__meta small {
+  font-size: var(--k-text-sm);
+}
+.mobile-inbox-selection__meta:has(small:not(:empty)) {
+  padding-top: var(--k-space-2);
+}
+.mobile-inbox-filters__body {
+  padding: var(--k-space-3) var(--k-space-4);
+  display: grid;
+  gap: var(--k-space-4);
+  overflow: auto;
+}
+.mobile-inbox-filters__body fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+}
+.mobile-inbox-filters__body label {
+  display: grid;
+  gap: var(--k-space-1);
+}
+.mobile-inbox-filters__body legend {
+  margin-bottom: var(--k-space-2);
+}
+.mobile-inbox-filters__body select,
+.mobile-inbox-filters__body input {
+  min-height: var(--touch-target-min);
+  width: 100%;
+}
+.mobile-inbox-filters__choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-1);
+  margin-top: var(--k-space-1);
+}
+.mobile-inbox-filters__choices button {
+  min-height: var(--touch-target-min);
+  border: var(--k-border-thin) solid var(--k-line);
+}
+.mobile-inbox-filters__choices button[aria-pressed="true"] {
+  border-color: var(--k-action);
+  background: var(--k-panel-raised);
+}
+.mobile-inbox__list .chat-dock-inbox__group + .chat-dock-inbox__group {
+  margin-block-start: var(--k-space-4);
+}
+
+.mobile-inbox-filters-overlay[data-inset-sheet].responsive-surface-overlay {
+  align-items: flex-start;
+  justify-content: center;
+  padding: calc(
+      var(--app-toolbar-total-height, 48px) +
+      var(--touch-target-min) +
+      var(--k-space-4)
+    )
+    var(--k-space-3) var(--k-space-3);
+}
+.mobile-inbox-filters-overlay[data-inset-sheet] .mobile-inbox-filters {
+  width: 100%;
+  max-height: 100%;
+  border-radius: var(--k-radius-lg, var(--k-space-3));
+  background: var(--k-panel-raised);
 }

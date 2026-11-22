@@ -1,0 +1,31 @@
+{
+  "revision": "08086609fe726283ad2f3b9d8b2880f9b4195dd9",
+
+  "notes": [
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Checked affected ACP/Kiro permission references after adding KAS tool identity/consent reading, verified workspace-read handling, and _meta.kiro.rejectionReason; owning behavior documented in docs/guides/acp.md and other docs remain accurate.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked affected ACP/Kiro permission references after adding KAS tool identity/consent reading, verified workspace-read handling, and _meta.kiro.rejectionReason; owning behavior documented in docs/guides/acp.md and other docs remain accurate.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked affected ACP/Kiro permission references after adding KAS tool identity/consent reading, verified workspace-read handling, and _meta.kiro.rejectionReason; owning behavior documented in docs/guides/acp.md and other docs remain accurate.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked affected ACP/Kiro permission references after adding KAS tool identity/consent reading, verified workspace-read handling, and _meta.kiro.rejectionReason; owning behavior documented in docs/guides/acp.md and other docs remain accurate.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked affected ACP/Kiro permission references after adding KAS tool identity/consent reading, verified workspace-read handling, and _meta.kiro.rejectionReason; owning behavior documented in docs/guides/acp.md and other docs remain accurate.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked affected ACP/Kiro permission references after adding KAS tool identity/consent reading, verified workspace-read handling, and _meta.kiro.rejectionReason; owning behavior documented in docs/guides/acp.md and other docs remain accurate.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked affected ACP/Kiro permission references after adding KAS tool identity/consent reading, verified workspace-read handling, and _meta.kiro.rejectionReason; owning behavior documented in docs/guides/acp.md and other docs remain accurate.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked affected ACP/Kiro permission references after adding KAS tool identity/consent reading, verified workspace-read handling, and _meta.kiro.rejectionReason; owning behavior documented in docs/guides/acp.md and other docs remain accurate.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked affected ACP/Kiro permission references after adding KAS tool identity/consent reading, verified workspace-read handling, and _meta.kiro.rejectionReason; owning behavior documented in docs/guides/acp.md and other docs remain accurate.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked affected ACP/Kiro permission references after adding KAS tool identity/consent reading, verified workspace-read handling, and _meta.kiro.rejectionReason; owning behavior documented in docs/guides/acp.md and other docs remain accurate.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked affected ACP/Kiro permission references after adding KAS tool identity/consent reading, verified workspace-read handling, and _meta.kiro.rejectionReason; owning behavior documented in docs/guides/acp.md and other docs remain accurate.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked affected ACP/Kiro permission references after adding KAS tool identity/consent reading, verified workspace-read handling, and _meta.kiro.rejectionReason; owning behavior documented in docs/guides/acp.md and other docs remain accurate.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked affected ACP/Kiro permission references after adding KAS tool identity/consent reading, verified workspace-read handling, and _meta.kiro.rejectionReason; owning behavior documented in docs/guides/acp.md and other docs remain accurate.","inputs":["src-server/providers/adapters/acp-adapter.ts"]}
+  ]
+}

@@ -357,6 +357,9 @@ describe('MessageBubble answer Basis chip', () => {
       });
       try {
         renderTranscript([answer('turn-7')]);
+        fireEvent.click(
+          screen.getByRole('button', { name: 'Answer details and actions' }),
+        );
         fireEvent.click(await screen.findByRole('button', { name: CHIP }));
 
         const occurrence = renderHook(() =>
@@ -381,6 +384,9 @@ describe('MessageBubble answer Basis chip', () => {
       mocks.realLauncher = true;
       renderTranscript([answer('turn-7')]);
 
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Answer details and actions' }),
+      );
       fireEvent.click(await screen.findByRole('button', { name: CHIP }));
 
       const dialog = await screen.findByRole('dialog', { name: 'Basis' });
@@ -396,14 +402,20 @@ describe('MessageBubble answer Basis chip', () => {
       });
     });
 
-    it('sits in the answer meta row beside copy, one tap from the answer', async () => {
+    it('opens the exact answer from its details sheet', async () => {
       mocks.isMobile = true;
-      const { container } = renderTranscript([answer('turn-7')]);
+      renderTranscript([answer('turn-7')]);
 
-      const chip = await screen.findByRole('button', { name: CHIP });
-      expect(container.querySelector('.message-meta')?.contains(chip)).toBe(
-        true,
+      expect(screen.queryByRole('button', { name: CHIP })).toBeNull();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Answer details and actions' }),
       );
+      const chip = await screen.findByRole('button', { name: CHIP });
+      expect(
+        within(
+          screen.getByRole('dialog', { name: 'Answer details and actions' }),
+        ).getByRole('button', { name: CHIP }),
+      ).toBe(chip);
       fireEvent.click(chip);
       expectOpenedBasisFor('turn-7', chip);
     });

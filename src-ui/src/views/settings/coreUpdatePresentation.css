@@ -1,0 +1,15 @@
+.settings__update-technical > summary {
+  cursor: pointer;
+  padding-block: var(--k-space-3);
+}
+
+.settings__update-technical > pre {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.settings__update-technical > [role="status"] {
+  margin-inline-start: var(--k-space-2);
+}

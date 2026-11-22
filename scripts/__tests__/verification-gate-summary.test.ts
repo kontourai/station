@@ -697,6 +697,47 @@ describe('verification gate summary', () => {
     expect(summary).toContain('Disposition: `reused`');
   });
 
+  test('preserves a prior warning without annotating it as the failure', () => {
+    const root = workspace();
+    const capture = join(root, 'static.stdout.log');
+    const stdout = [
+      '> station@0.1.6 lint:check',
+      'scripts/check-workflow.test.ts:366:34 lint/suspicious/noTemplateCurlyInString ━━━',
+      '  ! A template placeholder appears in an ordinary string.',
+      'Found 1 warning.',
+      '> station@0.1.6 gate:workflows',
+    ].join('\n');
+    writeFileSync(
+      capture,
+      capturedStdout(
+        stdout,
+        verdictDocument({
+          stdout,
+          status: 'failed',
+          exitCode: 1,
+          counts: {
+            executed: 1,
+            passed: 0,
+            failed: 1,
+            infrastructureErrors: 0,
+          },
+          passed: false,
+        }),
+      ),
+    );
+    const result = runSummary(root, ['--stdout-file', capture]);
+    expect(result.status).toBe(0);
+    expect(result.summary).toContain('Diagnostic context');
+    expect(result.summary).toContain('noTemplateCurlyInString');
+    expect(result.summary).not.toContain('### Causal excerpts');
+    expect(errorAnnotations(result.stdout)).toEqual([
+      expect.stringContaining('gate:workflows'),
+    ]);
+    expect(result.stdout).toContain(
+      '::warning title=full-regression diagnostic context::scripts/check-workflow.test.ts',
+    );
+  });
+
   // station#1827 review item 7. `causeStream` is deliberately withheld for a
   // runner-declared cause -- its sentence says the excerpt "was picked by
   // severity and position", which nothing did -- and withholding it left this

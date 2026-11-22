@@ -4,6 +4,11 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import {
+  StationRequestAuthorityError,
+  setClientCredentialResolver,
+} from '../client/http';
+import { useUpdateProjectMutation } from '../index';
+import {
   useCreateTaskMutation,
   useCreateTaskReferenceMutation,
   useDispatchTaskMutation,
@@ -22,7 +27,10 @@ beforeEach(() => {
     ),
   );
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  setClientCredentialResolver(undefined);
+  vi.unstubAllGlobals();
+});
 
 test.each([
   [
@@ -212,6 +220,171 @@ test('returning to a Project refreshes a status changed while its Task list was 
   } finally {
     list.unmount();
     changeStatus.unmount();
+    client.clear();
+  }
+});
+
+const creatingAccount = {
+  apiBase: 'http://station.test',
+  authorityKey: 'creating-account',
+};
+
+test.each([
+  {
+    method: 'POST',
+    path: '/api/tasks',
+    useEffectMutation: () => {
+      const { mutateAsync } = useCreateTaskMutation();
+      return () =>
+        mutateAsync({
+          requestScope: creatingAccount,
+          projectId: 'alpha',
+          title: 'Continuation',
+        });
+    },
+    getCacheKey: (scope: typeof creatingAccount) =>
+      taskQueries.list('alpha', scope).queryKey,
+  },
+  {
+    method: 'POST',
+    path: '/api/tasks/task-new/references',
+    useEffectMutation: () => {
+      const { mutateAsync } = useCreateTaskReferenceMutation();
+      return () =>
+        mutateAsync({
+          requestScope: creatingAccount,
+          taskId: 'task-new',
+          kind: 'turn',
+          sessionId: 'session',
+          turnId: 'turn',
+        });
+    },
+    getCacheKey: (scope: typeof creatingAccount) =>
+      taskQueries.list('alpha', scope).queryKey,
+  },
+  {
+    method: 'PUT',
+    path: '/api/projects/alpha',
+    useEffectMutation: () => {
+      const { mutateAsync } = useUpdateProjectMutation();
+      return () =>
+        mutateAsync({
+          requestScope: creatingAccount,
+          slug: 'alpha',
+          description: 'Project brief',
+        });
+    },
+    getCacheKey: (scope: typeof creatingAccount) => [
+      'projects',
+      'alpha',
+      'page-view',
+      scope.apiBase,
+      scope.authorityKey,
+    ],
+  },
+])(
+  '$method $path keeps same-origin accounts separate',
+  async ({ method, path, useEffectMutation, getCacheKey }) => {
+    const otherAccount = { ...creatingAccount, authorityKey: 'other-account' };
+    let active = otherAccount;
+    setClientCredentialResolver(() => {
+      const captured = active;
+      return {
+        origin: captured.apiBase,
+        requestAuthority: { ...captured, isCurrent: () => active === captured },
+      };
+    });
+    const fetch = vi.mocked(globalThis.fetch);
+    const client = new QueryClient();
+    const creatingKey = getCacheKey(creatingAccount);
+    const otherKey = getCacheKey(otherAccount);
+    client.setQueryData(creatingKey, []);
+    client.setQueryData(otherKey, []);
+    const view = renderHook(useEffectMutation, {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    });
+    try {
+      await act(async () => {
+        await expect(view.result.current()).rejects.toBeInstanceOf(
+          StationRequestAuthorityError,
+        );
+      });
+      expect(fetch).not.toHaveBeenCalled();
+      expect(client.getQueryState(creatingKey)?.isInvalidated).toBe(false);
+      expect(client.getQueryState(otherKey)?.isInvalidated).toBe(false);
+
+      active = creatingAccount;
+      await act(async () => {
+        await expect(view.result.current()).resolves.toEqual({
+          id: 'task-new',
+        });
+      });
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(fetch).toHaveBeenCalledWith(
+        `${creatingAccount.apiBase}${path}`,
+        expect.objectContaining({ method }),
+      );
+      expect(
+        JSON.parse(String(fetch.mock.calls[0]?.[1]?.body)),
+      ).not.toHaveProperty('requestScope');
+      expect(client.getQueryState(creatingKey)?.isInvalidated).toBe(true);
+      expect(client.getQueryState(otherKey)?.isInvalidated).toBe(false);
+    } finally {
+      view.unmount();
+      client.clear();
+    }
+  },
+);
+
+test('scoped Task creation refreshes the Project list that is already open', async () => {
+  setClientCredentialResolver(() => ({
+    origin: creatingAccount.apiBase,
+    requestAuthority: { ...creatingAccount, isCurrent: () => true },
+  }));
+  const task = { id: 'task-created', title: 'Continuation' };
+  const tasks: (typeof task)[] = [];
+  const fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(String(input));
+    if (url.pathname !== '/api/tasks')
+      throw new Error(`Unexpected Task request: ${url}`);
+    if (init?.method === 'POST') {
+      tasks.push(task);
+      return Response.json({ success: true, data: task });
+    }
+    expect(url.searchParams.get('projectId')).toBe('alpha');
+    return Response.json({ success: true, data: tasks });
+  });
+  vi.stubGlobal('fetch', fetch);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, refetchOnMount: false } },
+  });
+  const view = renderHook(
+    () => ({
+      list: useTasksQuery('alpha'),
+      mutation: useCreateTaskMutation(),
+    }),
+    {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      ),
+    },
+  );
+  try {
+    await waitFor(() => expect(view.result.current.list.data).toEqual([]));
+    await act(async () => {
+      await expect(
+        view.result.current.mutation.mutateAsync({
+          requestScope: creatingAccount,
+          projectId: 'alpha',
+          title: task.title,
+        }),
+      ).resolves.toEqual(task);
+    });
+    await waitFor(() => expect(view.result.current.list.data).toEqual([task]));
+  } finally {
+    view.unmount();
     client.clear();
   }
 });

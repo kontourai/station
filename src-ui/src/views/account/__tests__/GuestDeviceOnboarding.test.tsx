@@ -172,6 +172,7 @@ test('a Project removed during detail read leaves no stale detail in UI or cache
     apiA,
     principalA,
     'example',
+    'example-id',
   ]);
   expect(state?.status).toBe('error');
   expect(state?.data).toBeUndefined();

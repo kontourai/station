@@ -82,6 +82,9 @@ describe('station-control tool classification', () => {
     // #4138: task_thread_reply and task_thread_resolve append one review event
     // to a thread on the caller's own Task; they never delete or reopen.
     // #3994: terminal_run only records a request; a person approves each run.
+    // #5065: remember_project_note appends one bounded note to the caller
+    // Session's own Project memory; forget_project_note deletes one, so it
+    // stays mutating.
     expect(boundedWrite).toEqual([
       'terminal_run',
       'notify_user',
@@ -89,6 +92,7 @@ describe('station-control tool classification', () => {
       'html_preview',
       'task_summary_update',
       'task_record',
+      'remember_project_note',
       'task_thread_reply',
       'task_thread_resolve',
     ]);
@@ -97,6 +101,7 @@ describe('station-control tool classification', () => {
       'station-control_terminal_run',
       'station-control_task_summary_update',
       'station-control_task_record',
+      'station-control_remember_project_note',
       'station-control_task_thread_reply',
       'station-control_task_thread_resolve',
       'station-control_html_render',

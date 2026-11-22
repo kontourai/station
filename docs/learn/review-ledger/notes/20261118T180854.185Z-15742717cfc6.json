@@ -1,0 +1,39 @@
+{
+  "revision": "2870fcd9bce97a71da44b7bb1150d004cf45a761",
+
+  "notes": [
+    {"path":"examples/meeting-transcription/README.md","note":"The public CLI build fails at the shipped pre-change contracts import and succeeds with the SDK Agent entry. The built plugin loaded through the shared-runtime registry in jsdom, passed synthetic STT text to the Station Agent catalog match, refused a missing catalog entry, and displayed update guidance without the new export. The fixture uses synthetic speech and no provider dispatch.","inputs":["examples/meeting-transcription/README.md","examples/meeting-transcription/src/MeetingTranscriptionPane.tsx","packages/sdk/src/hooks/operations.ts","packages/sdk/src/agent/index.ts","src-ui/src/core/pluginSharedRuntime.ts","src-ui/src/__tests__/meeting-transcription-bundle.test.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"The Agent subpath adds the canonical Contracts value beside its existing parser with the same shared-runtime module key. The emitted SDK and local tarball include it. The published SDK 0.8.0 tarball has the parser and lacks this value. The SDK hook still matches the exact cataloged ID and refuses absent Agents.","inputs":["docs/reference/sdk.md","packages/sdk/src/agent/index.ts","packages/sdk/src/hooks/operations.ts"]},
+
+    {"path":"docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md","note":"Reviewed the Agent subpath export against its headless consumers and maintained API. The new value is a re-export of the canonical Contracts identity; existing methods and client contracts keep their implementation and arguments.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the Agent subpath export against its headless consumers and maintained API. The new value is a re-export of the canonical Contracts identity; existing methods and client contracts keep their implementation and arguments.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"docs/guides/agent-development.md","note":"Reviewed the Agent subpath export against its headless consumers and maintained API. The new value is a re-export of the canonical Contracts identity; existing methods and client contracts keep their implementation and arguments.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed the Agent subpath export against its headless consumers and maintained API. The new value is a re-export of the canonical Contracts identity; existing methods and client contracts keep their implementation and arguments.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the Agent subpath export against its headless consumers and maintained API. The new value is a re-export of the canonical Contracts identity; existing methods and client contracts keep their implementation and arguments.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"examples/headless-agent/README.md","note":"Reviewed the Agent subpath export against its headless consumers and maintained API. The new value is a re-export of the canonical Contracts identity; existing methods and client contracts keep their implementation and arguments.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Reviewed the Agent subpath export against its headless consumers and maintained API. The new value is a re-export of the canonical Contracts identity; existing methods and client contracts keep their implementation and arguments.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Reviewed the Agent subpath export against its headless consumers and maintained API. The new value is a re-export of the canonical Contracts identity; existing methods and client contracts keep their implementation and arguments.","inputs":["packages/sdk/src/agent/index.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"The hook documentation points authors to the SDK parser. Catalog matching, plugin qualification and chat dispatch retain their prior implementation.","inputs":["packages/sdk/src/hooks/operations.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The hook documentation points authors to the SDK parser. Catalog matching, plugin qualification and chat dispatch retain their prior implementation.","inputs":["packages/sdk/src/hooks/operations.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The hook documentation points authors to the SDK parser. Catalog matching, plugin qualification and chat dispatch retain their prior implementation.","inputs":["packages/sdk/src/hooks/operations.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"The hook documentation points authors to the SDK parser. Catalog matching, plugin qualification and chat dispatch retain their prior implementation.","inputs":["packages/sdk/src/hooks/operations.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"The hook documentation points authors to the SDK parser. Catalog matching, plugin qualification and chat dispatch retain their prior implementation.","inputs":["packages/sdk/src/hooks/operations.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The Agent development export table and send-to-chat documentation now describe the shared SDK identity export and host-version handling. The SDK reference remains the integration entry for its existing public contracts.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The Agent development export table and send-to-chat documentation now describe the shared SDK identity export and host-version handling. The SDK reference remains the integration entry for its existing public contracts.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

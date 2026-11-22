@@ -1,0 +1,7 @@
+{
+  "revision": "fee67846ded578282845cbed733c2df2652ecdbc",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the native invocation runs SQLite and restart evidence. The two EventStore constructors upgrade a legacy database, retain its prepared input and create the terminal sequence index. The migration rollback check preserves the input across a refused commit and retry. The existing provider boundary and response evidence remains accurate.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/__tests__/native-invocation-runs.test.ts"]}
+  ]
+}

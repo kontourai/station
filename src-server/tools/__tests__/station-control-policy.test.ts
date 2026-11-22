@@ -57,7 +57,6 @@ const DECISION_1_BOUND_OPERATOR = [
   'connect_ssh_environment',
   'disconnect_ssh_environment',
   'remove_ssh_environment',
-  'list_delegation_targets',
   'reindex_knowledge',
   'migrate_knowledge',
   // Guides are shared server state; the first slice keeps bound operator authority.
@@ -75,6 +74,11 @@ const DECISION_2_OPERATOR_READS = [
   'check_plugin_updates',
   'list_delegation_environments',
   'read_pull_request_guide',
+  // #4513: Station-wide sources, rules and execution ledger.
+  'list_automation_sources',
+  'list_automation_rules',
+  'list_automation_deliveries',
+  'list_automation_episodes',
 ];
 // Decision 2 (slice B): reads scoped to the principal the caller's session
 // acts for. Transcribed from the slice B brief, independently of the table.
@@ -271,7 +275,7 @@ describe('station-control authority table: the owner decisions', () => {
     );
   });
 
-  test('no other tool requires the operator: the operator set is exactly decision 1', () => {
+  test('the operator set matches the owner decisions for reads and mutations', () => {
     const operator = TABLE.filter(([, p]) => p.role === 'operator').map(
       ([n]) => n,
     );
@@ -298,20 +302,30 @@ describe('station-control authority table: the owner decisions', () => {
     }
   });
 
-  test('decision 4 with decision 2: a caller-less request reaches exactly the reads of nobody’s data', () => {
-    for (const [name, policy] of TABLE) {
-      if (policy.enforcedBy === 'route') continue;
-      const refusal = evaluateStationControlPolicy(policy, { caller: null });
-      if (policy.toolClass === 'read-only' && policy.role === 'none')
-        expect([name, refusal]).toEqual([name, undefined]);
-      else
-        expect([name, refusal?.code]).toEqual([
-          name,
-          policy.personOnly === 'always'
-            ? 'station_control_person_only'
-            : 'station_control_caller_required',
-        ]);
-    }
+  test('decision 4, slice D: a caller-less request is refused every entry, route-enforced and reads of nobody’s data included', () => {
+    const entries = [
+      ...TABLE,
+      ...Object.entries(STATION_CONTROL_INFRASTRUCTURE_POLICY),
+    ] as [string, StationControlToolPolicy][];
+    // The control: the reads of nobody's data and the route-enforced entries
+    // are exactly the ones a verified caller with no owner still reaches.
+    const openToAnyVerified = entries.filter(
+      ([, policy]) =>
+        evaluateStationControlPolicy(policy, {
+          caller: { assurance: 'bearer-exposed' },
+        }) === undefined,
+    );
+    expect(openToAnyVerified.length).toBeGreaterThan(10);
+    for (const [name, policy] of entries)
+      expect([
+        name,
+        evaluateStationControlPolicy(policy, { caller: null })?.code,
+      ]).toEqual([
+        name,
+        policy.personOnly === 'always'
+          ? 'station_control_person_only'
+          : 'station_control_caller_required',
+      ]);
   });
 });
 
@@ -405,10 +419,6 @@ describe('station-control authority table: shared leaves', () => {
     (route) => `${route.method} ${route.path}`,
   );
   const EXPECTED_WEAKENED: Record<string, readonly string[]> = {
-    // Every dispatch leaf it reaches is shared with dispatch (slice C). Its
-    // remote-target leaves are the operator's alone since slice C2a, so they
-    // no longer loosen it.
-    list_delegation_targets: DISPATCH_LEAVES,
     // Its own respond leaf is strict; the rest is the dispatch plumbing it
     // shares (slice C). The respond COMMAND on /commands is held to a bound
     // operator by the leaf's own rule, not by this entry.
@@ -824,6 +834,7 @@ describe('station-control authority table: declare_pull_request and Task close-o
       'terminal_run',
       'task_summary_update',
       'task_record',
+      'remember_project_note',
       'task_thread_reply',
       'task_thread_resolve',
       'html_render',
@@ -907,6 +918,24 @@ describe('station-control authority table: declare_pull_request and Task close-o
       expect([
         name,
         policy.routes.some((entry) => entry.path.includes('close-on-merge')),
+      ]).toEqual([name, false]);
+  });
+
+  test('no tool reaches the route a person reopens a Task on the Overview with (#5064)', () => {
+    const route = '/api/tasks/task-1/overview-reopen';
+    expect(matchStationControlRoute('POST', route)).toBeUndefined();
+    for (const [name, caller] of Object.entries(CALLERS))
+      expect([
+        name,
+        authorizeStationControlRequest('POST', route, {
+          caller,
+          isOperatorPrincipal,
+        })?.code,
+      ]).toEqual([name, 'station_control_route_unmapped']);
+    for (const [name, policy] of TABLE)
+      expect([
+        name,
+        policy.routes.some((entry) => entry.path.includes('overview-reopen')),
       ]).toEqual([name, false]);
   });
 });
@@ -1110,6 +1139,8 @@ describe('#4769: the tools a restricted session keeps', () => {
    * (`RESTRICTED_NETWORK_STATION_CONTROL_TOOLS`) or listed below.
    */
   const WITHHELD = [
+    'list_engine_setup',
+    'open_engine_setup',
     'device_list',
     'device_open',
     'device_screenshot',
@@ -1133,6 +1164,10 @@ describe('#4769: the tools a restricted session keeps', () => {
     'uninstall_skill',
     'update_skill',
     'run_independent_review',
+    'list_automation_sources',
+    'list_automation_rules',
+    'list_automation_deliveries',
+    'list_automation_episodes',
     'add_job',
     'update_job',
     'run_job',

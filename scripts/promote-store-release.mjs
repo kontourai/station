@@ -375,19 +375,19 @@ function client(platform, env, fetchImpl, receipt) {
       receipt.value.state = 'ATTEMPTED';
       receipt.save();
     }
+    let response;
     try {
-      const result = await responseJson(
-        await fetchImpl(url, {
-          method,
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${platform === 'ios' ? createAppStoreConnectJwt(apple) : bearer}`,
-          },
-          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-          signal: AbortSignal.timeout(30_000),
-        }),
-      );
+      response = await fetchImpl(url, {
+        method,
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${platform === 'ios' ? createAppStoreConnectJwt(apple) : bearer}`,
+        },
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      const result = await responseJson(response);
       if (effect) {
         effect.state = 'ACKNOWLEDGED';
         receipt.save();
@@ -396,6 +396,8 @@ function client(platform, env, fetchImpl, receipt) {
     } catch {
       if (effect) {
         effect.state = 'UNKNOWN';
+        if (Number.isInteger(response?.status))
+          effect.httpStatus = response.status;
         receipt.value.state = 'UNKNOWN';
         receipt.save();
       }

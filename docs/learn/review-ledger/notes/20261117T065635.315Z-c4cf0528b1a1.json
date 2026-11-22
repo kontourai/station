@@ -1,0 +1,17 @@
+{
+  "revision": "944d7cd801e1b36484577fa9da751dedf8f1d989",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md change only adds a host-heavy-check-slots bullet on restoring blocking stdio before a slot holder execs (#5119). Checked each citing page: their links (host-heavy-check-slots, fixture-fidelity-and-test-effectiveness, gallery-product-assertions, host-pressure-liveness-scale-3302, pre-push-orchestration-transfer-gate, what-counts-as-tested) still resolve and no cited claim about slot admission, waiting, or test routing changed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md change only adds a host-heavy-check-slots bullet on restoring blocking stdio before a slot holder execs (#5119). Checked each citing page: their links (host-heavy-check-slots, fixture-fidelity-and-test-effectiveness, gallery-product-assertions, host-pressure-liveness-scale-3302, pre-push-orchestration-transfer-gate, what-counts-as-tested) still resolve and no cited claim about slot admission, waiting, or test routing changed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md change only adds a host-heavy-check-slots bullet on restoring blocking stdio before a slot holder execs (#5119). Checked each citing page: their links (host-heavy-check-slots, fixture-fidelity-and-test-effectiveness, gallery-product-assertions, host-pressure-liveness-scale-3302, pre-push-orchestration-transfer-gate, what-counts-as-tested) still resolve and no cited claim about slot admission, waiting, or test routing changed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md change only adds a host-heavy-check-slots bullet on restoring blocking stdio before a slot holder execs (#5119). Checked each citing page: their links (host-heavy-check-slots, fixture-fidelity-and-test-effectiveness, gallery-product-assertions, host-pressure-liveness-scale-3302, pre-push-orchestration-transfer-gate, what-counts-as-tested) still resolve and no cited claim about slot admission, waiting, or test routing changed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md change only adds a host-heavy-check-slots bullet on restoring blocking stdio before a slot holder execs (#5119). Checked each citing page: their links (host-heavy-check-slots, fixture-fidelity-and-test-effectiveness, gallery-product-assertions, host-pressure-liveness-scale-3302, pre-push-orchestration-transfer-gate, what-counts-as-tested) still resolve and no cited claim about slot admission, waiting, or test routing changed.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md change only adds a host-heavy-check-slots bullet on restoring blocking stdio before a slot holder execs (#5119). Checked each citing page: their links (host-heavy-check-slots, fixture-fidelity-and-test-effectiveness, gallery-product-assertions, host-pressure-liveness-scale-3302, pre-push-orchestration-transfer-gate, what-counts-as-tested) still resolve and no cited claim about slot admission, waiting, or test routing changed.","inputs":["docs/guides/testing.md"]}
+  ]
+}

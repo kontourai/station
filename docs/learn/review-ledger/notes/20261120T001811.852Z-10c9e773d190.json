@@ -1,0 +1,7 @@
+{
+  "revision": "9624c1fb9d8e5b6d3f4400ef8b757a41dc089fd9",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the monitoring review link after adding the bounded wide-read cache behavior. The guide still explains per-purpose projection and count measurements and the same diagnostics bundle.","inputs":["docs/guides/monitoring.md"]}
+  ]
+}

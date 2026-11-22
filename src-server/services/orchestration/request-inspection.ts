@@ -127,6 +127,7 @@ export function inspectRequestEvent(
     provider: event.provider,
     requestType: event.requestType as 'approval' | 'permission',
     ...presentOpenRequest(event),
+    ...(event.guardianReason ? { guardianReason: event.guardianReason } : {}),
     openedAt: event.createdAt,
     ...(inputRequestFromRequestEvent(event) ? { requiresAnswers: true } : {}),
   };

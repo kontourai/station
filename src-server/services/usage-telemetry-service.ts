@@ -379,7 +379,10 @@ export class UsageTelemetryService {
         destination,
       );
     }
-    if (this.resolvedConfiguration().publishers[publisher].reason === 'DNT')
+    const status = this.resolvedConfiguration().publishers[publisher];
+    if (publisher === 'kontour' && !status.fullAvailable)
+      throw new Error('Detailed sharing is unavailable for Kontour.');
+    if (status.reason === 'DNT')
       throw new Error(
         'Full telemetry must be confirmed after DO_NOT_TRACK is removed.',
       );
@@ -438,11 +441,11 @@ export class UsageTelemetryService {
     return this.endpoint !== undefined;
   }
   async canSaveAuthorFull(): Promise<boolean> {
-    await this.author?.loadDisclosureReceipt();
+    if (!this.author) return true;
+    const status = this.resolvedConfiguration().publishers.kontour;
     return (
-      !this.author ||
-      this.resolvedConfiguration().publishers.kontour.reason === 'DNT' ||
-      this.author.hasCurrentDisclosureReceipt
+      status.fullAvailable === true &&
+      (status.reason === 'DNT' || (await this.author.loadDisclosureReceipt()))
     );
   }
   async telemetryStatus(): Promise<
@@ -468,10 +471,6 @@ export class UsageTelemetryService {
             { ...state, fullAvailable: state.endpointConfigured === true },
           ]),
         ),
-        kontour: {
-          ...resolved.publishers.kontour,
-          fullAvailable: !!resolved.authorEndpoint,
-        },
         operator: { ...resolved.publishers.operator, fullAvailable: true },
       },
       liteNotices: this.publishers.local.notices(),
@@ -882,7 +881,11 @@ export class UsageTelemetryService {
     }
     if (this.publisher === 'operator') {
       await this.publishers.observe(event, properties);
-      void this.author?.track(event, properties);
+      if (
+        this.author &&
+        this.resolvedConfiguration().publishers.kontour.fullAvailable
+      )
+        void this.author.track(event, properties);
     }
     const observation: BufferedEvent = {
       event,

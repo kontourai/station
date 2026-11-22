@@ -1,9 +1,10 @@
 import type { ReactNode } from 'react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { useProjectIcons } from '../../hooks/useProjectIcons';
+import { useProjectNames } from '../../hooks/useProjectNames';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { NavigationView } from '../../types';
@@ -13,6 +14,11 @@ import type {
 } from '../../views/home/useHomeViewModel';
 import type { HomeWorkLanes } from '../../views/home/useHomeWorkLanes';
 import { agentRunnability } from '../agent-runnability';
+import {
+  ListRefreshActions,
+  ListRefreshPull,
+  ListRefreshStatus,
+} from '../refresh/ListRefresh';
 import { renderHomeWorkRow } from './HomeWorkRow';
 
 type HomeViewModel = ReturnType<typeof useHomeViewModel>;
@@ -189,7 +195,9 @@ export function HomeContinueCard({
   model,
   id,
   childrenById,
+  offerRefresh = false,
 }: {
+  offerRefresh?: boolean;
   model: HomeViewModel;
   childrenById?: HomeWorkLanes['childrenById'];
   id?: string;
@@ -206,7 +214,10 @@ export function HomeContinueCard({
   // The lanes' own row inputs, so the row reads exactly as theirs do.
   const gitLocationByThreadId = useGitLocationByThreadId();
   const projectAccentBySlug = useProjectAccents();
+  const projectNames = useProjectNames();
   const projectIconBySlug = useProjectIcons();
+  const listRef = useRef<HTMLDivElement>(null);
+  const refresh = offerRefresh ? model.refreshWork : undefined;
   const primary = model.primaryWorkItem;
   if (!primary) return null;
   return (
@@ -220,29 +231,50 @@ export function HomeContinueCard({
           here, not under a smaller label. */}
       <div className="home-view__section-heading">
         <h2 id="home-continue-label">Continue</h2>
+        {refresh && (
+          <ListRefreshActions
+            direct
+            label="Recent work actions"
+            refreshLabel="Refresh recent work"
+            refresh={refresh}
+          />
+        )}
       </div>
-      <ul className="home-view__task-list home-view__continue-list">
-        {renderHomeWorkRow({
-          task: { ...primary, stableId: `continue:${primary.id}` },
-          isWoken: false,
-          agents: model.agents,
-          onOpen: (item) =>
-            model.continueWork(item.id === primary.id ? primary : item),
-          context: {
-            now: Date.now(),
-            workFacts: model.workFacts,
-            childrenById,
-            expandedFamilies,
-            setExpandedFamilies,
-            detailsFor,
-            setDetailsFor,
-            chrome: coarsePointer ? 'touch' : 'hover',
-            gitLocationByThreadId,
-            projectAccentBySlug,
-            projectIconBySlug,
-          },
-        })}
-      </ul>
+      <div ref={listRef}>
+        <ListRefreshPull surfaceRef={listRef} refresh={refresh}>
+          <ul className="home-view__task-list home-view__continue-list">
+            {renderHomeWorkRow({
+              task: { ...primary, stableId: `continue:${primary.id}` },
+              isWoken: false,
+              agents: model.agents,
+              onOpen: (item) =>
+                model.continueWork(item.id === primary.id ? primary : item),
+              context: {
+                now: Date.now(),
+                workFacts: model.workFacts,
+                childrenById,
+                expandedFamilies,
+                setExpandedFamilies,
+                detailsFor,
+                setDetailsFor,
+                chrome: coarsePointer ? 'touch' : 'hover',
+                gitLocationByThreadId,
+                projectAccentBySlug,
+                projectIconBySlug,
+                projectNames,
+              },
+            })}
+          </ul>
+        </ListRefreshPull>
+        {refresh && (
+          <ListRefreshStatus
+            activity="Refreshing recent work…"
+            phase={refresh.phase}
+            updating={model.workUpdating}
+            dockClearance
+          />
+        )}
+      </div>
     </section>
   );
 }

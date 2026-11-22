@@ -1,0 +1,13 @@
+{
+  "revision": "29f9d0a74fe7f204a7781de780ded9299e9613ac",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the responsive UI, theming and contributor pattern routes. Discovery uses package-local shared action styles and a flexible candidate column. The added inventory entry cites the real modal consumer and the 390px and 1440px browser checks, including long names. Existing entries and the blocking inventory check remain in force.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the responsive UI, theming and contributor pattern routes. Discovery uses package-local shared action styles and a flexible candidate column. The added inventory entry cites the real modal consumer and the 390px and 1440px browser checks, including long names. Existing entries and the blocking inventory check remain in force.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the responsive UI, theming and contributor pattern routes. Discovery uses package-local shared action styles and a flexible candidate column. The added inventory entry cites the real modal consumer and the 390px and 1440px browser checks, including long names. Existing entries and the blocking inventory check remain in force.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the responsive UI, theming and contributor pattern routes. Discovery uses package-local shared action styles and a flexible candidate column. The added inventory entry cites the real modal consumer and the 390px and 1440px browser checks, including long names. Existing entries and the blocking inventory check remain in force.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

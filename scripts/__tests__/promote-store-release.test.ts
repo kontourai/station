@@ -99,6 +99,7 @@ function playProvider(
     bundleDigest?: string;
     commitLoss?: boolean;
     cleanupLoss?: boolean;
+    cleanupStatus?: number;
   } = {},
 ) {
   const calls: Call[] = [];
@@ -133,6 +134,11 @@ function playProvider(
     const editId = /\/edits\/(edit-[0-9]+)/.exec(path)?.[1];
     if (method === 'DELETE' && editId) {
       if (options.cleanupLoss) throw new Error('private provider diagnostic');
+      if (options.cleanupStatus)
+        return response(
+          { error: 'private provider diagnostic' },
+          options.cleanupStatus,
+        );
       edits.delete(editId);
       return response(null, 204);
     }
@@ -620,35 +626,47 @@ describe('same-build Google Play promotion', () => {
     ).toBe(false);
   });
 
-  test('stage observation with unknown cleanup emits no reusable authority file', async () => {
-    const f = fixture();
-    const aab = join(f.dir, 'candidate.aab');
-    writeFileSync(aab, 'candidate AAB bytes');
-    const expected = createHash('sha256')
-      .update('candidate AAB bytes')
-      .digest('hex');
-    const provider = playProvider(`${f.output}.observation.json`, {
-      bundleDigest: expected,
-      cleanupLoss: true,
-    });
-    const result = await main(
-      [
-        'observe-android',
-        '--producer-tag',
-        'v0.2.0-rc.1',
-        '--source-sha',
-        sourceSha,
-        '--aab',
-        aab,
-        '--output',
-        f.output,
-      ],
-      playEnv,
-      provider.fetchImpl,
-    );
-    expect(result.state).toBe('UNKNOWN');
-    expect(existsSync(f.output)).toBe(false);
-  });
+  test.each([undefined, 403])(
+    'stage observation retains an unknown cleanup with HTTP status %s and no authority',
+    async (cleanupStatus) => {
+      const f = fixture();
+      const aab = join(f.dir, 'candidate.aab');
+      writeFileSync(aab, 'candidate AAB bytes');
+      const expected = createHash('sha256')
+        .update('candidate AAB bytes')
+        .digest('hex');
+      const provider = playProvider(`${f.output}.observation.json`, {
+        bundleDigest: expected,
+        cleanupLoss: cleanupStatus === undefined,
+        cleanupStatus,
+      });
+      const result = await main(
+        [
+          'observe-android',
+          '--producer-tag',
+          'v0.2.0-rc.1',
+          '--source-sha',
+          sourceSha,
+          '--aab',
+          aab,
+          '--output',
+          f.output,
+        ],
+        playEnv,
+        provider.fetchImpl,
+      );
+      expect(result.state).toBe('UNKNOWN');
+      expect(existsSync(f.output)).toBe(false);
+      const journal = readFileSync(`${f.output}.observation.json`, 'utf8');
+      const cleanup = JSON.parse(journal).operations.at(-1);
+      expect(cleanup).toMatchObject({
+        operation: 'observe-cleanup',
+        state: 'UNKNOWN',
+      });
+      expect(cleanup.httpStatus).toBe(cleanupStatus);
+      expect(journal).not.toContain('private provider diagnostic');
+    },
+  );
 });
 
 describe('exact uploaded Apple build submission', () => {

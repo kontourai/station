@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   createTurnDeduplicator,
   TurnIdempotencyStore,
+  witnessedTurnInputDigest,
 } from '@kontourai/monument';
 import { openSqliteKernelStorage } from '@kontourai/monument/sqlite';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -387,6 +388,79 @@ describe('TurnDeduplicator', () => {
     });
   }
 
+  test('preserves legacy content proof and witnesses staged identity only when a dead pre-effect claim is reclaimed', () => {
+    const first = open();
+    const input = {
+      threadId: 'thread',
+      clientTurnId: 'pending',
+      inputDigest: 'content-digest',
+    };
+    const resolved = { ...input, clientTurnId: 'resolved' };
+    expect(first.ledger.claim(input).kind).toBe('owner');
+    const legacy = first.ledger.claim(resolved);
+    if (legacy.kind !== 'owner') throw new Error('expected legacy owner');
+    legacy.claim.beginInvocation();
+    legacy.claim.resolve('legacy-turn');
+    first.store.close();
+
+    const recovered = restartWithDeadOwners(first.directory);
+    try {
+      const ledger = recovered.createTurnDeduplicator();
+      const witnessed = witnessedTurnInputDigest(input.inputDigest, 'stage-A');
+      const recoveryInput = { ...input, inputDigest: witnessed };
+      expect(ledger.claim({ ...resolved, inputDigest: witnessed })).toEqual({
+        kind: 'conflict',
+      });
+      expect(ledger.inspect(resolved)).toEqual({
+        state: 'resolved',
+        value: 'legacy-turn',
+      });
+      expect(ledger.inspect(recoveryInput)).toEqual({ state: 'reclaimable' });
+      const owner = ledger.claim(recoveryInput);
+      if (owner.kind !== 'owner') throw new Error('expected recovered owner');
+      expect(ledger.claim(input)).toEqual({ kind: 'conflict' });
+      owner.claim.beginInvocation();
+      owner.claim.resolve('recovered-turn');
+    } finally {
+      recovered.close();
+    }
+
+    const database = new DatabaseSync(
+      join(first.directory, 'orchestration.sqlite'),
+    );
+    try {
+      expect(
+        database
+          .prepare(
+            'SELECT input_digest FROM orchestration_turn_dedup WHERE dedup_key = ?',
+          )
+          .get(turnDedupKey(input.threadId, input.clientTurnId)),
+      ).toEqual({
+        input_digest: input.inputDigest,
+      });
+    } finally {
+      database.close();
+    }
+    const restarted = restartWithDeadOwners(first.directory);
+    try {
+      const ledger = restarted.createTurnDeduplicator();
+      expect(
+        ledger.inspect({
+          ...input,
+          inputDigest: witnessedTurnInputDigest(input.inputDigest, 'stage-A'),
+        }),
+      ).toEqual({ state: 'resolved', value: 'recovered-turn' });
+      expect(
+        ledger.claim({
+          ...input,
+          inputDigest: witnessedTurnInputDigest(input.inputDigest, 'stage-B'),
+        }),
+      ).toEqual({ kind: 'conflict' });
+    } finally {
+      restarted.close();
+    }
+  });
+
   test('reclaims a dead owner claim that never began invoking, and isolates wildcard-like thread ids', () => {
     const first = open();
     first.ledger.claim({ threadId: 'th%', clientTurnId: 'client' });
@@ -400,6 +474,42 @@ describe('TurnDeduplicator', () => {
       ledger.claim({ threadId: 'thAnything', clientTurnId: 'client' }),
     ).toMatchObject({ kind: 'owner' });
     restarted.close();
+  });
+
+  test('a SQLite row with only a stage witness cannot prove a staged replay', () => {
+    const first = open();
+    const input = {
+      threadId: 'thread',
+      clientTurnId: 'witness-only',
+      inputDigest: witnessedTurnInputDigest('original-content', 'stage-A'),
+    };
+    const claim = first.ledger.claim(input);
+    if (claim.kind !== 'owner') throw new Error('expected owner');
+    claim.claim.beginInvocation();
+    claim.claim.resolve('turn');
+    first.store.close();
+    const database = new DatabaseSync(
+      join(first.directory, 'orchestration.sqlite'),
+    );
+    try {
+      database
+        .prepare(
+          "UPDATE orchestration_turn_dedup SET input_digest = NULL, owner_json = json_remove(owner_json, '$.inputDigest') WHERE dedup_key = ?",
+        )
+        .run(turnDedupKey(input.threadId, input.clientTurnId));
+    } finally {
+      database.close();
+    }
+    const reopened = restartWithDeadOwners(first.directory);
+    try {
+      const ledger = reopened.createTurnDeduplicator();
+      expect(() => ledger.inspect(input)).toThrow(
+        expect.objectContaining({ code: 'client_turn_input_conflict' }),
+      );
+      expect(ledger.claim(input)).toEqual({ kind: 'conflict' });
+    } finally {
+      reopened.close();
+    }
   });
 
   // #3559: inverted. A dead owner that began invoking may already have handed

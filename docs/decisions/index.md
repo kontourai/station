@@ -16,6 +16,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [automations-unify-schedules](./automations-unify-schedules.md) | current | Automations are scheduled work that runs in a conversation, on any engine |
 | [browser-agent-actions-and-bound-channel](./browser-agent-actions-and-bound-channel.md) | current | Browser Agent actions and cross-engine binding |
 | [browser-viewport-is-shared-fit-is-per-viewer](./browser-viewport-is-shared-fit-is-per-viewer.md) | current | The Browser page viewport is shared by every viewer; each viewer's fit and zoom are local |
+| [copilot-sdk-engine](./copilot-sdk-engine.md) | current | GitHub Copilot as a vendor-native engine through the Copilot SDK, run on the person's own Copilot CLI, behind a Feature Preview |
 | [custom-appearance](./custom-appearance.md) | current | A person's own palette and CSS; agents propose, the person previews and keeps |
 | [device-agent-control](./device-agent-control.md) | current | Bound agents control host-qualified device live surfaces through the shared lease |
 | [ended-task-resume](./ended-task-resume.md) | needs-decision | Resuming ended tracker-backed Tasks after GitHub follow-ups |
@@ -34,6 +35,7 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [remote-task-engines](./remote-task-engines.md) | current | Drive cloud-hosted coding agents through one remote task engine abstraction |
 | [revision-evidence-freeze-policy](./revision-evidence-freeze-policy.md) | current | Freeze Task room revision evidence only when a consumer references it |
 | [tailscale-serve-own-origin](./tailscale-serve-own-origin.md) | current | A Station trusts its own daemon-attested Tailscale Serve HTTPS origin without ALLOWED_ORIGINS |
+| [task-owned-pull-requests](./task-owned-pull-requests.md) | current | A Task that keeps a pull request watches it until it lands; merging stays with the person |
 | [task-tracker-followups](./task-tracker-followups.md) | current | Bounded GitHub follow-ups for tracker-backed Tasks |
 | [telemetry-tiers](./telemetry-tiers.md) | current | Per-publisher Station telemetry tiers and consent boundaries |
 | [terminal-same-origin-only](./terminal-same-origin-only.md) | current | Terminals use only the same-origin socket; the port + 1 listener is removed |

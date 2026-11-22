@@ -4,6 +4,7 @@ import {
   constants,
   cpSync,
   existsSync,
+  fchmodSync,
   fstatSync,
   fsyncSync,
   lstatSync,
@@ -390,6 +391,26 @@ export function migrationPath(
   return path;
 }
 
+function restoreCopiedDirectoryModes(source: string, target: string): void {
+  for (const entry of readdirSync(source, { withFileTypes: true })) {
+    if (entry.isDirectory()) {
+      restoreCopiedDirectoryModes(
+        join(source, entry.name),
+        join(target, entry.name),
+      );
+    }
+  }
+  const fd = openSync(
+    target,
+    constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW,
+  );
+  try {
+    fchmodSync(fd, lstatSync(source).mode & 0o7777);
+  } finally {
+    closeSync(fd);
+  }
+}
+
 function migrateStationHome(
   homeDir: string,
   fromVersion: number,
@@ -402,10 +423,16 @@ function migrateStationHome(
     `.${basename(homeDir)}.station-home-migration.${process.pid}.${randomUUID()}`,
   );
   const backupDir = `${stagingDir}.previous`;
+  mkdirSync(stagingDir, { mode: 0o700 });
   try {
     // Migrations only mutate this sibling copy. If one throws, deleting it
     // leaves the live home byte-for-byte untouched, including its old marker.
     cpSync(homeDir, stagingDir, { recursive: true, verbatimSymlinks: true });
+    // Some supported Node versions preserve file modes but create copied
+    // directories from the umask. Restore children before their parents.
+    if (process.platform !== 'win32') {
+      restoreCopiedDirectoryModes(homeDir, stagingDir);
+    }
     for (const migration of path) migration.migrate(stagingDir);
     const stagedMarker = join(stagingDir, STATION_HOME_SCHEMA_FILE);
     writeFileSync(

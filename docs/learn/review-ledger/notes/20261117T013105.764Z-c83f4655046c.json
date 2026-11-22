@@ -1,0 +1,7 @@
+{
+  "revision": "84ee5f659c3ae4d0717c530555781931816a795d",
+
+  "notes": [
+    {"path":"docs/testing/browser-smoke.md","note":"Added that when-armed defers the smoke on unarmed PRs and the policy keeps the head pending; job admission and aggregator claims re-read against ci.yml.","inputs":["docs/testing/browser-smoke.md",".github/workflows/ci.yml","scripts/__tests__/ci-fast-checks-job-graph.test.ts"]}
+  ]
+}

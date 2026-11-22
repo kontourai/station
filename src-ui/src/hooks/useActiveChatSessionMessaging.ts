@@ -1,8 +1,5 @@
 import { EXECUTION_ENGINE_CHANGED_CODE } from '@kontourai/station-contracts/execution-target';
-import type {
-  InterruptTurnResult,
-  OrchestrationSessionSummary,
-} from '@kontourai/station-contracts/orchestration';
+import type { InterruptTurnResult } from '@kontourai/station-contracts/orchestration';
 import {
   ACP_APPROVAL_GOVERNANCE_REFUSED_CODE,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
@@ -10,13 +7,11 @@ import {
   isSteerConflictCode,
   MODEL_NOT_ADVERTISED_CODE,
 } from '@kontourai/station-contracts/provider';
-import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
 import {
   type ChatHttpError,
   conversationQueries,
   interruptOrchestrationTurn,
   isProvablyNotSent,
-  orchestrationQueries,
   projectChatDefaultsQueryKey,
   useInvalidateQuery,
   useQueryClient,
@@ -234,32 +229,6 @@ async function removeRefusedAttachments(
     stageIds.map((stageId) =>
       cancelAttachmentStage(apiBase, stageId, { requestScope }),
     ),
-  );
-}
-
-/**
- * #2310 review H1/F4: whether the cached session list still describes one of
- * these identities as having never taken a send — a Draft, or a Failed row
- * whose only failure is that its sends did not take (`send_refused` /
- * `send_failed`). Either answer is stale the moment a send is accepted, so
- * the send path must re-read the list. Read-only; `undefined` ids skipped.
- */
-function cachedSummaryAwaitsFirstTurn(
-  queryClient: ReturnType<typeof useQueryClient>,
-  ids: ReadonlyArray<string | undefined>,
-  scope?: ApiRequestScope,
-): boolean {
-  const wanted = new Set(ids.filter((id): id is string => Boolean(id)));
-  const cached =
-    queryClient.getQueryData<OrchestrationSessionSummary[]>(
-      orchestrationQueries.sessions(scope).queryKey,
-    ) ?? [];
-  return cached.some(
-    (session) =>
-      (wanted.has(session.threadId) ||
-        (session.conversationId !== undefined &&
-          wanted.has(session.conversationId))) &&
-      (session.draft === true || isFirstSendFailure(session)),
   );
 }
 
@@ -1180,10 +1149,12 @@ export function useSendMessage(
 
       try {
         const {
+          cachedSummaryAwaitsFirstTurn,
           dispatchForeground,
           dispatchPossiblyQueuedForeground,
           dispatchQueuedForeground,
-        } = await import('../lib/foregroundMessageDispatch');
+          publishConversationInboxReceipt,
+        } = await import('../lib/composerForegroundDispatch');
         // #2436: the server applies the conversation's recorded posture to
         // this turn. The only posture this send carries is a pick the server
         // has not received yet (no session yet, or picked offline); it is
@@ -1326,6 +1297,12 @@ export function useSendMessage(
             : undefined;
         if (queuedResult?.outcome === 'queued') {
           stopDeliveryWatch?.();
+          publishConversationInboxReceipt(
+            queryClient,
+            requestScope,
+            apiBase,
+            queuedResult,
+          );
           await live?.accepted();
           if (requestScope && !requestScope.isCurrent()) return true;
           const latest = activeChatsStore.getSnapshot()[sessionId];
@@ -1348,7 +1325,6 @@ export function useSendMessage(
                 }
               : {}),
           });
-          invalidate(['conversation-inbox']);
           options?.onAdmission?.('accepted');
           return options?.dispatch
             ? ({ kind: 'queued' } satisfies OutboundDispatchTransportResult)

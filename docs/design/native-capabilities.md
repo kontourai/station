@@ -27,7 +27,9 @@ The boundary reports `enabled`, `disabled`, `unsupported`, or
 or error result. Tauri's `native_capability_report` command reports its actual
 compile target and Station-enabled states. Before that report is read,
 desktop-tray remains `disabled` rather than being guessed from the JavaScript
-host. The adapter skips a capability id it does not know (a newer shell's),
+host. After the host reports Android or iOS, the adapter skips the desktop
+tray subscription and replay commands. On desktop, subscribing before
+draining still lets pending actions replay at the renderer's early mount. The adapter skips a capability id it does not know (a newer shell's),
 but rejects the whole report for a malformed entry, a repeated id or a
 missing required id; an id the shell omits stays at its initial state.
 An older host may omit `channel`; an explicit retired, unknown or malformed
@@ -61,6 +63,15 @@ stale-receipt, loss, explicit retry, activation-deferral, and dev bypass
 semantics. OS window reveal, startup cover/dialog wiring and physical
 packaged-channel proof remain **NOT_VERIFIED**. Readiness does not depend on a window-state
 plugin; conditional desktop updater registration is a separate owner below.
+
+Native mobile startup uses a 30-second renderer deadline shared by the
+[platform bootstrap](../../src-ui/src/platform/PlatformProfileContext.tsx) and
+the [pairing controls](../../src-ui/src/components/NativeConnectionStartup.tsx).
+The bootstrap bounds the capability, app identity, and saved-Station waits.
+A stage that stalls shows a fixed explanation and **Reload Station**. A late
+response cannot mount the workspace from that attempt. Reload starts a fresh
+renderer attempt using the existing saved profiles and pairing data. A clean
+unpaired device reaches the welcome screen after the pairing controls load.
 
 The current host does not emit inbound text share events
 (`station://share-received`) yet. That event name is a future-compatible
@@ -294,11 +305,13 @@ mobile storage behavior or a completed collaborator journey.
 
 `src-desktop/capabilities/default.json` grants the typed event bridge plus the
 listed app-name, window-drag/maximize, notification, haptics, and deep-link
-operations. It is the exact JavaScript permission inventory; event listening
-is not its only permission. `scripts/native-platform-boundary.mjs` refuses any
-updater or process grant in every file under `capabilities/` and
-`permissions/` and in `app.security.capabilities` of every Tauri config, and
-refuses any file there that is not JSON, since the gate parses only JSON.
+operations. The [source gate](../../scripts/native-platform-boundary.mjs)
+checks explicit updater and process grant declarations in the desktop
+capability manifests, the desktop root's Tauri configuration files, and its
+optional `permissions` subtree when present.
+Files it scans for these declarations must be JSON. Resolved Tauri ACL
+coverage, including plugin permission sets and generated packaging overlays,
+is tracked in #3864.
 Application commands registered by the Rust host remain outside
 the plugin permission surface. The manifest no longer grants `core:default`,
 `shell:allow-open`, or `shell:allow-execute`. The desktop tray opens its validated local Station UI or fixed `/ui` API-docs
@@ -323,8 +336,11 @@ or Project authority. The separate [selected-route owner](../../src-ui/src/platf
 and [fresh enrollment ceremony](native-relay-enrollment.md) supply those distinct
 source paths. See the [broker lifecycle contract](../guides/self-hosted-broker.md#native-routing-grant-foundation-v2).
 
-The static `native-platform:ratchet` blocks `@tauri-apps/api` imports and
-`__TAURI__`/`__SHARE_TEXT__` globals outside the platform adapter.
+The static `native-platform:ratchet` checks native adapter access and
+credential-hydration references in tracked TypeScript and TSX under
+`src-ui/src`, excluding `__tests__`. It separately checks the named Connect
+connection-list component for the manual credential guard. The gate reports
+the source roots and file counts it inspected.
 
 <a id="desktop-application-signaling-commands"></a>
 

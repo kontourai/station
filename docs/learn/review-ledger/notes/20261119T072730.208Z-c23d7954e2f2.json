@@ -1,0 +1,7 @@
+{
+  "revision": "0324b6f00c3615c6f304abfb075a0973acd37065",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the merged Agent & model terminology, centered start heading, and Create project picker handoff. The current New Project form defaults to Blank workspace, and inline creation keeps the draft and attachments.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

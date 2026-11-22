@@ -66,6 +66,25 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   dispatchOrchestrationCommandWithReceipt: discardCommand,
 }));
 
+const resolutionState = vi.hoisted(() => ({
+  supported: false,
+  mutate: vi.fn(),
+}));
+vi.mock('../../chat-dock/useConversationWorkState', async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import('../../chat-dock/useConversationWorkState')
+    >();
+  return {
+    ...actual,
+    useConversationWorkState: () => ({
+      ...actual.useConversationWorkState(),
+      supported: resolutionState.supported,
+      change: { isPending: false, mutate: resolutionState.mutate },
+    }),
+  };
+});
+
 const NOW = Date.parse('2026-09-30T10:01:15.000Z');
 
 /**
@@ -143,18 +162,13 @@ function statusText(): string {
   return clone.textContent ?? '';
 }
 
-/** What a screen reader is told about the row: its description, with
- *  `aria-hidden` content left out as the accessibility tree leaves it out. */
+// The off-screen reason and duration are directly referenced even when
+// hidden from the button's name.
 function describedText(): string {
   const open = screen.getByTestId('inbox-row').querySelector('button')!;
   return (open.getAttribute('aria-describedby') ?? '')
     .split(' ')
-    .map((id) => {
-      const clone = document.getElementById(id)?.cloneNode(true) as Element;
-      for (const hidden of clone.querySelectorAll('[aria-hidden="true"]'))
-        hidden.remove();
-      return clone.textContent ?? '';
-    })
+    .map((id) => document.getElementById(id)?.textContent ?? '')
     .join(' ');
 }
 
@@ -235,7 +249,7 @@ describe('the row says exactly what the ladder says', () => {
     expect(statusText()).toBe('Needs approval');
     expect(screen.queryByRole('button', { name: /approve|deny/i })).toBeNull();
     screen
-      .getByRole('button', { name: 'Migrate sessions table, station' })
+      .getByRole('button', { name: /^Migrate sessions table.*station/ })
       .click();
     expect(onActivate).toHaveBeenCalledWith(row.item);
   });
@@ -283,12 +297,18 @@ describe('the row says exactly what the ladder says', () => {
 });
 
 describe('what a screen reader and a ticking clock each get', () => {
-  it('describes the row by its status, with a coarse duration instead of the ticking one', () => {
+  it('names the visible status once and describes the coarse duration', () => {
     renderRow(rowFor());
     expect(statusText()).toBe('Running · Bash · 1m 12s');
     // The per-second number is hidden from the description; a duration that
     // only moves with the host's clock stands in for it.
-    expect(describedText()).toBe('Running · Bash, for about 1 minute');
+    expect(
+      screen.getByRole('button', {
+        name: /^Migrate sessions table.*Running · Bash.*station/,
+        description: /^for about 1 minute$/,
+      }),
+    ).toBeTruthy();
+    expect(describedText()).toBe('for about 1 minute');
   });
 
   it('ticks once a second', () => {
@@ -363,9 +383,12 @@ describe('a reason is readable in full on every surface', () => {
     expect(screen.getByTestId('inbox-row-failure-reason').textContent).toBe(
       FAILED.terminalAttribution.detail,
     );
-    expect(describedText()).toBe(
-      `Failed · ${FAILED.terminalAttribution.detail}`,
-    );
+    expect(
+      screen.getByRole('button', {
+        name: /^Migrate sessions table.*Failed.*The engine reported an error/,
+      }),
+    ).toBeTruthy();
+    expect(describedText()).toBe('');
   });
 
   it('the unanswerable basis is on the row and in its description', () => {
@@ -403,9 +426,7 @@ describe('a reason is readable in full on every surface', () => {
   it('a slim failed row shows the word and still describes the reason', () => {
     renderRow(rowFor(FAILED), { size: 'slim' });
     expect(statusText()).toBe('Failed');
-    expect(describedText()).toBe(
-      `Failed · ${FAILED.terminalAttribution.detail}`,
-    );
+    expect(describedText()).toBe(FAILED.terminalAttribution.detail);
   });
 
   it('touch chrome opens the card as a sheet holding every fact the row leaves off', async () => {
@@ -505,7 +526,7 @@ describe('the chip line exists only when a chip does', () => {
     expect(
       [...document.querySelectorAll('.inbox-row__chip')].map((chip) => [
         chip.getAttribute('data-chip'),
-        chip.textContent,
+        chip.textContent?.trim(),
       ]),
     ).toEqual([
       ['remote', 'Station: home-media'],
@@ -519,7 +540,7 @@ describe('the chip line exists only when a chip does', () => {
     expect(marker.closest('.inbox-row__context')).not.toBeNull();
     expect(screen.queryByText('Unsent draft')).toBeNull();
     expect(
-      screen.getByRole('button', { name: /, unsent draft$/ }),
+      screen.getByRole('button', { name: /\bunsent draft$/ }),
     ).toBeTruthy();
     act(() => chatDraftsStore.clear('chat-with-draft'));
     expect(screen.queryByTestId('inbox-row-draft-marker')).toBeNull();
@@ -568,27 +589,27 @@ describe('the chip line exists only when a chip does', () => {
 });
 
 describe('the picker project line draws one project mark (#4266)', () => {
-  it('a project without an icon shows the folder alone, never folder plus colour dot', () => {
+  it('a project without an icon shows one initials mark beside its name', () => {
     const { container } = renderRow(rowFor(), {
       actionsInDetails: true,
       chrome: 'touch',
       projectAccent: '#ff8800',
     });
-    const line = container.querySelector('.inbox-row__project-context')!;
-    expect(line.querySelectorAll('svg')).toHaveLength(1);
+    const line = container.querySelector('.inbox-row__project-line')!;
+    expect(line.querySelectorAll('.project-icon--initials')).toHaveLength(1);
     expect(line.querySelector('[data-project-icon]')).toBeNull();
     expect(line.querySelector('.inbox-row__project')?.textContent).toBeTruthy();
   });
 
-  it('a project with its own icon shows that icon instead of the folder', () => {
+  it('a project with its own icon shows that icon instead of initials', () => {
     const { container } = renderRow(rowFor(), {
       actionsInDetails: true,
       chrome: 'touch',
       projectAccent: '#ff8800',
       projectIcon: '🚀',
     });
-    const line = container.querySelector('.inbox-row__project-context')!;
-    expect(line.querySelector('svg')).toBeNull();
+    const line = container.querySelector('.inbox-row__project-line')!;
+    expect(line.querySelector('.project-icon--initials')).toBeNull();
     expect(line.querySelector('.project-icon--icon')?.textContent).toBe('🚀');
   });
 
@@ -600,7 +621,7 @@ describe('the picker project line draws one project mark (#4266)', () => {
         { ...base, item: { ...base.item, chatSessionId: 'picker-draft' } },
         { actionsInDetails: true, chrome: 'touch' },
       );
-      const line = container.querySelector('.inbox-row__project-context')!;
+      const line = container.querySelector('.inbox-row__project-line')!;
       expect(
         line.querySelector('[data-testid="inbox-row-draft-marker"]'),
       ).not.toBeNull();
@@ -615,7 +636,7 @@ describe('the picker project line draws one project mark (#4266)', () => {
       actionsInDetails: true,
       chrome: 'touch',
     });
-    const text = container.querySelector('.inbox-row__meta-text');
+    const text = container.querySelector('.inbox-row__agent');
     expect(text?.className).not.toContain('sr-only');
     expect(container.querySelector('.inbox-row__agent')?.textContent).toBe(
       rowFor().item.agentLabel,
@@ -863,6 +884,77 @@ describe('shared inbox actions', () => {
     expect(onDismiss).toHaveBeenCalledWith(row.item, details);
     expect(onCloseChat).not.toHaveBeenCalled();
   });
+});
+
+it('owned running chats can be dismissed while idle chats can be settled', () => {
+  const running = { ...rowFor().item, conversationId: 'running-chat' };
+  const idle = {
+    ...rowFor({ hasActiveTurn: false }).item,
+    id: 'idle',
+    title: 'Review next steps',
+    lifecycleLabel: 'Ready' as const,
+    conversationId: 'idle-chat',
+  };
+  const dismiss = vi.fn();
+  resolutionState.supported = true;
+  try {
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <InboxGroupList
+          groups={[
+            { id: 'running', label: 'Running', items: [running] },
+            { id: 'idle', label: 'Idle', items: [idle] },
+          ]}
+          idPrefix="test"
+          activeChatSessionId={null}
+          openChatIds={new Set()}
+          now={NOW}
+          chrome="hover"
+          onActivate={vi.fn()}
+          onDismiss={dismiss}
+          onSnoozeWake={vi.fn()}
+        />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Dismiss ${running.title} from inbox`,
+      }),
+    );
+    expect(dismiss).toHaveBeenCalledWith(
+      running,
+      expect.any(HTMLButtonElement),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Settle Review next steps' }),
+    );
+    expect(resolutionState.mutate).toHaveBeenCalledWith({
+      conversationId: 'idle-chat',
+      settled: true,
+    });
+  } finally {
+    resolutionState.supported = false;
+    resolutionState.mutate.mockClear();
+  }
+});
+
+it('swipe actions place Settle to the right of Snooze', () => {
+  const row = rowFor({ hasActiveTurn: false });
+  renderRow(row, {
+    chrome: 'touch',
+    hoverCard: true,
+    swipeActions: true,
+    swipeOpen: true,
+    onSnoozeWake: vi.fn(),
+    resolution: { settled: false, pending: false, onChange: vi.fn() },
+  });
+  const tray = document.querySelector<HTMLElement>('.inbox-row__swipe-actions');
+  if (!tray) throw new Error('Missing swipe actions');
+  expect(
+    within(tray)
+      .getAllByRole('button')
+      .map((button) => button.textContent?.trim()),
+  ).toEqual(['Snooze', 'Settle']);
 });
 
 describe('the Details sheet belongs to the item, not to the row instance', () => {
@@ -1300,9 +1392,11 @@ describe("the project's colour is a swatch, never the name's colour", () => {
       row.querySelector('.inbox-row__context')!.getAttribute('style'),
     ).toBeNull();
     // The open button's name still says the project in words.
-    expect(row.querySelector('button')!.getAttribute('aria-label')).toContain(
-      'station',
-    );
+    expect(
+      within(row).getByRole('button', {
+        name: /^Migrate sessions table.*station/,
+      }),
+    ).toBeTruthy();
   });
 
   it('a row with no accent draws no swatch', () => {
@@ -1339,8 +1433,9 @@ describe("the project's colour is a swatch, never the name's colour", () => {
       .getAllByTestId('inbox-row')
       .map(
         (row) =>
-          row.querySelector<HTMLElement>('.inbox-row__project-accent')?.style
-            .backgroundColor ?? null,
+          row
+            .querySelector<HTMLElement>('.inbox-row__project-line')
+            ?.style.getPropertyValue('--inbox-project-accent') || null,
       );
     expect(colours).toEqual([
       'var(--event-agent-start)',
@@ -1365,9 +1460,11 @@ describe("the project's icon takes the swatch's place when it has one", () => {
     expect(mark?.classList.contains('project-icon--dot')).toBe(false);
     expect(mark?.nextElementSibling?.textContent).toBe('station');
     // The open button's name still says the project in words, once.
-    expect(row.querySelector('button')!.getAttribute('aria-label')).toContain(
-      'station',
-    );
+    expect(
+      within(row).getByRole('button', {
+        name: /^Migrate sessions table.*station/,
+      }),
+    ).toBeTruthy();
   });
 
   it('the phone sheet’s project line draws it too', () => {
@@ -1378,7 +1475,7 @@ describe("the project's icon takes the swatch's place when it has one", () => {
     });
     const context = screen
       .getByTestId('inbox-row')
-      .querySelector('.inbox-row__project-context');
+      .querySelector('.inbox-row__project-line');
     expect(
       context?.querySelector('.inbox-row__project-accent .brand-icon__glyph')
         ?.textContent,
@@ -1415,7 +1512,9 @@ describe("the project's icon takes the swatch's place when it has one", () => {
       );
     expect(marks[0]?.querySelector('img')?.getAttribute('src')).toBe(IMAGE);
     expect(marks[1]?.querySelector('img')).toBeNull();
-    expect(marks[1]?.style.backgroundColor).toBe('var(--event-reasoning)');
+    expect(
+      marks[1]?.parentElement?.style.getPropertyValue('--inbox-project-accent'),
+    ).toBe('var(--event-reasoning)');
   });
 });
 

@@ -98,6 +98,61 @@ describe('station-control platform tools (characterization)', () => {
     expect(fetchMock.mock.calls[0][0]).toBe(`${API_BASE}/api/plugins`);
   });
 
+  test('engine setup handoff uses the server destination and preserves navigation refusal without changing configuration', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        success: true,
+        data: [
+          {
+            id: 'antigravity',
+            setupPath: '/connections/engines/new/antigravity',
+            nextAction: 'connect',
+          },
+        ],
+      }),
+    );
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ success: false, error: 'No client is connected' }),
+    );
+    const tools = await registerTools();
+    const result = await tools.open_engine_setup({ id: 'antigravity' });
+    expect(result).toMatchObject({ isError: true });
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      success: false,
+      setupPath: '/connections/engines/new/antigravity',
+      error: 'No client is connected',
+    });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      `${API_BASE}/acp/setup`,
+      `${API_BASE}/api/ui`,
+    ]);
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({
+      command: 'navigate',
+      payload: { path: '/connections/engines/new/antigravity' },
+    });
+  });
+
+  test('engine setup preview refusal is an MCP error and never navigates', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          success: false,
+          code: 'feature_preview_disabled',
+          previewId: 'guided-engine-setup',
+          error: 'Enable Guided engine setup',
+        },
+        404,
+      ),
+    );
+    const tools = await registerTools();
+    const result = await tools.open_engine_setup({ id: 'antigravity' });
+    expect(result).toMatchObject({ isError: true });
+    expect(JSON.parse(result.content[0].text)).toMatchObject({
+      code: 'feature_preview_disabled',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   test('list_plugins preserves the grants-unavailable envelope', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse(

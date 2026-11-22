@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 
+import { agentId, engineId } from '@kontourai/station-contracts/agent-identity';
+import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { isTurnInFlight } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
@@ -9,6 +11,8 @@ import type {
   QueuedOutboundTurn,
 } from '../lib/outboundQueue';
 import { reportOutboundQueueUnavailable } from '../lib/outboundQueueReporting';
+
+import { buildHomeWorkItems } from '../views/home/home-view-model';
 
 function turn(
   clientTurnId: string,
@@ -47,6 +51,45 @@ describe('outboundQueueProjection (station#1224 restart hydration)', () => {
     for (const sessionId of Object.keys(activeChatsStore.getSnapshot())) {
       activeChatsStore.removeChat(sessionId);
     }
+  });
+
+  it('keeps an unloaded conversation’s inventory title and catalog Agent after outbox hydration', () => {
+    const id = 'conversation:review';
+    const now = new Date().toISOString();
+    const inventory: OrchestrationSessionSummary = {
+      threadId: id,
+      conversationId: id,
+      displayTitle: 'Review the release checklist',
+      assignedAgentSlug: agentId('assistant'),
+      provider: engineId('codex'),
+      controlMode: 'station-owned',
+      status: 'ready',
+      createdAt: now,
+      updatedAt: now,
+      isLoaded: false,
+      isPersisted: true,
+      answerability: { answerable: true },
+      eventCount: 1,
+    };
+    projectOutboundQueueEntries([
+      { ...turn('held', id, 'Check my follow-up'), conversationId: id },
+    ]);
+    const chats = activeChatsStore.getSnapshot();
+    expect(chats[id]?.outboundQueuedTurns).toHaveLength(1);
+    expect(
+      buildHomeWorkItems({
+        chats,
+        sessions: [inventory],
+        agents: [{ slug: agentId('assistant'), name: 'Release Assistant' }],
+      }),
+    ).toMatchObject([
+      {
+        title: 'Review the release checklist',
+        agentLabel: 'Release Assistant',
+        conversationId: id,
+        chatSessionId: id,
+      },
+    ]);
   });
 
   it('retains readable peer delivery while unavailable without changing a host chat or inventing a running turn', () => {

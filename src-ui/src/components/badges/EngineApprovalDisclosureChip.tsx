@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
 import { ComposerChoice } from '../ComposerChoice';
+import { ShieldGlyph } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import '../chat/chat.css';
 
@@ -47,6 +48,7 @@ export function EngineApprovalDisclosureChip({
         title={`Approval: ${summary}`}
         onClick={() => setIsSheetOpen((open) => !open)}
         caption="Approval"
+        icon={<ShieldGlyph />}
         value={ENGINE_APPROVAL_CHIP_LABEL}
         valueClassName="chat-input__approval-chip-label"
       />

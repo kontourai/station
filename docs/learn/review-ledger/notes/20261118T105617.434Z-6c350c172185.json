@@ -1,0 +1,23 @@
+{
+  "revision": "8dd5cca8338592315430a37dfb5bc52a2604ce77",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The testing guide still defines selection, source integration, main qualification, and promotion separately. Local UI importer additions remain diagnostic.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Confirmed the testing guide still owns local versus hosted evidence and the pre-push and heavy-check references remain current.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the bounded local importer selection and its omission report. Traced the provisional marker from the aggregate output through the named workflow step to the jobs API publisher and kept full qualification on main and release.","inputs":["docs/guides/testing.md","scripts/__tests__/changed-verification.test.ts","scripts/run-changed-verification.mjs"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Confirmed owned discovery timeout still yields infrastructure-error and local importer details are stored in the existing digest-bound selection artifact.","inputs":["docs/reference/verification-receipts.md","scripts/run-changed-verification.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Verified the generated lane schedule and fixture policy links remain applicable. The new local direct importer projection runs within the existing selector and execution cap.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"scripts/__tests__/fixtures/changed-verification/README.md","note":"Confirmed the disposable narrow-diff fixture and its liveness bound remain distinct from the new direct importer cap fixture.","inputs":["scripts/__tests__/fixtures/changed-verification/README.md","scripts/__tests__/changed-verification.test.ts","scripts/run-changed-verification.mjs"]},
+
+    {"path":"src-server/AGENTS.md","note":"Verified the test-effectiveness anchor and source-owned mutation guidance remain current.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Verified the journey profiling and mutation route remains applicable. Local import selection supplies test targets and does not change browser evidence requirements.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"Verified the testing guide still owns escalation and fixture-effectiveness rules. Child settlement and test evidence requirements are unchanged.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]}
+  ]
+}

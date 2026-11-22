@@ -198,6 +198,17 @@ export function InstallPreviewModal({
                       )}
                     </span>
                   </div>
+                  {dependency.status !== 'missing' && (
+                    <PluginRegistryTrustSection
+                      trust={dependency.registryTrust}
+                      context={
+                        dependency.status === 'installed'
+                          ? 'installed'
+                          : 'preview'
+                      }
+                      dependency={dependency.id}
+                    />
+                  )}
                   {dependency.components &&
                     dependency.components.length > 0 && (
                       <div className="plugins__preview-dep-components">

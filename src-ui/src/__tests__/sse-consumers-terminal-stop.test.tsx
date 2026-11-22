@@ -12,6 +12,27 @@
  * in `packages/sdk/src/__tests__/fetch-sse.test.ts`; this file proves each
  * production call site inherits it.
  */
+import type { FetchSseConnection } from '@kontourai/station-sdk';
+import { observeSseFixture, ownSseFixture } from './helpers/ownedSseFixture';
+
+const connections = vi.hoisted(
+  () => new Map<FetchSseConnection, { settled: boolean }>(),
+);
+vi.mock('@kontourai/station-sdk', async (load) => {
+  const sdk = await load<typeof import('@kontourai/station-sdk')>();
+  return {
+    ...sdk,
+    fetchSSE: (...args: Parameters<typeof sdk.fetchSSE>) =>
+      observeSseFixture(connections, sdk.fetchSSE(...args)),
+  };
+});
+const retainRelease = ownSseFixture(connections);
+function ensureOrchestrationEventStream(
+  ...args: Parameters<typeof openOrchestrationEventStream>
+) {
+  return retainRelease(openOrchestrationEventStream(...args));
+}
+
 import {
   PUBLIC_HANDSHAKE_SCHEMA_VERSION,
   PUBLIC_STATION_HANDSHAKE_PATH,
@@ -23,7 +44,7 @@ import { _setApiBase } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 const box = vi.hoisted(() => ({
   apiBase: 'https://sse-case-unset.example.test',
@@ -46,7 +67,7 @@ vi.mock('../contexts/NavigationContext', () => ({
 }));
 
 import { useMonitoring } from '../contexts/MonitoringContext';
-import { ensureOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
+import { ensureOrchestrationEventStream as openOrchestrationEventStream } from '../hooks/orchestration/ensureOrchestrationEventStream';
 import { useSessionEventStream } from '../hooks/orchestration/useSessionEventStream';
 import { useSchedulerEvents } from '../hooks/useScheduler';
 import { useServerEvents } from '../hooks/useServerEvents';
@@ -273,11 +294,6 @@ const LADDER_CASES = CASES.filter(
 );
 
 describe('station#1848: every protected SSE consumer backs off while the endpoint keeps failing', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-  });
-
   it.each(LADDER_CASES)(
     '$name',
     async ({ streamPathSubstring, origin, mount }) => {
@@ -556,11 +572,6 @@ describe('station#1848: every protected SSE consumer backs off while the endpoin
 });
 
 describe('station#1094: every protected SSE consumer stops hammering after a 401', () => {
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-  });
-
   it.each(CASES)(
     '$name',
     async ({ streamPathSubstring, origin, mount, nonStreamRequestBudget }) => {

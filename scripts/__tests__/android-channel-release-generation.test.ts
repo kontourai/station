@@ -169,15 +169,8 @@ describe('clean Android channel release generation', () => {
         'node scripts/apply-android-native-bootstrap.mjs',
       );
       const build = workflow.indexOf('tauri android build');
-      // The release lane names the signature proof by its flags rather than by
-      // `apksigner verify`. This assertion is about ORDER; matching the binary
-      // coupled it to that binary being reached through PATH, so resolving it
-      // by path instead — the only way it resolves at all — broke an ordering
-      // test with no stake in the question.
       const verify = workflow.indexOf(
-        _lane === 'nightly'
-          ? 'node scripts/verify-android-apk-signature.mjs'
-          : 'verify --verbose --print-certs',
+        'node scripts/verify-android-apk-signature.mjs',
         build,
       );
       // Nightly resets a generated project left for another channel. Tagged
@@ -196,9 +189,7 @@ describe('clean Android channel release generation', () => {
       expect(verify).toBeGreaterThan(build);
       expect(
         workflow.indexOf(
-          _lane === 'nightly'
-            ? 'node scripts/verify-android-aab-signature.mjs'
-            : 'jarsigner -verify',
+          'node scripts/verify-android-aab-signature.mjs',
           build,
         ),
       ).toBeGreaterThan(build);

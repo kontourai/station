@@ -62,6 +62,7 @@ export type BuiltinStationApiMcpId = 'station-control' | 'station-knowledge';
 export type StationMcpCredentialPurpose =
   | BuiltinStationApiMcpId
   | 'codex-tools'
+  | 'codex-control'
   | 'coordinator-control'
   | 'coordinator-knowledge'
   | `oauth-proxy:${string}`;
@@ -96,10 +97,10 @@ export type StationControlMcpTokenChannel =
  * entry at mint, never supplied by the presenter).
  *
  * - `bound`: `sdk-in-process` only. The token never leaves Station's own
- *   process (Claude's in-process station-control server, and Codex's bound
- *   `dynamicTools` channel, whose calls arrive on the app-server pipe
- *   Station owns), so presenting it proves the call came through that
- *   session's connection.
+ *   process (the per-session in-process station-control server of Claude and
+ *   of Station's own engine, #2377 slice D, and Codex's bound `dynamicTools`
+ *   channel, whose calls arrive on the app-server pipe Station owns), so
+ *   presenting it proves the call came through that session's connection.
  * - `delegated-custody`: `http-header-token`. Station hands the token to
  *   Codex as an `Authorization` header in its private `thread/start` (or
  *   `thread/resume`) configuration, or to an ACP agent app in `session/new`,
@@ -161,7 +162,8 @@ interface StationControlMcpTokenEntry {
   externalClientLeaseId?: string;
   callerRecordBinding?: string;
   isIssuerCurrent?: () => boolean;
-  dynamicTools?: boolean;
+  /** #2376 slice 3: this credential's listing starts at the family index. */
+  toolFamilies?: boolean;
   disclosure?: StationControlDisclosure;
 }
 
@@ -220,7 +222,7 @@ export function mintStationControlMcpToken(
   serverId: StationMcpCredentialPurpose = 'station-control',
   onRevoke?: () => void,
   isIssuerCurrent?: () => boolean,
-  dynamicTools = false,
+  toolFamilies = false,
 ): MintedStationControlMcpToken {
   if (
     (serverId === 'coordinator-control' ||
@@ -238,7 +240,7 @@ export function mintStationControlMcpToken(
   const tokenDigest = digest(token);
   tokensByDigest.set(tokenDigest, {
     onRevoke,
-    dynamicTools,
+    toolFamilies,
     ...(isIssuerCurrent ? { isIssuerCurrent } : {}),
     sessionId,
     serverId,
@@ -387,17 +389,23 @@ export function verifyStationControlMcpTokenEntry(
   return undefined;
 }
 
-/** One disclosure object belongs to the token's private record and dies with it. */
+/**
+ * One disclosure object belongs to the token's private record and dies with
+ * it. A credential minted with `toolFamilies` keeps disclosure for its whole
+ * life: the engine re-lists only on `list_changed`, which a later switch-off
+ * could not send, so withdrawing it would strand an engine on an index whose
+ * tools no longer answer. The `codex-tool-families` preview decides only
+ * which credentials are minted that way.
+ */
 export function stationControlDisclosureForToken(
   candidate: string,
-  enabled: () => boolean,
 ): StationControlDisclosure | undefined {
   if (!verifyStationControlMcpTokenEntry(candidate)) return undefined;
   const tokenDigest = digest(candidate),
     entry = tokensByDigest.get(tokenDigest);
   if (
     !entry ||
-    !entry.dynamicTools ||
+    !entry.toolFamilies ||
     entry.externalClientLeaseId ||
     (entry.serverId !== 'station-control' &&
       entry.serverId !== 'coordinator-control')
@@ -407,8 +415,7 @@ export function stationControlDisclosureForToken(
     () =>
       tokensByDigest.get(tokenDigest) === entry &&
       entry.expiresAt > Date.now() &&
-      (!entry.isIssuerCurrent || entry.isIssuerCurrent()) &&
-      enabled(),
+      (!entry.isIssuerCurrent || entry.isIssuerCurrent()),
   );
   return entry.disclosure;
 }
@@ -650,6 +657,53 @@ export function mintStationControlMcpHeaderAuth(
     isIssuerCurrent,
   );
   return { url: buildStationControlMcpHeaderUrl(port, serverId), token };
+}
+
+/**
+ * The Codex header channel's mint (`CodexAdapter`'s
+ * `mintStationControlMcpAuth` / `mintStationKnowledgeMcpAuth`), as one named
+ * export so a test drives the runtime's real mint rather than a stand-in.
+ * A coordinator credential (a designation generation is given) is guarded by
+ * that generation. `toolFamilies` (#2376 slice 3) makes the station-control
+ * credential start at the family index; Knowledge has no families, so it is
+ * refused there rather than ignored.
+ */
+export function mintCodexStationMcpHeaderAuth(input: {
+  port: number;
+  sessionId: string;
+  /** The conversation whose designation generation guards a coordinator credential. */
+  conversationId: string;
+  serverId: BuiltinStationApiMcpId;
+  tenantExecutionContext?: TenantExecutionContext;
+  allowedTools?: readonly string[];
+  coordinatorGeneration?: number;
+  toolFamilies?: boolean;
+}): { url: string; token: string } {
+  if (input.toolFamilies && input.serverId !== 'station-control')
+    throw new Error('Only Station Control has tool families.');
+  const generation = input.coordinatorGeneration;
+  const coordinator = generation !== undefined;
+  const { token } = mintStationControlMcpToken(
+    input.sessionId,
+    'http-header-token',
+    undefined,
+    input.tenantExecutionContext,
+    input.allowedTools,
+    coordinator
+      ? input.serverId === 'station-knowledge'
+        ? 'coordinator-knowledge'
+        : 'coordinator-control'
+      : input.serverId,
+    undefined,
+    coordinator
+      ? () => coordinatorGeneration(input.conversationId) === generation
+      : undefined,
+    input.toolFamilies === true,
+  );
+  return {
+    url: buildStationControlMcpHeaderUrl(input.port, input.serverId),
+    token,
+  };
 }
 
 /** Test-only reset so suites don't leak state across test files. */

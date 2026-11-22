@@ -24,7 +24,7 @@ import {
  *   for the operator credential and the desktop's local grant; changing a
  *   group and minting or revoking someone's token need the operator
  *   credential itself or an operator passkey session with per-action step-up.
- *   The current refusal status for other callers is tracked in #4109.
+ *   Current Devices without write authority receive operator_credential_required.
  * - `/api/access/tokens` is a person managing their own tokens from a paired
  *   device tied to them. Anything else is `403 person_device_required`, which
  *   a caller treats as "this panel is not for you", never as an error.
@@ -86,9 +86,13 @@ async function requireCompletedWrite(response: Response): Promise<Response> {
   return response;
 }
 
-/** Detects the current 401 refusal; its credential-clearing effect is tracked in #4109. */
+/** A current connection that needs operator write authority. */
 export function isOperatorCredentialRequired(error: unknown): boolean {
-  return error instanceof StationAccessError && error.status === 401;
+  return (
+    error instanceof StationAccessError &&
+    error.status === 403 &&
+    error.code === 'operator_credential_required'
+  );
 }
 
 /**

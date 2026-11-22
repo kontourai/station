@@ -1,0 +1,11 @@
+{
+  "revision": "ec3c1d362f48a253554a3a4d8d67a732a41d8f02",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked that the ES2022-compatible scan still selects the latest non-steer opening for the same active invocation. The target, refusal and replay behavior follow the existing documented contract.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked that the ES2022-compatible scan still selects the latest non-steer opening for the same active invocation. The target, refusal and replay behavior follow the existing documented contract.","inputs":["src-server/services/orchestration/thread-inbox.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked that the ES2022-compatible scan still selects the latest non-steer opening for the same active invocation. The target, refusal and replay behavior follow the existing documented contract.","inputs":["src-server/services/orchestration/thread-inbox.ts"]}
+  ]
+}

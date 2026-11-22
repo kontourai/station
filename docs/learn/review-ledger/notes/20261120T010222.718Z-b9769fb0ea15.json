@@ -1,0 +1,7 @@
+{
+  "revision": "a0a27502b8b302277bdc6380c53353b91a97183e",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the additive Gallery registry JSON selector against the executable coverage suite. The runtime JSON read remains the source of this edge. It schedules the coverage guard for candidate registry changes and preserves existing import and broader lane selection.","inputs":["scripts/test-impact-manifest.mjs"]}
+  ]
+}

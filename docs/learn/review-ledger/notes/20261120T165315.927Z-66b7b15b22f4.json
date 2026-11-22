@@ -1,0 +1,11 @@
+{
+  "revision": "cbc172506790080b8aeb7adc7df9f901be092949",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the first-render guard in the persisted answer bubble. It retains Markdown controls while older events prepend to the same settled turn and leaves the device settings, checkpoint restore actions, and live versus settled tool presentation described here intact.","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Reviewed the first-render guard in the persisted answer bubble. It retains Markdown controls while older events prepend to the same settled turn and leaves the device settings, checkpoint restore actions, and live versus settled tool presentation described here intact.","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the first-render guard in the persisted answer bubble. It retains Markdown controls while older events prepend to the same settled turn and leaves the device settings, checkpoint restore actions, and live versus settled tool presentation described here intact.","inputs":["src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

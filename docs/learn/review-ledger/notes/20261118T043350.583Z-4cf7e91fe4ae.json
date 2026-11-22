@@ -1,0 +1,15 @@
+{
+  "revision": "ed80b33b3d9a00ce68cabeb3cbccbd26d38a009e",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed bounded CLI and hosted summary callers against the receipt projection and omitted-detail controls. The pending-phase diagnostic originates in admission, while earlier phase output remains retained. Receipt schema, ownership and verdict authority are unchanged.","inputs":["docs/reference/verification-receipts.md","scripts/lib/verification-coordinator.mjs","scripts/lib/verification-terminal-receipt.mjs","scripts/run-verification.mjs"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the VerificationCoordinator section against the admission and terminal reporting changes. The coordinator still owns phase sequencing and fences. The bounded CLI projection describes existing evidence, and the hosted summary does not qualify a run.","inputs":["docs/architecture/module-map.md","scripts/__tests__/verification-coordinator.test.ts","scripts/lib/verification-admission.mjs","scripts/lib/verification-completion-phases.mjs","scripts/lib/verification-coordinator.mjs","scripts/lib/verification-terminal-receipt.mjs","scripts/run-verification.mjs"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"The updated projection keeps the receipt's verdict distinct from artifact and phase diagnostics. No change to receipt, authority or promotion semantics.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","scripts/lib/verification-admission.mjs","scripts/lib/verification-terminal-receipt.mjs"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Verified the phase projection records which declared phase was prevented from starting. The full verification contract and separation of local and hosted evidence continue to hold.","inputs":["docs/contexts/operations/CONTEXT.md","scripts/lib/verification-admission.mjs","scripts/lib/verification-terminal-receipt.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the independently admitted phase schedule and checkpoint claims against the coordinator. The reporting change does not alter lane membership, deadlines, capacity or reuse validation.","inputs":["docs/guides/testing.md","scripts/lib/verification-completion-phases.mjs","scripts/lib/verification-coordinator.mjs"]}
+  ]
+}

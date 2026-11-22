@@ -13,7 +13,7 @@ export function useRuns(
   selectRun: (runId: string | null) => void,
 ) {
   const query = useQuery({
-    queryKey: [PLUGIN_NAME, context.projectSlug, 'runs'],
+    queryKey: [PLUGIN_NAME, context.apiBase, context.projectSlug, 'runs'],
     queryFn: async () => {
       const body = await requestJson<{ runs: RunSummary[] }>(
         pluginUrl(context.apiBase, context.projectSlug, '/runs'),
@@ -27,11 +27,11 @@ export function useRuns(
   return query;
 }
 
-function useInvalidateRuns(projectSlug: string) {
+function useInvalidateRuns(context: RunContext) {
   const queryClient = useQueryClient();
   return () =>
     queryClient.invalidateQueries({
-      queryKey: [PLUGIN_NAME, projectSlug, 'runs'],
+      queryKey: [PLUGIN_NAME, context.apiBase, context.projectSlug, 'runs'],
     });
 }
 
@@ -41,7 +41,7 @@ export function useLaunchRun(
   sourcePath: string,
   onSuccess: (run: RunSummary) => void,
 ) {
-  const invalidateRuns = useInvalidateRuns(context.projectSlug);
+  const invalidateRuns = useInvalidateRuns(context);
   return useMutation({
     mutationFn: () =>
       requestJson<{ run: RunSummary }>(
@@ -66,7 +66,7 @@ export function useOpenReview(
   context: RunContext,
   onSuccess: (runId: string, reviewUrl: string) => void,
 ) {
-  const invalidateRuns = useInvalidateRuns(context.projectSlug);
+  const invalidateRuns = useInvalidateRuns(context);
   return useMutation({
     mutationFn: (runId: string) =>
       requestJson<{ review: { url: string } }>(
@@ -88,7 +88,7 @@ export function useCloseReview(
   context: RunContext,
   onSuccess: (runId: string) => void,
 ) {
-  const invalidateRuns = useInvalidateRuns(context.projectSlug);
+  const invalidateRuns = useInvalidateRuns(context);
   return useMutation({
     mutationFn: (runId: string) =>
       requestJson<unknown>(
@@ -109,25 +109,25 @@ export function useCloseReview(
 export function useReviewedOutput(
   context: RunContext,
   selectedRunId: string | null,
-  reviewOpen: boolean,
 ) {
   return useQuery({
     queryKey: [
       PLUGIN_NAME,
+      context.apiBase,
       context.projectSlug,
       selectedRunId,
       'reviewed-output',
     ],
-    enabled: Boolean(selectedRunId),
+    enabled: false,
     retry: false,
-    refetchInterval: reviewOpen ? 500 : false,
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       requestJson<{ available: boolean }>(
         pluginUrl(
           context.apiBase,
           context.projectSlug,
           `/runs/${encodeURIComponent(selectedRunId!)}/reviewed-output`,
         ),
+        { signal },
       ),
   });
 }

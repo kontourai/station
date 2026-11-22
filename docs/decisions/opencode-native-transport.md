@@ -1,7 +1,7 @@
 ---
 status: current
 subject: OpenCode 2.x runs as its own engine over a verified `opencode serve`, with ACP as the fallback, behind a Feature Preview
-decided: 2026-11-14
+decided: 2026-11-17
 evidence:
   - kind: doc
     ref: src-server/providers/adapters/opencode-adapter.ts
@@ -15,6 +15,8 @@ evidence:
     ref: src-server/providers/adapters/opencode-serve-session.ts
   - kind: doc
     ref: src-server/providers/adapters/opencode-native-mcp.ts
+  - kind: doc
+    ref: src-server/services/acp/opencode-steer-custody.ts
   - kind: doc
     ref: src-server/services/acp/opencode-approval-native.ts
   - kind: doc
@@ -140,6 +142,36 @@ findings a to j):
 5. A verdict from a document that was actually read is kept per binary identity
    and version. A failed read is not kept.
 
+## Models and steering
+
+A new native session validates a requested `provider/model` selector against
+`GET /api/model` before creating the session. An unqualified, missing, or
+disabled model is refused. Every subsequent turn with an explicit selector switches through
+`POST /api/session/{id}/model` before sending its prompt. A failed switch sends
+no prompt and requires a confirmed model selection before more work. ACP
+fallback keeps its existing model; choosing another model requires a new chat.
+
+The live session reports native steering on the server transport and on an ACP
+handshake that selects a native channel. Other ACP sessions advertise the
+shared cancel, wait, and continuation fallback. Queue remains the default for
+that fallback; an explicit Steer interrupts the current step.
+
+After a native feed gap, only the exact steer message in history establishes
+delivery. Absence from the inbox alone is not an acknowledgement. If withdrawing
+a late steer fails, the session accepts no successor work and reports that the
+input may remain queued. Before each steer POST, Station records its id in a
+[crash-safe journal](../../src-server/services/acp/opencode-steer-custody.ts) under its runtime home (`service/engine-effects/opencode-steers/`),
+scoped by the native data-home binding and session id. It clears the id only
+after an exact delivery receipt, or a confirmed POST followed by confirmed
+withdrawal. An uncertain POST keeps
+the record even if a subsequent DELETE says 404: the POST may still finish
+later. A session with such a record cannot resume on either transport; start
+a new chat. The journal stores ids, never message text. It lives under the existing lifecycle-owned `service/` root so an update
+rollback using the preceding version's registry preserves the journal's bytes
+instead of restoring an older list. Earlier versions without journal enforcement
+are not thereby qualified to enforce that custody. A resume also refuses
+a session whose OpenCode inbox still has queued input.
+
 ## Server pool and isolation
 
 [`OpenCodeServePool`](../../src-server/providers/adapters/opencode-serve-pool.ts)
@@ -179,6 +211,8 @@ server, not two.
   resolved the same way. Each is added with
   `PUT /api/experimental/mcp/{name}`
   ([native MCP](../../src-server/providers/adapters/opencode-native-mcp.ts)).
+  Station checks the registered servers for readiness before starting the
+  session and warns if readiness fails or remains unconfirmed after two seconds.
   An added server belongs to the server's location, which every session on
   that server shares. So the pool key includes `openCodeMcpDigest` of the
   session's set, and sessions whose tool servers differ never share a server.
@@ -222,14 +256,14 @@ is a warning and the feed that just reconnected stays open.
 
 ## Governance
 
-Ruling R1 covers OpenCode 2.x over ACP. Station's ACP approval check reads
-1.x's `debug agent <name>`, and 2.x keeps saved approvals that check cannot
-see. The version is read from the binary a launch would run: the managed
-policy's `acp` pin when one is set, else the connection's command. So when a Station approval mode is asked for on 2.x over ACP, the ACP
-adapter refuses it with `acp_approval_governance_refused` and a reason naming
-the version (`openCodeAcpApprovalUnsupportedReason`). Without a Station mode,
-OpenCode's own approvals still apply. No 2.x `OPENCODE_CONFIG_CONTENT` overlay
-is built.
+Ruling R1 now covers confined approval modes on OpenCode 2.x over ACP.
+Station's ACP approval check reads 1.x's `debug agent <name>`, and 2.x keeps
+saved approvals that check cannot see. The version comes from the binary a
+launch would run: the managed policy's `acp` pin when set, otherwise the
+connection command. Ask, Auto, and confined Never ask are refused with
+`acp_approval_governance_refused`. Host Never ask is supported: it answers the
+asks OpenCode makes, without claiming to force every action to ask. Without a
+Station mode, OpenCode's own approvals apply. No 2.x launch overlay is built.
 
 Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
 
@@ -248,6 +282,10 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   `session.moved` is published, so no check after the event could keep that
   code from running. A wholly denied tool leaves OpenCode's catalog, and
   children inherit the rule.
+- A Station Project session keeps its recorded checkout in every approval
+  mode. Its native session rules disable Code Mode's move tool. Station stops
+  a live Project session moved by another client and refuses native recovery
+  if OpenCode reports a different checkout.
 - **A session that moves anyway** (another client of its server, or a resume
   of a session moved earlier) is followed. In a governed session, a
   `session.moved` for it or a descendant runs the #3924 scan on the new
@@ -380,8 +418,10 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   saved allow would let a governed action run without asking. A governed
   session runs only `build` or `plan`.
 
-This resolves #4435 on the native path. Over ACP, 2.x gets R1's refusal
-instead. The issue stays open until this lands.
+On ACP, OpenCode 2.x supports host Never ask without a 1.x launch overlay.
+Station answers the asks OpenCode makes and leaves its own denies and saved
+approvals in force. Ask, Auto, and Never ask confined to Auto retain R1's
+refusal because ACP does not expose the saved approvals needed to verify them.
 
 ## Managed policy (R5′)
 
@@ -471,8 +511,8 @@ features:
 - **The staged policy's tool description** is not given natively: OpenCode's
   ACP layer builds a title for its permission request, which the native ask
   does not carry, so an approval guardian sees the tool's name and input only.
-- **OpenCode 1.x** stays ACP-only. **2.x over ACP** refuses Station approval
-  modes (R1).
+- **OpenCode 1.x** stays ACP-only. **2.x over ACP** supports host Never ask;
+  confined approval modes retain R1's refusal.
 - **CI coverage of the real binary**:
   [`opencode-native.process.test.ts`](../../src-server/providers/__tests__/opencode-native.process.test.ts)
   drives a real 2.x server. It is skipped, with the reason in its title, unless

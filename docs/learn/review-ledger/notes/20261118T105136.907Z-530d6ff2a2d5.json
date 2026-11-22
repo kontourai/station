@@ -1,0 +1,17 @@
+{
+  "revision": "55abdf110174427aa95f8b522663517084f7bf76",
+
+  "notes": [
+    {"path":"docs/learn/media/updates-before-390-dark.png","note":"Inspected this historical Updates panel or release-notes capture at its recorded viewport and theme. It shows panel controls, history or notes. The renamed automatic-download field renders only in Settings, and the host running-turn read occurs only in the restart confirmation. Neither appears in this capture.","inputs":["docs/learn/media/updates-before-390-dark.png","src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/learn/media/updates-after-390-dark.png","note":"Inspected this historical Updates panel or release-notes capture at its recorded viewport and theme. It shows panel controls, history or notes. The renamed automatic-download field renders only in Settings, and the host running-turn read occurs only in the restart confirmation. Neither appears in this capture.","inputs":["docs/learn/media/updates-after-390-dark.png","src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/learn/media/updates-before-1440-light.png","note":"Inspected this historical Updates panel or release-notes capture at its recorded viewport and theme. It shows panel controls, history or notes. The renamed automatic-download field renders only in Settings, and the host running-turn read occurs only in the restart confirmation. Neither appears in this capture.","inputs":["docs/learn/media/updates-before-1440-light.png","src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/learn/media/updates-after-1440-light.png","note":"Inspected this historical Updates panel or release-notes capture at its recorded viewport and theme. It shows panel controls, history or notes. The renamed automatic-download field renders only in Settings, and the host running-turn read occurs only in the restart confirmation. Neither appears in this capture.","inputs":["docs/learn/media/updates-after-1440-light.png","src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/learn/media/updates-history-after-390-dark.png","note":"Inspected this historical Updates panel or release-notes capture at its recorded viewport and theme. It shows panel controls, history or notes. The renamed automatic-download field renders only in Settings, and the host running-turn read occurs only in the restart confirmation. Neither appears in this capture.","inputs":["docs/learn/media/updates-history-after-390-dark.png","src-ui/src/views/settings/DesktopUpdateCheck.tsx"]},
+
+    {"path":"docs/learn/media/updates-notes-after-390-light.png","note":"Inspected this historical Updates panel or release-notes capture at its recorded viewport and theme. It shows panel controls, history or notes. The renamed automatic-download field renders only in Settings, and the host running-turn read occurs only in the restart confirmation. Neither appears in this capture.","inputs":["docs/learn/media/updates-notes-after-390-light.png","src-ui/src/views/settings/DesktopUpdateCheck.tsx"]}
+  ]
+}

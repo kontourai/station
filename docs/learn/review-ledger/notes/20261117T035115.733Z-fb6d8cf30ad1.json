@@ -1,0 +1,7 @@
+{
+  "revision": "addca25a1d54ffbf217f41e0caed3b7ddbff52f1",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Heavy checks when armed section re-checked: scans on every push, PR armed runs ignored until admission completes, cheap-only runs never displace a verified head, Re-run all jobs vs Re-run failed jobs, re-arm cheap.","inputs":["docs/guides/testing.md",".github/workflows/ci.yml","docs/guides/development.md","scripts/__tests__/ci-fast-checks-job-graph.test.ts","scripts/__tests__/source-verification-policy.test.ts","scripts/actionlint-gate.mjs","scripts/ci-workflow-governance.mjs","scripts/source-verification-policy.mjs"]}
+  ]
+}

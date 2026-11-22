@@ -1,5 +1,6 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
+import { resolveStationRunMaxSteps } from '../../constants.js';
 import { BedrockModelCatalog } from '../../providers/llm/bedrock-models.js';
 import { outwardModelProviderErrorText } from '../../providers/model-provider-failure.js';
 import {
@@ -179,6 +180,10 @@ export async function resolveChatAgentModelOverride({
         instructions,
         model,
         tools: guardedTools,
+        maxSteps: resolveStationRunMaxSteps(appConfig, {
+          builtin: runtimeKey === 'default',
+          specMaxSteps: originalSpec?.maxSteps,
+        }),
         // archive#914: this rebuilds the agent for a session model override on an
         // *existing* conversation, so without the slug's own store the
         // override silently costs the user their history.

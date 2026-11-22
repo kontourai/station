@@ -1020,6 +1020,30 @@ describe('Registry Routes', () => {
     expect(reloadSkills).toHaveBeenCalledOnce();
   });
 
+  test('registry removal preserves the ownership refusal and does not reload', async () => {
+    const { app, skillService, reloadSkills } = setup();
+    const details = {
+      reason: 'served-in-place',
+      detail: 'A plugin serves it in place.',
+      packageDirectory: '/plugins/acme',
+    };
+    skillService.removeSkill.mockResolvedValueOnce({
+      success: false,
+      reason: 'not-owned',
+      message: details.detail,
+      writeRefusal: details,
+    });
+    const response = await app.request('/skills/s1', { method: 'DELETE' });
+    expect(response.status).toBe(409);
+    expect(await json(response)).toEqual({
+      success: false,
+      code: 'skill-not-owned',
+      message: details.detail,
+      details,
+    });
+    expect(reloadSkills).not.toHaveBeenCalled();
+  });
+
   test('POST /skills/:id/update refuses an unprovenanced package without deleting it', async () => {
     const { app, skillService, reloadSkills } = setup();
     const response = await app.request('/skills/s1/update', { method: 'POST' });

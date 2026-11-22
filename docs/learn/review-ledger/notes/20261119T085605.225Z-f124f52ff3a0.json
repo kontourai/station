@@ -1,0 +1,19 @@
+{
+  "revision": "44e20621a4832d4ba1cf68ba846a62da7bfcab88",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the shorter delegation and Station discovery descriptions against the MCP schemas and their route handlers. Tool arguments, dispatch scope, model selection, and the Knowledge calls cited by the guide retain their behavior.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the shorter delegation and Station discovery descriptions against the MCP schemas and their route handlers. Tool arguments, dispatch scope, model selection, and the Knowledge calls cited by the guide retain their behavior.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Checked the shorter delegation and Station discovery descriptions against the MCP schemas and their route handlers. Tool arguments, dispatch scope, model selection, and the Knowledge calls cited by the guide retain their behavior.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the shorter delegation and Station discovery descriptions against the MCP schemas and their route handlers. Tool arguments, dispatch scope, model selection, and the Knowledge calls cited by the guide retain their behavior.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the shorter delegation and Station discovery descriptions against the MCP schemas and their route handlers. Tool arguments, dispatch scope, model selection, and the Knowledge calls cited by the guide retain their behavior.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the shorter delegation and Station discovery descriptions against the MCP schemas and their route handlers. Tool arguments, dispatch scope, model selection, and the Knowledge calls cited by the guide retain their behavior.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the literal ACP resume configuration refusal against the new wire mapping. The contract test pins conflict and retryable false, matching the pre-spawn refusal.","inputs":["packages/contracts/src/__tests__/provider-failure.test.ts"]}
+  ]
+}

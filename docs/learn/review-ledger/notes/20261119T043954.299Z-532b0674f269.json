@@ -1,0 +1,7 @@
+{
+  "revision": "f420880e9026017dab71e744387c05572b08a4bc",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Reviewed the merged first-run journey against the preserved timing ceilings and current named lazy boundaries. Clean f420880e902 ran both Chromium journeys against a disposable Station with a fixture Ollama connection and matched teardown. Launcher wall observations were 435 ms desktop and 289 ms phone, the unconfigured composer 4 ms, and the Station Agent picker row 1078 ms at one-minute host load 12.0 to 13.4. Browser observations were available, and the recorded script entries used zero transfer bytes. The earlier sample remains historical and #1693 retains cold/high-load measurement.","inputs":["docs/guides/testing.md","tests/first-run-live.spec.ts"]}
+  ]
+}

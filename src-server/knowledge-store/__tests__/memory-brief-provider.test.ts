@@ -17,7 +17,12 @@ const stranger = sessionReadAuthorityFromRequest(
 );
 afterEach(() => vi.unstubAllEnvs());
 
-async function setup(options: { maxInFlight?: number } = {}) {
+async function setup(
+  options: {
+    maxInFlight?: number;
+    beforeGuardReturn?: () => Promise<void>;
+  } = {},
+) {
   const home = makeTempDir('station-memory-brief-');
   vi.stubEnv('STATION_HOME', home);
   const persistence = new FileStorageAdapter(home);
@@ -71,8 +76,10 @@ async function setup(options: { maxInFlight?: number } = {}) {
     authority: () => state.who,
     isRequestCurrent: () => state.current,
     mayReadRoot: async () => state.allowRead,
-    guardReadResponse: async (_request, _roots, response) =>
-      state.deliver ? response : new Response(null, { status: 403 }),
+    guardReadResponse: async (_request, _roots, response) => {
+      await options.beforeGuardReturn?.();
+      return state.deliver ? response : new Response(null, { status: 403 });
+    },
   });
   return {
     state,
@@ -121,6 +128,41 @@ test('every missing condition yields no brief, never someone else’s memory', a
     expect(await h.provider(h.request), name).toBeNull();
   }
 });
+
+test.each(['preview', 'request'] as const)(
+  'a %s change while the delivery guard is pending withholds the brief',
+  async (changed) => {
+    let entered!: () => void;
+    let resume!: () => void;
+    const atGuard = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const hold = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    const h = await setup({
+      beforeGuardReturn: async () => {
+        entered();
+        await hold;
+      },
+    });
+    const session = { relayOwner: OWNER, conversationId: 'guard-pending' };
+    const pending = h.provider(h.request, session);
+    try {
+      await atGuard;
+      if (changed === 'preview') h.state.enabled = false;
+      else h.state.current = false;
+    } finally {
+      resume();
+    }
+    expect(await pending).toBeNull();
+    h.state.enabled = true;
+    h.state.current = true;
+    const retry = await h.provider(h.request, session);
+    expect(retry?.entries).toBe(1);
+    retry?.abandoned();
+  },
+);
 
 test('a hosted authority is never briefed', async () => {
   const each = await setup();

@@ -1,0 +1,7 @@
+{
+  "revision": "41803c5f23dafa317a172babc5abb0e2dfcff0c9",
+
+  "notes": [
+    {"path":"docs/guides/private-runner-partition.md","note":"Re-read after restoring main's container smoke paragraph and keeping one line: only ci-extended.yml and recover-terminal-capacity-owner.yml request the heavy Linux labels, checked by grep of the workflows for heavy-host.","inputs":["docs/guides/private-runner-partition.md",".github/workflows/container-smoke.yml"]}
+  ]
+}

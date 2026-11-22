@@ -1,9 +1,8 @@
 import {
-  ACP_MODEL_OVERRIDE_PER_TURN,
+  ENGINE_CAPABILITY_MATRICES,
   resolveEngineCapabilityMatrix,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
-import { isAcpFamilyEngine } from '@kontourai/station-contracts/provider';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import { setOrchestrationApprovalMode } from '@kontourai/station-sdk';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
@@ -59,6 +58,7 @@ import {
 import { sanitizeChatInput } from '../utils/sanitizeChatInput';
 import { describeStationFailure } from '../utils/stationFailure';
 import { clearLastChosenModel } from './lastChosenModel';
+import { readPendingEngineStart } from './orchestration/engineStartWaits';
 import { describeStopTurnOutcome } from './useActiveChatSessionMessaging';
 import { useCancelMessage, useSendMessage } from './useActiveChatSessions';
 import { useAutocompleteState } from './useAutocompleteState';
@@ -409,22 +409,24 @@ export function useChatInput({
       ? { engineId: 'station' }
       : (runtimeConnection ?? { type: activeChatState?.provider }),
   ).modelSelection;
-  // ACP applies a model only at session start, and so does an engine that
-  // runs saved ACP connections (`opencode`). The server honours a changed
+  // ACP applies a model only at session start. OpenCode can switch its
+  // native session model before the next prompt. The server honours a changed
   // model on the next send by starting a successor session with it
   // (`conversation-lineage.ts` `needsModelRestart`), which is free for a
   // conversation that never ran a turn — nothing to carry over — so only a
   // conversation with engine history keeps the picker closed.
+  const continuationModelSelection =
+    ENGINE_CAPABILITY_MATRICES[activeChatState?.provider ?? '']
+      ?.modelSelection ?? engineModelSelection;
   const continuationOverrideUnsupported =
     Boolean(conversationId) &&
-    isAcpFamilyEngine(activeChatState?.provider) &&
-    !ACP_MODEL_OVERRIDE_PER_TURN &&
+    continuationModelSelection.overridePerTurn === false &&
     !conversationAwaitsFirstTurn(
       orchestrationSession,
       activeChatState?.turnInFlight ?? false,
     );
   const modelSelectionReason = continuationOverrideUnsupported
-    ? 'This engine can choose a model for a new chat, but cannot change it in an existing conversation.'
+    ? 'Choose a model and any advertised thinking effort when starting a new chat with this engine.'
     : engineModelSelection.state === 'unsupported'
       ? 'This engine does not support model selection for a chat session.'
       : availableModels.length === 0
@@ -787,7 +789,12 @@ export function useChatInput({
     // Until the authorized conversation window identifies that child, Stop
     // must remain unavailable rather than guessing the legacy/root id and
     // supervising the wrong execution context.
-    if (currentChat?.conversationId && !currentChat.currentSessionId) {
+    // An owned pending first start supplies its own authorized Stop target.
+    if (
+      currentChat?.conversationId &&
+      !currentChat.currentSessionId &&
+      !readPendingEngineStart(apiBase, currentChat.conversationId)
+    ) {
       showToast(
         'Restoring this conversation before Stop is available.',
         'info',
@@ -810,7 +817,7 @@ export function useChatInput({
       role: 'system',
       content: describeStopTurnOutcome(outcome),
     });
-  }, [sessionId, cancelMessage, addEphemeralMessage, showToast]);
+  }, [sessionId, apiBase, cancelMessage, addEphemeralMessage, showToast]);
 
   const handleClearInput = useCallback(() => {
     if (!sessionId) return;
@@ -1002,7 +1009,7 @@ export function useChatInput({
       if (!isAlreadyActive) {
         addEphemeralMessage(sessionId, {
           role: 'system',
-          content: `Model changed to **${model.providerName ? `${model.providerName} · ` : ''}${model.name}**`,
+          content: `Model selected: **${model.providerName ? `${model.providerName} · ` : ''}${model.name}**`,
         });
       }
       closeModel();
@@ -1137,32 +1144,18 @@ export function useChatInput({
   const handleAcpSessionModeChange = useCallback(
     (modeId: string) => {
       if (!sessionId) return;
-      const previousMode =
-        activeChatState?.requestedProviderOptions?.mode ??
-        activeChatState?.currentModeId;
-      if (previousMode === modeId) return;
+      const current = activeChatsStore.getSnapshot()[sessionId];
+      const requested = current?.requestedProviderOptions;
+      if ((requested?.mode ?? current?.currentModeId) === modeId) return;
       updateChat(sessionId, {
-        currentModeId: modeId,
-        requestedProviderOptions: {
-          ...(activeChatState?.requestedProviderOptions ??
-            activeChatState?.providerOptions ??
-            {}),
-          mode: modeId,
-        },
-      });
-      addEphemeralMessage(sessionId, {
-        role: 'system',
-        content: `Session mode changed to **${modeId}**`,
+        requestedProviderOptions: updateModelRuntimeOption(
+          requested ?? current?.providerOptions ?? {},
+          'mode',
+          modeId,
+        ),
       });
     },
-    [
-      activeChatState?.currentModeId,
-      activeChatState?.providerOptions,
-      activeChatState?.requestedProviderOptions,
-      sessionId,
-      updateChat,
-      addEphemeralMessage,
-    ],
+    [sessionId, updateChat],
   );
 
   const handleModelReset = useCallback(() => {

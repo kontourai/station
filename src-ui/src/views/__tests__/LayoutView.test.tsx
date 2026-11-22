@@ -20,6 +20,7 @@ const legacyCreate = vi.hoisted(() => vi.fn(() => 'legacy-session'));
 const legacySend = vi.hoisted(() => vi.fn(async () => {}));
 const refetchLayoutMock = vi.hoisted(() => vi.fn());
 const navigateMock = vi.hoisted(() => vi.fn());
+const setActiveChatMock = vi.hoisted(() => vi.fn());
 const setDockStateMock = vi.hoisted(() => vi.fn());
 const hostQuery = vi.hoisted(() => ({
   isSuccess: true,
@@ -88,7 +89,7 @@ vi.mock('../../contexts/NavigationContext', () => ({
     activeTab: null,
     setDockState: setDockStateMock,
     setLayoutTab: vi.fn(),
-    setActiveChat: vi.fn(),
+    setActiveChat: setActiveChatMock,
     navigate: navigateMock,
   }),
 }));
@@ -136,6 +137,7 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
     legacyCreate.mockClear();
     legacySend.mockClear();
     navigateMock.mockReset();
+    setActiveChatMock.mockReset();
     setDockStateMock.mockReset();
     refetchLayoutMock.mockReset();
     renderedLayout.canLaunchPrompts = 'unset';
@@ -314,9 +316,9 @@ describe('LayoutView terminal states (4-HOME-009)', () => {
       undefined,
       'my exact body',
     );
-    // #2171 A3: the route-bound host's launch path is untouched — it opens
-    // the dock, and it never declares `canLaunchPrompts` (the docked host's
-    // `false` would strip the very buttons this launch is reached from).
+    expect(setActiveChatMock).toHaveBeenCalledExactlyOnceWith('legacy-session');
+    expect(setDockStateMock).toHaveBeenCalledExactlyOnceWith(true);
+    expect(setActiveChatMock).toHaveBeenCalledBefore(setDockStateMock);
     expect(setDockStateMock).toHaveBeenCalledWith(true);
     expect(renderedLayout.canLaunchPrompts).toBeUndefined();
   });

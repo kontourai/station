@@ -1,0 +1,131 @@
+{
+  "revision": "cb22ba11dc8ab4d65cfff25002b02cbf68ebc00a",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the new action-row guidance against the clean, dirty and held-save Project header, Device wizard steps, and measured keyboard/hit targets. Existing guide references to responsive layouts retain their scope.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/views/ProjectSettingsView.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"The updated frontend pattern describes one filled action, shared sizes, leading navigation and secondary choices. Actual Project, Device and Connect renders establish the examples. Remote-state ownership and existing primitive guidance retain their scope.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt","src-ui/AGENTS.md","src-ui/src/styles/control-recipes.css"]},
+
+    {"path":"src-ui/AGENTS.md","note":"The UI scope directs command groups to ActionRow and one primary action and keeps the native-size visual inspection criteria. The final route has a leading Back and shows the primary Save for an unsaved draft.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the updated discovery entry against the real modal. Header Back and Close, inline Check again, row Request access and Connection details each remain keyboard reachable and have 44px hit areas in the measured fixtures.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the updated discovery entry against the real modal. Header Back and Close, inline Check again, row Request access and Connection details each remain keyboard reachable and have 44px hit areas in the measured fixtures.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the updated discovery entry against the real modal. Header Back and Close, inline Check again, row Request access and Connection details each remain keyboard reachable and have 44px hit areas in the measured fixtures.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the updated discovery entry against the real modal. Header Back and Close, inline Check again, row Request access and Connection details each remain keyboard reachable and have 44px hit areas in the measured fixtures.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Read the modal navigation and opener/restoration effects and bounded direct-open and list-return scenarios. Only Discovery header presentation and focus ownership changed. Package entry, verification, pairing consent/authorization and connections management claims retain their scope.","inputs":["packages/connect/src/react/ConnectionManagerModalContent.tsx"]},
+
+    {"path":"docs/reference/connect.md","note":"Read the modal navigation and opener/restoration effects and bounded direct-open and list-return scenarios. Only Discovery header presentation and focus ownership changed. Package entry, verification, pairing consent/authorization and connections management claims retain their scope.","inputs":["packages/connect/src/react/ConnectionManagerModalContent.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/README.md","note":"Read the modal navigation and opener/restoration effects and bounded direct-open and list-return scenarios. Only Discovery header presentation and focus ownership changed. Package entry, verification, pairing consent/authorization and connections management claims retain their scope.","inputs":["packages/connect/src/react/ConnectionManagerModalContent.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","note":"Read the modal navigation and opener/restoration effects and bounded direct-open and list-return scenarios. Only Discovery header presentation and focus ownership changed. Package entry, verification, pairing consent/authorization and connections management claims retain their scope.","inputs":["packages/connect/src/react/ConnectionManagerModalContent.tsx"]},
+
+    {"path":"packages/connect/README.md","note":"Read the modal navigation and opener/restoration effects and bounded direct-open and list-return scenarios. Only Discovery header presentation and focus ownership changed. Package entry, verification, pairing consent/authorization and connections management claims retain their scope.","inputs":["packages/connect/src/react/ConnectionManagerModalContent.tsx"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The list forwards the existing discovery trigger ref so returning to this panel can restore keyboard focus. Existing connection and agent candidate actions, labels and capability discovery are unchanged.","inputs":["packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"The list forwards the existing discovery trigger ref so returning to this panel can restore keyboard focus. Existing connection and agent candidate actions, labels and capability discovery are unchanged.","inputs":["packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The list forwards the existing discovery trigger ref so returning to this panel can restore keyboard focus. Existing connection and agent candidate actions, labels and capability discovery are unchanged.","inputs":["packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"The list forwards the existing discovery trigger ref so returning to this panel can restore keyboard focus. Existing connection and agent candidate actions, labels and capability discovery are unchanged.","inputs":["packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]},
+
+    {"path":"docs/reference/connect.md","note":"The list forwards the existing discovery trigger ref so returning to this panel can restore keyboard focus. Existing connection and agent candidate actions, labels and capability discovery are unchanged.","inputs":["packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]},
+
+    {"path":"docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","note":"The list forwards the existing discovery trigger ref so returning to this panel can restore keyboard focus. Existing connection and agent candidate actions, labels and capability discovery are unchanged.","inputs":["packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The list forwards the existing discovery trigger ref so returning to this panel can restore keyboard focus. Existing connection and agent candidate actions, labels and capability discovery are unchanged.","inputs":["packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"The UI scope directs command groups to ActionRow and one primary action and keeps the native-size visual inspection criteria. The final route has a leading Back and shows the primary Save for an unsaved draft.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"docs/patterns/frontend.md","note":"The UI scope directs command groups to ActionRow and one primary action and keeps the native-size visual inspection criteria. The final route has a leading Back and shows the primary Save for an unsaved draft.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"src-ui/CLAUDE.md","note":"The UI scope directs command groups to ActionRow and one primary action and keeps the native-size visual inspection criteria. The final route has a leading Back and shows the primary Save for an unsaved draft.","inputs":["src-ui/AGENTS.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Checked genuine edits and saved payload assertions with the conditional Save. The covered Project knowledge workflow and the recorded historical images keep their documented scope.","inputs":["src-ui/src/__tests__/ProjectSettingsView.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-after-1440-dark.png","note":"The Project browser fixture includes Preview Overview, the real warning dialog and guard, autosave alongside a dirty draft, native choice interaction and keyboard Save focus. Historical Project invitation captions apply to their own captured revisions.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-after-390-light.png","note":"The Project browser fixture includes Preview Overview, the real warning dialog and guard, autosave alongside a dirty draft, native choice interaction and keyboard Save focus. Historical Project invitation captions apply to their own captured revisions.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-1440-dark.png","note":"The Project browser fixture includes Preview Overview, the real warning dialog and guard, autosave alongside a dirty draft, native choice interaction and keyboard Save focus. Historical Project invitation captions apply to their own captured revisions.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/learn/media/project-invitation-before-390-light.png","note":"The Project browser fixture includes Preview Overview, the real warning dialog and guard, autosave alongside a dirty draft, native choice interaction and keyboard Save focus. Historical Project invitation captions apply to their own captured revisions.","inputs":["src-ui/src/__tests__/project-settings.browser.test.tsx"]},
+
+    {"path":"docs/guides/theming.md","note":"Compared the existing coarse/mobile media block and shared coarse select hit floor. Token control appearance, historical Agent efficiency screens and the theme ownership claims remain accurately scoped. Verified touch selectors at phone and coarse tablet widths.","inputs":["src-ui/src/components/editor-controls.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-dark.png","note":"Compared the existing coarse/mobile media block and shared coarse select hit floor. Token control appearance, historical Agent efficiency screens and the theme ownership claims remain accurately scoped. Verified touch selectors at phone and coarse tablet widths.","inputs":["src-ui/src/components/editor-controls.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-light.png","note":"Compared the existing coarse/mobile media block and shared coarse select hit floor. Token control appearance, historical Agent efficiency screens and the theme ownership claims remain accurately scoped. Verified touch selectors at phone and coarse tablet widths.","inputs":["src-ui/src/components/editor-controls.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-dark.png","note":"Compared the existing coarse/mobile media block and shared coarse select hit floor. Token control appearance, historical Agent efficiency screens and the theme ownership claims remain accurately scoped. Verified touch selectors at phone and coarse tablet widths.","inputs":["src-ui/src/components/editor-controls.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-light.png","note":"Compared the existing coarse/mobile media block and shared coarse select hit floor. Token control appearance, historical Agent efficiency screens and the theme ownership claims remain accurately scoped. Verified touch selectors at phone and coarse tablet widths.","inputs":["src-ui/src/components/editor-controls.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-working-configuration.png","note":"Compared the existing coarse/mobile media block and shared coarse select hit floor. Token control appearance, historical Agent efficiency screens and the theme ownership claims remain accurately scoped. Verified touch selectors at phone and coarse tablet widths.","inputs":["src-ui/src/components/editor-controls.css"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"Checked all callers of the revised select floor and chevron, including nested Settings. Token borders and focus outline stay visible when system colors repaint the control. The change adds no page-local media exceptions. Reviewed historical Updates picker/capture context.","inputs":["src-ui/src/styles/control-recipes.css"]},
+
+    {"path":"docs/learn/media/updates-after-1440-light.png","note":"Checked all callers of the revised select floor and chevron, including nested Settings. Token borders and focus outline stay visible when system colors repaint the control. The change adds no page-local media exceptions. Reviewed historical Updates picker/capture context.","inputs":["src-ui/src/styles/control-recipes.css"]},
+
+    {"path":"docs/learn/media/updates-after-390-dark.png","note":"Checked all callers of the revised select floor and chevron, including nested Settings. Token borders and focus outline stay visible when system colors repaint the control. The change adds no page-local media exceptions. Reviewed historical Updates picker/capture context.","inputs":["src-ui/src/styles/control-recipes.css"]},
+
+    {"path":"docs/learn/media/updates-history-after-390-dark.png","note":"Checked all callers of the revised select floor and chevron, including nested Settings. Token borders and focus outline stay visible when system colors repaint the control. The change adds no page-local media exceptions. Reviewed historical Updates picker/capture context.","inputs":["src-ui/src/styles/control-recipes.css"]},
+
+    {"path":"docs/learn/media/updates-notes-after-390-light.png","note":"Checked all callers of the revised select floor and chevron, including nested Settings. Token borders and focus outline stay visible when system colors repaint the control. The change adds no page-local media exceptions. Reviewed historical Updates picker/capture context.","inputs":["src-ui/src/styles/control-recipes.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked all callers of the revised select floor and chevron, including nested Settings. Token borders and focus outline stay visible when system colors repaint the control. The change adds no page-local media exceptions. Reviewed historical Updates picker/capture context.","inputs":["src-ui/src/styles/control-recipes.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Compared removal of page-specific choice geometry with the opt-in shared PageRow/Section owner. The mobile route and scoped panes continue to stack; stored historical invitation and knowledge flows retain their recorded scope.","inputs":["src-ui/src/views/ProjectSettingsView.css"]},
+
+    {"path":"docs/user/settings.md","note":"Compared removal of page-specific choice geometry with the opt-in shared PageRow/Section owner. The mobile route and scoped panes continue to stack; stored historical invitation and knowledge flows retain their recorded scope.","inputs":["src-ui/src/views/ProjectSettingsView.css"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"The header moves Back to leading navigation and offers Save for dirty or pending drafts. Traced original save payload and guard, retained cross-section draft, local autosave, cancel warning and focus return. Documented navigation and Project operations remain in their existing owners.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/design/shell-skeletons.md","note":"The header moves Back to leading navigation and offers Save for dirty or pending drafts. Traced original save payload and guard, retained cross-section draft, local autosave, cancel warning and focus return. Documented navigation and Project operations remain in their existing owners.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"The header moves Back to leading navigation and offers Save for dirty or pending drafts. Traced original save payload and guard, retained cross-section draft, local autosave, cancel warning and focus return. Documented navigation and Project operations remain in their existing owners.","inputs":["src-ui/src/views/ProjectSettingsView.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/guides/knowledge.md","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"The shared PageSection/PageRow choice layout responds to its containing section. Settings and Project choices render at phone and desktop sizes. Historical walkthroughs and clips describe saved task content, model connection, request inspection and knowledge browsing. Their captions do not prescribe choice layout.","inputs":["src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked wizard action variants and placement, including Back, Cancel and Continue. They retain the existing handlers, gating and target sizes; module, desktop build and device capability/permission claims keep their recorded scope.","inputs":["src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Checked wizard action variants and placement, including Back, Cancel and Continue. They retain the existing handlers, gating and target sizes; module, desktop build and device capability/permission claims keep their recorded scope.","inputs":["src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Checked wizard action variants and placement, including Back, Cancel and Continue. They retain the existing handlers, gating and target sizes; module, desktop build and device capability/permission claims keep their recorded scope.","inputs":["src-ui/src/workspace-panes/device/DeviceSetupWizard.tsx"]}
+  ]
+}

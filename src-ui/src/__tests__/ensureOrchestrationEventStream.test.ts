@@ -13,9 +13,30 @@
  * (unmocked) `fetchSSE` transport against a mocked global `fetch`, stubbing
  * only the sibling event-handler modules so application can be counted.
  */
+import type { FetchSseConnection } from '@kontourai/station-sdk';
+import { observeSseFixture, ownSseFixture } from './helpers/ownedSseFixture';
+
+const connections = vi.hoisted(
+  () => new Map<FetchSseConnection, { settled: boolean }>(),
+);
+vi.mock('@kontourai/station-sdk', async (load) => {
+  const sdk = await load<typeof import('@kontourai/station-sdk')>();
+  return {
+    ...sdk,
+    fetchSSE: (...args: Parameters<typeof sdk.fetchSSE>) =>
+      observeSseFixture(connections, sdk.fetchSSE(...args)),
+  };
+});
+const retainRelease = ownSseFixture(connections);
+function ensureOrchestrationEventStream(
+  ...args: Parameters<typeof openOrchestrationEventStream>
+) {
+  return retainRelease(openOrchestrationEventStream(...args));
+}
+
 import { notifyCredentialChanged } from '@kontourai/station-sdk';
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const { handleOrchestrationEvent, settleSemanticDeliveryBuffer } = vi.hoisted(
   () => ({
@@ -30,7 +51,7 @@ vi.mock('../hooks/orchestration/eventHandlers', () => ({
 }));
 
 import {
-  ensureOrchestrationEventStream,
+  ensureOrchestrationEventStream as openOrchestrationEventStream,
   resetSessionReadModelRefreshForTests,
 } from '../hooks/orchestration/ensureOrchestrationEventStream';
 
@@ -70,11 +91,6 @@ describe('ensureOrchestrationEventStream — station#1094 terminal-orphan regres
   beforeEach(() => {
     handleOrchestrationEvent.mockReset();
     settleSemanticDeliveryBuffer.mockReset();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
   });
 
   it('a terminal-stopped stream is never orphaned: a remount opens no second stream, and the credential wake resumes the one owner exactly once', async () => {
@@ -169,11 +185,6 @@ describe('ensureOrchestrationEventStream — station#1094 terminal-orphan regres
 describe('ensureOrchestrationEventStream — turn provenance sibling (station#1410)', () => {
   beforeEach(() => {
     handleOrchestrationEvent.mockReset();
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
   });
 
   const PROVENANCE_ORIGIN =
@@ -282,11 +293,6 @@ describe('ensureOrchestrationEventStream — session read-model refresh (helper-
     resetSessionReadModelRefreshForTests();
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
   });
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllGlobals();
-  });
-
   function terminalFrame(id: string, method: string): string {
     return `id: ${id}\nevent: orchestration:event\ndata: ${JSON.stringify({
       event: {

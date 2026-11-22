@@ -1,0 +1,17 @@
+{
+  "revision": "3710d05c519b507bf33fdafde72554c528ffcff4",
+
+  "notes": [
+    {"path":"docs/adr/0015-restore-desktop-owned-command-station-sidecar.md","note":"Reviewed downstream citations. The mobile startup matrix now distinguishes an installed development simulator clean and delayed-IPC witness from physical and signed release qualification. Desktop sidecar admission, broker and local lab procedures, and native testing routes retain their documented behavior.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed downstream citations. The mobile startup matrix now distinguishes an installed development simulator clean and delayed-IPC witness from physical and signed release qualification. Desktop sidecar admission, broker and local lab procedures, and native testing routes retain their documented behavior.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed downstream citations. The mobile startup matrix now distinguishes an installed development simulator clean and delayed-IPC witness from physical and signed release qualification. Desktop sidecar admission, broker and local lab procedures, and native testing routes retain their documented behavior.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed downstream citations. The mobile startup matrix now distinguishes an installed development simulator clean and delayed-IPC witness from physical and signed release qualification. Desktop sidecar admission, broker and local lab procedures, and native testing routes retain their documented behavior.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed downstream citations. The mobile startup matrix now distinguishes an installed development simulator clean and delayed-IPC witness from physical and signed release qualification. Desktop sidecar admission, broker and local lab procedures, and native testing routes retain their documented behavior.","inputs":["docs/guides/native-shell-verification.md"]},
+
+    {"path":"src-desktop/AGENTS.md","note":"Reviewed downstream citations. The mobile startup matrix now distinguishes an installed development simulator clean and delayed-IPC witness from physical and signed release qualification. Desktop sidecar admission, broker and local lab procedures, and native testing routes retain their documented behavior.","inputs":["docs/guides/native-shell-verification.md"]}
+  ]
+}

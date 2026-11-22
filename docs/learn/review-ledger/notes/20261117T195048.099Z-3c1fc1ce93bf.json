@@ -1,0 +1,7 @@
+{
+  "revision": "397c6df8dab6df2babf5dd5a8ecdabd544b2ba39",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the only useServerEventsListener change: refreshEngineReadiness now invalidates engine-setup alongside ACP connection inventory. The SDK ACP_STATUS owner also refreshes this eligibility family. This adds a scoped setup read, preserves authority-bound keys and disabled-query behavior, and changes no credential usage or engine-sign-in invalidation. Focused status-event and installer remount regressions pass and fail under independently injected defects; fixtures do not prove provider delivery.","inputs":["docs/patterns/frontend.md","src-ui/src/hooks/useServerEventsListener.ts"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "cbc172506790080b8aeb7adc7df9f901be092949",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Reviewed durable adjacent result keys, the explicit split-key fallback, and the tool and UI-block branches. The change retains plain Markdown mounting across older pages without changing ordered parts, tool disclosure, linked child placement, or UIBlockRenderer dispatch.","inputs":["src-ui/src/components/chat/message-bubble/MessageContent.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed durable adjacent result keys, the explicit split-key fallback, and the tool and UI-block branches. The change retains plain Markdown mounting across older pages without changing ordered parts, tool disclosure, linked child placement, or UIBlockRenderer dispatch.","inputs":["src-ui/src/components/chat/message-bubble/MessageContent.tsx"]}
+  ]
+}

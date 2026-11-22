@@ -1,0 +1,161 @@
+{
+  "revision": "e4921d15dd47989982e586d02f9d9603ae396ae0",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"ConversationBody still supplies the active record and Stop control. Inbox activation, search and snooze run through useInboxPanelController. Mobile presentation adds a header tool slot and a selection tray.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/components/inbox-row/InboxRowStatus.tsx","src-ui/src/views/home/work-facts.ts","src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the dock entry points, shared message editor, child instruction delivery, action sheet, and schedule reader. The mobile guide now describes the floating compose button, row details and child-specific editor.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/components/chat-dock/inbox-dismissals.tsx","src-ui/src/components/chat-dock/useConversationWorkState.ts","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/PortableDraftsMenu.tsx","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/components/inbox-row/InboxRowStatus.tsx","src-ui/src/index.css","src-ui/src/views/home/work-facts.ts","src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/design/developer-surface.md","note":"The diagnostic routes and section navigator render in their existing workspace frame. The toolbar clearance change applies to a maximized dock above that workspace.","inputs":["docs/design/developer-surface.md","src-ui/src/App.tsx"]},
+
+    {"path":"docs/design/motion.md","note":"Inspected the dock snap and inbox swipe owners. Explicit snaps translate the title at its existing font size, while the swipe gesture still follows the pointer. Reduced motion skips the added translation.","inputs":["docs/design/motion.md","src-ui/src/components/inbox-row/InboxRow.css","src-ui/src/components/status/live-status.css","src-ui/src/index.css"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Inbox and the active chat still share the dock. Content switches are local to the conversation surface and the global menu stays in the app toolbar.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Revised the phone maximize description to identify the occupied workspace below the app toolbar. Region and URL state still own the extent.","inputs":["docs/design/placement.md","src-ui/src/App.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Traced the change to the conversation renderer. Child commands continue to require a live writable parent and the active child turn. The replay registry still owns replay identity.","inputs":["docs/design/session-tape-replay.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Station and Project selection still use the existing device inboxScope setting. The status chip and conversation selection belong to the mounted Inbox.","inputs":["docs/design/settings-architecture.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"The shell retains the drawer and Station switcher above the phone dock. Project choice for new work remains on the start composer; Board ownership and scope are unchanged.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"The host request scope still fences Inbox activation. Child inventory checks the captured Station against the current host and uses the selected child session ID. Native transcript IDs open their own reader.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/glossary.md","note":"The work-status ladder and lane names retain their meanings. A reported needs-input transition can now supply the elapsed time beside the state.","inputs":["docs/glossary.md","src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The updated phone toolbar keeps the existing connection switcher accessible throughout a dock snap. Connection enrollment, saved profile and transport readers are unchanged.","inputs":["docs/guides/connections.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed the mobile-chat-composer and Home coverage entries. The affected cases exercise toolbar and title geometry, navigation and composer reachability with controlled chat data.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"The mobile selection gesture and floating compose button use existing actions. Existing keyboard launch and single-conversation Undo bindings remain in their original owners.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/components/chat-dock/inbox-dismissals.tsx"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Knowledge store access, the retrieval index and confirmed context are independent of how a person opens the mobile draft or Inbox.","inputs":["docs/guides/knowledge.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the shared header, compact rows, filter, touch selection, floating compose button and safe-area layout. The guide now identifies the shell toolbar and the Inbox and child back paths.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/components/inbox-row/InboxRowStatus.tsx","src-ui/src/components/status/live-status.css","src-ui/src/index.css","src-ui/src/views/home/work-facts.ts","src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The row still reads the engine and attention state from WorkFacts. The elapsed clock consumes the reported needs-input transition without changing agent configuration or approval rules.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/components/inbox-row/InboxRowStatus.tsx","src-ui/src/views/home/work-facts.ts","src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Task families and recorded work chats still use their existing open actions. The row presentation and an optional elapsed label do not change starter creation or resume behavior.","inputs":["docs/guides/starter-work.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the modified work rows, floating action and status island against the semantic surface, action and text tokens. Global theme selection continues to use the established settings.","inputs":["docs/guides/theming.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"The App change concerns mobile dock presentation. Notification subscriptions, destination resolution and notification-open handlers retain their existing owners.","inputs":["docs/guides/web-push-notifications.md","src-ui/src/App.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the teaching captures against their recorded subjects. The updated mobile Inbox layout is described in the phone shell and getting started guides.","inputs":["docs/learn/walkthroughs.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"The phone header and compact rows are frontend consumers. The backend patterns referenced by the shared stylesheet have no changed service, route or persistence boundary.","inputs":["docs/patterns/backend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"The Inbox uses the existing project artwork, responsive dialog, overflow and gesture primitives. Home reuses the same compact row with its existing controlled details sheet.","inputs":["docs/patterns/frontend.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The floating compose control opens the existing start draft. Opening a draft adds no prompt send or provider readiness claim.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/api.md","note":"The Inbox bulk controls reuse existing per-conversation resolution and hide requests. Child instructions use the existing turn-bound command. No HTTP schema changed.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"The mobile actions change presentation of the current conversation and filters. Configuration readers and the server-published capability gates remain the source for available controls.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"WorkFacts exposes an observed attention start to the status renderer. The Home role projection and child-work wire contract retain their existing field sets.","inputs":["docs/reference/contracts.md","src-ui/src/components/inbox-row/InboxRowStatus.tsx","src-ui/src/views/home/work-facts.ts","src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"The scoped style change concerns the maximized mobile dock and its persistent toolbar. The recorded Task room evidence describes document, presence and member flows with their own fixture.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/index.css"]},
+
+    {"path":"docs/user/concepts.md","note":"Work status continues to distinguish live work, awaiting a person and armed check-backs. The current state selects the elapsed clock or due time displayed in the compact row.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Updated mobile chat creation, persistent Station switcher, grouped filters, row selection, Details and Home refresh instructions to match their production controls.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-swipe.browser.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChildChatNavigation.tsx","src-ui/src/components/chat-dock/ChildChatNavigationContext.ts","src-ui/src/components/chat-dock/InboxScopeFilter.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/components/chat-dock/inbox-dismissals.tsx","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/home/HomeActionSection.tsx","src-ui/src/components/inbox-row/InboxRowStatus.tsx","src-ui/src/index.css","src-ui/src/views/home/work-facts.ts","src-ui/src/views/home/work-status.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Board creation and navigation remain shell actions. Opening Inbox still reveals chat work within the dock.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Reviewed the repository knowledge example and its narrow capture. Its search and source reader are outside the changed mobile dock selectors.","inputs":["examples/knowledge-library/README.md","src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"The native icon source and Android adaptive icon safe area are independent of the toolbar clearance in index.css.","inputs":["src-desktop/icons/README.md","src-ui/src/index.css"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Checked the UI routing table against ConversationBody and useInboxPanelController. Both remain shared owners for the shell consumers named here.","inputs":["src-ui/AGENTS.md","src-ui/src/components/chat-dock/useInboxPanelController.ts","src-ui/src/components/conversation/ConversationBody.tsx"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Reviewed the recorded the Project task list capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Reviewed the recorded the shared Task document capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed the recorded the connection catalog and setup screens capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/connections-models.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the recorded request inspection capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the recorded request inspection capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed the recorded the connection catalog and setup screens capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Reviewed the recorded repository knowledge sources capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Reviewed the recorded repository knowledge sources capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"Reviewed the recorded the OAuth MCP sign-in and tool pickers capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/oauth-mcp-sign-in-comparison.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-picker-comparison.png","note":"Reviewed the recorded the OAuth MCP sign-in and tool pickers capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/oauth-mcp-picker-comparison.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"Reviewed the recorded device authorization and step-up screens capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/operator-s3-paired-before-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"Reviewed the recorded device authorization and step-up screens capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/operator-s3-consent-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"Reviewed the recorded device authorization and step-up screens capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/operator-s3-paired-after-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"Reviewed the recorded device authorization and step-up screens capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/operator-s3-other-browser-refused.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Reviewed the recorded device authorization and step-up screens capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Reviewed the recorded device authorization and step-up screens capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Reviewed the recorded device authorization and step-up screens capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Reviewed the recorded device authorization and step-up screens capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-dark.png","note":"Reviewed the recorded the session goal editor capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/session-goals-before-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-light.png","note":"Reviewed the recorded the session goal editor capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/session-goals-before-390-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-dark.png","note":"Reviewed the recorded the session goal editor capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/session-goals-before-1440-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-light.png","note":"Reviewed the recorded the session goal editor capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/session-goals-before-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-dark.png","note":"Reviewed the recorded the session goal editor capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/session-goals-after-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-light.png","note":"Reviewed the recorded the session goal editor capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/session-goals-after-390-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-dark.png","note":"Reviewed the recorded the session goal editor capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/session-goals-after-1440-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-light.png","note":"Reviewed the recorded the session goal editor capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/session-goals-after-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-light.png","note":"Reviewed the recorded agent efficiency settings capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/agent-efficiency-learning-390-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-dark.png","note":"Reviewed the recorded agent efficiency settings capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/agent-efficiency-learning-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-light.png","note":"Reviewed the recorded agent efficiency settings capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/agent-efficiency-learning-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-dark.png","note":"Reviewed the recorded agent efficiency settings capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/agent-efficiency-learning-1440-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-working-configuration.png","note":"Reviewed the recorded agent efficiency settings capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/agent-efficiency-working-configuration.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-compaction.png","note":"Reviewed the recorded agent efficiency settings capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/agent-efficiency-compaction.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-supervision.png","note":"Reviewed the recorded agent efficiency settings capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/agent-efficiency-supervision.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-usage.png","note":"Reviewed the recorded agent efficiency settings capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/agent-efficiency-usage.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-390-dark.png","note":"Reviewed the recorded the Updates settings panels capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/updates-before-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-390-dark.png","note":"Reviewed the recorded the Updates settings panels capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/updates-after-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-1440-light.png","note":"Reviewed the recorded the Updates settings panels capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/updates-before-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-1440-light.png","note":"Reviewed the recorded the Updates settings panels capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/updates-after-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-history-after-390-dark.png","note":"Reviewed the recorded the Updates settings panels capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/updates-history-after-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-notes-after-390-light.png","note":"Reviewed the recorded the Updates settings panels capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/updates-notes-after-390-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"Reviewed the recorded child transcript text rows capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/child-tool-text-before-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"Reviewed the recorded child transcript text rows capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/child-tool-text-after-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"Reviewed the recorded child transcript text rows capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/child-tool-text-before-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"Reviewed the recorded child transcript text rows capture and its source dependencies. The change to index.css concerns the mobile dock toolbar and snap geometry. This capture remains evidence of its original subject and date.","inputs":["docs/learn/media/child-tool-text-after-1440-light.png","src-ui/src/index.css"]}
+  ]
+}

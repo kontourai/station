@@ -1,0 +1,13 @@
+{
+  "revision": "4d629bf5583efaa0c0a70f5aa78f53de2a4530b4",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Adds one row for ConversationStationHandoff.tsx, the paired-Station section of the handoff picker, with its covering tests and screenshots; no existing row changed. The citing guides describe the inventory's format and rule, which are unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/guides/theming.md","note":"Adds one row for ConversationStationHandoff.tsx, the paired-Station section of the handoff picker, with its covering tests and screenshots; no existing row changed. The citing guides describe the inventory's format and rule, which are unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/backend.md","note":"Adds one row for ConversationStationHandoff.tsx, the paired-Station section of the handoff picker, with its covering tests and screenshots; no existing row changed. The citing guides describe the inventory's format and rule, which are unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Adds one row for ConversationStationHandoff.tsx, the paired-Station section of the handoff picker, with its covering tests and screenshots; no existing row changed. The citing guides describe the inventory's format and rule, which are unchanged.","inputs":["docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

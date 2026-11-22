@@ -7,7 +7,12 @@ import {
   type ProjectSharedTaskSummary,
 } from '@kontourai/station-contracts/project-shared-task';
 import { z } from 'zod/v3';
-import { type ClientRequestOptions, getJson, mutateJson } from './http';
+import {
+  type ClientRequestOptions,
+  fetchSSE,
+  getJson,
+  mutateJson,
+} from './http';
 import { unwrapProjectResponse } from './project-response';
 
 const id = z.string().min(1).max(256);
@@ -221,21 +226,57 @@ export const readProjectSharedTaskHistory = (
   apiBase: string,
   slug: string,
   taskId: string,
-  options?: ClientRequestOptions & { cursor?: string },
-): Promise<ProjectSharedTaskHistory> =>
-  read(
-    `${apiBase}/api/projects/${encodeURIComponent(slug)}/shared-work/${encodeURIComponent(taskId)}/history${options?.cursor ? `?cursor=${encodeURIComponent(options.cursor)}` : ''}`,
+  options?: ClientRequestOptions & {
+    cursor?: string;
+    expectedShareId?: string;
+  },
+): Promise<ProjectSharedTaskHistory> => {
+  const query = new URLSearchParams();
+  if (options?.cursor) query.set('cursor', options.cursor);
+  if (options?.expectedShareId) query.set('share', options.expectedShareId);
+  return read(
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/shared-work/${encodeURIComponent(taskId)}/history${query.size ? `?${query}` : ''}`,
     history,
     options,
   );
+};
 export const readProjectSharedTaskDocument = (
   apiBase: string,
   slug: string,
   taskId: string,
-  options?: ClientRequestOptions,
+  options?: ClientRequestOptions & { expectedShareId?: string },
 ): Promise<ProjectSharedTaskDocument> =>
   read(
-    `${apiBase}/api/projects/${encodeURIComponent(slug)}/shared-work/${encodeURIComponent(taskId)}/document`,
+    `${apiBase}/api/projects/${encodeURIComponent(slug)}/shared-work/${encodeURIComponent(taskId)}/document${options?.expectedShareId ? `?share=${encodeURIComponent(options.expectedShareId)}` : ''}`,
     document,
     options,
   );
+
+/** Watch for content-free invalidations of one publication’s human messages. */
+export function watchProjectSharedTaskHistory(
+  apiBase: string,
+  shared: ProjectSharedTaskSummary,
+  changed: () => void,
+  options: ClientRequestOptions,
+) {
+  const project = encodeURIComponent(shared.project.localProjectSlug);
+  const task = encodeURIComponent(shared.task.id);
+  const stream = fetchSSE(
+    `${apiBase}/api/projects/${project}/shared-work/${task}/history?share=${encodeURIComponent(shared.shareId)}`,
+    {
+      ...options,
+      onOpen: (response) => {
+        if (
+          !response.headers.get('content-type')?.startsWith('text/event-stream')
+        )
+          stream.close();
+      },
+      onMessage: (frame) => {
+        if (frame.event === 'changed') changed();
+        return true;
+      },
+      onError: changed,
+    },
+  );
+  return stream;
+}

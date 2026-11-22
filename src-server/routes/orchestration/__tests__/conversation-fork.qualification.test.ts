@@ -466,6 +466,12 @@ describe('scripted fork delivery and canonical history qualification', () => {
         )?.session.hasActiveTurn,
       ).toBe(false),
     );
+    const reopened = await f.service.resolveConversationOpen(
+      f.conversationId,
+      authority,
+    );
+    expect(reopened?.status).toBe('resolved');
+    expect(reopened).not.toHaveProperty('nextTurnStartsSession');
     await expect(
       f.execute('codex', 'Continue after the failed first turn.'),
     ).rejects.toThrow('Fork context delivery has not completed.');
@@ -725,6 +731,12 @@ describe('scripted fork delivery and canonical history qualification', () => {
       )
       .run(seeded.threadId);
     const sessions = f.store.conversationSessions(f.conversationId).length;
+    const reopened = await f.service.resolveConversationOpen(
+      f.conversationId,
+      authority,
+    );
+    expect(reopened?.status).toBe('resolved');
+    expect(reopened).not.toHaveProperty('nextTurnStartsSession');
     await expect(
       f.execute('codex', 'Follow-up after an unwitnessed completion.'),
     ).rejects.toMatchObject({

@@ -288,14 +288,13 @@ diagnosed and must not be re-run to green; a cancellation gets re-run *after*
 establishing the host was the cause, and disclosed either way. Conflating them
 guarantees one of those responses is wrong.
 
-Related and load-bearing: **`firstCausalExcerpt` named the first diagnostic in
-the output, not the cause** (archive#1871). It twice named an unrelated
-*warning* — once while the run failed on a lint error elsewhere, once while the
-run was cancelled and nothing failed at all. Both times the truth was further
-down, in `counts` and the tool's own tally (`Found 1 error. / Found 374
-warnings.`). Reading it top-down cost one lane a round of edits to another
-lane's files on a false premise. **Fixed in archive#1871**, and the fix took three
-rounds, so it is worth knowing exactly what it does and does not promise.
+Earlier verification summaries sometimes attributed a failure or cancellation
+to a warning from a passing step (archive#1871, #1069). Read `counts` and the
+runner's tally with the excerpt to distinguish test failure from cancellation.
+Current bounded summaries carry warnings and informational lines separately
+in `diagnosticExcerpts` when the failure scan finds only lower-severity output.
+That context can include earlier steps. Historical bounded summaries can
+still be read using their existing fields.
 
 For a chained gate command (`verify:static:raw`, `typecheck`, ...) the excerpt
 and the `failingStep` field are scoped to the step whose npm-run boundary is

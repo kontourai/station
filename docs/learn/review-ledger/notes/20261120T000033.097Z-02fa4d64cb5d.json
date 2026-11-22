@@ -1,0 +1,7 @@
+{
+  "revision": "418a3ed48659b2c02662ccde82db5302950eb832",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Checked the notification delivery reference in the runtime failure and repair paragraph. It points to routing and delivery semantics, which are unaffected by the toast stack exit and overflow timing change.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]}
+  ]
+}

@@ -55,6 +55,10 @@ import Ajv2020, { type ValidateFunction } from 'ajv/dist/2020.js';
 import { readRegistryInstallAliases } from '../../providers/registries/registry-install-aliases.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { isRecord } from '../../utils/is-record.js';
+import {
+  canonicalPath,
+  canonicalPathThroughExistingAncestor,
+} from '../../utils/path-containment.js';
 import type { CanonicalSkillSource } from '../flow/flow-agents-skills-source.js';
 import { assertSafeContextText } from '../orchestration/context-safety.js';
 import { toolOriginLocation } from './integration-origin.js';
@@ -280,33 +284,20 @@ function singlePassExpand(
 }
 
 function resolveContainedPath(root: string, candidate: string): string {
-  const resolvedRoot = realpathSync(root);
-  // Absolute placeholder expansions remain absolute; a `./` value is
-  // plugin-relative by specification and must not inherit Station's process
-  // cwd. `resolve(root, absolute)` preserves the absolute value.
+  const resolvedRoot = canonicalPath(root);
   const target = resolve(resolvedRoot, candidate);
   if (!isInside(resolvedRoot, target)) throw new Error('path escapes its root');
 
-  // A not-yet-created PLUGIN_DATA child is valid. Prove its nearest existing
-  // ancestor instead, so an intervening symlink still cannot redirect it.
-  let existing = target;
-  while (!existsSync(existing)) {
-    const parent = dirname(existing);
-    if (parent === existing) throw new Error('path has no existing ancestor');
-    existing = parent;
+  let resolved: string;
+  try {
+    resolved = canonicalPathThroughExistingAncestor(target);
+  } catch {
+    throw new Error('path cannot be resolved');
   }
-  const resolvedExisting = realpathSync(existing);
-  if (!isInside(resolvedRoot, resolvedExisting)) {
+  if (!isInside(resolvedRoot, resolved)) {
     throw new Error('path resolves outside its root');
   }
-  if (existsSync(target)) {
-    const resolvedTarget = realpathSync(target);
-    if (!isInside(resolvedRoot, resolvedTarget)) {
-      throw new Error('path resolves outside its root');
-    }
-    return resolvedTarget;
-  }
-  return target;
+  return resolved;
 }
 
 function safeRemoteUrl(value: string): boolean {
@@ -487,7 +478,7 @@ export class AgentPluginLoader {
     const reports: AgentPluginLoadReport[] = [];
     let root: string;
     try {
-      root = realpathSync(resolve(pluginRoot));
+      root = canonicalPath(pluginRoot);
       if (!statSync(root).isDirectory())
         throw new Error('plugin root is not a directory');
     } catch (error) {
@@ -504,7 +495,7 @@ export class AgentPluginLoader {
     let rawManifest: unknown = options.manifestDocument;
     if (rawManifest === undefined) {
       try {
-        const resolvedManifest = realpathSync(manifestPath);
+        const resolvedManifest = canonicalPath(manifestPath);
         if (!isInside(root, resolvedManifest)) {
           throw new Error('plugin.json resolves outside the plugin root');
         }
@@ -1175,7 +1166,7 @@ export class AgentPluginLoader {
   private hasAgentPluginSchema(pluginRoot: string): boolean {
     try {
       const value = JSON.parse(
-        readBoundedRegularFile(join(pluginRoot, 'plugin.json')),
+        readBoundedRegularFile(resolveContainedPath(pluginRoot, 'plugin.json')),
       ) as Record<string, unknown>;
       return (
         typeof value?.$schema === 'string' &&
@@ -1209,7 +1200,7 @@ export class AgentPluginLoader {
     if (!existsSync(skillsRoot)) return [];
     let resolvedSkillsRoot: string;
     try {
-      resolvedSkillsRoot = realpathSync(skillsRoot);
+      resolvedSkillsRoot = canonicalPath(skillsRoot);
       if (
         !isInside(root, resolvedSkillsRoot) ||
         !statSync(resolvedSkillsRoot).isDirectory()
@@ -1254,8 +1245,8 @@ export class AgentPluginLoader {
       const manifestPath = join(directory, 'SKILL.md');
       if (!existsSync(manifestPath)) continue;
       try {
-        const resolvedDirectory = realpathSync(directory);
-        const resolvedManifest = realpathSync(manifestPath);
+        const resolvedDirectory = canonicalPath(directory);
+        const resolvedManifest = canonicalPath(manifestPath);
         if (
           !isInside(root, resolvedDirectory) ||
           !isInside(root, resolvedManifest) ||
@@ -1299,7 +1290,7 @@ export class AgentPluginLoader {
     const extensionRoot = join(root, STATION_AGENT_PLUGIN_EXTENSION_ID);
     if (!existsSync(extensionRoot)) return undefined;
     try {
-      const resolved = realpathSync(extensionRoot);
+      const resolved = canonicalPath(extensionRoot);
       if (!isInside(root, resolved) || !statSync(resolved).isDirectory()) {
         throw new Error('namespace path is not a contained directory');
       }
@@ -1327,7 +1318,7 @@ export class AgentPluginLoader {
     if (!existsSync(mcpPath)) return [];
     let value: unknown;
     try {
-      const resolvedMcp = realpathSync(mcpPath);
+      const resolvedMcp = canonicalPath(mcpPath);
       if (!isInside(root, resolvedMcp))
         throw new Error('mcp.json resolves outside the plugin root');
       value = JSON.parse(readBoundedRegularFile(resolvedMcp));
@@ -1436,15 +1427,11 @@ export class AgentPluginLoader {
           accessSync(dataRoot, fsConstants.W_OK);
         }
         const resolvedData = provisionData
-          ? realpathSync(dataRoot)
+          ? canonicalPath(dataRoot)
           : resolve(dataRoot);
-        const resolvedRoot = realpathSync(root);
         let command = server.command;
         if (command.startsWith('./')) {
-          command = resolveContainedPath(
-            resolvedRoot,
-            resolve(resolvedRoot, command),
-          );
+          command = resolveContainedPath(root, command);
         } else if (
           command.includes('/') ||
           command.includes('\\') ||
@@ -1456,14 +1443,14 @@ export class AgentPluginLoader {
         }
         const args = Array.isArray(server.args)
           ? server.args.map((arg) =>
-              singlePassExpand(String(arg), resolvedRoot, resolvedData),
+              singlePassExpand(String(arg), root, resolvedData),
             )
           : undefined;
         const configuredEnv = isRecord(server.env)
           ? Object.fromEntries(
               Object.entries(server.env).map(([name, envValue]) => [
                 name,
-                singlePassExpand(String(envValue), resolvedRoot, resolvedData),
+                singlePassExpand(String(envValue), root, resolvedData),
               ]),
             )
           : {};
@@ -1477,19 +1464,15 @@ export class AgentPluginLoader {
         }
         const env = {
           ...configuredEnv,
-          PLUGIN_ROOT: resolvedRoot,
+          PLUGIN_ROOT: root,
           PLUGIN_DATA: resolvedData,
         };
-        let cwd = resolvedRoot;
+        let cwd = root;
         if (typeof server.cwd === 'string') {
-          const expanded = singlePassExpand(
-            server.cwd,
-            resolvedRoot,
-            resolvedData,
-          );
+          const expanded = singlePassExpand(server.cwd, root, resolvedData);
           const containmentRoot = server.cwd.startsWith(PLUGIN_DATA_PLACEHOLDER)
             ? resolvedData
-            : resolvedRoot;
+            : root;
           cwd =
             containmentRoot === resolvedData && !provisionData
               ? this.resolveUnprovisionedDataPath(resolvedData, expanded)

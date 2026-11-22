@@ -180,10 +180,6 @@ describe('registry-backed enriched Agent routes', () => {
           'Refuses a delegated child from sending messages through Station control.',
       },
       {
-        pattern: 'station-control_delegate_task',
-        refusal: 'Refuses a delegated child from delegating additional tasks.',
-      },
-      {
         pattern: 'station-control_add_*',
         refusal:
           'Refuses a delegated child from adding Station-managed resources.',

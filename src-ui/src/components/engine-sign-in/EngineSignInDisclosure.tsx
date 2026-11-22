@@ -10,12 +10,17 @@ import { EngineSignInPanel } from './EngineSignInPanel';
 export function EngineSignInDisclosure({
   connectionId,
   engineName,
+  onSignedIn,
 }: {
   connectionId: string;
   engineName: string;
+  onSignedIn?: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  if (open) return <EngineSignInPanel connectionId={connectionId} />;
+  if (open)
+    return (
+      <EngineSignInPanel connectionId={connectionId} onSignedIn={onSignedIn} />
+    );
   return (
     <span className="acp-add-dialog__result-action">
       <Button size="sm" onClick={() => setOpen(true)}>

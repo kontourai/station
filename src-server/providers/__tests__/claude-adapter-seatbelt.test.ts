@@ -11,7 +11,7 @@
 import { existsSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { connect } from 'node:net';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import type {
   ConfinementPlan,
   ExecutionConfinementRecord,
@@ -87,6 +87,7 @@ import {
   installSessionTmpDirPolicy,
   sessionTempRoot,
   sessionTmpRoot,
+  shortSessionTmpRoots,
 } from '../../services/infra/session-tmpdir.js';
 import {
   RESTRICTED_NETWORK_STATION_CONTROL_TOOLS,
@@ -103,6 +104,31 @@ import {
   FakeClaudeChild,
   startFakeClaudeEngine,
 } from './claude-engine-process-test-utils.js';
+
+const shortBases = vi.hoisted(() => ({
+  paths: undefined as string[] | undefined,
+}));
+
+vi.mock('node:fs', async (importOriginal) => {
+  const fs = await importOriginal<typeof import('node:fs')>();
+  const { tmpdir } = await import('node:os');
+  const systemBases = [tmpdir(), '/tmp'];
+  return {
+    ...fs,
+    realpathSync: Object.assign(
+      (...args: Parameters<typeof fs.realpathSync>) => {
+        const index = systemBases.indexOf(String(args[0]));
+        if (shortBases.paths && index !== -1) {
+          const base = shortBases.paths[index] ?? shortBases.paths[0];
+          if (!base) throw new Error('System temp base unavailable');
+          args[0] = base;
+        }
+        return fs.realpathSync(...args);
+      },
+      { native: fs.realpathSync.native },
+    ),
+  };
+});
 
 const SEATBELT_PLAN: ConfinementPlan = {
   requiredLevel: 'os-profile',
@@ -192,9 +218,23 @@ function deferred<T>() {
 
 describe('#2494: the Claude adapter confines a full-access workspace start with Seatbelt', () => {
   const makeTempDir = trackTempDirs();
+  // A test-owned short root under /tmp, never this user's real one.
+  const makeShortDir = trackTempDirs({ base: '/tmp' });
   let stationHome: string;
   let workspace: string;
   let adapter: ClaudeAdapter;
+
+  /**
+   * #4740: this test home is too long for a socket-safe TMPDIR in it, so a
+   * confined start's TMPDIR is a fresh `session-<pid>-<random>` in the short
+   * root.
+   */
+  function expectConfinedTmpDir(tmpdir: string | undefined): void {
+    expect(dirname(tmpdir!)).toBe(shortSessionTmpRoots()[0]);
+    expect(basename(tmpdir!)).toMatch(
+      new RegExp(`^session-${process.pid}-[A-Za-z0-9]{6}$`),
+    );
+  }
   let events: CanonicalRuntimeEvent[];
   /** #4769: what the adapter kept in the Station log. */
   let decisionLog: Record<string, unknown>[] = [];
@@ -271,11 +311,14 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     workspace = join(root, 'workspace');
     mkdirSync(stationHome, { recursive: true });
     mkdirSync(workspace);
+    const shortBase = canonicalPath(makeShortDir('st'));
+    shortBases.paths = [shortBase];
     mockPlatform.mockReturnValue('linux');
   });
 
   afterEach(async () => {
     await adapter?.stopAll();
+    shortBases.paths = undefined;
     mockQuery.mockReset();
     mockForkSession.mockReset();
     vi.unstubAllEnvs();
@@ -445,9 +488,7 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
     expect(env.CLAUDE_CONFIG_DIR).toBe(
       join(stationHome, 'confined-homes', 'claude'),
     );
-    expect(env.TMPDIR).toContain(
-      join(stationHome, 'tmp', 'confined-sessions', 'session-'),
-    );
+    expectConfinedTmpDir(env.TMPDIR);
     expect(env).not.toHaveProperty('CLAUDE_SECURESTORAGE_CONFIG_DIR');
     expect(child.spawnArgs.options.cwd).toBe(workspace);
     // Spawned at Auto, with the grant the SDK only takes at spawn.
@@ -763,9 +804,7 @@ describe('#2494: the Claude adapter confines a full-access workspace start with 
       // Recorded once for this start, not again when it is announced.
       expect(vi.mocked(commitEngineLaunch)).toHaveBeenCalledTimes(1);
       const tmpdir = spawnedEnv().TMPDIR;
-      expect(tmpdir).toContain(
-        join(stationHome, 'tmp', 'confined-sessions', 'session-'),
-      );
+      expectConfinedTmpDir(tmpdir);
       expect(sessionTempRoot('confined-images')).toBe(tmpdir);
       expect(existsSync(sessionTmpRoot(stationHome))).toBe(false);
       await adapter.stopSession('confined-images');

@@ -1,0 +1,9 @@
+{
+  "revision": "ba2c5fc6e0669af5dfc7a9beffc4f6b1e1ac6bd3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the child and regular attachment controls against the composer and getting-started guides. The same paperclip explains text-only child input on tap. The child command and the ordinary attachment upload path keep their existing contracts.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the child and regular attachment controls against the composer and getting-started guides. The same paperclip explains text-only child input on tap. The child command and the ordinary attachment upload path keep their existing contracts.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]}
+  ]
+}

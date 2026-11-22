@@ -357,6 +357,12 @@ Canonicalize once; reject encoded separators, nested encodings, traversal,
 invalid segments, unsupported query keys and excessive query/body sizes.
 Request budget, CSRF, scope coverage and agent-origin checks remain active.
 
+Continuing a source conversation on the paired Station is not a tunnel
+operation. The source's own `conversation-handoffs` route sends its history and
+the receiver saves it as a new conversation; only that conversation's first
+turn then goes through the tunnel's `chat` leaf. See
+[continuing a chat on a paired Station](chat-composer.md#continuing-a-chat-on-a-paired-station).
+
 Every admitted mutation reparses its body and rejects spoofed actor,
 delegation, preparation and background fields. The relay chat schema explicitly
 preserves supported `whenBusy:'queue'`. Inbox/continue payloads

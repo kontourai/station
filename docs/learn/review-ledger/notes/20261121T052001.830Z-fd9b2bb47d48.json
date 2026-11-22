@@ -1,0 +1,7 @@
+{
+  "revision": "a0f8905de71f64df42157495fefd29c53e9cbc15",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked Read Child Conversations against the shared breadcrumb. The phone uses the Back to parent chat control; the current child is marked as the current page and the desktop trail retains the clickable parent and one separator. The navigation suite exercised both return paths in the focused run.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/child-transcript-navigation.test.tsx"]}
+  ]
+}

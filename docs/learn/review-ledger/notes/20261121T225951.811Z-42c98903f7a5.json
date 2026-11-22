@@ -1,0 +1,7 @@
+{
+  "revision": "41803c5f23dafa317a172babc5abb0e2dfcff0c9",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Checked the edits: container smoke row is main's (main pushes; manual dispatch), main-health trigger row lists Repo: Duplicate sweep as the workflow now does, the allowlist names only Main: Qualification, and the known-gap sentence matches the shared per-workflow concurrency group.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

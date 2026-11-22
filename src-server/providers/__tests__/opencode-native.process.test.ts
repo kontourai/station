@@ -17,10 +17,12 @@ import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
+import { ACPProcess } from '../../services/acp/acp-process.js';
 import type {
   ProviderAdapterShape,
   ProviderSessionStartInput,
 } from '../adapter-shape.js';
+import { AcpAdapter } from '../adapters/acp-adapter.js';
 import { OpenCodeAdapter } from '../adapters/opencode-adapter.js';
 import { realOpenCode2, warnSkipped } from './opencode-real-binary.js';
 
@@ -48,7 +50,7 @@ function lastUserText(body: {
 }
 
 /** An OpenAI-compatible streaming model: a shell call for DO_BASH, else text. */
-function startMockModel(): Promise<http.Server> {
+function startMockModel(observedModels: string[]): Promise<http.Server> {
   const server = http.createServer(async (req, res) => {
     let raw = '';
     for await (const chunk of req) raw += chunk;
@@ -58,6 +60,7 @@ function startMockModel(): Promise<http.Server> {
       return;
     }
     const body = JSON.parse(raw || '{}');
+    if (typeof body.model === 'string') observedModels.push(body.model);
     const tools: string[] = (body.tools ?? []).map(
       (tool: { function?: { name?: string } }) => tool.function?.name,
     );
@@ -131,6 +134,8 @@ describe.skipIf(!real.binary)(
     let model: http.Server;
     let adapter: OpenCodeAdapter;
     let project: string;
+    let isolatedEnv: Record<string, string>;
+    const observedModels: string[] = [];
     const events: Event[] = [];
     let pump: Promise<void>;
 
@@ -151,12 +156,12 @@ describe.skipIf(!real.binary)(
     }
 
     beforeAll(async () => {
-      model = await startMockModel();
+      model = await startMockModel(observedModels);
       const port = (model.address() as AddressInfo).port;
       const root = realpathSync(makeTempDir('opencode-native-'));
       const home = join(root, 'home');
       project = join(root, 'project');
-      const env: NodeJS.ProcessEnv = {
+      const env: Record<string, string> = {
         PATH: process.env.PATH ?? '/usr/bin:/bin',
         HOME: home,
         XDG_CONFIG_HOME: join(home, 'config'),
@@ -168,6 +173,7 @@ describe.skipIf(!real.binary)(
         OPENCODE_DISABLE_AUTOUPDATE: '1',
         OPENCODE_DISABLE_CLAUDE_CODE: '1',
       };
+      isolatedEnv = env;
       for (const dir of [
         join(home, 'config', 'opencode'),
         join(home, 'data'),
@@ -192,6 +198,11 @@ describe.skipIf(!real.binary)(
                 apiKey: 'mock-key',
               },
               models: {
+                'mock-2': {
+                  name: 'Mock Two',
+                  capabilities: { tools: true },
+                  limit: { context: 8000, output: 2000 },
+                },
                 'mock-1': {
                   name: 'Mock One',
                   capabilities: { tools: true },
@@ -213,6 +224,7 @@ describe.skipIf(!real.binary)(
       adapter = new OpenCodeAdapter({
         getConnections: async () => [connection],
         nativeEnabled: () => true,
+        managedWorkspaceHomeDir: join(root, 'station'),
         // An Agent's staged pre-tool policy, as the runtime resolves it.
         acp: {
           resolvePreToolPolicy: async () => async (tool) =>
@@ -257,6 +269,129 @@ describe.skipIf(!real.binary)(
       await pump;
       await new Promise((resolve) => model?.close(resolve));
     }, 30_000);
+
+    test('native model changes reach the next provider request', async () => {
+      await adapter.startSession({
+        threadId: 'model-switch',
+        provider: 'opencode',
+        cwd: project,
+        metadata: { connectionId: 'real-opencode' },
+        modelId: 'mock/mock-1',
+      });
+      const first = await adapter.sendTurn({
+        threadId: 'model-switch',
+        input: 'first model',
+      });
+      await waitFor(
+        (e) => e.method === 'turn.completed' && e.turnId === first.turnId,
+      );
+      const second = await adapter.sendTurn({
+        threadId: 'model-switch',
+        input: 'second model',
+        modelId: 'mock/mock-2',
+      });
+      await waitFor(
+        (e) => e.method === 'turn.completed' && e.turnId === second.turnId,
+      );
+      expect(observedModels).toContain('mock-2');
+      expect(
+        events.some(
+          (e) =>
+            e.method === 'session.configured' &&
+            e.threadId === 'model-switch' &&
+            e.model === 'mock/mock-2',
+        ),
+      ).toBe(true);
+    }, 60_000);
+
+    test('OpenCode 2.x over ACP applies host never-ask on start, resume, and takeover', async () => {
+      const acpEvents: Event[] = [];
+      const acp = new OpenCodeAdapter({
+        nativeEnabled: () => false,
+        managedWorkspaceHomeDir: join(isolatedEnv.HOME!, 'station-acp'),
+        getConnections: async () => [
+          {
+            id: 'real-acp',
+            name: 'OpenCode',
+            command: real.binary!,
+            args: ['acp'],
+            enabled: true,
+          },
+        ],
+        createAcpAdapter: (options) =>
+          new AcpAdapter({
+            ...options,
+            processFactory: (opts) =>
+              new ACPProcess({ ...opts, launchEnv: isolatedEnv }),
+          }),
+      });
+      const drain = (async () => {
+        for await (const event of acp.streamEvents())
+          acpEvents.push(event as Event);
+      })();
+      const run = async (threadId: string, approvalMode?: 'never') => {
+        const { turnId } = await acp.sendTurn({
+          threadId,
+          input: 'DO_BASH please',
+          confinement: 'host',
+          ...(approvalMode ? { modelOptions: { approvalMode } } : {}),
+        });
+        const deadline = Date.now() + 60_000;
+        while (
+          !acpEvents.some(
+            (e) => e.method === 'turn.completed' && e.turnId === turnId,
+          )
+        ) {
+          const failure = acpEvents.find(
+            (e) => e.method === 'runtime.error' && e.turnId === turnId,
+          );
+          if (failure || Date.now() > deadline)
+            throw new Error(JSON.stringify(failure ?? acpEvents));
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        expect(
+          acpEvents.filter(
+            (e) => e.turnId === turnId && e.method === 'request.opened',
+          ),
+        ).toEqual([]);
+        expect(
+          acpEvents
+            .filter(
+              (e) => e.turnId === turnId && e.method === 'content.text-delta',
+            )
+            .map((e) => e.delta)
+            .join(''),
+        ).toContain('shell finished');
+      };
+      try {
+        const start = {
+          provider: 'opencode' as const,
+          cwd: project,
+          confinement: 'host' as const,
+          metadata: { connectionId: 'real-acp' },
+        };
+        await acp.startSession({
+          ...start,
+          threadId: 'acp-full',
+          modelOptions: { approvalMode: 'never' },
+        });
+        await run('acp-full');
+        const [session] = await acp.listSessions();
+        await acp.stopSession('acp-full');
+        await acp.startSession({
+          ...start,
+          threadId: 'acp-resumed',
+          resumeCursor: session?.resumeCursor,
+          modelOptions: { approvalMode: 'never' },
+        });
+        await run('acp-resumed');
+        await acp.startSession({ ...start, threadId: 'acp-takeover' });
+        await run('acp-takeover', 'never');
+      } finally {
+        await acp.stopAll();
+        await drain;
+      }
+    }, 120_000);
 
     test('a governed session asks before the shell runs, takes a decline, and keeps working', async () => {
       await adapter.startSession({

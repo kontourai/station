@@ -60,26 +60,74 @@ export function childWorkloadOutcome(
   return outcomes.get(child);
 }
 
-type OomKillWatch = (
-  listener: (kill: ChildWorkloadOomKill) => void,
+/** One of a scope's largest processes: the kernel's command name, never argv. */
+export interface ChildWorkloadProcess {
+  readonly pid: number;
+  readonly name: string;
+  readonly rssBytes: number;
+}
+
+/**
+ * A change in a running scope's memory state, announced once per
+ * transition (#5113): never once per poll.
+ */
+export type ChildWorkloadNotice =
+  | {
+      /** The working set reached the scope's pressure threshold. */
+      readonly kind: 'pressure-enter';
+      readonly workingSetBytes: number;
+      readonly memoryMaxBytes: number;
+      readonly thresholdPercent: number;
+      readonly largestProcesses?: readonly ChildWorkloadProcess[];
+    }
+  | {
+      /** The working set fell back below the threshold's exit margin. */
+      readonly kind: 'pressure-exit';
+      readonly workingSetBytes: number;
+      readonly memoryMaxBytes: number;
+      readonly thresholdPercent: number;
+    }
+  | {
+      /** A process in the scope was killed and the scope's leader lives. */
+      readonly kind: 'oom-kill';
+      readonly kill: ChildWorkloadOomKill;
+      /** The scope's largest surviving processes when the kill was seen. */
+      readonly largestProcesses?: readonly ChildWorkloadProcess[];
+    };
+
+type NoticeWatch = (
+  listener: (notice: ChildWorkloadNotice) => void,
 ) => () => void;
-const oomWatches = new WeakMap<object, OomKillWatch>();
+const noticeWatches = new WeakMap<object, NoticeWatch>();
+
+/**
+ * Observe this child's scope's workload notices while it runs. Undefined
+ * when the child has no managed scope. Returns the unsubscribe.
+ */
+export function watchChildWorkloadNotices(
+  child: object,
+  listener: (notice: ChildWorkloadNotice) => void,
+): (() => void) | undefined {
+  return noticeWatches.get(child)?.(listener);
+}
 
 /**
  * Observe OOM kills inside this child's scope while it runs (a command the
- * engine started, normally). Undefined when the child has no managed scope.
- * Returns the unsubscribe.
+ * engine started, normally): its `oom-kill` notices. Undefined when the
+ * child has no managed scope. Returns the unsubscribe.
  */
 export function watchChildWorkloadOomKills(
   child: object,
   listener: (kill: ChildWorkloadOomKill) => void,
 ): (() => void) | undefined {
-  return oomWatches.get(child)?.(listener);
+  return watchChildWorkloadNotices(child, (notice) => {
+    if (notice.kind === 'oom-kill') listener(notice.kill);
+  });
 }
 
 /** Installed by the server; standalone SDK consumers keep their ordinary launch. */
 export interface ChildWorkloadLaunch {
-  watchOomKills?: OomKillWatch;
+  watchNotices?: NoticeWatch;
   command: string;
   args: string[];
   env: NodeJS.ProcessEnv;
@@ -172,7 +220,7 @@ export function spawnChildWorkload(
     throw error;
   }
   if (launch?.outcome) outcomes.set(child, launch.outcome);
-  if (launch?.watchOomKills) oomWatches.set(child, launch.watchOomKills);
+  if (launch?.watchNotices) noticeWatches.set(child, launch.watchNotices);
   trackChildWorkload(launch, child.pid);
   const cleanup = () => {
     // The runtime launcher retains and reports a failed cleanup for recovery.

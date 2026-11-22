@@ -566,6 +566,36 @@ describe('AgentPluginLoader', () => {
   );
 
   test.runIf(process.platform !== 'win32')(
+    'loads a contained component and resolves only existing command links',
+    () => {
+      const stationHome = home();
+      const root = plugin(stationHome);
+      writeJson(join(root, 'mcp-component.json'), {
+        $schema: MCP_SCHEMA,
+        mcpServers: {
+          linked: { type: 'stdio', command: './linked-command' },
+          missing: { type: 'stdio', command: './missing-command' },
+        },
+      });
+      symlinkSync('mcp-component.json', join(root, 'mcp.json'));
+      const inert = join(root, 'ordinary.txt');
+      writeFileSync(inert, 'inert fixture');
+      symlinkSync('ordinary.txt', join(root, 'linked-command'));
+      symlinkSync('absent.txt', join(root, 'missing-command'));
+
+      const loaded = new AgentPluginLoader({
+        projectHomeDir: stationHome,
+      }).loadPackage(root);
+      expect(loaded?.tools).toEqual([
+        expect.objectContaining({ command: realpathSync.native(inert) }),
+      ]);
+      expect(loaded?.reports).toContainEqual(
+        expect.objectContaining({ code: 'mcp-server-invalid' }),
+      );
+    },
+  );
+
+  test.runIf(process.platform !== 'win32')(
     'rejects a symlinked PLUGIN_DATA ancestor without creating external data',
     () => {
       const stationHome = home();

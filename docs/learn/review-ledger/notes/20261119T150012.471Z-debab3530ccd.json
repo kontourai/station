@@ -1,0 +1,7 @@
+{
+  "revision": "970b89fa6fb18bf06f14b8914a56be3b37ff30de",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"The example Agent JSON now includes the shipped station-control_delegate_task tool. Verified exact guide/config equality through examples-conformance. No auto-approval or delegation authority changes.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

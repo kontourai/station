@@ -34,6 +34,11 @@ import {
 import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import {
+  readTranscriptWindow,
+  transcriptWindowCacheKey,
+  writeTranscriptWindow,
+} from '../hooks/orchestration/transcriptWindowCache';
+import {
   useConnectionSwitchScope,
   useInvalidateCachesOnConnectionSwitch,
 } from '../hooks/useInvalidateCachesOnConnectionSwitch';
@@ -164,6 +169,31 @@ describe('useInvalidateCachesOnConnectionSwitch', () => {
     rerender({ apiBase: 'http://server-c:3141', hasActiveConnection: true });
     expect(invalidateSpy).toHaveBeenCalledTimes(2);
     expect(clearSpy).not.toHaveBeenCalled();
+  });
+
+  it('drops the reopen transcript cache on a genuine switch, and only then', () => {
+    const queryClient = new QueryClient();
+    const key = transcriptWindowCacheKey({
+      namespace: 'v1|env=a|principal=human:a|grant=operator',
+      apiBase: 'http://server-a:3141',
+      conversationId: 'cached-conversation',
+    });
+    writeTranscriptWindow(key, {
+      events: [],
+      watermark: 1,
+      handoffs: [],
+      contextBoundaries: [],
+      partialTurnStartEventIds: [],
+    });
+    const { rerender } = renderSwitchHook(queryClient, {
+      apiBase: 'http://server-a:3141',
+      hasActiveConnection: true,
+    });
+    rerender({ apiBase: 'http://server-a:3141', hasActiveConnection: true });
+    expect(readTranscriptWindow(key)).toBeDefined();
+
+    rerender({ apiBase: 'http://server-b:3141', hasActiveConnection: true });
+    expect(readTranscriptWindow(key)).toBeUndefined();
   });
 
   it('invalidates when a distinct saved Station with the same origin becomes active', () => {

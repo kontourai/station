@@ -55,8 +55,10 @@ describe('EventStore cache-disabled diagnostics', () => {
       expect(
         queries.filter(
           (sql) =>
-            sql.includes('SELECT payload FROM orchestration_events') &&
-            sql.includes('sequence <= ?'),
+            sql.includes('SELECT sequence, CASE') &&
+            sql.includes(
+              'WHERE thread_id = ? AND sequence > ? AND sequence <= ?',
+            ),
         ),
       ).toHaveLength(2);
     } finally {

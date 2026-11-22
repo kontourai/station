@@ -24,6 +24,7 @@ import { type AgentHooksDeps, createAgentHooks } from './agent-hooks.js';
 
 interface RuntimeAgentBuilderContext {
   observeModelContext?: AgentHooksDeps['observeModelContext'];
+  pullRequestWatchPolicy?: AgentHooksDeps['pullRequestWatchPolicy'];
   validateProjectTools?: (
     slug: string,
     spec: AgentSpec,
@@ -136,6 +137,7 @@ export async function prepareRuntimeAgentInstance(
 
   const hooks = createAgentHooks({
     observeModelContext: context.observeModelContext,
+    pullRequestWatchPolicy: context.pullRequestWatchPolicy,
     projectToolPolicy: (invocation, tool) => {
       const source = preparationState.toolNameMapping.get(
         tool.toolName,

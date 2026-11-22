@@ -4,7 +4,11 @@ import {
   isTerminalLifecycle,
 } from './home-view-model';
 import type { WorkFactsById } from './work-facts';
-import { type LiveLaneId, workStatus } from './work-status';
+import {
+  hasUnseenDelegationResult,
+  type LiveLaneId,
+  workStatus,
+} from './work-status';
 
 export type { LiveLaneId };
 
@@ -223,7 +227,8 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
       snoozed.push(item);
       continue;
     }
-    const { lane } = workStatus(item, now);
+    const facts = workFacts?.get(item.id);
+    const { lane } = workStatus(item, now, facts);
     if (lane === 'external') {
       external.push(item);
       continue;
@@ -247,8 +252,9 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
       // they view it again. The last view is per person, not per device
       // (`conversationAcknowledgementKey` on the server).
       //
-      // With no view on record at all, only the time rule applies. Absence
-      // is ambiguous — history from before views were recorded, a thread an
+      // A ready delegation can carry an explicit unread result before the
+      // person has ever opened it. Otherwise, with no view on record, only
+      // the time rule applies. Absence is ambiguous — history from before views were recorded, a thread an
       // automation started that nobody watches, an entry trimmed from the
       // bounded store — and treating it as "never viewed" would park the
       // whole finished history here, which is the defect this replaced. A
@@ -256,7 +262,8 @@ export function partitionHomeWorkItems<T extends HomeWorkItem>({
       // chat pane records one while it is visible (`useAcknowledgeVisibleConversation`).
       const finishedAt = finishedAtOf(item);
       const unseen =
-        item.acknowledgedAt !== undefined && item.acknowledgedAt < finishedAt;
+        hasUnseenDelegationResult(item, facts) ||
+        (item.acknowledgedAt !== undefined && item.acknowledgedAt < finishedAt);
       (now - finishedAt < TERMINAL_LINGER_MS || unseen
         ? recentlyFinished
         : settled

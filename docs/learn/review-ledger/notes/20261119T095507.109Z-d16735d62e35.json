@@ -1,0 +1,43 @@
+{
+  "revision": "cb919a7e5351de879eb8414997fffa90dc699f0c",
+
+  "notes": [
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Checked the confirmed ACP mode after an approval-related process relaunch. The old process observation is cleared, and only the replacement catalog or a successful setting response confirms the mode. Input refusal follows the existing typed turn refusal; approval policy and managed ceilings are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the confirmed ACP mode after an approval-related process relaunch. The old process observation is cleared, and only the replacement catalog or a successful setting response confirms the mode. Input refusal follows the existing typed turn refusal; approval policy and managed ceilings are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Checked the confirmed ACP mode after an approval-related process relaunch. The old process observation is cleared, and only the replacement catalog or a successful setting response confirms the mode. Input refusal follows the existing typed turn refusal; approval policy and managed ceilings are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked the confirmed ACP mode after an approval-related process relaunch. The old process observation is cleared, and only the replacement catalog or a successful setting response confirms the mode. Input refusal follows the existing typed turn refusal; approval policy and managed ceilings are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the confirmed ACP mode after an approval-related process relaunch. The old process observation is cleared, and only the replacement catalog or a successful setting response confirms the mode. Input refusal follows the existing typed turn refusal; approval policy and managed ceilings are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the confirmed ACP mode after an approval-related process relaunch. The old process observation is cleared, and only the replacement catalog or a successful setting response confirms the mode. Input refusal follows the existing typed turn refusal; approval policy and managed ceilings are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the confirmed ACP mode after an approval-related process relaunch. The old process observation is cleared, and only the replacement catalog or a successful setting response confirms the mode. Input refusal follows the existing typed turn refusal; approval policy and managed ceilings are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the confirmed ACP mode after an approval-related process relaunch. The old process observation is cleared, and only the replacement catalog or a successful setting response confirms the mode. Input refusal follows the existing typed turn refusal; approval policy and managed ceilings are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked the confirmed ACP mode after an approval-related process relaunch. The old process observation is cleared, and only the replacement catalog or a successful setting response confirms the mode. Input refusal follows the existing typed turn refusal; approval policy and managed ceilings are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the confirmed ACP mode after an approval-related process relaunch. The old process observation is cleared, and only the replacement catalog or a successful setting response confirms the mode. Input refusal follows the existing typed turn refusal; approval policy and managed ceilings are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked the confirmed ACP mode after an approval-related process relaunch. The old process observation is cleared, and only the replacement catalog or a successful setting response confirms the mode. Input refusal follows the existing typed turn refusal; approval policy and managed ceilings are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the confirmed ACP mode after an approval-related process relaunch. The old process observation is cleared, and only the replacement catalog or a successful setting response confirms the mode. Input refusal follows the existing typed turn refusal; approval policy and managed ceilings are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked the confirmed ACP mode after an approval-related process relaunch. The old process observation is cleared, and only the replacement catalog or a successful setting response confirms the mode. Input refusal follows the existing typed turn refusal; approval policy and managed ceilings are unchanged.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked model confirmation at turn start. A matching model and model controls no longer clear an unrelated pending Session mode. The accepted model projection and turn event ordering still use the existing fields.","inputs":["src-ui/src/hooks/orchestration/turnHandlers.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked snapshot reconciliation at the existing Session read boundary. An acknowledged model no longer consumes a newer Session mode request. Existing model controls and remote authority checks remain with their current owners.","inputs":["src-ui/src/hooks/orchestration/snapshotHandlers.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked snapshot reconciliation at the existing Session read boundary. An acknowledged model no longer consumes a newer Session mode request. Existing model controls and remote authority checks remain with their current owners.","inputs":["src-ui/src/hooks/orchestration/snapshotHandlers.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked snapshot reconciliation at the existing Session read boundary. An acknowledged model no longer consumes a newer Session mode request. Existing model controls and remote authority checks remain with their current owners.","inputs":["src-ui/src/hooks/orchestration/snapshotHandlers.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked snapshot reconciliation at the existing Session read boundary. An acknowledged model no longer consumes a newer Session mode request. Existing model controls and remote authority checks remain with their current owners.","inputs":["src-ui/src/hooks/orchestration/snapshotHandlers.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed how mode and model acknowledgements settle their own requests. The model-control key set is unchanged. Pending non-model options survive the model acknowledgement.","inputs":["src-ui/src/utils/modelCapabilities.ts"]}
+  ]
+}

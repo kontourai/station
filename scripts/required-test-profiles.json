@@ -235,6 +235,18 @@
             "Seatbelt profile under the real kernel",
             "with a restricted network (#4769)",
             "a Mach service outside the allow-list is refused: configd answers scutil outside the profile and not inside it"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a Unix socket listens inside the confined TMPDIR, which stays within the socket budget"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "the short root beside the session directory is neither writable nor readable"
+          ],
+          [
+            "Seatbelt profile under the real kernel",
+            "a process with an overlapping workspace is never observed confined"
           ]
         ],
         "mayRuntimeSkip": [

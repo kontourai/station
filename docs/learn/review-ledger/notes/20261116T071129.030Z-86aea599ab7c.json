@@ -1,0 +1,7 @@
+{
+  "revision": "6184d08a9b6462c427979dfe509736ab6afbf351",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"The pinned table gains both new busy codes after the merge; contracts.md lists them.","inputs":["packages/contracts/src/__tests__/provider-failure.test.ts"]}
+  ]
+}

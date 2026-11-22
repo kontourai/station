@@ -70,6 +70,8 @@ let projectsResult: {
   error?: Error;
   refetch: ReturnType<typeof vi.fn>;
 };
+let roomHistoryPages: import('@kontourai/station-contracts/project-task-room-browser').ProjectTaskRoomBrowserHistory[] =
+  [];
 let roomDiscoveryResult: {
   data: any;
   isLoading: boolean;
@@ -147,6 +149,20 @@ const starterQueryClient = vi.hoisted(() => ({
 }));
 vi.mock('@kontourai/station-sdk', () => ({
   useFeaturePreviewsQuery: () => ({ data: featurePreviews }),
+  // #5066: the Task's pull request watch panel; this host does not serve it.
+  usePullRequestFeedbackCapability: () => ({ data: false }),
+  useTaskPullRequestWatchQuery: () => ({
+    data: undefined,
+    isLoading: false,
+    isFetching: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  useSetTaskPullRequestWatchMutation: () => ({
+    isPending: false,
+    error: null,
+    mutate: vi.fn(),
+  }),
   useTaskCodeReviewQuery: () => ({
     data: undefined,
     error: new Error('Code review is unavailable in this Task-view fixture.'),
@@ -308,7 +324,7 @@ vi.mock(
     useProjectTaskRoomDiscoveryQuery: () => roomDiscoveryResult,
     useProjectTaskRoomDocumentQuery: () => roomDocumentResult,
     useProjectTaskRoomHistoryQuery: () => ({
-      data: { pages: [] },
+      data: { pages: roomHistoryPages },
       isError: false,
     }),
     useProjectTaskRoomStream: () => vi.fn(),
@@ -595,6 +611,7 @@ describe('TaskWorkspaceView', () => {
     featurePreviews = [];
     navigationStore.navigate('/projects/project-alpha/tasks/task-alpha', {
       taskView: null,
+      thread: null,
       starter: null,
       starterLink: null,
     });
@@ -638,6 +655,7 @@ describe('TaskWorkspaceView', () => {
     appendOutputFeedback.mockReset();
     vi.stubGlobal('crypto', webcrypto);
     pluginsResult.data = [];
+    roomHistoryPages = [];
     roomDiscoveryResult = {
       data: { kind: 'unavailable' },
       isLoading: false,
@@ -648,6 +666,75 @@ describe('TaskWorkspaceView', () => {
       isFetching: false,
       refetch: vi.fn(),
     };
+  });
+
+  test('a Task thread opens at its own history address and reloads there', async () => {
+    roomDiscoveryResult = {
+      data: {
+        kind: 'existing',
+        scope: { taskId: 'task-alpha' },
+        capabilities: { historyRead: true },
+      },
+      isLoading: false,
+    };
+    roomHistoryPages = [
+      {
+        kind: 'available',
+        checkpoint: {
+          throughSeq: 1,
+          checkpointDigest: 'b'.repeat(64),
+          retainedAnchorSeq: 0,
+          retainedAnchorDigest: 'c'.repeat(64),
+        },
+        hasMore: false,
+        integrity: 'L0',
+        records: [
+          {
+            actor: { kind: 'agent', label: 'Researcher' },
+            sequence: 1,
+            body: { kind: 'human-message', text: 'An answer in the Task' },
+            occurredAt: '2026-10-15T10:04:00.000Z',
+            digests: { proposal: 'a'.repeat(64), checkpoint: 'b'.repeat(64) },
+            integrity: 'L0',
+            execution: { sessionId: 'research-run', turnId: 'turn-1' },
+          },
+        ],
+      },
+    ];
+    act(() =>
+      navigationStore.navigate('/tasks/task-alpha', {
+        taskView: 'conversation',
+      }),
+    );
+    const view = render(<TaskWorkspaceView taskId="task-alpha" />, {
+      openDetails: false,
+    });
+    const historyLength = window.history.length;
+    fireEvent.click(screen.getByRole('button', { name: 'Reply in thread' }));
+
+    expect(new URLSearchParams(window.location.search).get('thread')).toBe(
+      'research-run',
+    );
+    expect(window.history.length).toBe(historyLength + 1);
+    expect(
+      within(screen.getByRole('region', { name: 'Agent thread' })).getByText(
+        'An answer in the Task',
+      ),
+    ).toBeTruthy();
+    view.unmount();
+    render(<TaskWorkspaceView taskId="task-alpha" />, { openDetails: false });
+    expect(screen.getByRole('region', { name: 'Agent thread' })).toBeTruthy();
+
+    await act(async () => window.history.back());
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Agent thread' })).toBeNull(),
+    );
+    expect(new URLSearchParams(window.location.search).get('taskView')).toBe(
+      'conversation',
+    );
+    expect(new URLSearchParams(window.location.search).has('thread')).toBe(
+      false,
+    );
   });
 
   describe('linked work item header (#4003)', () => {
@@ -928,6 +1015,78 @@ describe('TaskWorkspaceView', () => {
     ).toBeTruthy();
     expect(
       screen.queryByRole('region', { name: 'Task room workspace' }),
+    ).toBeNull();
+  });
+
+  test('shows the automation mandate outright on Details, with its stop reason (#4511)', () => {
+    queryResult.data = graph({
+      createdBy: 'automation-rule',
+      status: 'blocked',
+      automation: {
+        state: 'running',
+        amendments: [],
+        personTakeoverAt: '2026-11-06T00:01:00.000Z',
+        revocation: {
+          at: '2026-11-06T00:00:00.000Z',
+          cause: 'rule-disabled',
+          message: 'Stopped: automation rule “Diagnose” was disabled.',
+        },
+        mandate: {
+          ruleId: 'rule-1',
+          ruleName: 'Diagnose',
+          sourceId: 'source-1',
+          episodeId: '42',
+          policyFingerprint: 'a'.repeat(64),
+          capturedAt: '2026-11-06T00:00:00.000Z',
+          event: {
+            type: 'github.workflow_run.completed',
+            semanticKey: 'workflow_run:42:1:completed',
+            occurredAt: '2026-11-06T00:00:00.000Z',
+            fields: {
+              repository: 'kontourai/station',
+              'workflow.path': '.github/workflows/ci.yml',
+              'run.id': '42',
+              'run.conclusion': 'failure',
+              'run.html_url':
+                'https://github.com/kontourai/station/actions/runs/42',
+            },
+          },
+          action: {
+            kind: 'dispatch-task',
+            projectId: 'project-alpha',
+            agentId: 'agent-alpha',
+            instructions: 'Diagnose the failing run.',
+            budget: { maxTurns: 2, maxTokens: 1000, maxWallRuntimeMs: 60000 },
+          },
+        },
+      },
+    });
+    render(<TaskWorkspaceView taskId="task-alpha" />);
+    const block = screen.getByRole('region', { name: 'Started by automation' });
+    // Not folded into the collapsed record details.
+    expect(block.closest('details')).toBeNull();
+    expect(
+      within(block).getByText(
+        'Stopped: automation rule “Diagnose” was disabled.',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(block).getByText(
+        'A person took over this Task’s chat using their own permissions.',
+      ),
+    ).toBeTruthy();
+    expect(within(block).getByText('Diagnose the failing run.')).toBeTruthy();
+    expect(
+      within(block).getByRole('link', {
+        name: 'https://github.com/kontourai/station/actions/runs/42',
+      }),
+    ).toBeTruthy();
+  });
+
+  test('a Task no automation started shows no mandate block', () => {
+    render(<TaskWorkspaceView taskId="task-alpha" />);
+    expect(
+      screen.queryByRole('region', { name: 'Started by automation' }),
     ).toBeNull();
   });
 

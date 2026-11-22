@@ -113,6 +113,16 @@ refresh on focus/remount; a hook opts one read back in with
 placeholder content from the answer for the new key. Preserve loading, empty,
 unavailable and error as different states.
 
+For a list that can be refreshed by its reader, use
+[`ListRefresh`](../../src-ui/src/components/refresh/ListRefresh.tsx). The view
+supplies its current scope, the existing queries it needs to re-read, and its
+background activity. Use the same action for menu and touch. Mount
+`ListRefreshStatus` at the bottom of the visible list and supply a label that
+names the work being refreshed. The pill delays automatic feedback and leaves
+rows in place. `ListRefreshPull` wraps the reading surface.
+Repeated manual requests join the one in progress. Connection recovery and
+provider mutations keep their existing action owners.
+
 Engine availability events refresh active reads of the Agents catalog and cached
 connection lists, details and ACP discovery through
 [useServerEvents](../../src-ui/src/hooks/useServerEvents.ts). Connection caches
@@ -161,6 +171,14 @@ Before adding markup or CSS for a surface, check the shared primitive and
 recipe owners below. Reuse a matching pattern and keep domain-state derivation
 with its feature. A new rule should have real consumers and one style owner.
 
+- On framed routes, `PageFrame` supplies the outer gutter. For settings-like
+  content, compose [PageSection](../../src-ui/src/components/PageSection.tsx)
+  and [PageRow](../../src-ui/src/components/PageRow.tsx). The row owns its
+  label, density-sensitive description and internal spacing. Compare the
+  description at both densities before adding a feature override.
+- Use `PageSectionGroup` for a named group inside a settings section. It owns
+  the space above the group, heading size, and gap before its controls.
+  Avoid browser-default heading margins and nested cards inside a settings card.
 - `StatusSummary` (`src-ui/src/components/StatusSummary.tsx`) groups a resource
   name, version, status badge, and subdued check time. Desktop and server
   updates use it in both Updates and System settings. Pass the badge from
@@ -171,8 +189,11 @@ with its feature. A new rule should have real consumers and one style owner.
   paragraphs, lists, and field groups semantic instead of spacing each child
   with feature-specific margins. This recipe is opt-in; it does not reset
   unrelated pages or long-form prose.
-- `ActionRow` owns primary/secondary action order, wrapping, and gaps. App and
-  server update controls use the same row instead of custom button-row CSS.
+- `ActionRow` owns action order, wrapping and gaps. Give the main action
+  the filled `Button` treatment. Keep navigation beside the title or in the
+  dialog header. Use secondary or ghost variants for other actions, choosing
+  an outline when a text-only choice could be mistaken for a label. Group
+  related controls at one size. Desktop and server updates share this row.
 - Search fields use `Input` from `@kontourai/ui/react`, or its global
   `control control--input` classes when the caller needs a native input ref.
   `filter-toolbar` places an ordinary control beside compact actions and lets
@@ -273,9 +294,8 @@ and never for an ACP-bound or unresolved Agent.
 ## Messages and locale formatting
 
 [src-ui/src/i18n/](../../src-ui/src/i18n/) holds Station UI's message catalog
-and locale formatters. Today it covers only the route shell (loading, chunk,
-authority and generic route errors: 10 keys), and the UI always runs in
-`en-US`; `navigator.language` is not read. Settings rows use their own
+and locale formatters. It covers the route shell's loading, stalled-route
+recovery, chunk, authority and generic error states. The UI runs in `en-US`; `navigator.language` is not read. Settings rows use their own
 `SETTINGS_MESSAGES` table in `views/settings/settings-catalog.ts`.
 
 - Read a message with `const { message } = useLocale()` and call

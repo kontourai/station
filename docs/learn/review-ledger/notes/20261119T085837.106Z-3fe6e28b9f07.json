@@ -1,0 +1,9 @@
+{
+  "revision": "4c48402302725cafaf8db13a68e86c57def1651e",
+
+  "notes": [
+    {"path":"src-server/services/plugins/__fixtures__/agent-plugins-example/UPSTREAM.md","note":"Checked portable package loading and author validation references against native path resolution at the consumer. Contained component links load, dangling command links are refused, and entrypoint validation stats the path it checked. Format, features, lifecycle, permissions, and authoring requirements are unchanged. Fixture evidence is limited to the tested host and apps at inspection time.","inputs":["src-server/services/plugins/__tests__/agent-plugin-loader.test.ts"]},
+
+    {"path":"src-server/services/plugins/__fixtures__/agent-plugins-example/skills/migrate-agent-plugin/SKILL.md","note":"Checked portable package loading and author validation references against native path resolution at the consumer. Contained component links load, dangling command links are refused, and entrypoint validation stats the path it checked. Format, features, lifecycle, permissions, and authoring requirements are unchanged. Fixture evidence is limited to the tested host and apps at inspection time.","inputs":["src-server/services/plugins/__tests__/agent-plugin-loader.test.ts"]}
+  ]
+}

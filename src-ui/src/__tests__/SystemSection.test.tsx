@@ -1,7 +1,9 @@
 /** @vitest-environment jsdom */
 
 import { fireEvent, render, screen } from '@testing-library/react';
+import type { ComponentProps } from 'react';
 import { describe, expect, it, vi } from 'vitest';
+import type { ConnectedServerUpdates } from '../views/settings/ConnectedServerUpdates';
 import { SystemSection } from '../views/settings/SystemSection';
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -12,10 +14,15 @@ vi.mock('../views/settings/BuildProvenance', () => ({
   InstalledAppBuildProvenance: () => null,
 }));
 vi.mock('../views/settings/ConnectedServerUpdates', () => ({
-  // The real card renders its "Server · {name}" title as the heading this id
-  // names.
-  ConnectedServerUpdates: ({ headingId }: { headingId?: string }) => (
-    <h3 id={headingId}>Server · station</h3>
+  // Model a server with staged updates so SystemSection's policy field mounts.
+  ConnectedServerUpdates: ({
+    headingId,
+    downloadPolicy,
+  }: ComponentProps<typeof ConnectedServerUpdates>) => (
+    <>
+      <h3 id={headingId}>Server · station</h3>
+      {downloadPolicy}
+    </>
   ),
 }));
 const platform = { isDesktop: false, isTauri: false };

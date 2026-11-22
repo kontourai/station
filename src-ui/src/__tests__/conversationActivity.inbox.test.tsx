@@ -160,7 +160,7 @@ describe('#2309 inbox running state from the conversation record', () => {
     );
     // The row is still listed (the chat is open), without the in-motion status.
     expect(
-      screen.getByLabelText('Lineage inbox chat, No project'),
+      screen.getByRole('button', { name: /^Lineage inbox chat.*No project/ }),
     ).not.toBeNull();
     expect(
       document.querySelector('.inbox-row__status[data-tone="active"]'),

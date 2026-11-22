@@ -268,4 +268,31 @@ describe('POST /api/presence/focus', () => {
       presence.snapshot().get('device:phone')?.viewingSessionIds,
     ).toBeUndefined();
   });
+
+  test('a report may name the Project on screen (#5072), and only a Project id', async () => {
+    const { presence, post } = harness(phone);
+    const accepted = await post({
+      clientSessionId: TAB,
+      state: 'focused',
+      viewingSessionIds: [],
+      viewingProjectId: 'project-a',
+    });
+    expect(accepted.status).toBe(204);
+    expect(presence.snapshot().get('device:phone')?.viewingProjectIds).toEqual([
+      'project-a',
+    ]);
+    for (const viewingProjectId of [
+      7,
+      ['project-a'],
+      '../etc',
+      'x'.repeat(129),
+    ]) {
+      const refused = await post({
+        clientSessionId: TAB,
+        state: 'focused',
+        viewingProjectId,
+      });
+      expect(refused.status, JSON.stringify(viewingProjectId)).toBe(400);
+    }
+  });
 });

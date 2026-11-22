@@ -1,0 +1,7 @@
+{
+  "revision": "9e3e92825e98f9fc05ad9d67a89b3a591b9d3b68",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed both phone notice states against the expanded isolation proof. The ordinary model and tool editor and saved Station actions use real stored readback. Knowledge save, reload, restore, and test use the runner-owned vector store. Engine edit, check, and reset and SSH probe, save, lifecycle and remove use bounded fixtures. External account, provider, and remote-host operation remain outside that evidence.","inputs":["tests/connect-reconnect-banner.spec.ts"]}
+  ]
+}

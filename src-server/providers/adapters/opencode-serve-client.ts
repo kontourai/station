@@ -108,6 +108,11 @@ export const OPENCODE_NATIVE_ROUTES: readonly OpenCodeServeRoute[] = [
     template: '/api/session/{sessionID}',
   },
   {
+    operationId: 'session.switchModel',
+    method: 'POST',
+    template: '/api/session/{sessionID}/model',
+  },
+  {
     operationId: 'session.switchAgent',
     method: 'POST',
     template: '/api/session/{sessionID}/agent',

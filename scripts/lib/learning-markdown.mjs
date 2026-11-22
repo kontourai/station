@@ -3,6 +3,7 @@ import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import Markdown, { defaultUrlTransform } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { isMap, parseDocument } from 'yaml';
 import { headingId } from './documentation-model.mjs';
 import { isLearningSourcePath } from './learning-source-reader.mjs';
 
@@ -174,6 +175,23 @@ function remarkExplicitAnchors() {
   };
 }
 
+function markdownBody(source) {
+  const block = /^(?:\uFEFF)?---\r?\n([\s\S]*?)(?<=\n)---(?:\r?\n|$)/.exec(
+    source,
+  );
+  if (!block) return source;
+  const metadata = parseDocument(block[1]);
+  if (
+    metadata.errors.length ||
+    metadata.warnings.length ||
+    !isMap(metadata.contents) ||
+    !metadata.contents.items.length
+  )
+    return source;
+  // Keep diagnostics aligned with the captured original Markdown.
+  return block[0].replace(/[^\r\n]/g, ' ') + source.slice(block[0].length);
+}
+
 export function renderLearningDocument(
   source,
   document,
@@ -335,7 +353,7 @@ export function renderLearningDocument(
           return learningHref(href, document, files, revision, sourceFiles);
         },
       },
-      source,
+      markdownBody(source),
     ),
   );
   return { html, headings, anchors: [...anchors], duplicateAnchors, links };

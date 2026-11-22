@@ -14,6 +14,7 @@ import {
   useScopedProjectsQuery,
 } from '../../contexts/ProjectsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
+import { effectiveExecutionStationId } from '../../hooks/useExecutionStationCatalog';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
 import { useNewChatStartContext } from '../../hooks/useNewChatStartContext';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
@@ -37,6 +38,7 @@ import {
   StartComposer,
   type StartProjectChip,
 } from '../chat-start/StartComposer';
+import type { StartPickerMenu } from '../chat-start/StartPickerMenus';
 import { StartStationControl } from '../chat-start/StartStationControl';
 import { useAgentEnable } from '../chat-start/useAgentEnable';
 import {
@@ -165,12 +167,6 @@ export function reloadHeldHomeDraftsForTests() {
   homeDraftStore.reload();
 }
 
-type ChipMenu = {
-  kind: 'agents' | 'project' | 'model' | 'station';
-  trigger: HTMLElement | null;
-  agentSlug?: string;
-};
-
 /**
  * Home's start: the same `StartComposer`, chips and memory as the dock's
  * draft (`NewChatModal`), over the same start context
@@ -188,9 +184,11 @@ type ChipMenu = {
  */
 export function HomeStartComposer({
   compact = false,
+  firstSession = false,
   projectSlug,
 }: {
   compact?: boolean;
+  firstSession?: boolean;
   /** A Project page fixes its context without rebinding Home or the dock. */
   projectSlug?: string;
 }) {
@@ -345,7 +343,7 @@ export function HomeStartComposer({
     return draftStore.subscribe(restoreIfEmpty);
   }, [draftStore]);
   const [pending, setPending] = useState(false);
-  const [menu, setMenu] = useState<ChipMenu | null>(null);
+  const [menu, setMenu] = useState<StartPickerMenu | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const inFlight = useRef(false);
   const mounted = useRef(true);
@@ -458,7 +456,7 @@ export function HomeStartComposer({
   const effectiveChoice = agent ? start.modelFor(agent) : undefined;
   const modelLabel =
     effectiveChoice?.engineName && effectiveChoice.executionAgentId
-      ? `${effectiveChoice.engineName} · ${effectiveChoice.label}`
+      ? `${effectiveChoice.label} · ${effectiveChoice.engineName}`
       : effectiveChoice?.label;
   const agentChip: StartAgentChip = loading
     ? { status: 'loading' }
@@ -491,6 +489,7 @@ export function HomeStartComposer({
         approvalProjectDefaultUnavailable:
           selection.projectChatDefaultsUnavailable,
         approvalPick,
+        approvalConnections: acpConnections,
         onApprovalPick: setApprovalPick,
       };
   // The sidebar's colours, from the one project list it shows.
@@ -517,6 +516,7 @@ export function HomeStartComposer({
         accent: isGlobal ? undefined : accents.get(context),
         icon: isGlobal ? undefined : icons.get(context),
         folder: workspaceHintText(workspaceHint),
+        folderIsHelp: workspaceHint.kind === 'managed',
         folderTitle:
           'path' in workspaceHint
             ? [
@@ -530,15 +530,10 @@ export function HomeStartComposer({
             : undefined,
       };
   const noAgentToOffer = !agent && !defaultSelection?.missingPreferredAgentSlug;
-  // Setup shows only for the Agent picked when it cannot start, or, when
-  // nothing can start, for every Agent that needs it (the dock's rule).
-  const setupAgents = agent
-    ? agentRunnability(agent).runnable
-      ? []
-      : [agent]
-    : viewModel.flatList.filter(
-        (candidate) => !agentRunnability(candidate).runnable,
-      );
+  // Setup shows only for an Agent picked from the menu that cannot start.
+  // With no Agent to offer, Start hands the dock its automatic start, which
+  // prepares an engine; the dock's draft owns the setup card then.
+  const setupAgents = agent && !agentRunnability(agent).runnable ? [agent] : [];
   const canStart =
     Boolean(prompt.trim()) &&
     !loading &&
@@ -549,10 +544,15 @@ export function HomeStartComposer({
     !modelsFetching &&
     (agent ? agentRunnability(agent).runnable : noAgentToOffer);
 
-  return (
+  const firstHeading = firstSession
+    ? 'Start your first conversation'
+    : undefined;
+  const startSurface = (
     <div hidden={!projectSlug && isDockOpen}>
       <StartComposer
         compact={compact}
+        heading={firstHeading}
+        headingLevel={firstSession ? 1 : 2}
         textareaRef={textareaRef}
         prompt={prompt}
         onPromptChange={(value) => {
@@ -758,7 +758,11 @@ export function HomeStartComposer({
               onModels={() =>
                 handOff(
                   agent
-                    ? { kind: 'repair', agentSlug: agent.slug, route: 'models' }
+                    ? {
+                        kind: 'repair',
+                        agentSlug: agent.slug,
+                        route: 'models',
+                      }
                     : { kind: 'connections' },
                 )
               }
@@ -785,11 +789,23 @@ export function HomeStartComposer({
             onRepair={repair}
             enablePending={enabler.inFlight}
             onChooseProject={bindProject}
+            canCreateProject={
+              effectiveExecutionStationId(
+                agent ? start.modelChoiceFor(agent)?.environmentId : undefined,
+                viewModel.selectedProject?.defaultEnvironment,
+              ) === 'current'
+            }
             icons={icons}
             accents={accents}
           />
         </React.Suspense>
       )}
     </div>
+  );
+  return (
+    <>
+      {firstHeading && !projectSlug && isDockOpen && <h1>{firstHeading}</h1>}
+      {startSurface}
+    </>
   );
 }

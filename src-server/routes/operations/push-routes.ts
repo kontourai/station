@@ -46,7 +46,8 @@ interface PushRouteDeps {
     deviceId: string,
     subscription: WebPushSubscription,
   ) => void;
-  clearPushSubscription: (deviceId: string) => void;
+  clearPushSubscription: (deviceId: string, endpoint: string) => void;
+  readPushSubscriptionFingerprint?: (deviceId: string) => string | null;
 }
 
 function isValidSubscription(value: unknown): value is WebPushSubscription {
@@ -83,6 +84,18 @@ function extractCredential(
 
 export function createPushRoutes(deps: PushRouteDeps) {
   const app = new Hono();
+  function pairedDevice(req: {
+    header: (name: string) => string | undefined;
+  }): PairedDevice | null {
+    const credential = extractCredential(
+      req,
+      (value) => deps.identifyDevice(value) !== null,
+    );
+    if (!credential || deps.credentialAliasId(credential) !== undefined)
+      return null;
+    const device = deps.identifyDevice(credential);
+    return device && device.credentialKind !== 'personal-token' ? device : null;
+  }
 
   // The device-pairing store does not yet persist tenant ownership. Suppress
   // every control and discovery endpoint in hosted mode before any key or
@@ -94,23 +107,25 @@ export function createPushRoutes(deps: PushRouteDeps) {
     await next();
   });
 
-  app.get('/vapid-public-key', (c) =>
-    c.json({ publicKey: deps.getVapidPublicKey() }),
-  );
+  app.get('/vapid-public-key', (c) => {
+    const publicKey = deps.getVapidPublicKey();
+    if (!deps.readPushSubscriptionFingerprint) return c.json({ publicKey });
+    c.header('Cache-Control', 'no-store');
+    const device = pairedDevice(c.req);
+    return c.json({
+      publicKey,
+      registration: device
+        ? {
+            status: 'paired',
+            fingerprint: deps.readPushSubscriptionFingerprint(device.id),
+          }
+        : { status: 'pairing-required' },
+    });
+  });
 
   app.post('/push-subscribe', async (c) => {
-    const credential = extractCredential(
-      c.req,
-      (candidate) => deps.identifyDevice(candidate) !== null,
-    );
-    const device = credential ? deps.identifyDevice(credential) : null;
-    // #3557: a personal access token is not a device a notification reaches;
-    // nor is a relay alias (see `credentialAliasId`).
-    if (
-      !device ||
-      device.credentialKind === 'personal-token' ||
-      deps.credentialAliasId(credential!) !== undefined
-    ) {
+    const device = pairedDevice(c.req);
+    if (!device) {
       webPushSubscriptions.add(1, { op: 'subscribe', outcome: 'denied' });
       return c.json({ error: 'device_pairing_required' }, 403);
     }
@@ -125,19 +140,18 @@ export function createPushRoutes(deps: PushRouteDeps) {
       return c.json({ error: 'invalid_request' }, 400);
     }
 
+    if (pairedDevice(c.req)?.id !== device.id) {
+      webPushSubscriptions.add(1, { op: 'subscribe', outcome: 'denied' });
+      return c.json({ error: 'device_pairing_required' }, 403);
+    }
     deps.setPushSubscription(device.id, body);
     webPushSubscriptions.add(1, { op: 'subscribe', outcome: 'ok' });
     return c.json({ ok: true });
   });
 
   app.post('/push-unsubscribe', async (c) => {
-    const credential = extractCredential(
-      c.req,
-      (candidate) => deps.identifyDevice(candidate) !== null,
-    );
-    const device = credential ? deps.identifyDevice(credential) : null;
-    // #3557: a personal access token is not a device a notification reaches.
-    if (!device || device.credentialKind === 'personal-token') {
+    const device = pairedDevice(c.req);
+    if (!device) {
       webPushSubscriptions.add(1, { op: 'unsubscribe', outcome: 'denied' });
       return c.json({ error: 'device_pairing_required' }, 403);
     }
@@ -160,7 +174,11 @@ export function createPushRoutes(deps: PushRouteDeps) {
 
     // Scoped to the caller's own identified device only — never look up by
     // endpoint, which would let one device clear another device's push.
-    deps.clearPushSubscription(device.id);
+    if (pairedDevice(c.req)?.id !== device.id) {
+      webPushSubscriptions.add(1, { op: 'unsubscribe', outcome: 'denied' });
+      return c.json({ error: 'device_pairing_required' }, 403);
+    }
+    deps.clearPushSubscription(device.id, record.endpoint);
     webPushSubscriptions.add(1, { op: 'unsubscribe', outcome: 'ok' });
     return c.json({ ok: true });
   });

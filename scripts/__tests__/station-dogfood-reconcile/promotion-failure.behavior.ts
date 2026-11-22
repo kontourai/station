@@ -1,4 +1,10 @@
-import { copyFileSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
@@ -107,6 +113,11 @@ export function registerPromotionFailures() {
 
     it.each([
       [
+        'missing dependency lifecycle',
+        { missingInstallLifecycle: true },
+        'candidate is missing the dependencies:ci lifecycle',
+      ],
+      [
         'dependency install',
         { installFailure: true },
         'dependency install failed',
@@ -127,9 +138,28 @@ export function registerPromotionFailures() {
             (call) => call.command === './station' && call.args[0] === 'stop',
           ),
         ).toBe(false);
-        expect(fixture.state().reconciliation.failure).toMatchObject({
-          phase: _label === 'dependency install' ? 'install' : 'build',
+        const state = fixture.state();
+        expect(state.active).toMatchObject({ sha: PREVIOUS });
+        expect(state.reconciliation.failure).toMatchObject({
+          phase: _label === 'application build' ? 'build' : 'install',
         });
+        expect(state.reconciliation.built).toMatchObject({
+          sha: CANDIDATE,
+          complete: false,
+        });
+        const releases = path.join(fixture.config.supportDir, 'releases');
+        expect(existsSync(path.join(releases, CANDIDATE))).toBe(false);
+        expect(existsSync(path.join(releases, PREVIOUS))).toBe(true);
+        expect(fixture.calls.filter((call) => call.command === 'npm')).toEqual(
+          _label === 'missing dependency lifecycle'
+            ? []
+            : [
+                expect.objectContaining({
+                  args: ['run', 'dependencies:ci'],
+                  cwd: path.join(releases, CANDIDATE),
+                }),
+              ],
+        );
       },
     );
 
