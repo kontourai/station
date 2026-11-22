@@ -200,21 +200,23 @@ function retryAfterMs(cause, nowMs) {
  * the identity or grant is wrong) and any non-transport error, including this
  * module's own checks, are final.
  */
+const retryableStatus = (status) =>
+  status === 408 || status === 429 || (status >= 500 && status <= 599);
+const ABORT_NAMES = new Set(['AbortError', 'ABORT_ERR', 'TimeoutError']);
+
 function outcomeOf(cause, signal) {
   const codes = errorCodes(cause);
-  const aborted = codes.includes('AbortError') || codes.includes('ABORT_ERR');
-  const timedOut = codes.includes('TimeoutError');
-  if (cause === LOCAL_DEADLINE || (signal?.aborted && (aborted || timedOut)))
+  const aborted = codes.some((code) => ABORT_NAMES.has(code));
+  if (cause === LOCAL_DEADLINE || (signal?.aborted && aborted))
     return { outcome: 'local deadline elapsed', retryable: true };
   const status = httpStatus(cause);
   if (status !== undefined)
     return {
       outcome: `failed with HTTP ${status}`,
-      retryable:
-        status === 408 || status === 429 || (status >= 500 && status <= 599),
+      retryable: retryableStatus(status),
       status,
     };
-  if (aborted || timedOut) return { outcome: 'aborted', retryable: true };
+  if (aborted) return { outcome: 'aborted', retryable: true };
   return {
     outcome: 'failed',
     retryable: codes.some((code) => NETWORK_ERROR_CODES.has(code)),
