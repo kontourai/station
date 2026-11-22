@@ -264,6 +264,10 @@ const READER_SCROLL_EXTEND_MS = 200;
 // Growth this soon after a press or key inside the transcript is the reader's
 // own doing (a tool card or details they opened): it stays where it opened.
 const READER_INTERACTION_GRACE_MS = 1_000;
+// How much of a held row must show to read as its header, and the gap left
+// above it when a shorter view brings it back.
+const HELD_ROW_HEADER_PX = 48;
+const HELD_ROW_MARGIN_PX = 8;
 // A turn jump lets the virtualizer settle its reveal (measurement passes can
 // move it for a few frames) before retaining the revealed row as the reader's.
 const TURN_REVEAL_STABLE_FRAMES = 3;
@@ -540,6 +544,17 @@ function ChatMessageListComponent({
     /** Content growth before this time follows the reader's own interaction. */
     interactedUntil: 0,
   });
+  // A pinned reader who opened something at the end (a tool row, reasoning)
+  // keeps it where it is: the tail stops being followed until new content
+  // arrives (`pinToLatest`) or the reader returns to the end. Only growth of
+  // the row whose disclosure they activated starts it; an incidental tap on
+  // text or a link does not.
+  const readerHoldRef = useRef(false);
+  const activatedRowRef = useRef<{ row: Element; height: number } | null>(null);
+  const releaseReaderHold = useCallback(() => {
+    readerHoldRef.current = false;
+    activatedRowRef.current = null;
+  }, []);
   const readerActing = useCallback(() => {
     const input = readerInputRef.current;
     return input.touching || input.pressing || performance.now() < input.until;
@@ -934,6 +949,7 @@ function ChatMessageListComponent({
   const tailContentLength = lastMessage?.content?.length ?? 0;
   const tailPartsLength = lastMessage?.contentParts?.length ?? 0;
   const pinToLatest = useCallback(() => {
+    releaseReaderHold();
     if (pinFrameRef.current !== undefined)
       cancelAnimationFrame(pinFrameRef.current);
     const el = messagesContainerRef.current;
@@ -950,7 +966,7 @@ function ChatMessageListComponent({
         );
       }
     });
-  }, [writeProgrammaticScroll, messagesContainerRef]);
+  }, [writeProgrammaticScroll, messagesContainerRef, releaseReaderHold]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: content growth triggers a pin before paint
   useLayoutEffect(() => {
     pinToLatest();
@@ -1015,12 +1031,27 @@ function ChatMessageListComponent({
       lastClientHeightRef.current = el.clientHeight;
       const resized = reanchorGate.shouldReanchor(el.clientHeight);
       if (!returning && !resized) return;
-      if (isUserScrolledUpRef.current) {
+      if (isUserScrolledUpRef.current || readerHoldRef.current) {
         if (
           visibleAnchorRef.current &&
           restoreChatScrollAnchor(el, visibleAnchorRef.current)
         ) {
           noteProgrammaticScroll(el);
+        }
+        // What the reader just opened stays visible: a shorter view (the
+        // keyboard opening) brings the held row's header back into it.
+        const held = readerHoldRef.current
+          ? activatedRowRef.current?.row
+          : undefined;
+        if (held?.isConnected) {
+          const top =
+            held.getBoundingClientRect().top - el.getBoundingClientRect().top;
+          if (top < 0 || top + HELD_ROW_HEADER_PX > el.clientHeight) {
+            writeProgrammaticScroll(
+              el,
+              el.scrollTop + top - HELD_ROW_MARGIN_PX,
+            );
+          }
         }
       } else {
         writeProgrammaticScroll(el, el.scrollHeight);
@@ -1050,13 +1081,26 @@ function ChatMessageListComponent({
       if (scrollAnimationRef.current) return;
       if (!isUserScrolledUpRef.current) {
         // Growth the reader caused (opening a tool card near the end) or that
-        // lands while they are scrolling stays where it is.
+        // lands while they are scrolling stays where it is, and so does what
+        // it opened as it finishes rendering after the grace.
+        const interacting =
+          readerActing() ||
+          performance.now() < readerInputRef.current.interactedUntil;
+        const activated = activatedRowRef.current;
         if (
           !externalScrollContainerRef &&
-          (readerActing() ||
-            performance.now() < readerInputRef.current.interactedUntil)
+          interacting &&
+          activated?.row.isConnected &&
+          activated.row.getBoundingClientRect().height !== activated.height
         )
+          readerHoldRef.current = true;
+        if (
+          !externalScrollContainerRef &&
+          (readerHoldRef.current || interacting)
+        ) {
+          visibleAnchorRef.current = captureChatScrollAnchor(el);
           return;
+        }
         if (el.scrollHeight - el.scrollTop - el.clientHeight > 0) {
           writeProgrammaticScroll(el, el.scrollHeight);
           markTranscriptPhase('content-repin');
@@ -1251,7 +1295,7 @@ function ChatMessageListComponent({
     // already-pinned transcript stays pinned, while an intentionally scrolled
     // transcript is restored by the observer from its captured anchor.
     if (resized) {
-      if (!isUserScrolledUpRef.current) {
+      if (!isUserScrolledUpRef.current && !readerHoldRef.current) {
         writeProgrammaticScroll(target, target.scrollHeight);
         visibleAnchorRef.current = null;
       }
@@ -1290,8 +1334,11 @@ function ChatMessageListComponent({
       );
     const shortBy =
       target.scrollHeight - target.scrollTop - target.clientHeight;
+    // Back at the end: the tail is followed again.
+    if (shortBy <= 1) releaseReaderHold();
     if (
       !isUserScrolledUpRef.current &&
+      !readerHoldRef.current &&
       !acting &&
       shortBy > 0 &&
       shortBy <= PINNED_TOLERANCE_PX
@@ -1420,6 +1467,23 @@ function ChatMessageListComponent({
                 element.scrollHeight - element.clientHeight - 2));
       }
       const now = performance.now();
+      if (
+        event.type === 'touchstart' ||
+        event.type === 'pointerdown' ||
+        (event.type === 'keydown' &&
+          (event.key === 'Enter' || event.key === ' '))
+      ) {
+        // The row whose disclosure this activates, if it activates one.
+        const row =
+          event.target instanceof Element
+            ? event.target
+                .closest('[aria-expanded], summary')
+                ?.closest('.chat-message-anchor')
+            : null;
+        activatedRowRef.current = row
+          ? { row, height: row.getBoundingClientRect().height }
+          : null;
+      }
       if (event.type === 'touchstart') {
         input.touching = true;
         input.interactedUntil = now + READER_INTERACTION_GRACE_MS;
@@ -2382,6 +2446,10 @@ function ChatMessageListComponent({
                     }
                   />
                 )}
+                {/* Room at the end for the composer's floating status row
+                (chat.css shows it). A row of its own, not a pseudo-element,
+                so the tail-follow sees it come and go. */}
+                <div className="chat-messages__status-room" aria-hidden="true" />
               </div>
               {turnBrowserOpen && (
                 <LazyBoundary

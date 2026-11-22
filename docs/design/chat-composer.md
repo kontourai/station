@@ -641,7 +641,18 @@ immediately to the right of that status and moves with it as the draft grows.
 When the chat pane is narrow, the status and scroll control are centered
 together in a row above the settings. In a dock too short to show the transcript
 (the composer has priority), there is nothing to scroll back to, so Scroll to
-bottom is not shown and a row left with no status or scheduled notes takes no height. Scroll-button hover changes its background
+bottom is not shown and a row left with no status or scheduled notes takes no height.
+When the transcript's end sits directly above the composer and the transcript
+is at least 240px tall, the status row floats over that end instead of taking a
+line of the composer, and the transcript keeps room at its end for it, so a
+status appearing, changing or leaving moves nothing and, at the end, covers no
+message. Anything that takes room between the transcript and the composer (a
+notice card such as "Couldn't check this chat", the pending list, a banner),
+a shorter transcript, a next-turn or composer notice, scheduled notes or
+Scroll to bottom keep the row in the composer, so the status never covers a
+card or its controls and a short dock spends no line on room for it. Scroll to
+bottom shows only while the reader is scrolled up, and their rows stay where
+they are as it appears. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 

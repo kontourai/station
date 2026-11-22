@@ -1,0 +1,138 @@
+/**
+ * A row the reader opens at the end of the transcript stays where it is,
+ * including as what it opened finishes rendering; new content is followed
+ * again.
+ */
+import { expect, test } from 'vitest';
+import {
+  DESKTOP,
+  distanceFromEnd,
+  frames,
+  lastToolRow,
+  PHONE,
+  rowTop,
+  settledAtTail,
+  tailFixture,
+} from './transcript-tail-fixture';
+
+for (const [name, viewport] of [
+  ['desktop', DESKTOP],
+  ['phone', PHONE],
+] as const) {
+  test.each([
+    ['a short transcript', 6],
+    ['a virtualized transcript', 30],
+  ])(
+    `(${name}, %s) a tool row opened at the tail keeps its header in view until new content arrives`,
+    async (_label, turns) => {
+      const { browser, page, errors } = await tailFixture(viewport, turns);
+      try {
+        await settledAtTail(page);
+        const row = lastToolRow(page);
+        const before = await rowTop(page);
+        await row.click();
+        await expect.poll(() => row.getAttribute('aria-expanded')).toBe('true');
+        // Past the reader-interaction grace and any late detail rendering.
+        await page.waitForTimeout(1_500);
+        await frames(page);
+        expect(await rowTop(page), 'the opened row stays put').toBeCloseTo(
+          before,
+          0,
+        );
+        expect(await distanceFromEnd(page)).toBeGreaterThan(0);
+        // What the reader opened finishes rendering after the grace (a late
+        // code-split detail, highlighting, an image): it still holds still.
+        await row.evaluate((button) => {
+          const late = document.createElement('div');
+          late.style.height = '600px';
+          late.dataset.lateDetail = 'true';
+          button.closest('.chat-message-anchor')!.append(late);
+        });
+        await frames(page);
+        expect(await rowTop(page), 'late detail growth').toBeCloseTo(before, 0);
+        // New content resumes following the tail.
+        await page.evaluate(() =>
+          (window as unknown as { __appendTurn(): void }).__appendTurn(),
+        );
+        await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+        expect(errors).toEqual([]);
+      } finally {
+        await browser.close();
+      }
+    },
+  );
+
+  test(`(${name}) an incidental tap does not stop the tail being followed`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      // The newest answer's text, not a disclosure.
+      const answer = page
+        .locator('.chat-message-anchor')
+        .last()
+        .getByText(/^Reply 6:/);
+      await answer.click();
+      const grow = () =>
+        answer.evaluate((element) => {
+          const late = document.createElement('div');
+          late.style.height = '300px';
+          element.closest('.chat-message-anchor')!.append(late);
+        });
+      // The answer grows inside the tap's interaction window (a renderer
+      // arriving), then again after it (an image): the tap opened nothing,
+      // so the end is followed again.
+      await grow();
+      await frames(page);
+      await page.waitForTimeout(1_500);
+      await grow();
+      await frames(page);
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) a shorter view keeps the opened row in sight and the hold on`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      const row = lastToolRow(page);
+      await row.click();
+      await expect.poll(() => row.getAttribute('aria-expanded')).toBe('true');
+      await page.waitForTimeout(1_500);
+      // A keyboard opens: the dock loses the bottom half of the screen.
+      await page.setViewportSize({
+        width: viewport.width,
+        height: Math.round(viewport.height * 0.46),
+      });
+      await frames(page);
+      const log = await page
+        .getByRole('log', { name: 'Conversation transcript' })
+        .boundingBox();
+      const header = await row.boundingBox();
+      expect(header!.y, 'header below the top').toBeGreaterThanOrEqual(log!.y);
+      expect(
+        header!.y + header!.height,
+        'header above the shortened view’s bottom',
+      ).toBeLessThanOrEqual(log!.y + log!.height);
+      // The keyboard closes; the hold is still on: late growth stays put.
+      await page.setViewportSize(viewport);
+      await frames(page);
+      const before = await rowTop(page);
+      await row.evaluate((button) => {
+        const late = document.createElement('div');
+        late.style.height = '600px';
+        button.closest('.chat-message-anchor')!.append(late);
+      });
+      await frames(page);
+      expect(await rowTop(page), 'still held after the resize').toBeCloseTo(
+        before,
+        0,
+      );
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+}
