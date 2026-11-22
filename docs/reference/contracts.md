@@ -973,6 +973,8 @@ checked by `isSchedulerJobDisplayName`) is what people read and rename.
 `schedulerJobSlug` and `schedulerJobSlugCandidates` derive the slugs a
 display name suggests, up to `SCHEDULER_JOB_SLUG_ATTEMPTS`, and
 `SCHEDULER_JOB_NAME_TAKEN` is the refusal code for a taken slug.
+`SchedulerCreateResponse` is the create answer, with the stored slug as
+`name`.
 
 `@kontourai/station-contracts/coordinator` owns a person's coordinator Session
 (#3628): `CoordinatorDesignation`, the route bodies

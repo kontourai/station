@@ -797,9 +797,14 @@ const CONSUMED_FLAGS: Record<
   // a conversation). The scheduler routes answer 404 to every hosted request,
   // whatever the body, because scheduler storage has no tenant binding.
   projectSchedules: async ({ hosted }) => {
-    const addJob = vi.fn(async () => "Job 'digest' created");
+    const addJob = vi.fn(async (_opts: unknown) => "Job 'digest' created");
     const routes = createSchedulerRoutes(
-      { addJob } as never,
+      {
+        createJob: async (opts: { name: string }) => ({
+          output: await addJob(opts),
+          name: opts.name,
+        }),
+      } as never,
       { error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
       {
         readAuthorityForRequest: () =>
@@ -832,10 +837,17 @@ const CONSUMED_FLAGS: Record<
   },
   // PUT /scheduler/jobs/:target accepts `displayName`; the scheduler routes
   // answer 404 to every hosted request.
+  // POST /scheduler/jobs takes a display name alone and answers the slug
+  // it picked; PUT /scheduler/jobs/:target renames. Both must serve.
   schedulerJobDisplayName: async ({ hosted }) => {
     const editJob = vi.fn(async () => "Job 'digest' updated");
+    const createJob = vi.fn(async () => ({
+      output: "Job 'morning-digest' created",
+      name: 'morning-digest',
+    }));
     const routes = createSchedulerRoutes(
       {
+        createJob,
         editJob,
         listJobs: vi.fn(async () => [
           { name: 'digest', provider: 'built-in', prompt: 'x', enabled: true },
@@ -847,22 +859,42 @@ const CONSUMED_FLAGS: Record<
           ({ mode: hosted ? 'hosted' : 'personal' }) as never,
       },
     );
-    const response = await routes.request('/jobs/digest', {
+    const created = await routes.request('/jobs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        displayName: 'Morning digest',
+        prompt: 'Summarize',
+        schedule: { kind: 'every', everyMs: 3_600_000 },
+      }),
+    });
+    const createdName =
+      created.status === 200
+        ? ((await created.json()) as { data?: { name?: unknown } }).data?.name
+        : undefined;
+    const renamed = await routes.request('/jobs/digest', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ displayName: 'Morning digest' }),
     });
     return (
-      response.status === 200 &&
+      createdName === 'morning-digest' &&
+      createJob.mock.calls.length === 1 &&
+      renamed.status === 200 &&
       editJob.mock.calls.length === 1 &&
       ((editJob.mock.calls[0] as unknown[])[1] as { displayName?: unknown })
         .displayName === 'Morning digest'
     );
   },
   scheduledConversationTarget: async ({ hosted }) => {
-    const addJob = vi.fn(async () => "Job 'digest' created");
+    const addJob = vi.fn(async (_opts: unknown) => "Job 'digest' created");
     const routes = createSchedulerRoutes(
-      { addJob } as never,
+      {
+        createJob: async (opts: { name: string }) => ({
+          output: await addJob(opts),
+          name: opts.name,
+        }),
+      } as never,
       { error: vi.fn(), info: vi.fn(), debug: vi.fn() } as never,
       {
         readAuthorityForRequest: () =>

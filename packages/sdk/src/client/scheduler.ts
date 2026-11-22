@@ -2,6 +2,7 @@
 
 import type {
   AddJobOpts,
+  SchedulerCreateResponse,
   SchedulerJob,
   SchedulerLogEntry,
   SchedulerManualRunReceipt,
@@ -363,19 +364,22 @@ export async function getJobLogs(
   );
 }
 
-/** `POST /scheduler/jobs` — create a scheduled job. */
+/**
+ * `POST /scheduler/jobs` — create a scheduled job. The answer's `name` is the
+ * slug it was stored under (absent from an older host).
+ */
 export async function createJob(
   apiBase: string,
   body: AddJobOpts,
   opts?: ClientRequestOptions,
-): Promise<SchedulerMutationResponse> {
+): Promise<SchedulerCreateResponse> {
   const response = await mutateJson(
     `${apiBase}/scheduler/jobs`,
     'POST',
     opts,
     body,
   );
-  return unwrapSchedulerResponse<SchedulerMutationResponse>(response);
+  return unwrapSchedulerResponse<SchedulerCreateResponse>(response);
 }
 
 /** `PUT /scheduler/jobs/:target` — update a scheduled job. */

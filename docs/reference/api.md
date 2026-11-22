@@ -6092,8 +6092,8 @@ inside an emoji sequence (`isSchedulerJobDisplayName`); anything else is 400.
 A body with `displayName` and no `name` gets the first unused slug of
 `schedulerJobSlugCandidates` (the slug the name suggests, then `-2` up to
 `SCHEDULER_JOB_SLUG_ATTEMPTS`), checked against every job, including those
-the caller cannot list; when all are taken it is 409 `job_name_taken`. The
-response's `output` names the slug. Hosts that support this advertise the
+the caller cannot list; when all are taken it is 409 `job_name_taken`.
+Hosts that support this advertise the
 `schedulerJobDisplayName` capability flag. Use either legacy
 `cron` or the `schedule` union, not both. Other schedule variants are
 `{kind: "every", everyMs}` and `{kind: "at", timeMs, deleteAfterRun?}`; the
@@ -6101,8 +6101,10 @@ scheduler removes a one-time job after its run only when `deleteAfterRun` is
 `true`. The
 [request schemas](../../src-server/routes/schemas/schema-definitions/scheduler.ts)
 apply prompt limits and schedule validation. The response is
-`{success: true, data: {output}}`, where output is the provider's result text;
-it is not proof that a future run completed.
+`{success: true, data: {output, name}}` (`SchedulerCreateResponse`), where
+output is the provider's result text and `name` is the slug the job was
+stored under, including one the scheduler picked; output is not proof that a
+future run completed. A host without `schedulerJobDisplayName` omits `name`.
 
 An optional `target` (`SchedulerAutomationTarget`) makes the job an
 automation that runs in a conversation: `{kind: "conversation",

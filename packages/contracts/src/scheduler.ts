@@ -234,26 +234,27 @@ export function automationRunClientTurnId(runId: string): string {
 export const SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS = 120;
 
 /**
- * A zero-width joiner between two pictographs joins an emoji sequence (a
- * family, a profession). Anywhere else it is an invisible control.
+ * Characters a display name may not hold: controls, line and paragraph
+ * separators, the bidi embedding, override and isolate controls (they
+ * reorder what is shown), and the invisible fillers that make two names
+ * look identical (zero-width space, word joiner, byte-order mark, soft
+ * hyphen). Tag characters are refused too, so subdivision flags (England,
+ * Scotland, Wales) are not accepted. Other format characters stay allowed:
+ * the zero-width non-joiner and joiner that Persian and Indic text and emoji
+ * sequences need, and the left-to-right and right-to-left marks.
  */
-const EMOJI_JOINER =
-  /(?<=\p{Extended_Pictographic}\uFE0F?)\u200D(?=\p{Extended_Pictographic})/gu;
+const HIDDEN_OR_REORDERING =
+  /[\p{Cc}\p{Zl}\p{Zp}\u202A-\u202E\u2066-\u2069\u200B\u2060\uFEFF\u00AD\u{E0000}-\u{E007F}]/u;
 
 /**
  * Whether `value` (already trimmed) is a name a person can read: within the
- * length bound, at least one letter, digit, symbol or punctuation mark, and
- * no control, format or line/paragraph separator characters. Format
- * characters include bidi overrides and zero-width spaces, which make a name
- * read differently from what it stores; the one exception is the joiner
- * inside an emoji sequence. Variation selectors are marks, so an emoji with
- * one is accepted.
+ * length bound, with at least one letter, digit, symbol or punctuation mark,
+ * and none of the characters that hide or reorder text.
  */
 export function isSchedulerJobDisplayName(value: string): boolean {
   if (value.length === 0 || value.length > SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS)
     return false;
-  if (/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(value.replace(EMOJI_JOINER, '')))
-    return false;
+  if (HIDDEN_OR_REORDERING.test(value)) return false;
   return /[\p{L}\p{N}\p{S}\p{P}]/u.test(value);
 }
 
@@ -496,6 +497,16 @@ export interface SchedulerStatus {
 }
 
 export type SchedulerMutationResponse = Readonly<{ output: string }>;
+
+/**
+ * `POST /scheduler/jobs`'s answer. `name` is the slug the job was stored
+ * under, which the scheduler picks when the create named none; a host
+ * without `schedulerJobDisplayName` omits it.
+ */
+export type SchedulerCreateResponse = Readonly<{
+  output: string;
+  name?: string;
+}>;
 
 /**
  * The truthful terminal result of an authenticated manual scheduler request.

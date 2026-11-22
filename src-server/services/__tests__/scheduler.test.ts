@@ -2343,6 +2343,11 @@ const UNREADABLE_DISPLAY_NAMES = [
   '\u200B',
   'zero\u200Bwidth',
   '\uFE0F',
+  'isolate\u2067txt\u2069',
+  'word\u2060joiner',
+  'soft\u00ADhyphen',
+  // A subdivision flag: tag characters are refused, so it is too.
+  'Flag \u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}',
 ];
 
 describe('Scheduler Routes', () => {
@@ -2506,6 +2511,14 @@ describe('Scheduler Routes', () => {
       'Family 👨\u200D👩\u200D👧 check-in',
       'Heart ❤\uFE0F review',
       'Café crème',
+      // Persian needs the zero-width non-joiner.
+      'می\u200Cخواهم',
+      // Devanagari can use a zero-width joiner between letters.
+      'क्\u200Dष report',
+      // A skin-tone modifier inside a joined emoji.
+      '👩🏽\u200D💻 dev',
+      // Left-to-right and right-to-left marks.
+      'Report \u200Eabc\u200F',
     ];
     for (const [index, displayName] of names.entries()) {
       const res = await app.request('/jobs', {
@@ -2547,9 +2560,11 @@ describe('Scheduler Routes', () => {
       body: JSON.stringify({ displayName: 'Daily briefing', prompt: 'mine' }),
     });
     expect(res.status).toBe(200);
-    expect((await json(res)).data.output).toBe(
-      "Job 'daily-briefing-2' created",
-    );
+    // The slug comes back as data; `output` stays the provider's text.
+    expect((await json(res)).data).toEqual({
+      output: "Job 'daily-briefing-2' created",
+      name: 'daily-briefing-2',
+    });
     expect(await jobNamed('daily-briefing-2')).toMatchObject({
       displayName: 'Daily briefing',
       prompt: 'mine',

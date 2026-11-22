@@ -1960,6 +1960,25 @@ export class BuiltinScheduler implements ISchedulerProvider {
   }
 
   async addJob(opts: AddJobOpts): Promise<string> {
+    return this.storeNewJob(opts).output;
+  }
+
+  /** `addJob`, also answering the slug the job was stored under. */
+  async createJob(
+    opts: AddJobOpts,
+  ): Promise<{ readonly output: string; readonly name: string }> {
+    return this.storeNewJob(opts);
+  }
+
+  /**
+   * Validates and stores a new job synchronously, so `addJob` settles in the
+   * same turn it always has: callers that start a run right after it rely on
+   * no extra await between the two.
+   */
+  private storeNewJob(opts: AddJobOpts): {
+    readonly output: string;
+    readonly name: string;
+  } {
     const displayName = opts.displayName?.trim() || undefined;
     if (!opts.name?.trim() && !displayName)
       throw new Error('Job name is required');
@@ -2016,7 +2035,8 @@ export class BuiltinScheduler implements ISchedulerProvider {
     for (const name of candidates) {
       const result = this.ledger.create(stored(name));
       if (result.kind === 'unavailable') throw storageError(result);
-      if (result.kind !== 'exists') return `Job '${name}' created`;
+      if (result.kind !== 'exists')
+        return { output: `Job '${name}' created`, name };
     }
     throw opts.name?.trim()
       ? new SchedulerJobConflictError(opts.name)
