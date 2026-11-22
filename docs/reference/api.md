@@ -3071,7 +3071,11 @@ resume (`nativeSessionResumed`). `engines` lists each engine's own figures
 first ran, on every engine-events view. When more than one engine reported
 tokens, the response's own token figures are absent: engines count on
 different scales, so no single total exists. Turns, tool calls and costs (per
-unit) stay conversation-wide.
+unit) stay conversation-wide. Context occupancy comes from the engine of the
+newest Session: after an engine change it is absent until the new engine
+reports one, never the previous engine's figure. Token counts and cost that
+nothing recorded are absent rather than zero, including for a conversation
+with no stored stats and for the empty view.
 
 `engineMcp`, present when the engine reported its MCP servers, is the latest
 `engine-mcp.status` reports folded per Session of the lineage (a later
