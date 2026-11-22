@@ -1152,6 +1152,7 @@ non-retryable.
 | `conversation_handoff_idempotency_conflict` | `conflict` | `false` |
 | `conversation_handoff_predecessor_busy` | `busy` | `true` |
 | `conversation_handoff_session_changed` | `conflict` | `false` |
+| `conversation_predecessor_engine_live` | `busy` | `true` |
 | `conversation-context-unavailable` | `conflict` | `false` |
 | `engine-credential-profile-unsupported` | `input_unsupported` | `false` |
 | `engine-decision-not-sent` | `warning` | `false` |
@@ -1205,6 +1206,9 @@ non-retryable.
 | `SESSION_START_INDETERMINATE` | `indeterminate` | `false` |
 | `session-reattach-conflict` | `conflict` | `false` |
 | `transcript-line-skipped` | `warning` | `false` |
+| `turn_start_busy` | `busy` | `true` |
+| `turn_start_held` | `busy` | `true` |
+| `turn_start_held_until_restart` | `conflict` | `false` |
 | `workload-command-oom-killed` | `warning` | `false` |
 | `workload-memory-pressure` | `warning` | `false` |
 | `workload-memory-pressure-cleared` | `warning` | `false` |
