@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { buildThreadUsageTree } from '@kontourai/station-shared/thread-usage-tree';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ConversationStatsModal } from './ConversationStatsModal';
@@ -640,5 +641,55 @@ describe('ConversationStatsModal — several engines reported tokens (#5389)', (
     expect(
       screen.getByText('Tokens sent/received across all API calls'),
     ).toBeTruthy();
+  });
+});
+
+describe('ConversationStatsModal — usage tree for a Station chat (#5390)', () => {
+  /** The tree the usage-tree route builds for a Station chat: no receipts. */
+  const childless = buildThreadUsageTree({
+    conversationId: 'station:1',
+    provider: 'station-agent',
+    receipts: [],
+    subagents: [],
+    delegates: [],
+  });
+  const STATION_CHAT: ConversationStatsSnapshot = {
+    modelId: 'scripted-echo',
+    conversationId: 'station:1',
+    turns: 3,
+    toolCalls: 0,
+    inputTokens: 3,
+    outputTokens: 19,
+    totalTokens: 22,
+    measurement: { source: 'station-memory' },
+  };
+
+  test('a Station chat with no children shows no tree contradicting its own figures', () => {
+    render(
+      <ConversationStatsModal
+        {...baseProps}
+        stats={STATION_CHAT}
+        usageTree={childless}
+      />,
+    );
+
+    expect(screen.getByText('Total: 22')).toBeTruthy();
+    expect(screen.queryByText('Usage with children')).toBeNull();
+    expect(screen.queryByText(/tokens not reported/)).toBeNull();
+  });
+
+  test('an engine chat keeps its tree', () => {
+    render(
+      <ConversationStatsModal
+        {...baseProps}
+        stats={{
+          ...STATION_CHAT,
+          measurement: { source: 'engine-events', provider: 'claude' },
+        }}
+        usageTree={childless}
+      />,
+    );
+
+    expect(screen.getByText('Usage with children')).toBeTruthy();
   });
 });

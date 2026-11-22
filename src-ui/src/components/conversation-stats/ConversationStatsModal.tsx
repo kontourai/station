@@ -539,11 +539,20 @@ export function ConversationStatsModal({
               </SectionCard>
             )}
           </div>
-          <ThreadUsageBreakdown
-            tree={usageTree}
-            isLoading={usageTreeLoading}
-            error={usageTreeError}
-          />
+          {/* The usage tree reads engine events; Station's own turns keep
+              their usage in its memory store, so for a Station chat with no
+              children the tree's root would say "not reported" under the
+              figures above (#5390). */}
+          {!(
+            stats.measurement?.source === 'station-memory' &&
+            usageTree?.root.children.length === 0
+          ) && (
+            <ThreadUsageBreakdown
+              tree={usageTree}
+              isLoading={usageTreeLoading}
+              error={usageTreeError}
+            />
+          )}
           {unreportedNote && (
             <div
               style={{
