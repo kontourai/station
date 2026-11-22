@@ -434,8 +434,8 @@ describe('noun-consistency-gate', () => {
     });
   });
 
-  // The 2026-11 UI copy pass retires these; copy lanes remove the last uses
-  // before the rules are enforced (RETIRED_USER_TERMS header).
+  // The 2026-11 UI copy pass and the first-release design retire these; the
+  // lanes that remove the last uses enforce them (RETIRED_USER_TERMS header).
   describe('RETIRED_USER_TERMS', () => {
     const VIOLATIONS: Record<string, string> = {
       'AI app': 'Pick an AI app',
@@ -444,6 +444,21 @@ describe('noun-consistency-gate', () => {
       'built-in assistant': 'Use the built-in assistant',
       'default assistant': 'Set the default assistant',
       'credential entry': 'Remove this credential entry',
+      'model connection': 'Add model connection',
+      'Connect through': 'Connect through',
+      'Pair a device': 'Pair a device',
+      'Workspace view': 'Choose a workspace view',
+      'Starter layout': 'Starter layout',
+      'Files and connections': 'Files and connections',
+      'Conversation stats': 'Conversation stats',
+      'Chat inventory': 'Chat inventory',
+      'Chat settings': 'Chat settings',
+      'Fork from here': 'Fork from here…',
+      'Branch from this answer': 'Branch from this answer',
+      'New chat from this message': 'New chat from this message',
+      'Rewind conversation': 'Rewind conversation to here?',
+      'Restore workspace': 'Restore workspace?',
+      'Reset agent context': 'Reset agent context',
     };
     // Plural and lowercase forms of the same terms.
     const VARIANTS: Record<string, string> = {
@@ -453,6 +468,21 @@ describe('noun-consistency-gate', () => {
       'built-in assistant': 'Built-in Assistants',
       'default assistant': 'two default assistants',
       'credential entry': 'Credential entries',
+      'model connection': 'Open model connections',
+      'Connect through': 'connect through a proxy',
+      'Pair a device': 'choose Pair phone',
+      'Workspace view': 'Workspace views',
+      'Starter layout': 'starter layouts',
+      'Files and connections': 'Files & connections',
+      'Conversation stats': 'Loading conversation statistics',
+      'Chat inventory': 'CHAT INVENTORY',
+      'Chat settings': 'More chat settings',
+      'Fork from here': 'fork from here',
+      'Branch from this answer': 'branch from this answer',
+      'New chat from this message': 'new chat from this message',
+      'Rewind conversation': 'rewind conversation',
+      'Restore workspace': 'restore workspace',
+      'Reset agent context': 'reset agent context',
     };
 
     it('pins the retired terms, independently of the script', () => {
@@ -506,6 +536,27 @@ describe('noun-consistency-gate', () => {
       }
     });
 
+    it('catches every pairing form the design retires once enabled', () => {
+      const pair = RETIRED_USER_TERMS.find(
+        ({ term }) => term === 'Pair a device',
+      );
+      if (!pair) throw new Error('Pair a device entry missing');
+      const enabled = [{ ...pair, pending: false }];
+      for (const text of [
+        'Pair a device',
+        'Open Connections to pair this device again',
+        'Pair another device',
+        'Pair your phone',
+        'Pair phone',
+        'Pair devices',
+      ]) {
+        expect(
+          scanFileContent('Pair.tsx', `<p>${text}</p>`, enabled),
+          text,
+        ).toHaveLength(1);
+      }
+    });
+
     it('does not flag the replacement vocabulary or the terms in comments and identifiers', () => {
       const all = RETIRED_USER_TERMS.map((entry) => ({
         ...entry,
@@ -522,6 +573,21 @@ describe('noun-consistency-gate', () => {
         'const deviceHub = useDeviceHub(); const x = <p>Saved</p>;',
         '<div className="ai-app device-hub" />',
         '<p>Mail apps and AI applications</p>',
+        // The first-release replacements and nearby legitimate copy.
+        '<p>Add a provider</p>',
+        '<p>Runs through: Claude subscription</p>',
+        '<p>Connect a device</p>',
+        '<p>Repair a device</p>',
+        '<p>Add a view</p>',
+        '<p>Files</p>',
+        '<p>Usage</p>',
+        '<p>Work</p>',
+        '<p>Setup</p>',
+        '<p>More in Settings, Chat and voice</p>',
+        '<p>New chat from here</p>',
+        '<p>Rewind chat to here</p>',
+        '<p>Restore files to here</p>',
+        '<p>Start fresh context</p>',
       ]) {
         expect(scanFileContent('Clean.tsx', source, all), source).toEqual([]);
       }
