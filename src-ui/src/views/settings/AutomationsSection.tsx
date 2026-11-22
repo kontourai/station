@@ -101,7 +101,7 @@ function rulePosture(rule: AutomationRule): string | undefined {
   if (rule.action.approvalMode === 'auto') return 'Approves its own tool calls';
   if (rule.action.approvalMode === 'connection-default')
     return "Agent's own approval settings";
-  return 'Asks before each tool call';
+  return 'Asks before acting';
 }
 
 /** Whether a Retry sent now could start the Agent. */
@@ -128,7 +128,7 @@ function startFailedNote(
   if (episode.retryNeedsRuleChange)
     return episode.startFailure === 'agent-own-approval-required'
       ? `Agent ${agent} uses its own approval settings; set the rule's approval to the Agent's own, or change its Agent.`
-      : `Agent ${agent} cannot take this rule's approval setting, so nothing ran. Change the setting or the Agent.`;
+      : `Agent ${agent} cannot take this approval setting. Retry returns when you change the rule's setting or its Agent.`;
   const why = 'The Agent did not start, so nothing ran.';
   return mayAct
     ? `${why} Retry is available.`

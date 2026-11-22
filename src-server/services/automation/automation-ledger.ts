@@ -233,6 +233,8 @@ export type AutomationEpisodeRecord = Readonly<{
   startFailure?: AutomationStartFailure;
   /** The failed start's policy fingerprint, to tell whether the rule changed. */
   failedPolicyFingerprint?: string;
+  /** The Task the failed start created, to tell whether it is still live. */
+  failedTaskId?: string;
 }>;
 
 /** An intent's recorded reason, as the open episode reports it. */
@@ -1470,7 +1472,13 @@ class SqliteAutomationLedger implements AutomationLedger {
   private failedStart(
     ruleId: string,
     episodeId: string,
-  ): { reason: string | undefined; policyFingerprint: string } | undefined {
+  ):
+    | {
+        reason: string | undefined;
+        policyFingerprint: string;
+        taskId: string | undefined;
+      }
+    | undefined {
     const row = this.db
       .prepare(
         'SELECT state, invoked_ms, body FROM automation_action_intents WHERE rule_id = ? AND episode_id = ? ORDER BY retry DESC LIMIT 1',
@@ -1488,6 +1496,7 @@ class SqliteAutomationLedger implements AutomationLedger {
     return {
       reason: intent.reason,
       policyFingerprint: intent.policyFingerprint,
+      taskId: intent.taskId,
     };
   }
 
@@ -1759,6 +1768,7 @@ class SqliteAutomationLedger implements AutomationLedger {
           ...episode,
           startFailed: true as const,
           failedPolicyFingerprint: failed.policyFingerprint,
+          ...(failed.taskId ? { failedTaskId: failed.taskId } : {}),
           ...(startFailure ? { startFailure } : {}),
         };
       }),

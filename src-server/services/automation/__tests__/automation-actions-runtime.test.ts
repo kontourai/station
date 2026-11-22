@@ -1902,6 +1902,43 @@ test('an unreadable Project list stops the tick as unavailable, refuses nothing,
   await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
 });
 
+test.each([
+  [
+    'a message over the bound is cut to 200 characters',
+    'x'.repeat(300),
+    'x'.repeat(200),
+  ],
+  [
+    'ASCII control characters are replaced',
+    'a\u0000b\u001bc\u007fd\ne',
+    'a b c d e',
+  ],
+  ['C1 control characters are replaced', 'a\u0080b\u009fc', 'a b c'],
+  [
+    'bidirectional override and isolate characters are replaced',
+    'a\u202ab\u202ec\u2066d\u2069e',
+    'a b c d e',
+  ],
+  [
+    'a cut never splits a surrogate pair',
+    `${'y'.repeat(199)}\u{1F600}tail`,
+    `${'y'.repeat(199)}\u{1F600}`,
+  ],
+])('the stall detail: %s', async (_name, message, expected) => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  vi.spyOn(w.real!.service, 'listProjects').mockImplementation(() => {
+    throw new Error(message);
+  });
+  await w.previews.setEnabled('github-automation-actions', true);
+  await w.runtime.tick().catch(() => undefined);
+  expect(w.runtime.unavailable()?.detail).toBe(expected);
+  expect(
+    w.warnings.mock.calls.find(
+      ([text]) => text === 'Automation actions are unavailable',
+    )?.[1],
+  ).toMatchObject({ detail: expected });
+});
+
 test('an intent recorded with a slug before slugs were resolved is refused as a rule change, not a missing Project', async () => {
   const w = await world({ projects: [STATION_PROJECT], episode: false });
   // As intake recorded it before the store resolved slugs.
@@ -2082,6 +2119,29 @@ test('a Task that could not be canceled after a failed start is shown on the epi
     startFailed: true,
     startFailure: 'task-not-canceled',
   });
+});
+
+test('Retry returns for a Task that could not be canceled once that Task is no longer live', async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  vi.spyOn(w.graph, 'updateTaskStatus').mockRejectedValueOnce(
+    new Error('task store unavailable'),
+  );
+  const first = await failedStart(w);
+  await vi.waitFor(() =>
+    expect(w.ledger.readIntent(first.intentId)?.reason).toBe(
+      'task_not_canceled',
+    ),
+  );
+  const view = () =>
+    projectAutomationEpisode(
+      w.ledger.listOpenEpisodes()[0]!,
+      w.store.read(),
+      (taskId) => w.graph.readTaskView(taskId)?.status,
+    );
+  expect(view().startFailure).toBe('task-not-canceled');
+  await w.graph.updateTaskStatus(w.graph.listTasks()[0]!.id, 'canceled');
+  expect(view()).toMatchObject({ startFailed: true });
+  expect(view().startFailure).toBeUndefined();
 });
 
 test('a rule with no approval mode still starts an Agent that takes one at ask, never more permissive', async () => {

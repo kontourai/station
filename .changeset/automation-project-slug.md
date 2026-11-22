@@ -24,3 +24,11 @@ still means `ask`, and an Agent that cannot be told `ask` is refused before
 any Task is created. Open episodes add `startFailure` values
 `agent-own-approval-required` and `task-not-canceled`, and
 `retryNeedsRuleChange`; `actionsUnavailable` adds `detail`.
+
+Delegation and Station Control starts change for an ACP connection whose
+approvals Station answers (`acpApprovalControl` of `station` or `requests`):
+an ACP Agent on such a connection now accepts a per-invocation
+`approvalMode` instead of refusing it; other Agents are refused as before.
+A start whose Task could not be canceled keeps `task-not-canceled` on its
+open episode only while that Task is live, so Retry returns once the Task is
+canceled or done.

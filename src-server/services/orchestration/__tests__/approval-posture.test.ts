@@ -301,6 +301,14 @@ describe('server-ordered approval posture (#2436)', () => {
     });
   }
 
+  test('acpApprovalControlOf returns the connection control the service was given', () => {
+    acpControls = { 'kiro-a': 'station', 'kiro-b': 'requests' };
+    const fresh = createService();
+    expect(fresh.acpApprovalControlOf('kiro-a')).toBe('station');
+    expect(fresh.acpApprovalControlOf('kiro-b')).toBe('requests');
+    expect(fresh.acpApprovalControlOf('unknown')).toBeUndefined();
+  });
+
   test('a decision is recorded as a session event at its server sequence, and published', async () => {
     await start('t-record');
     const published: CanonicalRuntimeEvent[] = [];

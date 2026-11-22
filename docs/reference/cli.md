@@ -1236,7 +1236,9 @@ guaranteed retention window. The CLI never resends automatically.
 `--approval-mode`/`--effort`/`--thinking`/`--model-option` (station#978) set
 per-invocation settings on an Agent whose resolved engine supports them. The
 server validates option keys after resolving the target; Station's engine does
-not support this engine-options bag. `--approval-mode` accepts exactly
+not support this engine-options bag. Claude and Codex accept `--approval-mode`;
+an ACP Agent accepts it when Station answers its approvals; other Agents refuse
+it. `--approval-mode` accepts exactly
 `ask`, `auto`, `never`, or `connection-default` (an invalid value is a usage
 error, exit 1, before any request); `--effort` and `--thinking` are
 otherwise engine-specific. `--model-option=key=value` is a repeatable

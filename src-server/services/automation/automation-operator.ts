@@ -63,6 +63,23 @@ export function retryAutomationEpisode(input: {
   });
 }
 
+/**
+ * Text that is logged and shown to the operator: at most `max` code points
+ * (a cut never splits a surrogate pair), with ASCII and C1 control
+ * characters and the bidirectional embedding, override and isolate
+ * characters replaced by a space.
+ */
+export function boundedText(text: string, max = 200): string {
+  return Array.from(text)
+    .slice(0, max)
+    .map((char) =>
+      /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(char)
+        ? ' '
+        : char,
+    )
+    .join('');
+}
+
 /** Failures a retry of the unchanged rule would meet again. */
 const RULE_CHANGE_FAILURES = new Set([
   'agent-option-unsupported',
@@ -72,12 +89,21 @@ const RULE_CHANGE_FAILURES = new Set([
 /**
  * The public episode view: the internal episode key is not returned. With
  * the current configuration, a start refused for the rule's approval
- * setting is marked `retryNeedsRuleChange` while the rule is unchanged.
+ * setting is marked `retryNeedsRuleChange` while the rule is unchanged. A
+ * start whose Task could not be canceled keeps `task-not-canceled` only
+ * while that Task is live: `taskStatus` reads its current status, and once
+ * it is canceled or done (or gone) the failure is dropped so Retry returns.
  */
 export function projectAutomationEpisode(
   record: AutomationEpisodeRecord,
   configuration?: AutomationConfiguration,
+  taskStatus?: (taskId: string) => string | undefined,
 ): PublicEpisodeRecord {
+  const taskSettled =
+    record.startFailure === 'task-not-canceled' &&
+    record.failedTaskId !== undefined &&
+    taskStatus !== undefined &&
+    [undefined, 'canceled', 'done'].includes(taskStatus(record.failedTaskId));
   const rule = configuration?.rules.find(({ id }) => id === record.ruleId);
   const source = configuration?.sources.find(({ id }) => id === rule?.sourceId);
   const unchanged =
@@ -96,7 +122,9 @@ export function projectAutomationEpisode(
     openedAt: record.openedAt,
     updatedAt: record.updatedAt,
     ...(record.startFailed ? { startFailed: true as const } : {}),
-    ...(record.startFailure ? { startFailure: record.startFailure } : {}),
+    ...(record.startFailure && !taskSettled
+      ? { startFailure: record.startFailure }
+      : {}),
     ...(unchanged ? { retryNeedsRuleChange: true as const } : {}),
   };
 }

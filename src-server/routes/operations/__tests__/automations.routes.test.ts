@@ -10,7 +10,10 @@ import {
   workflowRun,
 } from '../../../services/automation/__tests__/fixtures/workflow-run-fixture.js';
 import { recordAutomationEvent } from '../../../services/automation/automation-intake.js';
-import { createAutomationLedger } from '../../../services/automation/automation-ledger.js';
+import {
+  type AutomationEpisodeRecord,
+  createAutomationLedger,
+} from '../../../services/automation/automation-ledger.js';
 import {
   projectAutomationEpisode,
   retryAutomationEpisode,
@@ -313,6 +316,9 @@ async function operatorSurface(
     grants?: string[];
     /** The current Projects, so rules and grants may name one by slug. */
     projects?: { id: string; slug: string }[];
+    /** Replaces the ledger's open episodes, and reads a Task's status. */
+    episodes?: () => AutomationEpisodeRecord[];
+    taskStatus?: (taskId: string) => string | undefined;
   } = {},
 ) {
   const home = makeTempDir('automation-operator-');
@@ -334,9 +340,9 @@ async function operatorSurface(
       },
       store,
       listOpenEpisodes: (limit) =>
-        ledger
-          .listOpenEpisodes(limit)
-          .map((record) => projectAutomationEpisode(record, store.read())),
+        (options.episodes?.() ?? ledger.listOpenEpisodes(limit)).map((record) =>
+          projectAutomationEpisode(record, store.read(), options.taskStatus),
+        ),
       retryEpisode: (ruleId, episodeId) =>
         retryAutomationEpisode({
           ledger,
@@ -543,6 +549,45 @@ describe('Automation operator surface (#4513)', () => {
       }),
     ]);
     expect(episodes.data.episodes[0]).not.toHaveProperty('episodeKey');
+  });
+
+  test('a Task that could not be canceled blocks Retry only while it is live', async () => {
+    let status: string | undefined = 'in-progress';
+    const s = await operatorSurface({
+      episodes: () => [
+        {
+          episodeKey: '["rule-1","x"]',
+          ruleId: 'rule-1',
+          episodeId: '42',
+          state: 'open',
+          attemptCount: 0,
+          maxAttempts: 1,
+          openedAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          startFailed: true,
+          startFailure: 'task-not-canceled',
+          failedTaskId: 'task-1',
+        },
+      ],
+      taskStatus: () => status,
+    });
+    const listed = async () =>
+      (
+        (await json(await s.send('GET', '/episodes'))) as {
+          data: { episodes: Record<string, unknown>[] };
+        }
+      ).data.episodes[0];
+    expect(await listed()).toMatchObject({
+      startFailed: true,
+      startFailure: 'task-not-canceled',
+    });
+    status = 'canceled';
+    const after = await listed();
+    expect(after).toMatchObject({ startFailed: true });
+    expect(after).not.toHaveProperty('startFailure');
+    expect(after).not.toHaveProperty('failedTaskId');
+    status = 'done';
+    expect(await listed()).not.toHaveProperty('startFailure');
   });
 
   test('retry-episode explains each refusal and parses its target', async () => {

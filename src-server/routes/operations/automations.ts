@@ -32,6 +32,7 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { automationConfigurationFingerprint } from '../../services/automation/automation-intent.js';
+import { boundedText } from '../../services/automation/automation-operator.js';
 import type { RetryEpisodeOutcome } from '../../services/automation/automation-ledger.js';
 import {
   AUTOMATION_PROJECTS_UNAVAILABLE,
@@ -178,12 +179,7 @@ class RouteRefusal extends Error {
  * characters before they leave the route.
  */
 function boundedProblems(problems: readonly string[]): string[] {
-  return problems.slice(0, 8).map((problem) =>
-    Array.from(problem.slice(0, 200), (char) => {
-      const code = char.charCodeAt(0);
-      return code < 0x20 || code === 0x7f ? ' ' : char;
-    }).join(''),
-  );
+  return problems.slice(0, 8).map((problem) => boundedText(problem));
 }
 
 /** `<ruleId>:<episodeId>`: a rule id never contains a colon; an episode id may. */

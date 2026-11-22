@@ -307,10 +307,12 @@ so. `connection-default` sends no per-invocation setting, so the Agent's or
 its connection's own approval settings apply; only a rule that states it
 runs so. The start resolves the Agent again with the same setting, so an
 Agent rebound after the check is refused at the start, never started
-without one. Settings shows each rule's posture ("Asks before each tool
-call", "Agent's own approval settings"), and an Agent-proposed rule can only
-be `ask`. Retry is not offered for such a refusal until the rule changes.
-A Task whose cancel fails is named on the open episode.
+without one. Settings shows each rule's posture ("Asks before acting", "Agent's own
+approval settings"), and an Agent-proposed rule can only be `ask`. Retry is
+not offered for such a refusal until the rule's approval setting or its
+Agent changes. A Task whose cancel fails is named on the open episode, and
+Retry stays hidden only while that Task is live: the episode list reads the
+Task's current status, so it returns once the Task is canceled or done.
 
 While the Project list cannot be read, or authority cannot be checked, no
 automation Task starts and nothing is refused; the warning is logged when

@@ -244,6 +244,39 @@ test('a start refused for the rule approval setting names the Agent and offers n
   );
 });
 
+test('a start refused for the approval setting says what brings Retry back', () => {
+  rules.mockReturnValue(
+    ok({
+      configurationFingerprint: 'f'.repeat(64),
+      rules: [
+        { ...RULE, action: { kind: 'dispatch-task', agentId: 'helper' } },
+      ],
+    }),
+  );
+  episodes.mockReturnValue(
+    ok({
+      episodes: [
+        {
+          ...EPISODE('43', 'open'),
+          attemptCount: 0,
+          startFailed: true,
+          startFailure: 'agent-option-unsupported',
+          retryNeedsRuleChange: true,
+        },
+      ],
+    }),
+  );
+  render(<AutomationsSection />);
+  expect(
+    screen.getByText(
+      "Agent helper cannot take this approval setting. Retry returns when you change the rule's setting or its Agent.",
+    ),
+  ).toBeTruthy();
+  expect(screen.queryAllByRole('button', { name: /^Retry episode/ })).toEqual(
+    [],
+  );
+});
+
 test('a Task that could not be canceled is shown and not retried over', () => {
   episodes.mockReturnValue(
     ok({
@@ -285,7 +318,7 @@ test('each rule shows its effective approval posture', () => {
   );
   render(<AutomationsSection />);
   expect(
-    screen.getByText('One · dispatch-task · Asks before each tool call'),
+    screen.getByText('One · dispatch-task · Asks before acting'),
   ).toBeTruthy();
   expect(
     screen.getByText("Two · dispatch-task · Agent's own approval settings"),

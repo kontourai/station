@@ -16,6 +16,7 @@ import {
   automationRevocationMessage,
   classifyAutomationPolicy,
 } from '../services/automation/automation-intent.js';
+import { boundedText } from '../services/automation/automation-operator.js';
 import type { AutomationLedger } from '../services/automation/automation-ledger.js';
 import type { AutomationStore } from '../services/automation/automation-store.js';
 import {
@@ -116,15 +117,12 @@ type ActionAuthority =
 
 /**
  * What failed, for the log and Settings: the error's own message (the
- * Project store names the record it could not read), at most 200
- * characters, control characters replaced.
+ * Project store names the record it could not read), bounded and
+ * sanitised by `boundedText`.
  */
 function boundedDetail(error: unknown): string | undefined {
   if (!(error instanceof Error) || !error.message) return undefined;
-  return Array.from(error.message.slice(0, 200), (char) => {
-    const code = char.charCodeAt(0);
-    return code < 0x20 || code === 0x7f ? ' ' : char;
-  }).join('');
+  return boundedText(error.message);
 }
 
 /** The inbox key of an action's first turn and of its amendment notices. */

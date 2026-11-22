@@ -13667,7 +13667,12 @@ export function configureRuntimeRoutes(
                   .get()
                   .listOpenEpisodes(limit)
                   .map((record) =>
-                    projectAutomationEpisode(record, configuration),
+                    projectAutomationEpisode(
+                      record,
+                      configuration,
+                      (taskId) =>
+                        context.taskGraphService.readTaskView(taskId)?.status,
+                    ),
                   );
               },
               actionsUnavailable: () => automationActions?.unavailable(),
