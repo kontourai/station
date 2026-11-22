@@ -21,6 +21,11 @@ import {
 } from './types';
 import { consentFailureMessage, recoveryStoppedNotice } from './view-utils';
 
+/** How often an activating row is read again. */
+export const ACTIVATION_POLL_INTERVAL_MS = 2000;
+/** The server's activation deadline is 10 seconds; this is that plus margin. */
+export const ACTIVATION_POLL_CEILING_MS = 15_000;
+
 export function PluginRecoveryPanel({
   plugin,
   message,
@@ -46,8 +51,12 @@ export function PluginRecoveryPanel({
   const [reviewedRevision, setReviewedRevision] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const busy = useRef(false);
-  const pending = plugin.installationReadiness?.state === 'pending';
-  const activating = plugin.installationReadiness?.state === 'activating';
+  const activating = plugin.activationInFlight === true;
+  const pending =
+    plugin.installationReadiness?.state === 'pending' && !activating;
+  const [pollExpired, setPollExpired] = useState(false);
+  const queriesRef = useRef(queries);
+  queriesRef.current = queries;
   const basis =
     preview.data?.recoveryRevision === reviewedRevision
       ? preview.data
@@ -68,15 +77,29 @@ export function PluginRecoveryPanel({
     if (pending) void review();
   }, [pending]);
   // While the server reports the activation in flight, read the list again
-  // until it settles into ready or stopped.
+  // until it settles into ready or stopped. The server stops an activation at
+  // its 10-second deadline, so a row still activating well past that is not
+  // going to settle by being read again: stop at the ceiling and leave
+  // Refresh status. Leaving the row (or the view) clears the timers.
   useEffect(() => {
-    if (!activating) return;
-    const timer = setInterval(
-      () => void queries.invalidateQueries({ queryKey: ['plugins'] }),
-      2000,
+    if (!activating) {
+      setPollExpired(false);
+      return;
+    }
+    const poll = setInterval(
+      () =>
+        void queriesRef.current.invalidateQueries({ queryKey: ['plugins'] }),
+      ACTIVATION_POLL_INTERVAL_MS,
     );
-    return () => clearInterval(timer);
-  }, [activating, queries]);
+    const stop = setTimeout(() => {
+      clearInterval(poll);
+      setPollExpired(true);
+    }, ACTIVATION_POLL_CEILING_MS);
+    return () => {
+      clearInterval(poll);
+      clearTimeout(stop);
+    };
+  }, [activating]);
   async function recover() {
     if (busy.current || !basis) return;
     busy.current = true;
@@ -193,7 +216,9 @@ export function PluginRecoveryPanel({
       <div className="detail-panel__body plugins__recovery">
         <p>
           {activating
-            ? 'Station is activating this plugin now. Its workspace panes and actions appear once it is ready.'
+            ? pollExpired
+              ? 'This plugin is still reported as activating. Refresh status to check again.'
+              : 'Station is activating this plugin now. Its workspace panes and actions appear once it is ready.'
             : pending
               ? 'This plugin is installed but not active: its activation did not finish, and Station does not retry it on its own. Its workspace panes and actions stay unavailable until you recover it.'
               : 'Station cannot verify this installation. Refresh its status before using it.'}

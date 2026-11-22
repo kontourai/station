@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -38,7 +39,11 @@ vi.mock('../../../core/PermissionManager', () => ({
   }),
 }));
 
-import { PluginRecoveryPanel } from '../PluginRecoveryPanel';
+import {
+  ACTIVATION_POLL_CEILING_MS,
+  ACTIVATION_POLL_INTERVAL_MS,
+  PluginRecoveryPanel,
+} from '../PluginRecoveryPanel';
 
 const plugin = {
   name: 'fixture',
@@ -307,10 +312,7 @@ test('an install that left this row inactive explains itself above the recovery 
 });
 
 test('a plugin the server is still activating says Activating, loads no recovery review and offers no Recover', async () => {
-  const activating = {
-    ...plugin,
-    installationReadiness: { state: 'activating' as const },
-  };
+  const activating = { ...plugin, activationInFlight: true as const };
   const view = render(
     <PluginRecoveryPanel plugin={activating} onRemove={vi.fn()} />,
   );
@@ -325,4 +327,60 @@ test('a plugin the server is still activating says Activating, loads no recovery
   view.rerender(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
   expect(screen.getByText('Needs recovery')).toBeTruthy();
   await reviewLoaded();
+});
+
+test('an activating row is re-read on an interval, stops at the ceiling and then offers a refresh', () => {
+  vi.useFakeTimers();
+  try {
+    render(
+      <PluginRecoveryPanel
+        plugin={{ ...plugin, activationInFlight: true }}
+        onRemove={vi.fn()}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_INTERVAL_MS * 2);
+    });
+    expect(state.invalidate).toHaveBeenCalledTimes(2);
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_CEILING_MS);
+    });
+    const atCeiling = state.invalidate.mock.calls.length;
+    expect(atCeiling).toBeLessThanOrEqual(
+      Math.floor(ACTIVATION_POLL_CEILING_MS / ACTIVATION_POLL_INTERVAL_MS),
+    );
+    expect(
+      screen.getByText(/still reported as activating\. Refresh status/),
+    ).toBeTruthy();
+    // No more reads, however long the view stays open.
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_CEILING_MS * 4);
+    });
+    expect(state.invalidate).toHaveBeenCalledTimes(atCeiling);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('an activating row stops re-reading when the view unmounts', () => {
+  vi.useFakeTimers();
+  try {
+    const view = render(
+      <PluginRecoveryPanel
+        plugin={{ ...plugin, activationInFlight: true }}
+        onRemove={vi.fn()}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_INTERVAL_MS);
+    });
+    expect(state.invalidate).toHaveBeenCalledTimes(1);
+    view.unmount();
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_CEILING_MS * 2);
+    });
+    expect(state.invalidate).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
 });

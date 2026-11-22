@@ -194,7 +194,8 @@ test('reads an activating plugin row, the state of an install whose request is s
     name: 'activating',
     version: '1',
     hasBundle: false,
-    installationReadiness: { state: 'activating' },
+    installationReadiness: { state: 'pending', recovery: 'review' },
+    activationInFlight: true,
   };
   vi.stubGlobal(
     'fetch',

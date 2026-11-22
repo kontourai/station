@@ -458,7 +458,8 @@ export function usePluginManagementViewModel() {
       (plugin) =>
         !isRejectedPlugin(plugin) &&
         plugin.name === basis.manifest?.name &&
-        plugin.installationReadiness?.state === 'pending',
+        plugin.installationReadiness?.state === 'pending' &&
+        !plugin.activationInFlight,
     );
     if (inactive && !reinstalling && !options?.installAgainWhileInactive) {
       setShowInstallModal(false);

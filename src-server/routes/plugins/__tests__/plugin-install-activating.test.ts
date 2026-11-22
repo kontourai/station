@@ -95,10 +95,10 @@ test('the plugin list reports an in-flight activation as activating, and needs r
         reconcileEventSubscriptions: async () => ({ kind: 'applied' }),
       }),
     );
-    const readiness = async () =>
+    const row = async () =>
       ((await (await app.request('/')).json()) as any).plugins.find(
         (plugin: any) => plugin.name === 'slow-activation',
-      )?.installationReadiness;
+      );
     const preview = (await (
       await app.request('/preview', {
         method: 'POST',
@@ -124,11 +124,19 @@ test('the plugin list reports an in-flight activation as activating, and needs r
     await vi.waitFor(() =>
       expect(runtime.reloadConfigurationFromDisk).toHaveBeenCalled(),
     );
-    expect(await readiness()).toEqual({ state: 'activating' });
+    expect(await row()).toMatchObject({
+      installationReadiness: { state: 'pending', recovery: 'review' },
+      activationInFlight: true,
+    });
 
     const response = await installing;
     expect(response.status).toBe(202);
-    expect(await readiness()).toEqual({ state: 'pending', recovery: 'review' });
+    const stopped = await row();
+    expect(stopped.installationReadiness).toEqual({
+      state: 'pending',
+      recovery: 'review',
+    });
+    expect(stopped.activationInFlight).toBeUndefined();
   } finally {
     release();
     for (const timer of runtime.timers) clearTimeout(timer);

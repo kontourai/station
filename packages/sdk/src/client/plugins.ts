@@ -91,6 +91,12 @@ export type InstalledPluginRecord =
       hasBundle?: boolean;
       retainedOnRemoval?: boolean;
       installationReadiness?: PluginInstallationReadiness;
+      /**
+       * Set while this server is still activating the plugin: its install
+       * request is open and settles on its own, so no recovery is offered.
+       * Absent from an older server, and once the activation was stopped.
+       */
+      activationInFlight?: true;
       /** The selected generation's persisted registry verification receipt. */
       registryTrust?: PluginRegistryTrust;
       /**
@@ -108,9 +114,7 @@ function isPluginInstallationReadiness(
   const row = value as Record<string, unknown>;
   return row.state === 'pending'
     ? row.recovery === 'review' && exactFields(row, ['state', 'recovery'])
-    : (row.state === 'ready' ||
-        row.state === 'activating' ||
-        row.state === 'unavailable') &&
+    : (row.state === 'ready' || row.state === 'unavailable') &&
         exactFields(row, ['state']);
 }
 

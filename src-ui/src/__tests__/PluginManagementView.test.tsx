@@ -732,7 +732,8 @@ describe('a plugin installed but not active', () => {
       name: 'slow-activation',
       displayName: 'Slow Activation',
       version: '1.0.0',
-      installationReadiness: { state: 'activating' },
+      installationReadiness: { state: 'pending', recovery: 'review' },
+      activationInFlight: true,
     };
     viewModel = baseViewModel({
       plugins: [activating],

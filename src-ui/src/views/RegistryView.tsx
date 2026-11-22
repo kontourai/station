@@ -400,7 +400,8 @@ export function RegistryView({
         !('status' in row && row.status === 'rejected') &&
         row.name === data.manifest?.name &&
         'installationReadiness' in row &&
-        row.installationReadiness?.state === 'pending',
+        row.installationReadiness?.state === 'pending' &&
+        !('activationInFlight' in row && row.activationInFlight),
     )?.name;
     if (inactiveName && !installAgainWhileInactive) {
       // Recovered, not installed again: see the Plugins view's install.

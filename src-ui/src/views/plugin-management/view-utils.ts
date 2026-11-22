@@ -33,9 +33,13 @@ export function filterPlugins(plugins: Plugin[], search: string) {
   });
 }
 
-function readinessPrefix(state: string | undefined) {
-  if (state === 'pending') return 'Needs recovery · ';
-  if (state === 'activating') return 'Activating… · ';
+function readinessPrefix(plugin: {
+  installationReadiness?: { state: string };
+  activationInFlight?: true;
+}) {
+  const state = plugin.installationReadiness?.state;
+  if (state === 'pending')
+    return plugin.activationInFlight ? 'Activating… · ' : 'Needs recovery · ';
   if (state === 'unavailable') return 'Unavailable · ';
   return '';
 }
@@ -55,7 +59,7 @@ export function buildPluginListItems(
       : {
           id: pluginSelectionId(plugin),
           name: plugin.displayName || plugin.name,
-          subtitle: `${readinessPrefix(plugin.installationReadiness?.state)}v${plugin.version}${available.has(plugin.name) ? ' · Update available' : ''}${plugin.description ? ` · ${plugin.description}` : ''}`,
+          subtitle: `${readinessPrefix(plugin)}v${plugin.version}${available.has(plugin.name) ? ' · Update available' : ''}${plugin.description ? ` · ${plugin.description}` : ''}`,
         },
   );
 }

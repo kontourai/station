@@ -10,6 +10,8 @@ import type { PluginRegistryTrust } from '@kontourai/station-contracts/registry-
 
 export interface ReadyPlugin {
   installationReadiness?: PluginInstallationReadiness;
+  /** The server is still activating this plugin; see `InstalledPluginRecord`. */
+  activationInFlight?: true;
   /** Server-persisted registry verification; absent from an older server. */
   registryTrust?: PluginRegistryTrust;
   retainedOnRemoval?: boolean;
