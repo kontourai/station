@@ -180,7 +180,10 @@ async function seedScheduleCrudApi(page: Page) {
         provider: body.provider ?? 'built-in',
         cron: body.cron ?? '* * * * *',
         prompt: body.prompt ?? '',
-        agent: body.agent ?? 'default',
+        // A job that runs in its own chat names its agent in `target`, as
+        // the server stores it; a made-up agent left the duplicate's Create
+        // disabled whenever the host answered the chat capability first.
+        agent: body.agent ?? body.target?.agent ?? 'station',
         retryCount: body.retryCount ?? 0,
         retryDelaySecs: body.retryDelaySecs ?? 60,
       });
