@@ -3417,6 +3417,11 @@ every reviewed import item before it may publish a Skill, then exposes that jour
 the sole itemized receipt projection: relative source ID, reviewed target,
 state/outcome, stable reason/repair codes, known canonical target revision, and
 retryable rollback state—never source bytes or filesystem identities.
+Its source check applies the preview's own location checks, so a symlinked
+Codex home or prompts folder is reported unavailable rather than offered. A
+prompts folder past the 128-entry enumeration limit is refused as
+`TOO_MANY_FILES`, and a file name holding a control or direction-changing
+character is excluded as `unsafe-name`.
 
 **Contract.** Capabilities are keyed by the discovered local Skill directory and
 acquired in deterministic order for a rename, so ordinary, conditional, and registry
