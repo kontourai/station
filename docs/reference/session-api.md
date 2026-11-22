@@ -1853,8 +1853,8 @@ further send, its Session's end records the held turn as interrupted the same
 way. A Claude engine observed to exit ends its
 Session, so the next message by the conversation id runs in a new Session. If
 that Session failed while its engine process still runs, Station stops the
-process first; until it has stopped, a continuation is refused with
-`conversation_predecessor_engine_live` and nothing is sent. A
+process first; until it has stopped, a continuation or an Agent handoff is
+refused with `conversation_predecessor_engine_live` and nothing is sent. A
 send that names an earlier Session of a conversation whose engine cannot be
 resumed is refused with the conversation id to continue by instead.
 A transport failure after dispatch can also leave the outcome uncertain.
