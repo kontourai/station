@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import { CONVERSATION_FORK_REFUSAL_CODES } from '@kontourai/station-contracts/orchestration';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   continuityBinding,
@@ -630,6 +631,31 @@ describe('fork and handoff deliver the transcript seed across engine families', 
       expect(carried).not.toContain(AFTER);
     },
   );
+
+  test('a fork accepts the branch point by the message id the conversation reader shows', async () => {
+    const h = harness();
+    const { id, branchPointTurnId } = await sourceConversation(h, 'codex');
+    const window = await h.service.readConversationEventWindow(id, {
+      turnLimit: 200,
+      authority,
+    });
+    const shown = projectRuntimeEventsToMessages(
+      (window?.events ?? []).map((item) => item.event),
+      { stableIds: true },
+    ).find(
+      (message) =>
+        message.role === 'assistant' &&
+        message.metadata?.turnId === branchPointTurnId,
+    );
+    if (!shown) throw new Error('The reader shows no branch-point answer.');
+    expect(shown.id).not.toBe(branchPointTurnId);
+    const forkId = await h.forkedId(
+      await h.fork('codex', id, 'claude', shown.id),
+    );
+    const { sent } = await h.turn('claude', forkId, 'First fork turn.');
+    for (const text of BEFORE) expect(sent.ambientContext).toContain(text);
+    expect(sent.ambientContext).not.toContain(AFTER);
+  });
 
   test('every fork refusal names a stable code a client can act on', async () => {
     const h = harness();
