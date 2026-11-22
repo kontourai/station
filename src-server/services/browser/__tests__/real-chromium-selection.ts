@@ -5,6 +5,12 @@ import { join } from 'node:path';
  * Playwright's installed Chromium (Chrome for Testing) under
  * `PLAYWRIGHT_BROWSERS_PATH`, newest revision first: the pinned browser,
  * which an older system Chrome would otherwise shadow on a workstation.
+ *
+ * macOS only. On Linux the host launches the browser with Chrome's sandbox
+ * on, and Chrome for Testing has no AppArmor profile, so on a distribution
+ * that restricts unprivileged user namespaces (Ubuntu 23.10 and later, which
+ * the hosted runners are) it aborts at launch. The installed system browser
+ * has a profile and is the one these suites use there.
  */
 export function playwrightChromium(): string | undefined {
   const root = process.env.PLAYWRIGHT_BROWSERS_PATH;
@@ -17,7 +23,6 @@ export function playwrightChromium(): string | undefined {
       'MacOS',
       'Google Chrome for Testing',
     ],
-    linux: ['chrome-linux64', 'chrome'],
   };
   const tail = builds[process.platform];
   if (!tail) return undefined;

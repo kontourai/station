@@ -545,7 +545,7 @@ export function registerBrowserTools(registry: StationControlToolRegistry) {
 
   registry.tool(
     'browser_evaluate',
-    "Run a JavaScript expression as the page itself (it can read the page's data, cookies and storage, and may keep running after this returns); returns its JSON result, max 64 KB. Off unless the Project allows it. Refused on a blank tab; open a page first.",
+    "Run a JavaScript expression as the page itself (it can read the page's data, cookies and storage, and may keep running after this returns); returns its JSON result, max 64 KB. Off unless the Project allows it.",
     {
       browserSessionId: sessionId,
       expression: z.string().min(1).max(16_384),
