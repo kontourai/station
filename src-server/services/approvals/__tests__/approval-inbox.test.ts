@@ -977,6 +977,14 @@ describe('approval inbox notifications', () => {
         sessionKind: 'managed',
       }),
     );
+    // The registry card offers the one-call decision and Deny, in the same
+    // words as every other approval surface.
+    expect(
+      notification.actions?.map((action) => [action.id, action.label]),
+    ).toEqual([
+      ['accept', 'Allow once'],
+      ['decline', 'Deny'],
+    ]);
 
     await notificationService.action(notification.id, 'accept');
 

@@ -60,6 +60,7 @@ function ToastCard({
   clickable,
   swipeToDismiss = false,
   queueKey,
+  onMenuOpenChange,
 }: {
   notification: Notification;
   dismissToast: (id: string) => void;
@@ -86,6 +87,8 @@ function ToastCard({
    * arrived or moved under it.
    */
   queueKey?: string;
+  /** Approval queue only: whether this card's session-grant menu is open. */
+  onMenuOpenChange?: (open: boolean) => void;
 }) {
   const isApproval = notification.type === 'tool-approval';
   const isActivity = notification.type === 'tool-activity';
@@ -376,6 +379,7 @@ function ToastCard({
           {menuActions.length > 0 && (
             <ActionOverflowMenu
               closeWhen={queueKey}
+              onOpenChange={onMenuOpenChange}
               label={notification.actionsMenuLabel ?? 'More actions'}
               actions={menuActions}
             />
@@ -538,6 +542,16 @@ export function NotificationContainer() {
   const approvals =
     showAllApprovals && approvalQueueOpen ? allApprovals : unclaimedApprovals;
   const approvalQueueKey = approvals.map(notificationKey).join(' ');
+  // How many approval cards have their session-grant menu open. A ref, not
+  // state: the queue's document listeners read it in the same event the
+  // menu's own listener handles, whichever runs first.
+  const openToastMenus = useRef(0);
+  const trackToastMenu = useCallback((open: boolean) => {
+    openToastMenus.current = Math.max(
+      0,
+      openToastMenus.current + (open ? 1 : -1),
+    );
+  }, []);
   useEffect(() => {
     const open = () => {
       returnFocusRef.current = captureReturnFocus(
@@ -570,13 +584,17 @@ export function NotificationContainer() {
   useEffect(() => {
     if (!approvalQueueOpen) return;
 
+    // A card's open session-grant menu owns Escape and outside presses
+    // first: it closes itself and returns focus to its trigger. The queue
+    // closes on the next one.
     const handlePointerDown = (event: PointerEvent) => {
+      if (openToastMenus.current > 0) return;
       if (!approvalQueueRef.current?.contains(event.target as Node)) {
         closeApprovalQueue();
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      if (event.key !== 'Escape' || openToastMenus.current > 0) return;
       event.preventDefault();
       event.stopPropagation();
       closeApprovalQueue();
@@ -746,6 +764,7 @@ export function NotificationContainer() {
                 handleAction={handleAction}
                 clickable={false}
                 queueKey={approvalQueueKey}
+                onMenuOpenChange={trackToastMenu}
               />
             ))}
           </section>

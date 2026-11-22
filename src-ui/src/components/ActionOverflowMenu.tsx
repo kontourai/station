@@ -171,6 +171,7 @@ export function ActionOverflowMenu({
   triggerGlyph,
   reserveGlyphColumn = false,
   closeWhen,
+  onOpenChange,
 }: {
   actions: readonly OverflowAction[];
   /**
@@ -239,6 +240,13 @@ export function ActionOverflowMenu({
    * returns to this trigger. Left out, nothing closes the menu this way.
    */
   closeWhen?: string;
+  /**
+   * Told when the menu opens and when it closes (or unmounts open), so a host
+   * with its own Escape or outside-press handling can leave those to the open
+   * menu: two capture-phase listeners on `document` both run, whatever
+   * `stopPropagation` says.
+   */
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   if (disabled && open) setOpen(false);
@@ -253,6 +261,13 @@ export function ActionOverflowMenu({
   const ownRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useMenuFocus<HTMLDivElement>(open, () => setOpen(false));
 
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  useEffect(() => {
+    if (!open) return;
+    onOpenChangeRef.current?.(true);
+    return () => onOpenChangeRef.current?.(false);
+  }, [open]);
   const closeWhenRef = useRef(closeWhen);
   const refocusTrigger = useRef(false);
   useEffect(() => {

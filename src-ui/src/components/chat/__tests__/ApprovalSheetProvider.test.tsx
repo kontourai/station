@@ -498,6 +498,97 @@ describe('the conversation approval sheet', () => {
     expect(check).toHaveBeenCalledTimes(1);
   });
 
+  describe('each choice in the sheet sends its own action', () => {
+    const PREFIX = 'Allow "echo *" for this session';
+    const WHOLE = 'Allow all Bash commands for this session';
+    const BROWSER_TOOL =
+      'Allow all station-browser.browser_click calls for this session';
+    const BROWSER_SERVER = 'Allow the Station browser for this session';
+    /** A Bash ask offering the prefix and whole-tool grants, as projected. */
+    const bashAsk = (): PendingApprovalRequest => ({
+      ...request('sheet-bash'),
+      approvalToolName: 'Bash',
+      approvalSessionGrant: 'tool',
+      approvalRuleGrant: { rules: ['echo *'], label: PREFIX },
+    });
+    /** An authentic Station browser call, as projected. */
+    const browserCall = (): PendingApprovalRequest => ({
+      ...request('sheet-browser'),
+      toolName: 'mcp__station-browser__browser_click',
+      args: { ref: 'e1' },
+      approvalToolName: 'mcp__station-browser__browser_click',
+      approvalSessionGrant: 'tool',
+      approvalServerGrant: 'server',
+    });
+
+    test.each([
+      ['Deny', bashAsk, 'deny'],
+      ['Allow once', bashAsk, 'once'],
+      [PREFIX, bashAsk, 'trust-rule'],
+      [WHOLE, bashAsk, 'trust'],
+      [BROWSER_TOOL, browserCall, 'trust'],
+      [BROWSER_SERVER, browserCall, 'trust-server'],
+    ] as const)('"%s" sends %s', async (label, make, action) => {
+      const pending = make();
+      const approve = vi.fn(async () => 'answered' as const);
+      render(
+        <ApprovalSheetProvider requests={[pending]} onApprove={approve}>
+          <span>Conversation</span>
+        </ApprovalSheetProvider>,
+      );
+      const sheet = await screen.findByRole('dialog');
+      const button = within(sheet).queryByRole('button', { name: label });
+      if (button) fireEvent.click(button);
+      else {
+        fireEvent.click(
+          within(sheet).getByRole('button', { name: 'Allow for this session' }),
+        );
+        fireEvent.click(await screen.findByRole('menuitem', { name: label }));
+      }
+      await waitFor(() => expect(approve).toHaveBeenCalledTimes(1));
+      expect(approve).toHaveBeenCalledWith(pending, action);
+    });
+
+    test('Escape closes the grant menu only: the sheet stays open and focus returns to the trigger', async () => {
+      render(
+        <ApprovalSheetProvider
+          requests={[bashAsk()]}
+          onApprove={vi.fn(async () => 'answered' as const)}
+        >
+          <span>Conversation</span>
+        </ApprovalSheetProvider>,
+      );
+      const sheet = await screen.findByRole('dialog');
+      const trigger = within(sheet).getByRole('button', {
+        name: 'Allow for this session',
+      });
+      fireEvent.click(trigger);
+      const [first] = await screen.findAllByRole('menuitem');
+      first.focus();
+      fireEvent.keyDown(first, { key: 'Escape' });
+      expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+      expect(screen.getByRole('dialog')).toBe(sheet);
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    test('a grant the request did not offer is not in the menu', async () => {
+      render(
+        <ApprovalSheetProvider
+          requests={[{ ...bashAsk(), approvalRuleGrant: undefined }]}
+          onApprove={vi.fn(async () => 'answered' as const)}
+        >
+          <span>Conversation</span>
+        </ApprovalSheetProvider>,
+      );
+      const sheet = await screen.findByRole('dialog');
+      fireEvent.click(
+        within(sheet).getByRole('button', { name: 'Allow for this session' }),
+      );
+      const items = await screen.findAllByRole('menuitem');
+      expect(items.map((item) => item.textContent)).toEqual([WHOLE]);
+    });
+  });
+
   test('leaves both decisions available after a transport failure with safe recovery copy', async () => {
     const approve = vi.fn(async () => {
       throw Object.assign(new Error('Station host could not be resolved.'), {

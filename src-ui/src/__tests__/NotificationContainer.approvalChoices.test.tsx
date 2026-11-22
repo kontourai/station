@@ -256,6 +256,24 @@ describe('chat-14: the approval toast offers Allow once, Deny and one menu of se
     expect(resolveOrchestrationRequest).not.toHaveBeenCalled();
   });
 
+  test('Escape closes an open menu first, keeping the queue open and focus on the trigger; the next Escape closes the queue', async () => {
+    const card = openRequest(claudeBash([rule('npm ls *')]));
+    const queue = screen.getByRole('button', { name: '1 pending approval' });
+    fireEvent.click(queue);
+    expect(queue.getAttribute('aria-expanded')).toBe('true');
+    const trigger = within(card).getByRole('button', { name: MENU });
+    fireEvent.click(trigger);
+    const [first] = await screen.findAllByRole('menuitem');
+    act(() => first.focus());
+    fireEvent.keyDown(first, { key: 'Escape' });
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+    expect(queue.getAttribute('aria-expanded')).toBe('true');
+    expect(document.activeElement).toBe(trigger);
+    fireEvent.keyDown(trigger, { key: 'Escape' });
+    expect(queue.getAttribute('aria-expanded')).toBe('false');
+    expect(resolveOrchestrationRequest).not.toHaveBeenCalled();
+  });
+
   test.each([
     ['Allow once', claudeBash([rule('npm ls *')]), 'accept', undefined],
     ['Deny', claudeBash([rule('npm ls *')]), 'decline', undefined],
