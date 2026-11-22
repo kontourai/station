@@ -5825,7 +5825,9 @@ inventory and source ownership aliases. Provider visibility and generation fence
 owned by the existing provider registry. Source status is `ready`, `stale`,
 `error`, `disabled` or `unknown`; it includes checked/last successful times and
 an explicit error when refresh fails. Cached data is discovery evidence;
-installation always revalidates the selected source.
+installation always revalidates the selected source. A cached row's `app`
+facts outside the contract's bounds are dropped when the file is read; they
+never make the file unreadable.
 
 A source added by a person has one row however many kinds it provides. Its
 `detection` has `state` (`detected`, `nothing-recognized`, `refused` past a
@@ -5921,6 +5923,16 @@ Skills after a successful removal.
 
 `GET /api/registry/plugins` is operator-only and returns
 `{success: true, data}` with catalog installation status.
+
+Each entry whose package is local carries `app`, derived from its
+`plugin.json` and the layout files it names when the catalog is listed:
+`{kind: 'none'}` for a plugin with no layout and no Workspace Pane, or
+`{kind: 'app', screens, panes, opensAs, worksWith, agents, promptActions,
+knowledge, toolServers, sandboxedToolView}`. A remote package is never fetched
+to list it, and a manifest or layout that is missing, malformed or over a
+bound leaves `app` absent for that entry only. Lists over their bound are
+refused, not cut short. See `RegistryAppFacts` in
+`@kontourai/station-contracts/catalog`.
 
 ### List Installed Plugins (Registry)
 

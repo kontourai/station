@@ -24,7 +24,10 @@ import {
   resolve,
   sep,
 } from 'node:path';
-import type { PluginRegistryCatalogSnapshot } from '@kontourai/station-contracts/catalog';
+import type {
+  PluginRegistryCatalogSnapshot,
+  RegistryAppFacts,
+} from '@kontourai/station-contracts/catalog';
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { createStationTempDirSync } from '@kontourai/station-shared/temp-dir';
 import {
@@ -41,6 +44,7 @@ import {
   readUntrustedPluginManifestSyncWithFormat,
 } from '../../services/plugins/plugin-manifest-bounded-read.js';
 import { assertPluginIdentityAvailable } from '../../services/plugins/reserved-plugin-identities.js';
+import { mapWithConcurrency } from '../../utils/bounded-async.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { execGitSync } from '../../utils/git-exec.js';
 import {
@@ -56,6 +60,7 @@ import type {
 } from '../provider-interfaces.js';
 import { readBoundedJson } from './catalog-http.js';
 import { assertNoLinksBelow, readConfinedFile } from './confined-local-read.js';
+import { RegistryAppFactsReader } from './registry-app-facts.js';
 import { fetchRegistryResource, managedRegistryHop } from './registry-fetch.js';
 import {
   type RegistryInstallAliases,
@@ -349,6 +354,7 @@ export class JsonManifestRegistryProvider
 {
   private manifestCache: Manifest | null = null;
   private cacheExpiry = 0;
+  private appFactsReader: RegistryAppFactsReader | undefined;
   private readonly cacheTimeout = 5 * 60 * 1000; // 5 minutes
 
   constructor(
@@ -473,21 +479,28 @@ export class JsonManifestRegistryProvider
   ): Promise<PluginRegistryCatalogSnapshot> {
     const manifest = await this.fetchManifest(true);
     const entries = this.manifestEntriesOfKind(manifest, kind);
+    const facts = await mapWithConcurrency(entries, 4, (plugin) =>
+      kind === 'plugin' ? this.appFactsOf(plugin) : Promise.resolve(undefined),
+    );
     return {
       revision: createHash('sha256')
         .update(JSON.stringify(manifest))
         .digest('hex'),
-      items: entries.map((plugin) => ({
-        id: plugin.id,
-        ...(plugin.providesTools === undefined
-          ? {}
-          : { providesTools: plugin.providesTools }),
-        displayName: plugin.displayName,
-        description: plugin.description,
-        version: plugin.version,
-        source: this.listedSource(plugin.id, plugin.source),
-        installed: false,
-      })),
+      items: entries.map((plugin, index) => {
+        const app = facts[index];
+        return {
+          id: plugin.id,
+          ...(plugin.providesTools === undefined
+            ? {}
+            : { providesTools: plugin.providesTools }),
+          displayName: plugin.displayName,
+          description: plugin.description,
+          version: plugin.version,
+          source: this.listedSource(plugin.id, plugin.source),
+          installed: false,
+          ...(app === undefined ? {} : { app }),
+        };
+      }),
       packages: entries.map((plugin) => ({
         id: plugin.id,
         source: this.resolveManifestSource(plugin.source).location,
@@ -500,6 +513,32 @@ export class JsonManifestRegistryProvider
 
   async refresh(): Promise<void> {
     await this.fetchManifest(true);
+  }
+
+  /**
+   * What a local package is (#5479). A remote package is never fetched to
+   * list a catalog, and a refused source has nothing to read: both list
+   * without facts.
+   */
+  private async appFactsOf(
+    plugin: ManifestPlugin,
+  ): Promise<RegistryAppFacts | undefined> {
+    let resolved: ResolvedManifestSource;
+    try {
+      resolved = this.resolveManifestSource(plugin.source);
+    } catch (error) {
+      if (error instanceof RegistrySourceConfinementError) return undefined;
+      throw error;
+    }
+    if (resolved.kind !== 'local') return undefined;
+    this.appFactsReader ??= new RegistryAppFactsReader(this.logger);
+    return this.appFactsReader.read(plugin.id, {
+      physical: resolved.physical,
+      location: resolved.location,
+      ...(this.origin.root === undefined
+        ? {}
+        : { folderRoot: this.origin.root }),
+    });
   }
 
   async getCatalogRevision(): Promise<string> {
