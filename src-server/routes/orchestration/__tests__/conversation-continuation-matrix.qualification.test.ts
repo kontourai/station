@@ -599,6 +599,38 @@ describe('fork and handoff deliver the transcript seed across engine families', 
     },
   );
 
+  test.each(['station-agent', 'opencode'] as const)(
+    'a fork of a handed-off chat carries every Session before the branch point (to %s)',
+    async (target) => {
+      const h = harness();
+      const id = 'matrix-handed-off';
+      for (const text of BEFORE) await h.turn('codex', id, text);
+      const branch = await h.turn(
+        'claude',
+        id,
+        'AFTER-HANDOFF-4477',
+        'handoff-before-fork',
+      );
+      await h.turn('claude', id, AFTER);
+      expect(h.store.conversationSessions(id)).toHaveLength(2);
+      const forkId = await h.forkedId(
+        await h.fork('claude', id, target, branch.turnId),
+      );
+      const carried =
+        target === 'station-agent'
+          ? JSON.stringify(
+              await h.memory
+                .get(agentId('station-agent'))!
+                .getMessages(OWNER, forkId),
+            )
+          : (await h.turn(target, forkId, 'First fork turn.')).sent
+              .ambientContext;
+      for (const text of [...BEFORE, 'AFTER-HANDOFF-4477'])
+        expect(carried).toContain(text);
+      expect(carried).not.toContain(AFTER);
+    },
+  );
+
   test('every fork refusal names a stable code a client can act on', async () => {
     const h = harness();
     const { id } = await sourceConversation(h, 'codex');
