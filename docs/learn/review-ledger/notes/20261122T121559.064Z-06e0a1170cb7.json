@@ -1,0 +1,7 @@
+{
+  "revision": "c87d3a6f90f89aa550b0bc68515cf0b14395dcfb",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked against the second shared refusal sentence: runtime-provider-resolution now throws AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE from managed-model-binding, byte-for-byte the sentence it threw before, so the example's setup does not depend on either sentence.","inputs":["examples/self-configuring-agent/README.md","packages/contracts/src/managed-model-binding.ts","src-server/runtime/plugins/runtime-provider-resolution.ts"]}
+  ]
+}

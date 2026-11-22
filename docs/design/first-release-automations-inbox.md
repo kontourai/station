@@ -152,7 +152,7 @@ On a phone: The same page in one column.
 5. **A question is answered in the row.** _(layout; slice 4.14)_
 6. **The Updates group, with "Mark all done".** _(layout; slice 4.14)_
 7. **An automation failure says what failed and offers one step ("Sign in to Codex").** Today a failed-turn notification shows raw text about provider connections needing an application default. _(layout; slice 4.14)_
-8. **Raw server text is translated: "Couldn't start: two providers are turned on and neither is the default.", with "Choose a default".** Today the page shows raw server text. The mapping is new copy per failure code. "Choose a default" goes to Customize › Providers. _(copy; slice 0.17)_
+8. **Raw server text is translated: "Couldn't start: more than one model connection is turned on and Station can't tell which one to use.", with "Open model connections".** Today the page shows raw server text. The refusal carries no failure code, so the mapping keys on the two sentences the server throws for this condition, which the server and the UI share. The words hold for three or more connections and for an agent bound to one of them. "Open model connections" goes to Connections › Models, where a connection can be turned off; it does not promise a choice of default. The recorded text stays behind a closed Details. _(copy; slice 0.17)_
 9. **Done, plus a flag, plus "Check".** It follows the Tasks board rule. _(layout; slice 0.16)_
 10. **A row ⋯ menu.** It opens the menu specified on the row actions screen. _(layout; slice 4.13)_
 11. **The gear opens Settings › Notifications.** The separate "Notification settings" link and "Dismiss eligible items" button are removed. _(layout; slice 4.14)_

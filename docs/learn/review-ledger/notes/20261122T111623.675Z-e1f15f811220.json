@@ -1,0 +1,7 @@
+{
+  "revision": "498cca03db1d74f1877484478d4859d81caa18b7",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked against the shared refusal sentence and the provider-service throw sites: the example's setup and claims do not depend on the sentence's wording or where it is defined.","inputs":["examples/self-configuring-agent/README.md","packages/contracts/src/managed-model-binding.ts","src-server/services/connections/provider-service.ts"]}
+  ]
+}
