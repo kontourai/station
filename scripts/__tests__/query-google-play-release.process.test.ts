@@ -1,10 +1,10 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { writeFileSync } from 'node:fs';
 import http from 'node:http';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 
 const ROOT = resolve(import.meta.dirname, '../..');
 const SCRIPT = resolve(ROOT, 'scripts/query-google-play-release.mjs');
@@ -40,6 +40,7 @@ function runChild(args: string[], env: Record<string, string>) {
       cwd: ROOT,
       env: childEnv(env),
       stdio: ['ignore', 'pipe', 'pipe'],
+      windowsHide: true,
     });
     let stdout = '';
     let stderr = '';
@@ -97,11 +98,10 @@ describe('query-google-play-release CLI', () => {
 
 describe('query-google-play-release token time limit', () => {
   let server: http.Server | undefined;
-  let home: string | undefined;
+  const makeTempDir = trackTempDirs();
   afterEach(() => {
     server?.closeAllConnections();
     server?.close();
-    if (home) rmSync(home, { recursive: true, force: true });
   });
 
   test('a token exchange that never answers ends the CLI within its budget', async () => {
@@ -123,7 +123,7 @@ describe('query-google-play-release token time limit', () => {
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('no port');
     const base = `http://127.0.0.1:${address.port}`;
-    home = mkdtempSync(join(tmpdir(), 'play-readback-'));
+    const home = makeTempDir('play-readback-');
     const credentials = join(home, 'external-account.json');
     writeFileSync(
       credentials,
