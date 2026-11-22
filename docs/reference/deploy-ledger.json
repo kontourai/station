@@ -1,5 +1,102 @@
 [
   {
+    "timestampUtc": "2026-11-22T14:47:44Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261122.2",
+    "sha": "91be22328f12a9aa40ab279c9ada7120bc68ed48",
+    "artifactBuiltAt": "2026-11-22T13:59:49.105Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45029919643",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45029919643)"
+    ],
+    "changelog": {
+      "previousSha": "74256e1d78f9b45c876f1ebc82b37af5f7dd564f",
+      "groups": {
+        "feat": [
+          "[#5384](https://github.com/kontourai/station/pull/5384) feat(chat): one compact picker for Fork and Continue with, working from any Agent to any other"
+        ],
+        "fix": [
+          "[#5385](https://github.com/kontourai/station/pull/5385) fix(orchestration): let a conversation continue after its engine exits, without a Station restart",
+          "[#5480](https://github.com/kontourai/station/pull/5480) fix(automations): start a rule's Task whichever way its Project is named, and never imply an approval setting"
+        ],
+        "ci": [],
+        "docs": [
+          "[#5476](https://github.com/kontourai/station/pull/5476) docs(design): record the first-release UI design and delivery plan"
+        ],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
+    "timestampUtc": "2026-11-22T14:47:44Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261122.2",
+    "sha": "91be22328f12a9aa40ab279c9ada7120bc68ed48",
+    "artifactBuiltAt": "2026-11-22T13:59:51.273Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45029919643",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45029919643)"
+    ],
+    "changelog": {
+      "previousSha": "74256e1d78f9b45c876f1ebc82b37af5f7dd564f",
+      "groups": {
+        "feat": [
+          "[#5384](https://github.com/kontourai/station/pull/5384) feat(chat): one compact picker for Fork and Continue with, working from any Agent to any other"
+        ],
+        "fix": [
+          "[#5385](https://github.com/kontourai/station/pull/5385) fix(orchestration): let a conversation continue after its engine exits, without a Station restart",
+          "[#5480](https://github.com/kontourai/station/pull/5480) fix(automations): start a rule's Task whichever way its Project is named, and never imply an approval setting"
+        ],
+        "ci": [],
+        "docs": [
+          "[#5476](https://github.com/kontourai/station/pull/5476) docs(design): record the first-release UI design and delivery plan"
+        ],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 4
+    }
+  },
+  {
+    "timestampUtc": "2026-11-22T14:02:26Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261122.45029919643",
+    "sha": "91be22328f12a9aa40ab279c9ada7120bc68ed48",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45029919643",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261122.45029919643 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "302129e7252d7697c7271e4427b111bf1409c384",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5385](https://github.com/kontourai/station/pull/5385) fix(orchestration): let a conversation continue after its engine exits, without a Station restart"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-11-22T13:00:36Z",
     "channel": "nightly-npm",
     "version": "0.12.0-nightly.20261122.45024548766",

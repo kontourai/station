@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-22T14:47:44Z | nightly-desktop | 0.2.0-nightly.20261122.2 | `91be223` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45029919643) |
+| 2026-11-22T14:47:44Z | nightly-android | 0.2.0-nightly.20261122.2 | `91be223` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45029919643) |
+| 2026-11-22T14:02:26Z | nightly-npm | 0.12.0-nightly.20261122.45029919643 | `91be223` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45029919643) |
 | 2026-11-22T13:00:36Z | nightly-npm | 0.12.0-nightly.20261122.45024548766 | `302129e` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45024548766) |
 | 2026-11-22T05:55:40Z | nightly-desktop | 0.2.0-nightly.20261122 | `74256e1` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44987271694) |
 | 2026-11-22T05:55:40Z | nightly-android | 0.2.0-nightly.20261122 | `74256e1` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44987271694) |
@@ -535,6 +538,69 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-22T14:47:44Z · nightly-desktop · 0.2.0-nightly.20261122.2
+
+- Ship SHA: `91be22328f12a9aa40ab279c9ada7120bc68ed48`
+- Artifact built at: `2026-11-22T13:59:49.105Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 45029919643)
+
+### Changelog
+
+Commits since `74256e1` ([full sha](https://github.com/kontourai/station/commit/74256e1d78f9b45c876f1ebc82b37af5f7dd564f)):
+
+**Features**
+
+- [#5384](https://github.com/kontourai/station/pull/5384) feat(chat): one compact picker for Fork and Continue with, working from any Agent to any other
+
+**Fixes**
+
+- [#5385](https://github.com/kontourai/station/pull/5385) fix(orchestration): let a conversation continue after its engine exits, without a Station restart
+- [#5480](https://github.com/kontourai/station/pull/5480) fix(automations): start a rule's Task whichever way its Project is named, and never imply an approval setting
+
+**Docs**
+
+- [#5476](https://github.com/kontourai/station/pull/5476) docs(design): record the first-release UI design and delivery plan
+
+## 2026-11-22T14:47:44Z · nightly-android · 0.2.0-nightly.20261122.2
+
+- Ship SHA: `91be22328f12a9aa40ab279c9ada7120bc68ed48`
+- Artifact built at: `2026-11-22T13:59:51.273Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 45029919643)
+
+### Changelog
+
+Commits since `74256e1` ([full sha](https://github.com/kontourai/station/commit/74256e1d78f9b45c876f1ebc82b37af5f7dd564f)):
+
+**Features**
+
+- [#5384](https://github.com/kontourai/station/pull/5384) feat(chat): one compact picker for Fork and Continue with, working from any Agent to any other
+
+**Fixes**
+
+- [#5385](https://github.com/kontourai/station/pull/5385) fix(orchestration): let a conversation continue after its engine exits, without a Station restart
+- [#5480](https://github.com/kontourai/station/pull/5480) fix(automations): start a rule's Task whichever way its Project is named, and never imply an approval setting
+
+**Docs**
+
+- [#5476](https://github.com/kontourai/station/pull/5476) docs(design): record the first-release UI design and delivery plan
+
+## 2026-11-22T14:02:26Z · nightly-npm · 0.12.0-nightly.20261122.45029919643
+
+- Ship SHA: `91be22328f12a9aa40ab279c9ada7120bc68ed48`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261122.45029919643 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `302129e` ([full sha](https://github.com/kontourai/station/commit/302129e7252d7697c7271e4427b111bf1409c384)):
+
+**Fixes**
+
+- [#5385](https://github.com/kontourai/station/pull/5385) fix(orchestration): let a conversation continue after its engine exits, without a Station restart
 
 ## 2026-11-22T13:00:36Z · nightly-npm · 0.12.0-nightly.20261122.45024548766
 
