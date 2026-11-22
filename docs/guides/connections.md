@@ -2,8 +2,12 @@
 
 Connections power Station's chats and agents. A **Model connection** is a hosted service or
 local model server that Station's engine runs inference on; an **Engine** is an agent app such
-as Codex or Claude Code that runs its own loop. They appear under **Connections** on the
-**Models** and **Engines** tabs, each with one clear readiness label and one next action.
+as Codex or Claude Code that runs its own loop. They appear on the **Customize** page
+(`/customize`) under **Providers** and **Engines**, each with one clear readiness label and one
+next action. Tools and Knowledge are Customize items too. Connections is no longer a page of
+its own; its old addresses open the matching Customize item. Computers keeps its address,
+`/connections/computers`, until the Station page replaces it; pairing and other Stations are in
+the Station menu at the top right.
 
 For the precise vocabulary used below, see [docs/glossary.md](../glossary.md).
 
@@ -14,7 +18,7 @@ See the [application walkthrough](../learn/walkthroughs.md#connections) for a ca
 ## Integration capability status
 
 Turn on **Chat apps** in **Settings → Advanced → Feature previews**, then open
-**Connections → Integration status**. This section is visible only to the
+any connection item in **Customize** and find **Integration status**. This section is visible only to the
 Station operator. Expand it to see each integration's actions, and hover over
 or choose a chip for its probe reason. **Refresh** checks again.
 
@@ -61,27 +65,25 @@ the check to finish and retry. The current list describes the latest observation
 Starting a Session checks readiness again. A live model catalog alone does not
 verify a completed turn.
 
-If the Engine inventory cannot finish in time, try Connections again shortly.
+If the Engine inventory cannot finish in time, try **Customize → Engines** again shortly.
 A CLI shown in system diagnostics is a separate PATH observation. An unavailable
 check retains the last observed presence or reports it as unknown.
 
-A section tab carries an attention mark when an engine
+An item in the Customize list carries an attention mark when an engine
 cannot run agents for a reason you can fix, a model connection
 is turned off, is missing a required key or sign-in, was refused by its last
 check, or cannot be reached after retrying; a tool server's last check
 failed; or Knowledge has no vector store. Engines the managed policy refuses,
-saved-but-untested model connections, Knowledge without an embedding model, and
-computers that are not connected carry no mark. Opening `/connections` shows a loading state until these lists load, or
-for up to 1.5 seconds, then opens the first section that needs
-attention, or Models when none does. The rows, the engine page, the marks and
-that redirect share one [readiness
+saved-but-untested model connections, and Knowledge without an embedding model
+carry no mark, and Agents and Skills never do. The rows, the engine page and
+the marks share one [readiness
 derivation](../../src-ui/src/views/connections-hub/connection-health.ts).
 
 Select the action on the row. Station keeps transport, process, and connection-kind details
 out of the overview; they remain available only where setup or diagnosis needs them.
 
 For an unavailable ACP engine such as OpenCode, open
-**Connections → Engines → the affected engine** and choose **Retry check** to
+**Customize → Engines → the affected engine** and choose **Retry check** to
 retry its startup handshake. Engine repair actions
 in Agents and New Chat open that connection directly. A past successful chat
 check does not hide a concrete failure observed in the engine's current state.
@@ -103,7 +105,7 @@ and [connection form](../../src-ui/src/views/provider-settings/ProviderConnectio
 
 ## Sign an engine profile in from a device
 
-Open **Connections → Engines → Codex**, **Claude** or **Muse**. The account picker shows
+Open **Customize → Engines → Codex**, **Claude** or **Muse**. The account picker shows
 saved accounts and marks the account currently in use. Picking an account changes
 what you view; it does not change the account used by runs. Existing account
 application controls remain under **Advanced**.
@@ -273,7 +275,7 @@ official companion profile and installed-release acceptance remain unfinished.
 
 ## Invite a device to a relay Station
 
-Under **Connections → Computers**, the **Devices** list and its **Invite device**
+Under **Computers** (`/connections/computers`), the **Devices** list and its **Invite device**
 action appear when the selected
 Station has a configured connector and the caller can manage relay access. A
 Station operator can explicitly promote a paired Device with **Manage remote
@@ -740,8 +742,8 @@ replacement must advance the generation and use a different key; cancelling
 the review keeps the existing approval. A revoked key likewise needs a newer
 generation and different key before trust can be restored.
 
-In the browser, open **Connections → Computers → Broker routes → Advanced:
-broker setup** to start the **Station signing key** step. This disclosure stays
+In the browser, open Computers (`/connections/computers`), then **Broker routes → Advanced:
+broker setup**, to start the **Station signing key** step. This disclosure stays
 closed for ordinary direct-address and pairing use; saved route actions remain
 outside it. A fresh browser with no Device cookie can reach the same
 setup from **Connect to a Station → Use a broker invitation**. The operator can run
@@ -862,13 +864,13 @@ lookup fails or times out.
 If Station finds Ollama at `http://localhost:11434`, it can show it as a detected suggestion.
 Detection is read-only: it does not create a connection or read credentials.
 
-If Ollama was not running when you opened Connections, start it and return to add or verify the
+If Ollama was not running when you opened Customize, start it and return to add or verify the
 connection in the next section.
 
 ### 4. Add or verify an Ollama connection in the UI
 
-1. Open the **Connections** view.
-2. On the **Models** tab, find **Ollama**. If it says **Setup required**, select **Set up**. If it is absent, select **Add model connection** and choose Ollama. Its default server URL is `http://localhost:11434`.
+1. Open **Customize**.
+2. Under **Providers**, find **Ollama**. If it says **Setup required**, select **Set up**. If it is absent, select **Add model connection** and choose Ollama. Its default server URL is `http://localhost:11434`.
 3. The connection lists the models Ollama has pulled. If a model you expect is missing, run `ollama pull <model>` and refresh.
 
 ### 5. Pick a model
@@ -880,7 +882,7 @@ When editing a Station agent, choose your Ollama model from the agent's model pi
 ## Add an engine
 
 Codex, Claude Code, OpenCode, Kiro, and similar agent apps are Engines. Use
-**Connections → Engines → Add engine** to add one.
+**Customize → Engines → Add engine** to add one.
 
 Station knows these engines by name. A detected engine is one whose command is
 on this computer's `PATH`; detection does not mean it is signed in or ready.
@@ -961,7 +963,7 @@ Add engine opens a focused page with a searchable catalogue: saved engines that 
 Station supports, the built-in command engines (**Found, not connected** or
 **Not installed**), and a custom command. Search by name or command (for example, **Antigravity** or `agy`).
 Setup stays on this page; **Done** returns to Engines with the new engine selected.
-A deep link to one entry (`/connections/engines/new/<id>`, or `custom`)
+A deep link to one entry (`/customize/engines/new/<id>`, or `custom`)
 opens on that entry's first step.
 
 1. Choose an engine. An engine that is **Not installed** offers only its
@@ -1750,7 +1752,7 @@ anything there that should stay private.
 
 Many hosted and self-hosted inference servers expose an OpenAI-compatible API (`/v1/chat/completions`, `/v1/models`). Station connects to these as an **OpenAI-compatible** Model connection.
 
-1. On **Connections → Models**, select **Add model connection** and choose a named service such as **LiteLLM** or **OpenRouter**, or choose **Other OpenAI-compatible**.
+1. On **Customize → Providers**, select **Add model connection** and choose a named service such as **LiteLLM** or **OpenRouter**, or choose **Other OpenAI-compatible**.
 2. Confirm the **server URL** for the service's API root (for example, the URL that serves `/chat/completions` and `/models`).
 3. Provide an **API key** if the endpoint requires one. Endpoints that need no auth can leave it blank.
 4. Verify the connection, then pick a model when editing a Station agent.
@@ -2046,7 +2048,7 @@ and account. Portable preparation and reproducible recipes remain owned by
 The detail shows the sign-in mode, any vendor launch stage, and under
 **Details** the server name, version, endpoint and check date. **Add** stores
 the server turned off. Turn it on and choose **Connect your account** under
-**Connections → Tools**; each person signs in with their own account. The
+**Customize → Tools**; each person signs in with their own account. The
 [design note](../design/mcp-subregistry-curation.md) lists the curated
 servers, the bounds and the evidence.
 
@@ -2089,12 +2091,12 @@ its saved trust settings and receipts.
 
 Older saved trust settings that allow more than Station's defaults, and
 whose owner Station cannot confirm, are not applied. The server stays off and
-shows **Needs your review** in **Connections → Tools**. Choose **Keep these
+shows **Needs your review** in **Customize → Tools**. Choose **Keep these
 settings** or **Use Station defaults**; either records a receipt with your
 name.
 
 Enable **Content trust settings** under **Settings → Advanced → Feature previews**,
-then open a server in **Connections → Tools** to change its classification,
+then open a server in **Customize → Tools** to change its classification,
 default, individual tool permissions, and read-only hints. The panel shows
 the recorded change history. For a writable integration, you can also save
 `contentTrust: "untrusted"` through the operator-gated `PUT /api/integrations/:id`
@@ -2180,7 +2182,7 @@ Obtain the outside-agent MCP endpoint from the remote workspace's connection
 settings, for example `https://workspace.example/mcp`. The server must support
 OAuth and the Station host must be able to reach that address.
 
-1. In Station's **Connections → Tools**, add a remote MCP integration with
+1. In Station's **Customize → Tools**, add a remote MCP integration with
    connection type **HTTP** (Streamable HTTP) and that URL. Save the integration.
 2. Choose **Sign in → Open sign-in page** (or **Connect your account** for a
    source configured for personal accounts). Station discovers the
@@ -2207,7 +2209,7 @@ Before launching Claude Code or Codex, Station checks that each known OAuth
 integration has a usable account. A missing token or an OAuth grant/client rejection
 during a required refresh refuses launch with **needs sign-in** and the deterministic
 `mcp_sign_in_required` code. No engine session has started for that refusal.
-The chat offers **Sign in to tool**, which opens **Connections → Tools**.
+The chat offers **Sign in to tool**, which opens **Customize → Tools**.
 
 Station gives the engine a loopback MCP proxy URL carrying a Station credential,
 scoped to that session and integration. The agent can read this proxy credential
@@ -2483,7 +2485,7 @@ remote-server sign-in or tool call.
 
 ## Developer services and computers
 
-Connections has one clear home for each relationship:
+Each relationship has one clear home:
 
 - **Computers** combines saved Station and SSH relationships. Its rows distinguish
   authorization from observed reachability. **Add computer** asks whether to
@@ -2574,8 +2576,9 @@ and the HTTP-scope rationale in
 
 ## Simplified setup program
 
-Connections owns Models, Engines, Tools, Knowledge, and Computers. Settings
-explains where settings live and routes setup to those owners. The
+Customize owns Engines, Providers, Tools and Knowledge; Computers keeps its own
+page until the Station page replaces it. Settings explains where settings live
+and routes setup to those owners. The
 [shortcut editor](keyboard-shortcuts.md) remains a separate Settings task.
 The original setup work was tracked in #1349–#1354; this historical sequence
 does not define today's navigation or establish live provider compatibility.
@@ -2584,14 +2587,17 @@ does not define today's navigation or establish live provider compatibility.
 
 ## Route aliases
 
-The Connections, Guidance and Tool-server URLs have a single canonical route per concept; the previously-shipped URLs listed below still work because navigation-store ingestion rewrites them to the canonical route via `getLegacyPathRedirect` (see `src-ui/src/app-shell/routing.ts`) before view resolution. Aliasing covers the paths in this table, not every historical URL (e.g. the pre-rename `/connections/runtimes` is not resolved).
+The Customize, Guidance and Tool-server URLs have a single canonical route per concept; the previously-shipped URLs listed below still work because navigation-store ingestion rewrites them to the canonical route via `getLegacyPathRedirect` (see `src-ui/src/app-shell/routing.ts`) before view resolution. Aliasing covers the paths in this table, not every historical URL (e.g. the pre-rename `/connections/runtimes` is not resolved).
 
 | Concept | Canonical route | Aliases (still work) |
 |---|---|---|
-| Model connections | `/connections/models` | `/connections/providers`, `/manage/providers` |
-| Engines, including custom local commands | `/connections/engines` | `/connections/acp`, `/connections/agent-apps`, `/connections/agents` |
+| Customize | `/customize` | `/connections` |
+| Model connections (the Providers item) | `/customize/providers` | `/connections/models`, `/connections/providers`, `/manage/providers` |
+| Engines, including custom local commands | `/customize/engines` | `/connections/engines`, `/connections/acp`, `/connections/agent-apps`, `/connections/agents` |
+| Knowledge | `/customize/knowledge` | `/connections/knowledge`, `/developer/storage` |
+| Computers (not a Customize item) | `/connections/computers` | `/connections/environments` |
 | Skills | `/guidance?tab=skills` | `/skills`, and the retired `/playbooks`, `/prompts`, `/manage/prompts` |
-| Tool servers | `/connections/tools` | `/integrations`, `/tools`, `/manage/integrations` |
+| Tool servers | `/customize/tools` | `/connections/tools`, `/integrations`, `/tools`, `/manage/integrations` |
 | Registry | `/registry` (optionally `/registry/:tab` for `agents`\|`skills`\|`integrations`\|`plugins`\|`layouts`\|`kits`) | — |
 
 The connection section registry and `getPathForView` emit canonical routes.

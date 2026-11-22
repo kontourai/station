@@ -69,6 +69,14 @@ On a phone: The left list is hidden. The landing cards are the list, with push n
 5. **A Pin button on every card.** Items can be promoted to the sidebar. Station has no per-user pin preference today. _(new screen state, server work; slice 1.6)_
 6. **Plugins leaves this list. Installable things are Apps (Discover).** Devices and other Stations live under the Station chip. _(layout, copy; slice 1.2)_
 
+Amended in slice 1.2: Knowledge shows its attention dot but no count. Its old
+count added one for a store and one for a search model, which is not a number
+a person reads as "what is there"; the render's "On" waits for the Knowledge
+slice that defines it. Appearance, Developer and Settings left the list with
+Plugins, so the six items are the whole list; each keeps a palette entry. Until
+the Station page lands, the Computers screen keeps its address,
+`/connections/computers`, outside Customize.
+
 ### `navigation-09` Pinned items in the sidebar
 
 1. **Providers is pinned under Automations and carries its own attention dot.** The quiet sidebar puts Providers one level down. Pinning keeps it one click away for someone who visits it often. _(new screen state; slice 1.6)_

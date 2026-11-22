@@ -683,8 +683,13 @@ live attention facts exist. The built-in application composition is
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate
 exact-route owners, duplicate management-view owners, and duplicate sidebar or palette
 order slots. Customize rows have unique order within each group and cannot also be
-sidebar entries or hidden from navigation. Composition and filtering do not invoke
-labels or badges; Customize projection resolves its optional label/route overrides. A
+sidebar entries or hidden from navigation. The Customize page's groups are
+`CUSTOMIZE_NAV_GROUPS` (Your agents, What they run on, What they can reach), and its
+projection orders by group, then by order within the group. `customizeItemForView`
+names the item a view belongs to, from the same management ownership, so the page's
+list and the sidebar's Customize button cannot disagree about it. Composition and
+filtering do not invoke labels or badges; Customize projection resolves its optional
+label/route overrides. A
 flag-gated surface stays registered and routable while `getAdvertised` hides it.
 Developer advertisement uses the device-scoped `device:developer-tools` flag; other
 flags can come from server previews. `hiddenFromNav` removes the sidebar affordance;
@@ -695,8 +700,9 @@ palette after static destination projection.
 
 **Seam, Implementation, callers, and tests.** The UI shell composes built-in
 descriptors. `routing.ts` consumes exact routes and semantic management ownership;
-`ProjectSidebarNav`, `CustomizeDialog`, `CommandPalette`, and notification header badge consume their
-ordered projections. Icons are a presentation Adapter keyed by the registry's finite
+`ProjectSidebarNav`, the Customize page (`app-shell/CustomizeShell.tsx` and
+`views/customize/`), the sidebar footer's Customize button, `CommandPalette`, and the
+notification header badge consume their ordered projections. Icons are a presentation Adapter keyed by the registry's finite
 icon vocabulary. Future trusted plugin surface contributions must enter at registry
 composition and pass the same validation; there is no mutable global `register()`
 operation or renderer callback in persisted plugin data. Contract coverage is

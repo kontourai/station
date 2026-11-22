@@ -1,8 +1,15 @@
 # Connections overhaul and the resource-hub kit
 
-> **Status: proposal, 2026-11-07; owner-directed.** Tracking issue
-> [#4710](https://github.com/kontourai/station/issues/4710). Nothing here is
-> implemented yet. The [Connections guide](../guides/connections.md) remains the
+> **Status: superseded, 2026-11-22.** The
+> [first-release design](first-release.md) replaces this proposal: Connections
+> is no longer a destination, and its parts are items on the Customize page
+> ([`first-release-customize.md`](first-release-customize.md)). Delivery is
+> tracked in [#5386](https://github.com/kontourai/station/issues/5386); this
+> record's epic, [#4710](https://github.com/kontourai/station/issues/4710),
+> continues there. The readiness rules below that the first-release design
+> keeps (one readiness derivation, finite labels, explicit Add) stay true.
+>
+> Earlier status: proposal, 2026-11-07; owner-directed. The [Connections guide](../guides/connections.md) remains the
 > current user journey until each slice lands and updates it. This record keeps
 > the finite readiness labels and explicit-Add rules in
 > [connections onboarding](connections-onboarding.md). It changes one recorded

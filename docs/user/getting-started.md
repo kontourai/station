@@ -11,7 +11,7 @@ and keeping Station updated. To share a Project with someone, read the
    Open the app or use the single-use sign-in link printed by the installer.
 2. On Home, open the Agent control beside **Start** and choose an Agent that is
    ready. If Home offers **Set up an agent engine**, use that action to open
-   Connections. For an existing Codex account, follow
+   **Customize → Engines**. For an existing Codex account, follow
    [First chat with Codex](#first-chat-with-codex).
 3. Try a small request such as “Give me three questions to check before I
    review a documentation change. Use no tools.” Choose **Start** to open a
@@ -49,11 +49,11 @@ without adding a model API key:
    the [README commands](https://github.com/kontourai/station/blob/main/README.md#run-from-source-macos-linux) and open
    the single-use sign-in link printed by `./station start`.
 2. Open **Customize** (the sparkle icon at the bottom of the sidebar) →
-   **Connections** → **Engines** → **Codex**. Confirm the account is signed in.
+   **Engines** → **Codex**. Confirm the account is signed in.
    **Check connection** sends a short message using your model allowance.
 3. An empty Home guides you through choosing an agent and optionally adding
    files. **View available agents** opens the agent list; **Set up an agent
-   engine** opens Connections when no agent is runnable. On Home, open the Agent/model control beside **Start**. Choose
+   engine** opens **Customize → Engines** when no agent is runnable. On Home, open the Agent/model control beside **Start**. Choose
    **Agent**, then **Codex**, write a request, and choose **Start**. You can start without a Project. The detected Codex Agent is
    enough; creating a custom Agent is optional.
 4. Choose **New Project** on Home. **Blank workspace** creates an empty
@@ -469,9 +469,9 @@ or hosted model service that Station's own engine runs inference on. An
 **Engine** is an installed agent CLI, or a custom engine you connected, that
 runs its own agent loop.
 
-1. Open **Customize → Connections**.
-2. On the **Models** tab choose a detected service or **Add model connection**;
-   on the **Engines** tab choose a detected engine or **Add engine**. During
+1. Open **Customize**.
+2. Under **Providers** choose a detected service or **Add model connection**;
+   under **Engines** choose a detected engine or **Add engine**. During
    first run, a detected Engine can be ticked to connect it and create its
    External agent in the same confirmed action. An engine that is starting for
    the first time can be reported as still starting rather than failed: its
@@ -487,11 +487,11 @@ model. Correct a refused check before expecting the connection to run work.
 
 Read the accompanying evidence too. A saved connection or a live model catalog
 does not prove that a chat turn completed. An explicit one-turn smoke supplies
-that narrower proof and can incur provider charges; opening Connections or
+that narrower proof and can incur provider charges; opening Customize or
 New Chat does not run it.
 
 For a credential-free first path, use a supported local model service and then
-return to Connections. Startup can register detected Claude Code, Codex, and
+return to **Customize → Providers**. Startup can register detected Claude Code, Codex, and
 Muse engines and their default Agents; with the `copilot-sdk-engine` Feature
 Preview on, it also registers GitHub Copilot (SDK) when `copilot` is on `PATH`,
 from the next start. An engine you explicitly removed is
@@ -1012,8 +1012,8 @@ the computer running Station, including when using Station from a phone.
 Claude, Codex and Muse account management opens their existing in-UI sign-in flow;
 other integrations retain their own authorization instructions.
 
-If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
-Connections**, use that action to open the owning setup page. The picker steps
+If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Open
+Customize**, use that action to open the owning setup page in Customize. The picker steps
 aside and collapses the chat dock while keeping your chosen workspace, Agent,
 Model, and selected context.
 Use **Return to New Chat** in the inline setup notice when finished, **Cancel
@@ -1380,7 +1380,7 @@ Station looks in four places:
   database; its earlier messages stay in history.
 
 With `STATION_EXTERNAL_ACP_SESSIONS=1` set before Station starts, the inbox
-also lists the sessions an ACP engine you added under Connections reports
+also lists the sessions an ACP engine you added under **Customize → Engines** reports
 itself, for an engine that offers a session list (Antigravity, Factory Droid,
 Hermes and Cursor do; Kiro does not). This is off by default. Station asks for
 the list when it checks the engine, about every five minutes, so it starts no
