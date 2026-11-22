@@ -6,6 +6,7 @@ import type {
   PackageMcpAdmissionJournal,
   PackageMcpInstallation,
 } from './package-mcp-admission.js';
+import { pluginActivationInFlight } from './plugin-activation-composition.js';
 import {
   computePluginContentDigest,
   computePluginContentDigestAsync,
@@ -53,6 +54,7 @@ function bindCatalogInstallation(
   )
     return null;
   let readiness: PluginInstallationReadiness = { state: 'ready' };
+  let activationInFlight = false;
   if (captured?.installation) {
     const current = journal!.currentInstallation(pluginId);
     if (
@@ -61,6 +63,11 @@ function bindCatalogInstallation(
     )
       return null;
     const inspection = journal!.inspect(captured.installation);
+    activationInFlight =
+      !captured.isCurrent() &&
+      inspection.state === 'observed' &&
+      inspection.admission === 'activation-pending' &&
+      pluginActivationInFlight(journal!, pluginId);
     readiness = captured.isCurrent()
       ? { state: 'ready' }
       : inspection.state === 'observed' &&
@@ -78,6 +85,8 @@ function bindCatalogInstallation(
     packageRoot: root.packageRoot,
     retained: root.kind === 'incarnation',
     readiness,
+    /** This process still holds the plugin's activation: it settles by itself. */
+    activationInFlight,
     /** The journal generation this observation bound, for display reads only. */
     installation: captured?.installation,
     artifact: {

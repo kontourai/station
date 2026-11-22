@@ -491,7 +491,10 @@ reference. Its original request continues without replaying a GET in the
 opener. The pane discovers admitted popups and selects their tabs. Selecting a
 tab does not change an Agent tool's explicit session target. Empty popups that
 never provide a URL, disallowed URLs and popups beyond the profile's twelve
-live/opening-session bound are closed. Browser policy still denies unsupported
+live/opening-session bound are closed. The popup's own document request is
+held until the popup is admitted or refused: a refused popup's request is
+failed, so its document never loads. Before admission, its opener can still write and run script in the popup's initial blank document; that script runs with the opener's own origin and egress, so it gains nothing, and admission gates the popup's own document request. A popup not adopted within 15 seconds is closed and
+its slot released. Browser policy still denies unsupported
 navigation and Station's own listeners; popup adoption does not grant network
 or Agent authority.
 
@@ -578,7 +581,10 @@ acquisition/host/producer seams only.
 The tab/navigation and popup-admission changes have service/route and mounted
 UI fixture coverage. This Linux host had no installed Chromium, so its real-host
 suite skipped; these changes have no new real-browser, mobile or native-shell
-receipt. Named/incognito profile management, file transfer, native authentication
+receipt. Later, on macOS, a real Chrome 157 and 158 showed popup adoption never
+finishing: the host waited on `Page.enable` for the popup, which Chromium does
+not answer while the popup's own document request is held. Admission now comes
+before that setup, and the real-host suite has a popup-admission case. Named/incognito profile management, file transfer, native authentication
 handoff, annotations/recordings, document preview and connection admission remain
 separate acceptance work under #90. The epic must remain open until its remaining
 behavior and platform receipts exist.

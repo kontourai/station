@@ -14,7 +14,10 @@ import {
   pluginActivationProviderViewPermit,
   registerPluginActivation,
 } from '../../../services/plugins/plugin-activation-composition.js';
-import { StationRuntime } from '../station-runtime.js';
+import {
+  PLUGIN_ACTIVATION_STOPPED_REASON,
+  StationRuntime,
+} from '../station-runtime.js';
 
 // Real runtime mutation/barrier and journal; the model/Agent rebuild is the
 // controlled asynchronous seam. This does not claim a full provider journey.
@@ -106,7 +109,7 @@ test.each(['applied', 'failed', 'deadline'] as const)(
         await blocked;
       },
     );
-    let receipt: { status: string } | undefined;
+    let receipt: { status: string; reason?: string } | undefined;
     try {
       const pending = runtime.applyAgentConfigurationMutation(
         async (begin: () => void, activation: typeof receipt) => {
@@ -128,6 +131,15 @@ test.each(['applied', 'failed', 'deadline'] as const)(
       expect(await pending).toEqual({ persisted: true });
       expect(receipt?.status).toBe(
         outcome === 'applied' ? 'applied' : 'pending',
+      );
+      // Nothing resumes a plugin activation that did not complete, so its
+      // receipt must not say one is continuing.
+      expect(receipt?.reason).toBe(
+        outcome === 'applied' ? undefined : PLUGIN_ACTIVATION_STOPPED_REASON,
+      );
+      // Readers branch on this structured field, never on the reason text.
+      expect((receipt as { recovery?: string } | undefined)?.recovery).toBe(
+        outcome === 'applied' ? undefined : 'required',
       );
       expect(journal.admissionOpen(record.installation)).toBe(
         outcome === 'applied',

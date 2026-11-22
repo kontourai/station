@@ -7,9 +7,11 @@
  */
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { readPluginLifecycleResponse } from '@kontourai/station-contracts/plugin';
 import { describe, expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
 import { computePluginContentDigest } from '../../../services/plugins/plugin-content-integrity.js';
 import {
   pluginTrustForInstalledBytes,
@@ -95,6 +97,58 @@ describe('legacy git update and install trust', () => {
     expect(pluginTrustForInstalledBytes(state, now)).toMatchObject({
       state: 'stale',
     });
+  });
+
+  // A legacy git update replaces bytes outside the plugin activation
+  // session, so a reload that outruns the deadline is finished by the
+  // reconciliation rail: the receipt must say no recovery is needed, unlike a
+  // stopped plugin activation (plugin-install-activation-pending.test.ts).
+  test('a legacy update whose reload outruns the deadline says it finishes on its own', async () => {
+    const { home } = preD1GitPlugin();
+    const runtime = Object.create(StationRuntime.prototype) as any;
+    runtime.agentConfigurationRevision = 0;
+    runtime.agentConfigurationMutationQueue = Promise.resolve();
+    runtime.agentConfigurationPersistenceQueue = Promise.resolve();
+    runtime.agentConfigurationMutationsClosed = false;
+    runtime.agentConfigurationActivationDeadlineMs = 50;
+    runtime.agentMetadataMap = new Map();
+    runtime.timers = [];
+    runtime.logger = makeLogger();
+    runtime.scheduleAgentConfigurationReconciliation = vi.fn();
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    runtime.reloadConfigurationFromDisk = vi.fn(() => held);
+    try {
+      const app = withOperatorPrincipal(
+        createPluginRoutes(home, makeLogger(), undefined, {
+          applyConfigurationMutation: (operation: unknown, options: unknown) =>
+            runtime.applyAgentConfigurationMutation(operation, options),
+          settleProviderAdapterRetirements: async () => {},
+        } as never),
+      );
+      const response = await app.request('/legacy-git/update', {
+        method: 'POST',
+      });
+      const body = await response.json();
+      expect(response.status, JSON.stringify(body)).toBe(202);
+      expect(readPluginLifecycleResponse(response.status, body)).toEqual({
+        state: 'saved',
+        unapplied: {
+          kind: 'activation',
+          recovery: 'none',
+          deadlineMs: 50,
+          reason: expect.stringContaining('continuing in the background'),
+        },
+      });
+      expect(
+        runtime.scheduleAgentConfigurationReconciliation,
+      ).toHaveBeenCalled();
+    } finally {
+      release();
+      for (const timer of runtime.timers) clearTimeout(timer);
+    }
   });
 
   test('trust records Station cannot read answer 503 and the update pulls nothing', async () => {

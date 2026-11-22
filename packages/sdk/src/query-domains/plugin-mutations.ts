@@ -1,6 +1,7 @@
-import type {
-  PluginInstallationRevision,
-  PluginInstallResult,
+import {
+  type PluginInstallationRevision,
+  type PluginInstallResult,
+  readPluginLifecycleResponse,
 } from '@kontourai/station-contracts/plugin';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase, addProjectLayoutFromPlugin } from '../api';
@@ -97,11 +98,17 @@ export function usePluginInstallMutation() {
           }),
         },
       );
-      const result = await response.json();
-      if (!result.success)
+      const result = (await response.json()) as PluginInstallResult;
+      // A saved install whose activation did not complete resolves: the
+      // plugin is installed and not active until recovered. Callers read it
+      // with `pluginLifecycleUnapplied(result)`; it is not a failure.
+      if (
+        readPluginLifecycleResponse(response.status, result).state === 'refused'
+      )
         throw new Error(apiErrorMessage(result, 'Install failed'));
       return result;
     },
+    // Invalidated for a saved-but-inactive install too: its row now exists.
     onSuccess: (_result, variables) => {
       invalidatePluginQueries(queryClient);
       invalidatePluginGraphQueries(queryClient);
@@ -193,7 +200,11 @@ export function usePluginUpdateMutation() {
         { method: 'POST', ...proposalBody(target) },
       );
       const result = await response.json();
-      if (!result.success)
+      // A saved update whose activation did not complete resolves: the new
+      // version is installed and not active (`pluginLifecycleUnapplied`).
+      if (
+        readPluginLifecycleResponse(response.status, result).state === 'refused'
+      )
         throw new Error(apiErrorMessage(result, 'Update failed'));
       return result;
     },
@@ -216,7 +227,12 @@ export function usePluginRemoveMutation() {
         { method: 'DELETE', ...proposalBody(target) },
       );
       const result = await response.json();
-      if (!result.success)
+      // A saved removal whose runtime reload did not finish resolves: the
+      // plugin is removed and the runtime finishes unloading it on its next
+      // reconciliation (`pluginLifecycleUnapplied`).
+      if (
+        readPluginLifecycleResponse(response.status, result).state === 'refused'
+      )
         throw new Error(apiErrorMessage(result, 'Remove failed'));
       return result;
     },
@@ -479,7 +495,11 @@ export async function requestPluginRegistryInstallAction(
           },
         );
   const result = await response.json();
-  if (!result.success) {
+  // Install and uninstall both answer the designed saved `202`; a saved
+  // uninstall finishes unloading on the next reconciliation.
+  const accepted =
+    readPluginLifecycleResponse(response.status, result).state !== 'refused';
+  if (!accepted) {
     throw new Error(
       apiErrorMessage(result, result.message || `${action} failed`),
     );

@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -9,9 +10,11 @@ import {
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
 const state = vi.hoisted(() => ({
-  refetch: vi.fn(),
+  // Named so a missing review load fails on a readable assertion.
+  refetch: vi.fn().mockName('recovery review loader'),
   recover: vi.fn(),
   approve: vi.fn(),
+  hostApproval: vi.fn().mockName('trusted host approval'),
   invalidate: vi.fn(),
   data: undefined as any,
 }));
@@ -30,10 +33,17 @@ vi.mock('@tanstack/react-query', () => ({
   useQueryClient: () => ({ invalidateQueries: state.invalidate }),
 }));
 vi.mock('../../../core/PermissionManager', () => ({
-  usePermissions: () => ({ requestInstallConsent: state.approve }),
+  usePermissions: () => ({
+    requestInstallConsent: state.approve,
+    requestConsent: state.hostApproval,
+  }),
 }));
 
-import { PluginRecoveryPanel } from '../PluginRecoveryPanel';
+import {
+  ACTIVATION_POLL_CEILING_MS,
+  ACTIVATION_POLL_INTERVAL_MS,
+  PluginRecoveryPanel,
+} from '../PluginRecoveryPanel';
 
 const plugin = {
   name: 'fixture',
@@ -69,16 +79,104 @@ beforeEach(() => {
   };
   state.refetch.mockResolvedValue({ data: state.data });
   state.approve.mockResolvedValue(true);
+  // The shape the recover route sends when activation is stopped again.
   state.recover.mockResolvedValue({
-    success: true,
-    configurationActivation: { status: 'pending' },
+    success: false,
+    configurationActivation: {
+      status: 'pending',
+      recovery: 'required',
+      deadlineMs: 10_000,
+    },
   });
+  state.hostApproval.mockResolvedValue(true);
 });
 afterEach(cleanup);
-test('requires a fresh preview and explicit consent, passes exact revisions, and keeps pending acceptance honest', async () => {
+
+/** Each test starts from the review the panel loads by itself. */
+async function reviewLoaded() {
+  await waitFor(() => expect(state.refetch).toHaveBeenCalledOnce(), {
+    timeout: 1000,
+  });
+}
+
+test('a recovery that activates the plugin asks for the trusted approval it still owes, once, and reports where the panel cannot', async () => {
+  state.recover.mockResolvedValue({
+    success: true,
+    plugin: { name: 'fixture', version: '1.0.0' },
+    permissions: {
+      autoGranted: [],
+      pendingConsent: [{ permission: 'plugin.server', tier: 'trusted' }],
+      dependencies: [],
+    },
+  });
+  const onOutcome = vi.fn();
+  render(
+    <PluginRecoveryPanel
+      plugin={plugin}
+      onRemove={vi.fn()}
+      onOutcome={onOutcome}
+    />,
+  );
+  await reviewLoaded();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Recover plugin' }),
+  );
+  await waitFor(() => expect(onOutcome).toHaveBeenCalledOnce());
+  expect(state.hostApproval).toHaveBeenCalledOnce();
+  expect(state.hostApproval).toHaveBeenCalledWith('fixture', 'Fixture', [
+    { permission: 'plugin.server', tier: 'trusted' },
+  ]);
+  expect(onOutcome).toHaveBeenCalledWith({
+    type: 'success',
+    text: 'Fixture was recovered and is active.',
+  });
+});
+
+test('a declined trusted approval after recovery says the plugin still needs it', async () => {
+  state.recover.mockResolvedValue({
+    success: true,
+    permissions: {
+      autoGranted: [],
+      pendingConsent: [{ permission: 'plugin.server', tier: 'trusted' }],
+    },
+  });
+  state.hostApproval.mockResolvedValue(false);
+  const onOutcome = vi.fn();
+  render(
+    <PluginRecoveryPanel
+      plugin={plugin}
+      onRemove={vi.fn()}
+      onOutcome={onOutcome}
+    />,
+  );
+  await reviewLoaded();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Recover plugin' }),
+  );
+  await waitFor(() =>
+    expect(onOutcome).toHaveBeenCalledWith({
+      type: 'error',
+      text: 'Fixture is active, but its server features stay off until you approve its trusted permissions. Review its request under Plugins.',
+    }),
+  );
+});
+
+test('a recovery stopped again says the host was busy and how to get out', async () => {
+  render(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
+  await reviewLoaded();
+  fireEvent.click(
+    await screen.findByRole('button', { name: 'Recover plugin' }),
+  );
+  expect((await screen.findByRole('status')).textContent).toBe(
+    'Recovery was saved, but the plugin is still not active: its activation did not finish within 10 seconds. Trying again may work; Remove plugin is the way out.',
+  );
+  expect(state.hostApproval).not.toHaveBeenCalled();
+});
+test('loads a fresh review with the row, requires explicit consent, passes exact revisions, and keeps a saved-but-inactive recovery honest', async () => {
   render(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
   expect(screen.queryByRole('button', { name: 'Recover plugin' })).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }));
+  // Nothing resumes the activation, so the review is offered without a click.
+  await reviewLoaded();
   fireEvent.click(
     await screen.findByRole('button', { name: 'Recover plugin' }),
   );
@@ -98,7 +196,7 @@ test('requires a fresh preview and explicit consent, passes exact revisions, and
     },
   });
   expect((await screen.findByRole('status')).textContent).toContain(
-    'still pending',
+    'still not active',
   );
   expect(screen.queryByRole('button', { name: 'Recover plugin' })).toBeNull();
 });
@@ -126,7 +224,7 @@ test('a refused recovery shows the server reason, not the field key', async () =
   );
   try {
     render(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }));
+    await reviewLoaded();
     fireEvent.click(
       await screen.findByRole('button', { name: 'Recover plugin' }),
     );
@@ -139,7 +237,7 @@ test('a refused recovery shows the server reason, not the field key', async () =
 test('cancelled permission review performs no recovery mutation', async () => {
   state.approve.mockResolvedValue(false);
   render(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }));
+  await reviewLoaded();
   fireEvent.click(
     await screen.findByRole('button', { name: 'Recover plugin' }),
   );
@@ -182,7 +280,7 @@ test('#1521: the recovery review shows the recovery preview’s receipt, not the
       onRemove={vi.fn()}
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Review recovery' }));
+  await reviewLoaded();
   const region = await screen.findByRole('region', {
     name: 'Registry verification',
   });
@@ -191,4 +289,149 @@ test('#1521: the recovery review shows the recovery preview’s receipt, not the
   expect(region.textContent).toContain('reviewed-key');
   expect(region.textContent).not.toContain(digest('8'));
   expect(region.textContent).not.toContain('listed-key');
+});
+
+test('an install that left this row inactive explains itself above the recovery review', async () => {
+  const text =
+    'Fixture was installed, but its activation did not finish, so it is not active. Choose Recover plugin to activate it; trusted permissions are approved after that.';
+  render(
+    <PluginRecoveryPanel
+      plugin={plugin}
+      message={{ type: 'warning', text }}
+      onRemove={vi.fn()}
+    />,
+  );
+  await reviewLoaded();
+  const status = screen.getByRole('status');
+  expect(status.textContent).toBe(text);
+  expect(status.className).toContain('plugins__message--warning');
+  expect(screen.getByText('Needs recovery')).toBeTruthy();
+  expect(
+    await screen.findByRole('region', { name: 'Recovery review' }),
+  ).toBeTruthy();
+});
+
+test('a plugin the server is still activating says Activating, loads no recovery review and offers no Recover', async () => {
+  const activating = { ...plugin, activationInFlight: true as const };
+  const view = render(
+    <PluginRecoveryPanel plugin={activating} onRemove={vi.fn()} />,
+  );
+  expect(screen.getByText('Activating…')).toBeTruthy();
+  expect(screen.queryByText('Needs recovery')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Review recovery' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Recover plugin' })).toBeNull();
+  expect(state.refetch).not.toHaveBeenCalled();
+
+  // Once the server reports the activation stopped, the row needs recovery
+  // and its review is loaded.
+  view.rerender(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
+  expect(screen.getByText('Needs recovery')).toBeTruthy();
+  await reviewLoaded();
+});
+
+test('an activating row is re-read on an interval, stops at the ceiling and then offers a refresh', () => {
+  vi.useFakeTimers();
+  try {
+    render(
+      <PluginRecoveryPanel
+        plugin={{ ...plugin, activationInFlight: true }}
+        onRemove={vi.fn()}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_INTERVAL_MS * 2);
+    });
+    expect(state.invalidate).toHaveBeenCalledTimes(2);
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_CEILING_MS);
+    });
+    const atCeiling = state.invalidate.mock.calls.length;
+    // Reads at 2s, 4s, ... 14s; the 15s ceiling stops the interval.
+    expect(atCeiling).toBe(7);
+    expect(
+      screen.getByText(/still reported as activating\. Refresh status/),
+    ).toBeTruthy();
+    // No more reads, however long the view stays open.
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_CEILING_MS * 4);
+    });
+    expect(state.invalidate).toHaveBeenCalledTimes(atCeiling);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('an activating row stops re-reading as soon as a read returns it without the flag', () => {
+  vi.useFakeTimers();
+  try {
+    const view = render(
+      <PluginRecoveryPanel
+        plugin={{ ...plugin, activationInFlight: true }}
+        onRemove={vi.fn()}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_INTERVAL_MS * 2);
+    });
+    expect(state.invalidate).toHaveBeenCalledTimes(2);
+    view.rerender(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_CEILING_MS * 2);
+    });
+    expect(state.invalidate).toHaveBeenCalledTimes(2);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test('a row that turns activating after its review loaded drops Recover, and a fresh review loads once the flag clears', async () => {
+  const view = render(
+    <PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />,
+  );
+  await reviewLoaded();
+  expect(
+    await screen.findByRole('button', { name: 'Recover plugin' }),
+  ).toBeTruthy();
+
+  // An install or recover started elsewhere (the CLI, a second tab).
+  view.rerender(
+    <PluginRecoveryPanel
+      plugin={{ ...plugin, activationInFlight: true }}
+      onRemove={vi.fn()}
+    />,
+  );
+  expect(screen.getByText('Activating…')).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Recover plugin' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Recovery review' })).toBeNull();
+  expect(state.refetch).toHaveBeenCalledTimes(1);
+
+  // Still needing recovery afterwards: the earlier review is not reused.
+  view.rerender(<PluginRecoveryPanel plugin={plugin} onRemove={vi.fn()} />);
+  await waitFor(() => expect(state.refetch).toHaveBeenCalledTimes(2));
+  expect(
+    await screen.findByRole('button', { name: 'Recover plugin' }),
+  ).toBeTruthy();
+});
+
+test('an activating row stops re-reading when the view unmounts', () => {
+  vi.useFakeTimers();
+  try {
+    const view = render(
+      <PluginRecoveryPanel
+        plugin={{ ...plugin, activationInFlight: true }}
+        onRemove={vi.fn()}
+      />,
+    );
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_INTERVAL_MS);
+    });
+    expect(state.invalidate).toHaveBeenCalledTimes(1);
+    view.unmount();
+    act(() => {
+      vi.advanceTimersByTime(ACTIVATION_POLL_CEILING_MS * 2);
+    });
+    expect(state.invalidate).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.useRealTimers();
+  }
 });

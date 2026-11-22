@@ -40,6 +40,9 @@ const PLAY_ADAPTER = resolve(
   dirname(fileURLToPath(import.meta.url)),
   'query-google-play-release.mjs',
 );
+// How long the protected verifier waits for the Play readback adapter; the
+// adapter's own worst case (READBACK_WORST_CASE_MS) must leave headroom.
+export const PLAY_ADAPTER_LIMIT_MS = 90_000;
 const MACOS_NIGHTLY_ASSETS = Object.freeze([
   'latest.json',
   'station-nightly-desktop-macos-aarch64.app.tar.gz',
@@ -65,6 +68,16 @@ const iso = (value) => {
     fail('observation timestamp is invalid');
   return value;
 };
+
+/**
+ * The adapter's stderr lines (phases, attempts and HTTP statuses only, by the
+ * adapter's own rule), for a message about a run that never reported back.
+ */
+const stderrLines = (result) =>
+  String(result?.stderr ?? '')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
 
 function output(result, label) {
   if (result?.error) fail(`${label} could not start: ${result.error.message}`);
@@ -840,6 +853,30 @@ function protectedVerifierToolVersions() {
     );
   return { bundletool, bundletoolPath, macos };
 }
+/**
+ * Runs the Play readback adapter under PLAY_ADAPTER_LIMIT_MS. A run that hits
+ * the limit is reported as unfinished with the adapter's stderr (its retry
+ * lines); only a failure to start reports "could not start".
+ */
+export function observeGooglePlayAdapter(
+  identity,
+  runner,
+  { limitMs = PLAY_ADAPTER_LIMIT_MS, adapter = PLAY_ADAPTER } = {},
+) {
+  const label = 'Google Play observation adapter';
+  const result = runner(
+    process.execPath,
+    [adapter, 'query-json', canonicalJson(identity)],
+    { encoding: 'utf8', shell: false, windowsHide: true, timeout: limitMs },
+  );
+  if (result?.error?.code === 'ETIMEDOUT') {
+    const lines = stderrLines(result);
+    fail(
+      `${label} did not finish within ${limitMs} ms${lines.length ? `; its stderr:\n${lines.join('\n')}` : ''}`,
+    );
+  }
+  return jsonOutput(result, label);
+}
 function verifyCandidateObservations(candidateInput, artifactInput) {
   const runner = defaultSpawnSync;
   const protectedTools = protectedVerifierToolVersions();
@@ -997,23 +1034,7 @@ function verifyCandidateObservations(candidateInput, artifactInput) {
     providers.push(
       validatePlayObservation(
         candidate.versionIdentities.android,
-        jsonOutput(
-          runner(
-            process.execPath,
-            [
-              PLAY_ADAPTER,
-              'query-json',
-              canonicalJson(candidate.versionIdentities.android),
-            ],
-            {
-              encoding: 'utf8',
-              shell: false,
-              windowsHide: true,
-              timeout: 90_000,
-            },
-          ),
-          'Google Play observation adapter',
-        ),
+        observeGooglePlayAdapter(candidate.versionIdentities.android, runner),
         androidAab.record,
         playBefore,
         new Date(),

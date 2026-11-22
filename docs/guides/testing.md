@@ -2326,8 +2326,11 @@ to select the repo-local browser; the suite runner sets this itself. The reusabl
 `.github/workflows/full-regression.yml` provides the browser
 prerequisite for hosted completion; do not infer it from dependency installation.
 
-On Linux, the canonical process-exclusive corpus binds its preview fixtures
-to the installed Playwright revision when `PLAYWRIGHT_BROWSERS_PATH` is set.
+On Linux, the canonical process-exclusive corpus binds its preview fixtures,
+and the Browser pane's blank-tab evaluation test
+(`browser-blank-tab-evaluate.real.test.ts`, whose survival case needs Chrome
+158 and skips, naming the version, on an older browser), to the installed
+Playwright revision when `PLAYWRIGHT_BROWSERS_PATH` is set.
 The corpus runner supplies `STATION_VITEST_CORPUS_GROUP=process-exclusive`;
 global setup then places a `google-chrome` link in the run-owned temporary
 directory ahead of ambient browsers. Ordinary affected-test shards and

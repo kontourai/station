@@ -81,6 +81,7 @@ import {
   installRegistryPlugin,
   list,
   preview,
+  recover,
   registry,
   remove,
   update,
@@ -935,6 +936,11 @@ function buildProgram(
       case 'info': {
         const parsed = parseCoreArgs(subArgs);
         await info(parsed.positionals[0], parsed);
+        break;
+      }
+      case 'recover': {
+        const parsed = parseCoreArgs(subArgs);
+        await recover(parsed.positionals[0], parsed);
         break;
       }
       case 'update': {

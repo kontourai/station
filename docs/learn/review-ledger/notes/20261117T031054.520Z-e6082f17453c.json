@@ -1,0 +1,11 @@
+{
+  "revision": "f1f66bd6c62776b98026ea86abe41a22541f2e55",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Plugin install pending: the cli.md change only adds what station plugin install and station registry install print for a pending activation; checked this page cites no conflicting install outcome.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Plugin install pending: the cli.md change only adds what station plugin install and station registry install print for a pending activation; checked this page cites no conflicting install outcome.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Plugin install pending: the cli.md change only adds what station plugin install and station registry install print for a pending activation; checked this page cites no conflicting install outcome.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

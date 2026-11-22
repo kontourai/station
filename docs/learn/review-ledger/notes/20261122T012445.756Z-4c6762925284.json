@@ -1,0 +1,23 @@
+{
+  "revision": "f9328572c86d4eba13d70c25c79e15a97e4d9463",
+
+  "notes": [
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Follow-up: the helper that reads the plugin row now narrows to rows that carry installationReadiness before reading activationInFlight (typecheck fix); behaviour of the stopped-install guard, --reinstall and the activating message is unchanged. This page makes no claim the change contradicts.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Follow-up: the helper that reads the plugin row now narrows to rows that carry installationReadiness before reading activationInFlight (typecheck fix); behaviour of the stopped-install guard, --reinstall and the activating message is unchanged. This page makes no claim the change contradicts.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Follow-up: the helper that reads the plugin row now narrows to rows that carry installationReadiness before reading activationInFlight (typecheck fix); behaviour of the stopped-install guard, --reinstall and the activating message is unchanged. This page makes no claim the change contradicts.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/demo-layout/README.md","note":"Follow-up: the helper that reads the plugin row now narrows to rows that carry installationReadiness before reading activationInFlight (typecheck fix); behaviour of the stopped-install guard, --reinstall and the activating message is unchanged. This page makes no claim the change contradicts.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/getting-started-starter/README.md","note":"Follow-up: the helper that reads the plugin row now narrows to rows that carry installationReadiness before reading activationInFlight (typecheck fix); behaviour of the stopped-install guard, --reinstall and the activating message is unchanged. This page makes no claim the change contradicts.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/minimal-layout/README.md","note":"Follow-up: the helper that reads the plugin row now narrows to rows that carry installationReadiness before reading activationInFlight (typecheck fix); behaviour of the stopped-install guard, --reinstall and the activating message is unchanged. This page makes no claim the change contradicts.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/portable-author-kit/README.md","note":"Follow-up: the helper that reads the plugin row now narrows to rows that carry installationReadiness before reading activationInFlight (typecheck fix); behaviour of the stopped-install guard, --reinstall and the activating message is unchanged. This page makes no claim the change contradicts.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"examples/registry/README.md","note":"Follow-up: the helper that reads the plugin row now narrows to rows that carry installationReadiness before reading activationInFlight (typecheck fix); behaviour of the stopped-install guard, --reinstall and the activating message is unchanged. This page makes no claim the change contradicts.","inputs":["packages/cli/src/commands/install.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Follow-up: the helper that reads the plugin row now narrows to rows that carry installationReadiness before reading activationInFlight (typecheck fix); behaviour of the stopped-install guard, --reinstall and the activating message is unchanged. This page makes no claim the change contradicts.","inputs":["packages/cli/src/commands/install.ts"]}
+  ]
+}

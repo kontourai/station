@@ -23,9 +23,7 @@ afterEach(() => vi.unstubAllGlobals());
  * existing caller uses sends exactly what it sent before.
  */
 test('install, update and remove carry the proposal id; the plain forms do not', async () => {
-  const fetchMock = vi.fn(async () => ({
-    json: async () => ({ success: true }),
-  }));
+  const fetchMock = vi.fn(async () => Response.json({ success: true }));
   vi.stubGlobal('fetch', fetchMock);
   const client = new QueryClient({
     defaultOptions: { mutations: { retry: false } },

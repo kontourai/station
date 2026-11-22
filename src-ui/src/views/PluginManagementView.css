@@ -165,6 +165,11 @@
   font-size: 0.8rem;
   border: 1px solid;
 }
+/* A message above a plugin's detail header aligns with the header's own
+   inset instead of running to the pane's right edge. */
+.detail-panel > .plugins__message {
+  margin: 0.75rem 1.5rem 0;
+}
 .plugins__message--success {
   background: var(--success-bg);
   border-color: var(--success-border);

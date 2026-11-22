@@ -42,17 +42,21 @@ import {
   deriveStationListeners,
   localInterfaceAddresses,
 } from '../station-listeners.js';
+import { playwrightChromium } from './real-chromium-selection.js';
 
 const acquisitionHome = mkdtempSync(join(tmpdir(), 'station-agent-acq-'));
 const acquisitionStatus = new ChromiumAcquisition(
   acquisitionHome,
   defaultChromiumAcquisitionDeps(),
 ).status();
+// Playwright's Chromium under PLAYWRIGHT_BROWSERS_PATH wins, so the pinned
+// Chrome for Testing runs here rather than an older system Chrome.
 const executablePath =
-  acquisitionStatus.state === 'found-system'
+  playwrightChromium() ??
+  (acquisitionStatus.state === 'found-system'
     ? acquisitionStatus.executablePath
-    : undefined;
-const SKIP_REASON = `no installed Google Chrome / Microsoft Edge / Chromium was found (acquisition state: ${acquisitionStatus.state}); this real-browser test never downloads one`;
+    : undefined);
+const SKIP_REASON = `no Playwright Chromium under PLAYWRIGHT_BROWSERS_PATH and no installed Google Chrome / Microsoft Edge / Chromium was found (acquisition state: ${acquisitionStatus.state}); this real-browser test never downloads one`;
 
 const FIXTURE = `<!doctype html><html><head><title>agent fixture</title>
 <style>body{margin:0;font:16px sans-serif}#go{position:absolute;left:40px;top:100px;width:160px;height:60px}

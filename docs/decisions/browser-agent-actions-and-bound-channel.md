@@ -38,7 +38,8 @@ adoption creates a separate session in the opener's profile and continues the
 original request; selecting a tab does not retarget an Agent's tools. Title and
 navigation observations confer no authority. The twelve-session profile bound
 includes live and opening sessions. Tab/popup fixture coverage does not establish
-a real-browser or external-provider journey.
+a real-browser or external-provider journey; the real-host suite's
+popup-admission case covers only the host's adoption of a popup.
 
 ## Threat model and decision
 
@@ -73,6 +74,66 @@ or fails; this is an audit of the request, not proof of its outcome. Emulation
 is target-local and survives navigation. The live-surface binder sends a reset
 to system on every human control claim and logs reset failures. A human does
 not intentionally inherit an Agent's override.
+
+### Agent evaluation on a blank tab
+
+Chrome for Testing 158 aborts the whole browser, and so every tab in the
+pane, when script on an `about:blank` page with no site adds a
+`sandbox="allow-scripts"` `srcdoc` frame while sandboxed frames get their own
+process (`site_instance_impl.cc` CHECK `has_site_`). Chrome 157 does not. A
+new tab and a tab sent to `about:blank` through the address bar or
+`browser_navigate` are such pages. They run no page script, so only an Agent's
+`browser_evaluate` can trigger the abort there. An `about:blank` that a page
+opened (`window.open('')`) or navigated to itself inherits that page's site;
+on 158 the same frame loads there without an abort.
+
+`browser_evaluate` first asks the page whether its address is an `about:`
+page (`location.protocol`, which covers `about:blank#x` and `about:blank?x`,
+both site-less and both aborting 158 when a browser-initiated navigation
+reaches them), then decides the origin half from the origin the browser itself
+reports for that script context in `Runtime.executionContextCreated`, which a
+page cannot alter, where the page's own `self.origin` it can. On 158 that
+event reports `://` for a new tab, for `about:blank#x`, and for a `data:`
+page, and the real origin (`http://127.0.0.1:<port>`) for an http page, for a
+page that navigated itself to `about:blank`, and for `window.open('about:blank')`
+from an http page. It refuses with `browser-refused` unless the address is not
+`about:` or the reported origin has a scheme and host; an unanswered check, a
+missing report and an unrecognised origin refuse. The check also refuses
+opaque-origin blank pages that did not
+abort on 158, such as the blank page Station leaves after refusing a page's
+own `blob:` navigation. It applies on every Chrome version, 157 included:
+a version gate would be one more thing to get wrong, and the pinned browser
+is 158. The cost is real for one use: with `data:` and `blob:` already
+blocked, writing throwaway HTML into a blank tab was the only way to show
+generated HTML in the pane, and it is now refused. The refusal tells the
+Agent to open a real page first, or to show generated HTML with
+`html_preview` or `html_render`.
+
+The check and the Agent's script are two CDP calls, and a person's
+navigation does not wait for an Agent's call: the address bar, Back, Forward
+and Reload act at once. On 158, an address-bar navigation to `about:blank`
+sent 0 to 11 ms after the Agent's call aborted the browser in 6 of 6 runs,
+and a Forward onto a browser-made `about:blank` entry aborted it too. Both
+calls are therefore bound to one page-world script context, named by the
+`uniqueContextId` the host records from `Runtime.executionContextCreated`.
+A navigation that replaces the document destroys that context, so a script
+sent after it fails ("uniqueContextId not found") and the tool answers that
+the page navigated before the script ran, instead of running it in the new
+document. The check runs in that page world rather than Station's isolated
+world, because only the page world can be bound this way. The
+refusal cannot be talked away from inside the page: the address is the
+document's own `location`, the origin is the browser's report for the same
+context the script is bound to, and a site-less blank page has run no page
+script and is reachable from no other document. On 158,
+300 rounds each of an Agent's trigger racing an address-bar navigation to
+`about:blank` (either order), a Back and a Forward onto such an entry ended
+with no abort; with the binding removed, the Forward race aborted again
+(Back did not abort in 150 unbound rounds). Reload was not raced: it reloads
+the same address, so it cannot turn a page with a site into a site-less one.
+
+Station does not turn off `IsolateSandboxedIframes`, which would remove the
+process boundary around sandboxed content, and does not change the blank
+start page a person sees.
 
 ## Why passthrough tokens cannot simply become bound
 
