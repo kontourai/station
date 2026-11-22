@@ -72,12 +72,18 @@ export function retryAutomationEpisode(input: {
 export function boundedText(text: string, max = 200): string {
   return Array.from(text)
     .slice(0, max)
-    .map((char) =>
-      /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/.test(char)
-        ? ' '
-        : char,
-    )
+    .map((char) => (isFormattingControl(char.codePointAt(0) ?? 0) ? ' ' : char))
     .join('');
+}
+
+/** ASCII and C1 controls, and the bidirectional embeddings, overrides and isolates. */
+function isFormattingControl(codePoint: number): boolean {
+  return (
+    codePoint <= 0x1f ||
+    (codePoint >= 0x7f && codePoint <= 0x9f) ||
+    (codePoint >= 0x202a && codePoint <= 0x202e) ||
+    (codePoint >= 0x2066 && codePoint <= 0x2069)
+  );
 }
 
 /** Failures a retry of the unchanged rule would meet again. */

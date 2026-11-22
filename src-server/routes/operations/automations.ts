@@ -32,8 +32,8 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { automationConfigurationFingerprint } from '../../services/automation/automation-intent.js';
-import { boundedText } from '../../services/automation/automation-operator.js';
 import type { RetryEpisodeOutcome } from '../../services/automation/automation-ledger.js';
+import { boundedText } from '../../services/automation/automation-operator.js';
 import {
   AUTOMATION_PROJECTS_UNAVAILABLE,
   AutomationPolicyUnavailableError,

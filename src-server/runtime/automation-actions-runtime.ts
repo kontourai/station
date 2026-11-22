@@ -16,8 +16,8 @@ import {
   automationRevocationMessage,
   classifyAutomationPolicy,
 } from '../services/automation/automation-intent.js';
-import { boundedText } from '../services/automation/automation-operator.js';
 import type { AutomationLedger } from '../services/automation/automation-ledger.js';
+import { boundedText } from '../services/automation/automation-operator.js';
 import type { AutomationStore } from '../services/automation/automation-store.js';
 import {
   AgentCatalogRefreshingError,
