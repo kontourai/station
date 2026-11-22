@@ -6085,10 +6085,16 @@ POST /scheduler/jobs
 job's slug and identity (lowercase letters, digits and hyphens); a `name`
 another job already has is refused with 409 and `code: "job_name_taken"`.
 `displayName` is what people read, and `GET /scheduler/jobs` returns it when
-set: trimmed, at most `SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS` characters, with
-at least one letter, digit, symbol or punctuation mark and no control, format
-(bidi, zero-width) or line/paragraph separator characters, except the joiner
-inside an emoji sequence (`isSchedulerJobDisplayName`); anything else is 400.
+set: trimmed, at most `SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS` characters (a
+longer one is 400 "A name can be at most 120 characters."), with at least one
+letter, digit, symbol or punctuation mark that draws something (Hangul fillers
+and the braille blank do not count), and none of the characters that hide or
+reorder text (`isSchedulerJobDisplayName`): controls, line and paragraph
+separators, bidi embedding, override and isolate controls, zero-width space,
+word joiner, byte-order mark, soft hyphen, combining grapheme joiner, Mongolian
+vowel separator, interlinear annotation marks and tag characters, so
+subdivision flags are refused. The zero-width non-joiner and joiner and the
+direction marks are accepted. Anything else is 400.
 A body with `displayName` and no `name` gets the first unused slug of
 `schedulerJobSlugCandidates` (the slug the name suggests, then `-2` up to
 `SCHEDULER_JOB_SLUG_ATTEMPTS`), checked against every job, including those
