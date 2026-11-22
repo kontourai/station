@@ -13,7 +13,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const state: {
   connections: unknown[];
   engines: unknown[];
-  tools: unknown[];
+  tools: unknown[] | undefined;
   knowledge: unknown;
   savedStations: unknown[];
   ssh: unknown[];
@@ -25,7 +25,10 @@ const state: {
   policy: unknown;
   agents: unknown[] | undefined;
   skills: unknown[] | undefined;
+  /** The Engines read failed and has nothing to show. */
+  enginesFailed: boolean;
 } = {
+  enginesFailed: false,
   agents: undefined,
   skills: undefined,
   enginesLoading: false,
@@ -70,7 +73,10 @@ vi.mock('@kontourai/station-sdk', () => ({
   useEngineConnectionsQuery: () =>
     state.enginesLoading
       ? { data: undefined, isLoading: true, isPending: true }
-      : { data: state.engines, isLoading: false, isPending: false },
+      : state.enginesFailed
+        ? { data: undefined, isError: true, error: new Error('refused') }
+        : { data: state.engines, isLoading: false, isPending: false },
+  // `undefined` stands for a read that has not answered.
   useIntegrationsQuery: () => ({ data: state.tools }),
   useGlobalKnowledgeStatusQuery: () => ({ data: state.knowledge }),
   useSshEnvironmentsQuery: () => ({ data: state.ssh }),
@@ -124,6 +130,7 @@ describe('the Customize list', () => {
     state.policy = undefined;
     state.agents = undefined;
     state.skills = undefined;
+    state.enginesFailed = false;
     navigate.mockReset();
   });
 
@@ -145,7 +152,7 @@ describe('the Customize list', () => {
     ).toEqual([
       ['Overview', '/customize'],
       ['Agents', '/agents'],
-      ['Skills', '/guidance'],
+      ['Skills', '/guidance?tab=skills'],
       ['Engines', '/customize/engines'],
       ['Providers', '/customize/providers'],
       ['Tools', '/customize/tools'],
@@ -186,7 +193,24 @@ describe('the Customize list', () => {
     expect(count('Skills')).toBeNull();
   });
 
-  test('counts agents, skills, engines, providers and tools; never knowledge', () => {
+  test('a read that is pending or failed shows no number, never 0', () => {
+    const count = (name: string) =>
+      screen
+        .getByRole('link', { name: new RegExp(`^${name}`) })
+        .querySelector('.customize-item__count')?.textContent ?? null;
+    state.enginesLoading = true;
+    state.tools = undefined;
+    const { unmount } = renderNav();
+    expect(count('Engines')).toBeNull();
+    expect(count('Tools')).toBeNull();
+    unmount();
+    state.enginesLoading = false;
+    state.enginesFailed = true;
+    renderNav();
+    expect(count('Engines')).toBeNull();
+  });
+
+  test('counts agents, skills, engines and tools; never providers or knowledge', () => {
     state.agents = [{ slug: 'a' }, { slug: 'b' }];
     state.skills = [{ name: 's' }];
     state.engines = [engine('codex', 'Codex'), engine('claude', 'Claude')];
@@ -204,7 +228,9 @@ describe('the Customize list', () => {
     expect(count('Agents')).toBe('2');
     expect(count('Skills')).toBe('1');
     expect(count('Engines')).toBe('2');
-    expect(count('Providers')).toBe('0');
+    // Providers counts model connections today, which would read as "0
+    // providers" beside signed-in engines; no number until it has a meaning.
+    expect(count('Providers')).toBeNull();
     expect(count('Tools')).toBe('1');
     expect(count('Knowledge')).toBeNull();
   });

@@ -1,3 +1,5 @@
+import { useNavigation } from '../../contexts/NavigationContext';
+import { COMPUTERS_PATH } from '../connections-hub/connection-sections';
 import { CustomizeItemLink } from './CustomizeItemLink';
 import { useCustomizeGroups } from './useCustomizeGroups';
 import './customize.css';
@@ -8,6 +10,7 @@ import './customize.css';
  */
 export function CustomizeLanding() {
   const groups = useCustomizeGroups();
+  const { navigate } = useNavigation();
   return (
     <div className="customize-landing">
       {groups.map((group) => (
@@ -43,7 +46,25 @@ export function CustomizeLanding() {
         </section>
       ))}
       <p className="customize-landing__note">
-        Devices and other Stations are in the Station menu at the top right.
+        Pairing and other Stations are in the Station menu at the top right.
+        Paired devices and SSH computers are on{' '}
+        <a
+          href={COMPUTERS_PATH}
+          onClick={(event) => {
+            if (
+              event.metaKey ||
+              event.ctrlKey ||
+              event.shiftKey ||
+              event.altKey
+            )
+              return;
+            event.preventDefault();
+            navigate(COMPUTERS_PATH);
+          }}
+        >
+          Computers
+        </a>
+        .
       </p>
     </div>
   );

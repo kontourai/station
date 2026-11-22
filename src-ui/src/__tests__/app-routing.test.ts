@@ -103,6 +103,7 @@ const LEGACY_PATH_CASES = [
   ['/connections?section=models', '/customize/providers'],
   ['/connections?section=engines&dock=open', '/customize/engines?dock=open'],
   ['/connections?section=knowledge', '/customize/knowledge'],
+  ['/connections?section=computers', '/connections/computers'],
   ['/connections/models', '/customize/providers'],
   ['/connections/models/example', '/customize/providers/example'],
   ['/connections/engines', '/customize/engines'],

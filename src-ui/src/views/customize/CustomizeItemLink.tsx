@@ -1,5 +1,4 @@
 import type { MouseEvent, ReactNode } from 'react';
-import { destinationIcon } from '../../components/project-sidebar/nav-items';
 import { useNavigation } from '../../contexts/NavigationContext';
 import type { CustomizeItem } from './useCustomizeGroups';
 
@@ -33,7 +32,7 @@ export function CustomizeItemLink({
       aria-current={current ? 'page' : undefined}
       onClick={onClick}
     >
-      {item.icon ? destinationIcon(item.icon) : null}
+      {item.icon ?? null}
       <span className="customize-item__label">{item.label}</span>
       {item.needsAttention ? (
         <span className="customize-item__dot" aria-hidden="true" />

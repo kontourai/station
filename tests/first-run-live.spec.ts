@@ -645,7 +645,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
     });
     await recordSurfaceTiming(page, 'connections-models', async () => {
       await emptyState
-        .getByRole('button', { name: 'Open Connections' })
+        .getByRole('button', { name: 'Open Providers' })
         .click();
       await expect(page).toHaveURL(/\/customize\/providers(?:\?|$)/);
 

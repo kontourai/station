@@ -69,7 +69,7 @@ function createStatus(overrides: Partial<SystemStatus> = {}): SystemStatus {
     recommendation: {
       code: 'unconfigured',
       type: 'connections',
-      actionLabel: 'Open Connections',
+      actionLabel: 'Open Customize',
       title: 'No usable AI path is configured yet',
       detail:
         'Start Ollama locally or add a provider/runtime connection to make Station ready for first-run chat.',

@@ -44,6 +44,7 @@ describe('DestinationRegistry', () => {
       // ⌘K could not reach at all — "notif" and "prof" each returned zero
       // results in a palette carrying 72 entries.
       'notifications',
+      'computers',
       'plugins',
       'schedule',
       'feature-previews',
@@ -69,6 +70,7 @@ describe('DestinationRegistry', () => {
       'tools',
       'knowledge',
       'notifications',
+      'computers',
       'plugins',
       'schedule',
       'feature-previews',
@@ -126,6 +128,8 @@ describe('DestinationRegistry', () => {
       '/developer',
       '/appearance',
       '/settings',
+      // Computers left Connections without becoming a Customize item.
+      '/connections/computers',
     ]) {
       expect(paletteRoutes, `${route} has no palette entry`).toContain(route);
     }
@@ -147,7 +151,8 @@ describe('DestinationRegistry', () => {
         group: 'your-agents',
         order: 20,
         label: 'Skills',
-        route: '/guidance',
+        // Straight to the tab, so opening Skills is one history entry.
+        route: '/guidance?tab=skills',
       },
       {
         id: 'engines',

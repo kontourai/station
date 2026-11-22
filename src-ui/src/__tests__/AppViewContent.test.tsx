@@ -48,6 +48,9 @@ vi.mock('../views/AgentsView', () => ({
     </div>
   ),
 }));
+vi.mock('../views/GuidanceView', () => ({
+  GuidanceView: () => <div>Skills page</div>,
+}));
 vi.mock('../views/connections-hub/ComputersPage', () => ({
   ComputersPage: () => <div>ComputersPage</div>,
 }));
@@ -373,6 +376,21 @@ describe('AppViewContent — the Customize page', () => {
     }
     // One mount across four routes: moving between items does not reload it.
     expect(customizeNavMounts).toBe(1);
+  });
+
+  test('names Customize above every item page as the way back, and not above the landing', async () => {
+    const { rerender } = render(
+      <AppViewContent {...baseProps} currentView={{ type: 'customize' }} />,
+    );
+    await screen.findByText('CustomizeLanding');
+    expect(screen.queryByRole('link', { name: 'Customize' })).toBeNull();
+    // Agents and Skills publish no eyebrow of their own; they still get one.
+    for (const view of [{ type: 'agents' }, { type: 'guidance' }] as const) {
+      rerender(<AppViewContent {...baseProps} currentView={view} />);
+      const back = screen.getByRole('link', { name: 'Customize' });
+      expect(back.getAttribute('href')).toBe('/customize');
+      expect(back.closest('.page__label')).toBeTruthy();
+    }
   });
 
   test('leaves the list off pages that are not Customize items', async () => {

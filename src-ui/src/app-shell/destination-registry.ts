@@ -9,37 +9,23 @@ type ManagementDestinationId =
   | 'developer'
   | 'notifications'
   | 'schedule';
-/** The Customize page's groups, in the order the page lists them. */
-export const CUSTOMIZE_NAV_GROUPS = [
-  { id: 'your-agents', label: 'Your agents', description: 'Who does the work' },
-  {
-    id: 'run-on',
-    label: 'What they run on',
-    description: 'Engines and the providers you sign in to or pay',
-  },
-  {
-    id: 'can-reach',
-    label: 'What they can reach',
-    description: 'Tool servers and the files agents can search',
-  },
+/**
+ * The Customize page's groups, in the order the page lists them. Their words
+ * live with the page (`views/customize/`), which loads on demand.
+ */
+export const CUSTOMIZE_NAV_GROUP_ORDER = [
+  'your-agents',
+  'run-on',
+  'can-reach',
 ] as const;
 
-export type CustomizeNavGroupId = (typeof CUSTOMIZE_NAV_GROUPS)[number]['id'];
-
-const CUSTOMIZE_GROUP_RANK: Readonly<Record<CustomizeNavGroupId, number>> =
-  Object.fromEntries(
-    CUSTOMIZE_NAV_GROUPS.map((group, index) => [group.id, index]),
-  ) as Record<CustomizeNavGroupId, number>;
+export type CustomizeNavGroupId = (typeof CUSTOMIZE_NAV_GROUP_ORDER)[number];
 
 export type DestinationIconId =
   | 'agents'
   | 'appearance'
   | 'customize'
   | 'developer'
-  | 'engines'
-  | 'knowledge'
-  | 'providers'
-  | 'tools'
   | 'guidance'
   | 'notifications'
   | 'plugins'
@@ -301,8 +287,9 @@ export function createDestinationRegistry(
           // Order slots are unique within each group, so group then order is total.
           .sort(
             (left, right) =>
-              CUSTOMIZE_GROUP_RANK[left.group] -
-                CUSTOMIZE_GROUP_RANK[right.group] || left.order - right.order,
+              CUSTOMIZE_NAV_GROUP_ORDER.indexOf(left.group) -
+                CUSTOMIZE_NAV_GROUP_ORDER.indexOf(right.group) ||
+              left.order - right.order,
           ),
       ),
     getPalette: (flags = defaultFlags) =>
@@ -354,7 +341,13 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     label: () => 'Skills',
     keywords: ['guidance', 'skills', 'commands', 'playbooks', 'prompts'],
     icon: 'guidance',
-    customizeNav: { group: 'your-agents', order: 20 },
+    // Straight to the tab the page would add, so opening Skills is one
+    // history entry and Back leaves it.
+    customizeNav: {
+      group: 'your-agents',
+      order: 20,
+      route: '/guidance?tab=skills',
+    },
     managementGroup: 'guidance',
     managementViewTypes: ['guidance'],
   },
@@ -380,18 +373,12 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
   {
     // Connections is no longer a destination: its parts are the items below,
     // and this page lists them. Its old words stay as keywords so ⌘K still
-    // answers someone who learned them.
+    // answers someone who learned them. Item keywords add only what the
+    // label does not already match.
     id: 'customize',
     route: '/customize',
     label: () => 'Customize',
-    keywords: [
-      'customize',
-      'connections',
-      'set up',
-      'providers',
-      'models',
-      'integrations',
-    ],
+    keywords: ['connections', 'providers', 'models', 'integrations'],
     icon: 'customize',
     managementGroup: 'customize',
     palette: { order: 50 },
@@ -402,8 +389,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     id: 'engines',
     route: '/customize/engines',
     label: () => 'Engines',
-    keywords: ['engines', 'claude code', 'codex', 'acp', 'connections'],
-    icon: 'engines',
+    keywords: ['claude code', 'codex'],
     customizeNav: { group: 'run-on', order: 10 },
     managementGroup: 'customize',
     palette: { order: 51 },
@@ -417,8 +403,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     id: 'providers',
     route: '/customize/providers',
     label: () => 'Providers',
-    keywords: ['providers', 'models', 'api keys', 'connections'],
-    icon: 'providers',
+    keywords: ['models', 'api keys'],
     customizeNav: { group: 'run-on', order: 20 },
     managementGroup: 'customize',
     palette: { order: 52 },
@@ -428,8 +413,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     id: 'tools',
     route: '/customize/tools',
     label: () => 'Tools',
-    keywords: ['tools', 'tool servers', 'mcp', 'integrations', 'connections'],
-    icon: 'tools',
+    keywords: ['mcp', 'integrations'],
     customizeNav: { group: 'can-reach', order: 10 },
     managementGroup: 'customize',
     palette: { order: 53 },
@@ -439,12 +423,22 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     id: 'knowledge',
     route: '/customize/knowledge',
     label: () => 'Knowledge',
-    keywords: ['knowledge', 'search', 'embeddings', 'connections'],
-    icon: 'knowledge',
+    keywords: ['embeddings'],
     customizeNav: { group: 'can-reach', order: 20 },
     managementGroup: 'customize',
     palette: { order: 54 },
     managementViewTypes: ['connections-knowledge'],
+  },
+  {
+    // Not a Customize item: devices move to the Station page. Until then the
+    // palette and the Customize landing are its doors.
+    id: 'computers',
+    route: '/connections/computers',
+    label: () => 'Computers',
+    keywords: ['devices', 'ssh'],
+    hiddenFromNav: true,
+    palette: { order: 56 },
+    managementViewTypes: ['connections-computers'],
   },
   {
     id: 'registry',

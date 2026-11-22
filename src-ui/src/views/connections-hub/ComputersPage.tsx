@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { PageCreateAction } from '../../components/PageCreateAction';
+import { usePageHeader } from '../../components/page-frame';
 import { AddMachineModal } from './AddMachineModal';
 import { ComputersSection } from './ComputersSection';
 import { IntegrationStatusSection } from './IntegrationStatusSection';
@@ -11,8 +12,14 @@ import { IntegrationStatusSection } from './IntegrationStatusSection';
  * relay sign-in) keep working; pairing and Stations are in the
  * header's Station menu.
  */
+const COMPUTERS_HEADER = {
+  title: 'Computers',
+  subtitle: 'Devices and computers Station can reach or run work on',
+};
+
 export function ComputersPage() {
   const [chooserOpen, setChooserOpen] = useState(false);
+  usePageHeader(COMPUTERS_HEADER);
   return (
     <div className="pane-host">
       <PageCreateAction

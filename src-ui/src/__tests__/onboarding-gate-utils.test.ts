@@ -356,7 +356,7 @@ describe('onboardingGateUtils', () => {
         actionLabel: 'Manage model connections',
         title: 'No chat-capable connection is enabled',
         detail:
-          'Model connections are configured, but none can run chat yet. Enable or repair a model connection in Connections.',
+          'Model connections are configured, but none can run chat yet. Enable or repair a model connection in Customize → Providers.',
       },
     });
 
@@ -398,7 +398,7 @@ describe('onboardingGateUtils', () => {
         actionLabel: 'Manage model connections',
         title: 'No chat-capable connection is enabled',
         detail:
-          'Model connections are configured, but none can run chat yet. Enable or repair a model connection in Connections.',
+          'Model connections are configured, but none can run chat yet. Enable or repair a model connection in Customize → Providers.',
       },
     });
 

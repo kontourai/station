@@ -871,7 +871,7 @@ function onboardingSetupBannerSettleHooks(): {
         recommendation: {
           code: 'unconfigured',
           type: 'connections',
-          actionLabel: 'Open Connections',
+          actionLabel: 'Open Customize',
           title: 'No usable AI path is configured yet',
           detail:
             'Start Ollama locally or add a provider/runtime connection to make Station ready for first-run chat.',
@@ -6742,7 +6742,7 @@ const SCREENS: Screen[] = [
   },
   { name: 'registry', title: 'Registry', path: '/registry', viewport: DESKTOP },
   {
-    name: 'customize',
+    name: 'connections',
     title: 'Customize',
     path: '/customize',
     viewport: DESKTOP,
@@ -8339,7 +8339,7 @@ const SCREENS: Screen[] = [
     },
   },
   {
-    name: 'mobile-customize',
+    name: 'mobile-connections',
     title: 'Mobile — Customize',
     path: '/customize',
     viewport: MOBILE,

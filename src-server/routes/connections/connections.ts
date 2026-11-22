@@ -71,7 +71,7 @@ async function readEngineInventory<T extends object>(
           success: false,
           code: 'connection_inventory_timed_out',
           error:
-            'Station could not finish checking connections in time. Check Connections again shortly.',
+            'Station could not finish checking connections in time. Check Customize → Engines again shortly.',
         },
         504,
       );

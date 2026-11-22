@@ -222,7 +222,7 @@ export function assertConnectionReady(connection: ConnectionConfig): void {
           ? `: ${blockers}`
           : // Readiness evidence can carry remote error text, so the remedy
             // is a fixed next step, never the connection's own free text.
-            `. Check this connection in Connections or run \`station connections test ${connection.id}\``
+            `. Check this connection in Customize → Engines or run \`station connections test ${connection.id}\``
       }`,
     );
   }

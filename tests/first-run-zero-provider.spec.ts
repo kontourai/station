@@ -18,7 +18,7 @@ const ZERO_PROVIDER_STATUS = JSON.stringify({
   recommendation: {
     code: 'unconfigured',
     type: 'connections',
-    actionLabel: 'Open Connections',
+    actionLabel: 'Open Customize',
     title: 'No usable AI path is configured yet',
     detail:
       'Start Ollama locally or add a provider/runtime connection to make Station ready for first-run chat.',
@@ -108,7 +108,7 @@ test.describe('First-run zero-provider chat rescue (#191 R1)', () => {
     await expect(page.getByText(/^Error:/)).toHaveCount(0);
     await expect(page.getByText(/HTTP 5\d\d/)).toHaveCount(0);
 
-    await emptyState.getByRole('button', { name: 'Open Connections' }).click();
+    await emptyState.getByRole('button', { name: 'Open Providers' }).click();
     await expect(page).toHaveURL(/\/customize\/providers/);
   });
 });

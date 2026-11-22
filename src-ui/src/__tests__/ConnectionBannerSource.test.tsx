@@ -707,7 +707,7 @@ describe('ConnectionBannerSource → Station details — blocked credential', ()
       const details = within(await findStationDetails());
       expect(details.queryByRole('button', { name: 'Pair again' })).toBeNull();
       fireEvent.click(
-        details.getByRole('button', { name: 'Open Connections' }),
+        details.getByRole('button', { name: 'Manage Stations' }),
       );
       expect(opened).toHaveBeenCalledWith(
         expect.objectContaining({ detail: { mode: 'list' } }),

@@ -318,13 +318,15 @@ export const RETIRED_USER_TERMS = Object.freeze([
   // Navigation area (first-release-navigation.md, slice 1.2): Connections is
   // no longer a destination, so copy that sends a reader to it or to one of
   // its tabs names a place that is gone. Enforced: slice 1.2 removed the last
-  // uses. The bare word stays legal: the header's Station menu is still
-  // labelled Connections until the Station page slices rename it.
+  // uses. Only the place sense is matched: "open/review/configure in/in/under/
+  // from Connections" and "Connections › <tab>". The bare word, and phrases
+  // such as "set up connections", stay legal: the phone header's Station menu
+  // row is still labelled Connections until the Station page slices.
   {
     term: 'Connections as a place',
-    use: 'Customize, or the Customize item',
+    use: 'Customize, its item, or the Station menu',
     pattern:
-      /\b(?:(?:configure in|set up|review) connections|connections\s*[›→>]\s*(?:models|engines|tools|knowledge))\b/i,
+      /\b(?:(?:open|review|configure in|in|under|from) connections\b(?![-\w])|connections\s*[›→>]\s*(?:models|engines|tools|knowledge|computers)\b)/i,
   },
 ]);
 

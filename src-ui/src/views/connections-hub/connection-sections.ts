@@ -1,13 +1,12 @@
 /**
- * The Customize items that host today's connection screens: their routes,
- * frame copy and the addresses they replaced. Routes, the Customize list and
- * the section frame read this one table.
+ * The Customize items that host today's connection screens: their routes and
+ * the addresses they replaced. Routes, the Customize list and the section
+ * frame read this one table; the frame's words live with the frame, which
+ * loads on demand.
  */
 export const CONNECTION_SECTIONS = [
   {
     id: 'engines',
-    title: 'Engines',
-    subtitle: 'Claude Code, Codex and other engines that run agents',
     path: '/customize/engines',
     legacyPaths: [
       '/connections/engines',
@@ -15,33 +14,21 @@ export const CONNECTION_SECTIONS = [
       '/connections/agents',
       '/connections/agent-apps',
     ],
-    addLabel: 'Add engine',
   },
   {
-    // The item is Providers; the screen it hosts is still the model
-    // connection list until the Providers redesign replaces it.
     id: 'providers',
-    title: 'Providers',
-    subtitle: "Model APIs that Station's engine uses",
     path: '/customize/providers',
     legacyPaths: ['/connections/models', '/connections/providers'],
-    addLabel: 'Add model connection',
   },
   {
     id: 'tools',
-    title: 'Tools',
-    subtitle: 'Connect tool servers and choose which agents use them',
     path: '/customize/tools',
     legacyPaths: ['/connections/tools'],
-    addLabel: 'Add tool server',
   },
   {
     id: 'knowledge',
-    title: 'Knowledge',
-    subtitle: 'What agents can look up',
     path: '/customize/knowledge',
     legacyPaths: ['/connections/knowledge'],
-    addLabel: 'Add knowledge source',
   },
 ] as const;
 

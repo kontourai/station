@@ -26,10 +26,3 @@
 .customize-shell--fill .customize-shell__main {
   min-height: 0;
 }
-
-/* On a phone the landing's list is the way in, so the left list goes. */
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .customize-shell__nav {
-    display: none;
-  }
-}

@@ -17,6 +17,34 @@ import {
 } from './connections-hub/connection-sections';
 import { IntegrationStatusSection } from './connections-hub/IntegrationStatusSection';
 
+/** Each item's header and add action. */
+const SECTION_COPY: Readonly<
+  Record<ConnectionSectionId, { title: string; subtitle: string; addLabel: string }>
+> = {
+  engines: {
+    title: 'Engines',
+    subtitle: 'Claude Code, Codex and other engines that run agents',
+    addLabel: 'Add engine',
+  },
+  // The item is Providers; the screen it hosts is still the model connection
+  // list until the Providers redesign replaces it.
+  providers: {
+    title: 'Providers',
+    subtitle: "Model APIs that Station's engine uses",
+    addLabel: 'Add model connection',
+  },
+  tools: {
+    title: 'Tools',
+    subtitle: 'Connect tool servers and choose which agents use them',
+    addLabel: 'Add tool server',
+  },
+  knowledge: {
+    title: 'Knowledge',
+    subtitle: 'What agents can look up',
+    addLabel: 'Add knowledge source',
+  },
+};
+
 /**
  * The frame for a Customize item that hosts one of today's connection
  * screens: its header, its add action and the screen. The Customize page's
@@ -51,7 +79,10 @@ function CustomizeSectionFrameInner({
   children: ReactNode;
   creating?: boolean;
 }) {
-  const section = CONNECTION_SECTIONS.find((entry) => entry.id === sectionId)!;
+  const section = {
+    ...CONNECTION_SECTIONS.find((entry) => entry.id === sectionId)!,
+    ...SECTION_COPY[sectionId],
+  };
   const { navigate } = useNavigation();
   const mobileReturnFocus = useSplitPaneExternalReturnFocus();
   const eyebrow = useMemo(

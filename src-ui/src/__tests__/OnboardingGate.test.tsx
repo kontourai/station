@@ -515,7 +515,7 @@ function createStatus(overrides: Partial<SystemStatus> = {}): SystemStatus {
     recommendation: {
       code: 'unconfigured',
       type: 'connections',
-      actionLabel: 'Open Connections',
+      actionLabel: 'Open Customize',
       title: 'No usable AI path is configured yet',
       detail:
         'Start Ollama locally or add a provider/runtime connection to make Station ready for first-run chat.',
@@ -800,7 +800,7 @@ describe('OnboardingGate', () => {
       target: 'ios',
     };
     bootstrapRecoveryError =
-      'Station couldn’t reconnect to your saved Station. Open Connections to pair this device again.';
+      'Station couldn’t reconnect to your saved Station. Open the Station menu to pair this device again.';
     render(
       <OnboardingGate>
         <div>App</div>

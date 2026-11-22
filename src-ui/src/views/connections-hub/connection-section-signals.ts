@@ -34,8 +34,10 @@ interface ConnectionSectionSignals {
 
 export function useConnectionSectionSignals(): ConnectionSectionSignals {
   const { data: connections = [] } = useModelConnectionsQuery();
-  const { data: engines = [] } = useEngineConnectionsQuery();
-  const { data: tools = [] } = useIntegrationsQuery();
+  const enginesQuery = useEngineConnectionsQuery();
+  const toolsQuery = useIntegrationsQuery();
+  const engines = enginesQuery.data ?? [];
+  const tools = toolsQuery.data ?? [];
   const { data: knowledge } = useGlobalKnowledgeStatusQuery();
   const managedStateFor = useManagedEngineStateFor();
 
@@ -58,12 +60,15 @@ export function useConnectionSectionSignals(): ConnectionSectionSignals {
    */
   const models = filterModelProviders(connections as ProviderConnection[], '');
 
+  // A count is a claim about a list, so it needs the list: while a read is
+  // pending, or after it failed with nothing to show, there is no number.
   const count = (id: ConnectionSectionId): number | null => {
-    if (id === 'providers') return models.length;
-    if (id === 'engines') return engines.length;
-    if (id === 'tools') return tools.length;
-    // Knowledge holds one store and one search model, not a list: "2" beside
-    // it counted settings, not anything a reader added.
+    if (id === 'engines') return enginesQuery.data ? engines.length : null;
+    if (id === 'tools') return toolsQuery.data ? tools.length : null;
+    // Providers counts model connections today, which read as "0 providers"
+    // beside signed-in engines; it gets a number when the Providers slices
+    // define what one is. Knowledge holds one store and one search model,
+    // not a list: "2" beside it counted settings.
     return null;
   };
 

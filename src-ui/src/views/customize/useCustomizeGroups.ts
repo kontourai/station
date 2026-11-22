@@ -1,9 +1,9 @@
 import { useAgentsQuery, useSkillsQuery } from '@kontourai/station-sdk';
+import type { ReactNode } from 'react';
 import {
   APP_DESTINATION_REGISTRY,
-  CUSTOMIZE_NAV_GROUPS,
+  CUSTOMIZE_NAV_GROUP_ORDER,
   type CustomizeNavGroupId,
-  type DestinationIconId,
 } from '../../app-shell/destination-registry';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { useConnectionSectionSignals } from '../connections-hub/connection-section-signals';
@@ -11,12 +11,28 @@ import {
   CONNECTION_SECTIONS,
   type ConnectionSectionId,
 } from '../connections-hub/connection-sections';
+import { CUSTOMIZE_ITEM_GLYPHS } from './customize-glyphs';
+
+/** What each group is called, and the line that says what it holds. */
+const GROUP_WORDS: Readonly<
+  Record<CustomizeNavGroupId, { label: string; description: string }>
+> = {
+  'your-agents': { label: 'Your agents', description: 'Who does the work' },
+  'run-on': {
+    label: 'What they run on',
+    description: 'Engines and the providers you sign in to or pay',
+  },
+  'can-reach': {
+    label: 'What they can reach',
+    description: 'Tool servers and the files agents can search',
+  },
+};
 
 export interface CustomizeItem {
   id: string;
   label: string;
   route: string;
-  icon?: DestinationIconId;
+  icon?: ReactNode;
   /** Null while the item's list has not loaded, or where no number fits. */
   count: number | null;
   needsAttention: boolean;
@@ -61,15 +77,14 @@ export function useCustomizeGroups(): CustomizeGroup[] {
       id: entry.id,
       label: entry.label,
       route: entry.route,
-      icon: APP_DESTINATION_REGISTRY.get(entry.id)?.icon,
+      icon: CUSTOMIZE_ITEM_GLYPHS[entry.id],
       count,
       needsAttention: connection ? signals.needsAttention(connection) : false,
     };
   };
-  return CUSTOMIZE_NAV_GROUPS.map((group) => ({
-    id: group.id,
-    label: group.label,
-    description: group.description,
-    items: entries.filter((entry) => entry.group === group.id).map(item),
+  return CUSTOMIZE_NAV_GROUP_ORDER.map((id) => ({
+    id,
+    ...GROUP_WORDS[id],
+    items: entries.filter((entry) => entry.group === id).map(item),
   })).filter((group) => group.items.length > 0);
 }

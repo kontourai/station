@@ -1,6 +1,6 @@
-import { destinationIcon } from '../../components/project-sidebar/nav-items';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { CustomizeItemLink } from './CustomizeItemLink';
+import { OVERVIEW_GLYPH } from './customize-glyphs';
 import { useCustomizeGroups } from './useCustomizeGroups';
 import './customize.css';
 
@@ -27,7 +27,7 @@ export function CustomizeNav({ activeId }: { activeId: string | null }) {
           navigate('/customize');
         }}
       >
-        {destinationIcon('customize')}
+        {OVERVIEW_GLYPH}
         <span className="customize-item__label">Overview</span>
       </a>
       {groups.map((group) => (

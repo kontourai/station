@@ -1124,28 +1124,43 @@ describe('the Customize page by address', () => {
   const ITEMS = [
     ['/customize', { type: 'customize' }],
     ['/agents', { type: 'agents' }],
-    ['/guidance', { type: 'guidance' }],
+    ['/guidance?tab=skills', { type: 'guidance', tab: 'skills' }],
     ['/customize/engines', { type: 'connections-engines' }],
     ['/customize/providers', { type: 'connections-models' }],
     ['/customize/tools', { type: 'connections-tools' }],
     ['/customize/knowledge', { type: 'connections-knowledge' }],
   ] as const;
+  const here = () => `${window.location.pathname}${window.location.search}`;
 
-  test('opens each item by address, and Back returns through each in turn', async () => {
+  /** Waits for a popstate-driven move to land on `address`. */
+  async function settleAt(address: string) {
+    for (let tick = 0; tick < 60; tick += 1) {
+      if (here() === address) return;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+
+  test('opens each item by address, and Back and Forward walk one item per press', async () => {
     navigationStore.navigate('/');
-    for (const [path, view] of ITEMS) {
-      navigationStore.navigate(path);
-      expect(window.location.pathname).toBe(path);
-      expect(
-        resolveViewFromPath(navigationStore.getSnapshot().pathname),
-      ).toEqual(view);
+    for (const [address, view] of ITEMS) {
+      navigationStore.navigate(address);
+      expect(here()).toBe(address);
+      expect(resolveViewFromPath(here())).toEqual(view);
     }
     for (let index = ITEMS.length - 2; index >= 0; index -= 1) {
-      const [path, view] = ITEMS[index]!;
+      const [address, view] = ITEMS[index]!;
       window.history.back();
-      await settleOn(path);
-      expect(navigationStore.getSnapshot().pathname).toBe(path);
-      expect(resolveViewFromPath(window.location.pathname)).toEqual(view);
+      await settleAt(address);
+      expect(here()).toBe(address);
+      await settleOn(address.split('?')[0]!);
+      expect(resolveViewFromPath(here())).toEqual(view);
+    }
+    for (let index = 1; index < ITEMS.length; index += 1) {
+      const [address, view] = ITEMS[index]!;
+      window.history.forward();
+      await settleAt(address);
+      expect(here()).toBe(address);
+      expect(resolveViewFromPath(here())).toEqual(view);
     }
   });
 

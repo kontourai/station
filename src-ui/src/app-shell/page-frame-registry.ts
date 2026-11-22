@@ -1,5 +1,6 @@
 import type { PageFrameSpec } from '../components/page-frame';
 import type { NavigationView } from '../types';
+import { CUSTOMIZE_EYEBROW } from './CustomizeShell';
 import { APP_DESTINATION_REGISTRY } from './destination-registry';
 
 /**
@@ -59,7 +60,6 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   'connections-tools': SPLIT_PANE,
   'connections-tool-edit': SPLIT_PANE,
   'connections-knowledge': {
-    eyebrow: 'Customize',
     title: 'Knowledge',
     subtitle: 'What agents can look up',
     width: 'narrow',
@@ -67,8 +67,6 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   // Not a Customize item: devices and other Stations move to the Station
   // page. Until then this keeps today's Computers screen at its address.
   'connections-computers': {
-    title: 'Computers',
-    subtitle: 'Devices and computers Station can reach or run work on',
     width: 'full',
     body: 'flow',
     flush: true,
@@ -194,7 +192,7 @@ const RESOLVED_FRAMES = ((): Record<
   for (const [type, spec] of Object.entries(FRAMES) as Array<
     [NavigationView['type'], PageFrameSpec | null]
   >) {
-    if (!spec || spec.title !== undefined) {
+    if (!spec) {
       resolved[type] = spec;
       continue;
     }
@@ -204,8 +202,15 @@ const RESOLVED_FRAMES = ((): Record<
     const destination = APP_DESTINATION_REGISTRY.getDestinationForView({
       type,
     } as NavigationView);
-    const title = destination?.label() ?? UNSURFACED_FALLBACK_TITLES[type];
-    resolved[type] = title ? { ...spec, title } : spec;
+    const title =
+      spec.title ?? destination?.label() ?? UNSURFACED_FALLBACK_TITLES[type];
+    // A page a Customize item hosts names Customize above its title: on a
+    // phone, where the list is hidden, that eyebrow is the way back.
+    const eyebrow = destination?.customizeNav ? CUSTOMIZE_EYEBROW : spec.eyebrow;
+    resolved[type] =
+      title === spec.title && eyebrow === spec.eyebrow
+        ? spec
+        : { ...spec, title, eyebrow };
   }
   return resolved;
 })();

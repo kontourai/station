@@ -128,7 +128,7 @@
 }
 
 .customize-landing__item {
-  min-height: 2.75rem;
+  min-height: var(--touch-target-min, 2.5rem);
 }
 
 .customize-landing__chevron {
@@ -140,4 +140,8 @@
   margin: 0;
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
+}
+
+.customize-landing__note a {
+  color: var(--k-action);
 }

@@ -238,7 +238,7 @@
     "agents": ["src-ui/src/views/AgentsView.tsx"],
     "skills": ["src-ui/src/views/GuidanceView.tsx"],
     "registry": ["src-ui/src/views/RegistryView.tsx"],
-    "customize": [
+    "connections": [
       "src-ui/src/views/customize/CustomizeLanding.tsx",
       "src-ui/src/views/customize/CustomizeNav.tsx"
     ],
@@ -335,7 +335,7 @@
       "src-ui/src/views/HomeView.tsx",
       "src-ui/src/components/chat-dock/ChatDock.tsx"
     ],
-    "mobile-customize": ["src-ui/src/views/customize/CustomizeLanding.tsx"],
+    "mobile-connections": ["src-ui/src/views/customize/CustomizeLanding.tsx"],
     "mobile-agent-editor": ["src-ui/src/views/AgentsView.tsx"],
     "mobile-onboarding-setup": ["src-ui/src/views/HomeView.tsx"],
     "inventory-drilldown-read-dark-desktop": [

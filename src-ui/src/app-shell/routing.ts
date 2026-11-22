@@ -77,7 +77,9 @@ export function getLegacyPathRedirect(path: string): string | null {
     );
     params.delete('section');
     const canonicalSearch = params.toString();
-    return `${section?.path ?? '/customize'}${canonicalSearch ? `?${canonicalSearch}` : ''}`;
+    const target =
+      sectionId === 'computers' ? COMPUTERS_PATH : (section?.path ?? '/customize');
+    return `${target}${canonicalSearch ? `?${canonicalSearch}` : ''}`;
   }
 
   const redirectPrefix = (
