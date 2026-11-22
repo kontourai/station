@@ -23,6 +23,7 @@ import type {
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
 import { currentUnattendedPrincipal } from '../../../runtime/agents/unattended-principal-context.js';
+import { createAutomationRoutes } from '../../../routes/operations/automations.js';
 import { createAutomationActionsRuntime } from '../../../runtime/automation-actions-runtime.js';
 import { installManagedApprovalCeiling } from '../../../security/managed-approval-ceiling.js';
 import {
@@ -1483,6 +1484,8 @@ test('retry-episode on an exhausted episode allows exactly one more attempt (#45
     retryAutomationEpisode({
       ledger: w.ledger,
       read: () => w.store.read(),
+      taskStatus: (taskId) => w.graph.readTaskView(taskId)?.status,
+    taskStatus: (taskId) => w.graph.readTaskView(taskId)?.status,
       ruleId: first.ruleId,
       episodeId: first.episodeId,
       now: Date.now(),
@@ -1711,6 +1714,7 @@ test("retry-episode on a slug-named rule's exhausted episode starts the retry in
   const retried = retryAutomationEpisode({
     ledger: w.ledger,
     read: () => w.store.read(),
+    taskStatus: (taskId) => w.graph.readTaskView(taskId)?.status,
     ruleId: first.ruleId,
     episodeId: first.episodeId,
     now: Date.now(),
@@ -1741,6 +1745,7 @@ const retryOf = (w: World, intent: AutomationActionIntent) => () =>
   retryAutomationEpisode({
     ledger: w.ledger,
     read: () => w.store.read(),
+    taskStatus: (taskId) => w.graph.readTaskView(taskId)?.status,
     ruleId: intent.ruleId,
     episodeId: intent.episodeId,
     now: Date.now(),
@@ -2142,6 +2147,106 @@ test('Retry returns for a Task that could not be canceled once that Task is no l
   await w.graph.updateTaskStatus(w.graph.listTasks()[0]!.id, 'canceled');
   expect(view()).toMatchObject({ startFailed: true });
   expect(view().startFailure).toBeUndefined();
+});
+
+/** POST retry-episode through the real route, over the world's ledger and Task service. */
+function retryThroughRoute(w: World, intent: AutomationActionIntent) {
+  const app = createAutomationRoutes(
+    {
+      listPolls: () => [],
+      listDeliveries: (limit) => w.ledger.listDeliveries(limit),
+      preview: { select: (branches) => branches.enabled() },
+      store: w.store,
+      retryEpisode: (ruleId, episodeId) =>
+        retryAutomationEpisode({
+          ledger: w.ledger,
+          read: () => w.store.read(),
+          taskStatus: (taskId) => w.graph.readTaskView(taskId)?.status,
+          ruleId,
+          episodeId,
+          now: Date.now(),
+        }),
+      operator: async () => ({
+        id: 'operator',
+        assertCurrent: async () => undefined,
+      }),
+    },
+    { warn() {}, info() {}, error() {}, debug() {} } as never,
+  );
+  return async () => {
+    const response = await app.request(
+      `/episodes/${encodeURIComponent(`${intent.ruleId}:${intent.episodeId}`)}/retry`,
+      {
+        method: 'POST',
+        body: '{}',
+        headers: { 'content-type': 'application/json' },
+      },
+    );
+    return {
+      status: response.status,
+      body: (await response.json()) as { code?: string; error?: string },
+    };
+  };
+}
+
+/** A failed start whose Task could not be canceled: that Task stays live. */
+async function leftoverTask(w: World) {
+  vi.spyOn(w.graph, 'updateTaskStatus').mockRejectedValueOnce(
+    new Error('task store unavailable'),
+  );
+  const first = await failedStart(w);
+  await vi.waitFor(() =>
+    expect(w.ledger.readIntent(first.intentId)?.reason).toBe(
+      'task_not_canceled',
+    ),
+  );
+  const taskId = w.ledger.readIntent(first.intentId)!.taskId!;
+  expect(w.graph.readTaskView(taskId)?.status).not.toBe('canceled');
+  return { first, taskId };
+}
+
+const liveTasks = (w: World) =>
+  w.graph
+    .listTasks()
+    .filter((task) => task.status !== 'canceled' && task.status !== 'done');
+
+test('the retry route refuses while the failed start left a live Task, and accepts once it is canceled', async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  const { first, taskId } = await leftoverTask(w);
+  const retry = retryThroughRoute(w, first);
+  const refused = await retry();
+  expect(refused).toEqual({
+    status: 409,
+    body: expect.objectContaining({
+      code: 'task-live',
+      error:
+        'The failed start left a Task that is still live; cancel that Task first.',
+    }),
+  });
+  await w.runtime.tick();
+  expect(liveTasks(w).map(({ id }) => id)).toEqual([taskId]);
+  expect(w.adapter.sends).toEqual([]);
+
+  await w.graph.updateTaskStatus(taskId, 'canceled');
+  expect((await retry()).status).toBe(200);
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  expect(liveTasks(w)).toHaveLength(1);
+  expect(liveTasks(w)[0]!.id).not.toBe(taskId);
+});
+
+test('two retries racing after the leftover Task is canceled create one Task', async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  const { first, taskId } = await leftoverTask(w);
+  await w.graph.updateTaskStatus(taskId, 'canceled');
+  const retry = retryThroughRoute(w, first);
+  const outcomes = await Promise.all([retry(), retry()]);
+  expect(outcomes.map(({ status }) => status).sort()).toEqual([200, 409]);
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(1));
+  await w.runtime.tick();
+  expect(liveTasks(w)).toHaveLength(1);
+  expect(w.adapter.sends).toHaveLength(1);
 });
 
 test('a rule with no approval mode still starts an Agent that takes one at ask, never more permissive', async () => {

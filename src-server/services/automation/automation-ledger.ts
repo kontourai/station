@@ -366,7 +366,8 @@ export type RetryEpisodeOutcome =
         | 'active'
         | 'no-intent'
         | 'stale'
-        | 'policy-unavailable';
+        | 'policy-unavailable'
+        | 'task-live';
     }>;
 
 /** The current policy a retry adopts, or undefined when it may not act. */
@@ -425,13 +426,16 @@ export interface AutomationLedger {
    * one more attempt, and a new pending intent for that attempt is retained
    * under `policy` (the current rule, never the old snapshot). Refused for an
    * indeterminate episode (its earlier effect is unknown), an episode with
-   * live work, a stale event, or a rule that may not act now.
+   * live work, a stale event, or a rule that may not act now. Also refused
+   * (`task-live`) while the Task its failed start created is still live:
+   * `taskLive` reads that Task's current status inside this transaction.
    */
   retryEpisode(input: {
     ruleId: string;
     episodeId: string;
     now: number;
     policy: RetryEpisodePolicy;
+    taskLive: (taskId: string) => boolean;
   }): RetryEpisodeOutcome;
   updateIntent(
     intentId: string,
@@ -1352,6 +1356,7 @@ class SqliteAutomationLedger implements AutomationLedger {
     episodeId: string;
     now: number;
     policy: RetryEpisodePolicy;
+    taskLive: (taskId: string) => boolean;
   }): RetryEpisodeOutcome {
     return this.transaction(() => {
       this.reconcileDeadClaims(input.now);
@@ -1377,6 +1382,12 @@ class SqliteAutomationLedger implements AutomationLedger {
         )
         .get(input.ruleId, input.episodeId, episode.episode_key);
       if (live) return { kind: 'active' };
+      // A Task the failed start left behind (its cancel failed, or has not
+      // run yet) is still startable; a retry would add a second live Task.
+      // Read its status now, under this transaction, not from the reason.
+      const failed = this.failedStart(input.ruleId, input.episodeId);
+      if (failed?.taskId !== undefined && input.taskLive(failed.taskId))
+        return { kind: 'task-live' };
       const row = this.db
         .prepare(
           'SELECT intent_id, state, body FROM automation_action_intents WHERE rule_id = ? AND episode_id = ? ORDER BY retry DESC LIMIT 1',

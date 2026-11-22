@@ -6413,7 +6413,8 @@ Everything except disable and delete also needs the
 answers 404 `automation_not_found`; a stale fingerprint or invalid change 409
 `invalid_automation`; an unreadable policy 503 `policy_unavailable`. A retry
 refusal answers 409 with `not-exhausted`, `indeterminate`, `active`,
-`no-intent`, `stale` or `policy-unavailable`. See
+`no-intent`, `stale`, `policy-unavailable` or `task-live` (the Task a failed
+start created is still live; cancel it first). See
 [Operator surface](../design/automations.md#operator-surface).
 
 ### Open File with System Handler

@@ -231,6 +231,11 @@ const RETRY_REFUSALS: Record<
     message:
       'The rule may not act now (it is not live, or its source no longer grants the action).',
   },
+  'task-live': {
+    status: 409,
+    message:
+      'The failed start left a Task that is still live; cancel that Task first.',
+  },
 };
 
 export function createAutomationRoutes(

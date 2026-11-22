@@ -312,7 +312,10 @@ approval settings"), and an Agent-proposed rule can only be `ask`. Retry is
 not offered for such a refusal until the rule's approval setting or its
 Agent changes. A Task whose cancel fails is named on the open episode, and
 Retry stays hidden only while that Task is live: the episode list reads the
-Task's current status, so it returns once the Task is canceled or done.
+Task's current status, so it returns once the Task is canceled or done. The
+server refuses the retry itself (`task-live`) while the Task a failed start
+created is live, reading its status in the same ledger transaction as the
+live-work check, so no client can add a second live Task to the episode.
 
 While the Project list cannot be read, or authority cannot be checked, no
 automation Task starts and nothing is refused; the warning is logged when

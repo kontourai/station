@@ -25,11 +25,14 @@ import type {
  * rule's current policy. The retry adopts the rule as it is now (not the
  * snapshot the exhausted attempt ran under), and only while that rule is
  * `live`, of the same action kind, on the same repository and granted by an
- * enabled, unrevoked source.
+ * enabled, unrevoked source. Refused (`task-live`) while the Task its
+ * failed start created is still live, from `taskStatus` read at the retry.
  */
 export function retryAutomationEpisode(input: {
   ledger: Pick<AutomationLedger, 'retryEpisode'>;
   read: () => AutomationConfiguration;
+  /** A Task's current status; undefined when it is gone. */
+  taskStatus: (taskId: string) => string | undefined;
   ruleId: string;
   episodeId: string;
   now: number;
@@ -38,6 +41,7 @@ export function retryAutomationEpisode(input: {
     ruleId: input.ruleId,
     episodeId: input.episodeId,
     now: input.now,
+    taskLive: (taskId) => !settledTaskStatus(input.taskStatus(taskId)),
     policy: (latest) => {
       const configuration = input.read();
       const source = configuration.sources.find(
@@ -86,6 +90,11 @@ function isFormattingControl(codePoint: number): boolean {
   );
 }
 
+/** A Task no longer startable: canceled, done, or gone (undefined). */
+function settledTaskStatus(status: string | undefined): boolean {
+  return status === undefined || status === 'canceled' || status === 'done';
+}
+
 /** Failures a retry of the unchanged rule would meet again. */
 const RULE_CHANGE_FAILURES = new Set([
   'agent-option-unsupported',
@@ -109,7 +118,7 @@ export function projectAutomationEpisode(
     record.startFailure === 'task-not-canceled' &&
     record.failedTaskId !== undefined &&
     taskStatus !== undefined &&
-    [undefined, 'canceled', 'done'].includes(taskStatus(record.failedTaskId));
+    settledTaskStatus(taskStatus(record.failedTaskId));
   const rule = configuration?.rules.find(({ id }) => id === record.ruleId);
   const source = configuration?.sources.find(({ id }) => id === rule?.sourceId);
   const unchanged =

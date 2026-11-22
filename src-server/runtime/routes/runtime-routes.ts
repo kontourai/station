@@ -13680,6 +13680,8 @@ export function configureRuntimeRoutes(
                 retryAutomationEpisode({
                   ledger: automationLedger.get(),
                   read: () => automationStore.read(),
+                  taskStatus: (taskId) =>
+                    context.taskGraphService.readTaskView(taskId)?.status,
                   ruleId,
                   episodeId,
                   now: Date.now(),

@@ -347,6 +347,7 @@ async function operatorSurface(
         retryAutomationEpisode({
           ledger,
           read: () => store.read(),
+          taskStatus: (taskId) => options.taskStatus?.(taskId),
           ruleId,
           episodeId,
           now: Date.now(),
