@@ -237,7 +237,7 @@ describe('OpenAI-compatible Test Connection (delta2 review H1)', () => {
     // The shape the form wrote before saves required an address.
     const service = serviceFor({ baseUrl: '', apiKey: '' });
     const plain =
-      'This connection has no server URL. Add one, or delete the connection.';
+      'This connection has no server URL. Add one, turn the connection off, or delete it.';
 
     // Listing alone runs catalogue discovery, which records the receipt the
     // Setup required panel reads.

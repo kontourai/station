@@ -37,7 +37,7 @@ const logger = createLogger({ name: 'openai-compat-provider' });
  * became the connection's readiness text.
  */
 const OPENAI_COMPAT_NO_ADDRESS_REASON =
-  'This connection has no server URL. Add one, or delete the connection.';
+  'This connection has no server URL. Add one, turn the connection off, or delete it.';
 
 export class OpenAICompatLLMProvider extends AiSdkLLMProvider {
   readonly id = 'openai-compat';
