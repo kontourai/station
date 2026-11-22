@@ -678,6 +678,20 @@ describe('ConversationStatsModal — usage tree for a Station chat (#5390)', () 
     expect(screen.queryByText(/tokens not reported/)).toBeNull();
   });
 
+  test('a Station chat shows nothing while its tree is still loading', () => {
+    render(
+      <ConversationStatsModal
+        {...baseProps}
+        stats={STATION_CHAT}
+        usageTreeLoading
+      />,
+    );
+
+    expect(screen.getByText('Total: 22')).toBeTruthy();
+    expect(screen.queryByText('Usage with children')).toBeNull();
+    expect(screen.queryByText(/Reading usage/)).toBeNull();
+  });
+
   test('an engine chat keeps its tree', () => {
     render(
       <ConversationStatsModal

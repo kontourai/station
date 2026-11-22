@@ -542,10 +542,11 @@ export function ConversationStatsModal({
           {/* The usage tree reads engine events; Station's own turns keep
               their usage in its memory store, so for a Station chat with no
               children the tree's root would say "not reported" under the
-              figures above (#5390). */}
+              figures above (#5390). Until the tree has loaded, a Station chat
+              is not known to have children, so nothing is shown meanwhile. */}
           {!(
             stats.measurement?.source === 'station-memory' &&
-            usageTree?.root.children.length === 0
+            (usageTreeLoading || usageTree?.root.children.length === 0)
           ) && (
             <ThreadUsageBreakdown
               tree={usageTree}
