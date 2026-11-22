@@ -1,0 +1,17 @@
+{
+  "revision": "11fb9b2e82a5c67eff0974d100c90e9ca8ba6876",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"The only workflow change is timeout-minutes: 3 on the Nightly android_provider_state step (Play readback). Checked this page's readback, timeout and provider-state claims: they describe other steps or the stable release workflow and are unchanged by it.","inputs":[".github/workflows/nightly-native-cohort.yml"]},
+
+    {"path":"docs/guides/native-releases.md","note":"The only workflow change is timeout-minutes: 3 on the Nightly android_provider_state step (Play readback). Checked this page's readback, timeout and provider-state claims: they describe other steps or the stable release workflow and are unchanged by it.","inputs":[".github/workflows/nightly-native-cohort.yml"]},
+
+    {"path":"docs/guides/nightly.md","note":"The only workflow change is timeout-minutes: 3 on the Nightly android_provider_state step (Play readback). Checked this page's readback, timeout and provider-state claims: they describe other steps or the stable release workflow and are unchanged by it.","inputs":[".github/workflows/nightly-native-cohort.yml"]},
+
+    {"path":"docs/guides/release-rings.md","note":"The only workflow change is timeout-minutes: 3 on the Nightly android_provider_state step (Play readback). Checked this page's readback, timeout and provider-state claims: they describe other steps or the stable release workflow and are unchanged by it.","inputs":[".github/workflows/nightly-native-cohort.yml"]},
+
+    {"path":"docs/guides/store-entry.md","note":"The only workflow change is timeout-minutes: 3 on the Nightly android_provider_state step (Play readback). Checked this page's readback, timeout and provider-state claims: they describe other steps or the stable release workflow and are unchanged by it.","inputs":[".github/workflows/nightly-native-cohort.yml"]},
+
+    {"path":"docs/guides/store-listing.md","note":"The only workflow change is timeout-minutes: 3 on the Nightly android_provider_state step (Play readback). Checked this page's readback, timeout and provider-state claims: they describe other steps or the stable release workflow and are unchanged by it.","inputs":[".github/workflows/nightly-native-cohort.yml"]}
+  ]
+}
