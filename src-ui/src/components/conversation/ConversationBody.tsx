@@ -414,6 +414,11 @@ export interface ConversationBodyProps {
  * message before it, skipping the `[SYSTEM_EVENT]` markers that are themselves
  * stored with a user role (#797).
  *
+ * When the marker and that message both name a turn, they must name the same
+ * one. A failed turn with no prompt of its own (one the engine or an
+ * automation opened) has nothing to send again, and the message before it
+ * belongs to an earlier turn.
+ *
  * Returns the attachments alongside the text: the server now persists the
  * turn's `file` parts, so a resend that carried only the text would silently
  * drop an image the user had attached — a recovery affordance that quietly
@@ -439,6 +444,9 @@ export function findPrecedingUserTurn(
     if (text.startsWith('[SYSTEM_EVENT]')) {
       continue;
     }
+    const markerTurnId = messages[markerIndex]?.turnId;
+    if (markerTurnId && message.turnId && message.turnId !== markerTurnId)
+      return null;
     // Every file part, whether or not this read carried its bytes. Filtering
     // to inline ones here is what made a retry silently text-only once
     // byte-budgeted reads became the steady state (station#3385); resolving

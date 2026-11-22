@@ -1282,6 +1282,40 @@ describe('a failed turn read back from stored events', () => {
     }
   });
 
+  // The engine opened the failed turn itself: it has no prompt of its own,
+  // so Send again must not resend the person's earlier, unrelated message.
+  test('a failed turn the engine opened offers no Send again of an earlier message', async () => {
+    sdk.fetchWindow.mockResolvedValue(
+      window([
+        { method: 'turn.started', turnId: 'turn-1', prompt: 'Run the build.' },
+        { method: 'turn.completed', turnId: 'turn-1', finishReason: 'stop' },
+        {
+          method: 'turn.started',
+          turnId: 'turn-2',
+          prompt: '',
+          metadata: { trigger: 'provider' },
+        },
+        {
+          method: 'runtime.error',
+          turnId: 'turn-2',
+          severity: 'error',
+          message: 'Scripted mid-stream failure',
+        },
+      ]),
+    );
+    const chatInput = buildChatInput();
+    renderDock(reopened(), vi.fn(), chatInput);
+    expect(
+      await screen.findByRole(
+        'button',
+        { name: 'Troubleshoot this' },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+    expect(chatInput.handleSend).not.toHaveBeenCalled();
+  });
+
   test('a failure the person has moved past is not offered for resending', async () => {
     sdk.fetchWindow.mockResolvedValue(
       window([
@@ -1348,8 +1382,10 @@ describe('a reply cut off at the output limit', () => {
     expect(notice.textContent).toBe(
       'This reply was cut off at the model’s output limit.',
     );
-    expect(screen.getByText(/runs out of room before it can/)).toBeTruthy();
-    expect(screen.queryByText('Done')).toBeNull();
+    // The note belongs to the reply it qualifies.
+    expect(notice.closest('.message')?.textContent ?? '').toContain(
+      'This reply runs out of room before it can',
+    );
   });
 
   test('an ordinary finish shows no notice', async () => {
