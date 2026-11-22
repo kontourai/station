@@ -629,6 +629,15 @@ describe('fork and handoff deliver the transcript seed across engine families', 
       for (const text of [...BEFORE, 'AFTER-HANDOFF-4477'])
         expect(carried).toContain(text);
       expect(carried).not.toContain(AFTER);
+      // The fork's own transcript names each copied row once, across both
+      // source Sessions.
+      const copied = h.service
+        .readForkConversationTranscript(forkId, authority)
+        ?.messages.filter((message) => message.metadata?.forkSourceMessageId);
+      expect(copied?.length).toBeGreaterThanOrEqual(6);
+      expect(new Set(copied?.map((message) => message.id)).size).toBe(
+        copied?.length,
+      );
     },
   );
 
