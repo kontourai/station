@@ -26,7 +26,7 @@ import {
 } from '@kontourai/station-sdk/setup-imports-query';
 import { SETUP_IMPORT_MAX_ITEMS } from '@kontourai/station-shared/setup-import-bounds';
 import { Badge } from '@kontourai/ui/react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import { Button } from '../Button';
@@ -372,13 +372,17 @@ function PromptRow({
   onCheck,
   onRename,
 }: PromptRowProps) {
-  const messageId = `codex-import-message-${entry.id}`;
-  const errorId = `codex-import-error-${entry.id}`;
+  // Element ids come from React, never from the entry id: that holds the
+  // prompt's file name, and a space in it would split `aria-describedby`
+  // into tokens that resolve to nothing.
+  const rowId = useId();
+  const messageId = `${rowId}-message`;
+  const errorId = `${rowId}-error`;
   return (
     <li className="codex-import__row">
       <div className="codex-import__head">
         <Checkbox
-          id={`codex-import-${entry.id}`}
+          id={`${rowId}-select`}
           checked={checked}
           disabled={disabled}
           onChange={onCheck}

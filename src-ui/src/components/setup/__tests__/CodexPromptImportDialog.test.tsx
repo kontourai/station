@@ -509,4 +509,34 @@ describe('CodexPromptImportDialog', () => {
       ),
     ).toBeTruthy();
   });
+
+  test('a row message and error reach the name field when the file name has spaces, # . and quotes', () => {
+    // Real entry ids are the file name plus a digest prefix.
+    hooks.previewData = {
+      ...preview,
+      entries: [
+        entry('review pr.md:aaaaaaaaaaaa', 'review-pr'),
+        entry('review-pr.md:bbbbbbbbbbbb', 'review-pr'),
+        entry(`it's "#1".v2.md:cccccccccccc`, 'changelog', true),
+      ],
+    };
+    const dialog = renderDialog();
+    const [first] = within(dialog).getAllByRole('textbox', {
+      name: 'New name for review-pr',
+      description: /Another prompt here is also called “review-pr”/,
+    });
+    fireEvent.change(first!, { target: { value: '' } });
+    expect(
+      within(dialog).getByRole('textbox', {
+        name: 'New name for review-pr',
+        description: /Type a name, or untick to skip this prompt\./,
+      }),
+    ).toBe(first);
+    expect(
+      within(dialog).getByRole('textbox', {
+        name: 'New name for changelog',
+        description: /You already have a skill called “changelog”/,
+      }),
+    ).toBeTruthy();
+  });
 });
