@@ -742,7 +742,11 @@ describe('a Claude engine that dies after its launch configuration was replaced'
     const kills = stubbornKill(child);
     q.crash(new Error('Unexpected token in JSON at position 0'));
     await vi.waitFor(() => expect(methods()).toContain('runtime.error'));
-    await vi.waitFor(() => expect(kills.length).toBeGreaterThan(0));
+    // The adapter's own bounded stop ends with SIGKILL; count after it, so
+    // only a later kill (a restart in place) is caught.
+    await vi.waitFor(() => expect(kills).toContain('SIGKILL'), {
+      timeout: 5000,
+    });
     const killsAfterFailure = kills.length;
     const continued = await continueConversation('are you there').then(
       () => undefined,
