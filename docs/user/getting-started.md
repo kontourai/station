@@ -667,10 +667,9 @@ remembered only once it can start, and for each project and for **No project** o
 Station access, and the Model for each Agent. Home always starts in
 **No project**, and the project you pick on its chip holds in this browser tab,
 for this Station access, until you reload the page; opening a Project elsewhere
-never changes it, and the chat dock does not follow it. The dock's own new chat
-opens on the Project whose page you are on; anywhere else it opens on the
-project last chosen in the dock (its chip, or the Project you last opened), and
-its chip shows which.
+never changes it, and the chat dock does not follow it. Anywhere, the dock's own
+new chat opens on the project last chosen in the dock (its chip, or the Project
+you last opened), and its chip shows which.
 Runtime options such as reasoning effort stay with the Model choice for this
 browser tab only; they are not remembered after it. A choice you make stays on
 both surfaces for this browser tab, even if another chat later runs on a

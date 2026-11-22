@@ -706,7 +706,6 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     setLayout,
     lastDockMaximized,
     collapseMaximizedDock,
-    selectedProject: pageProjectSlug,
   } = useNavigation();
   const dismissPhoneLayer = useDismissPhoneLayer();
   const showSurface = useShowSurface();
@@ -731,9 +730,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     [showToast],
   );
   const invalidate = useInvalidateQuery();
-  // The route's project, else the remembered `lastProject`: the Terminal
-  // pane's fallback below. New chat reads the route's own project instead
-  // (`pageProjectSlug`, see `resolveNewChatModalDefaultProjectSlug`).
+  // station#4525 review MED-3: the New Chat modal's project-step default,
+  // for the ambient dock, falls back to this (the route-level "project I
+  // am currently viewing") only when there is no shell-owned binding —
+  // restoring the pre-station#4525 behavior for a user who has never bound
+  // one. See `resolveNewChatModalDefaultProjectSlug`.
   const { projectSlug: routeActiveProjectSlug } = useActiveProject();
   const {
     models: availableModels,
@@ -4671,16 +4672,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                             project.slug === projectSlug,
                                         )
                                       : projects,
-                                  // The project page this dock is opened on, else the dock's
-                                  // binding (explicit No project included). A fork keeps its
-                                  // own source project.
+                                  // Use the project shown by this dock, including explicit No project.
+                                  // A fork keeps its own source project.
                                   activeProjectSlug:
                                     resolveNewChatModalDefaultProjectSlug({
                                       forkProjectSlug: forkSource?.projectSlug,
                                       hasImmutableProjectScope,
                                       immutableProjectSlug: projectSlug,
                                       dockChromeProjectSlug,
-                                      pageProjectSlug,
+                                      routeActiveProjectSlug,
                                     }),
                                   newChatProjectOverride,
                                   startWithDefault: newChatStartWithDefault,

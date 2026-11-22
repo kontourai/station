@@ -13,10 +13,10 @@ import {
   useScopedProjectRunLocationsQuery,
   useScopedProjectsQuery,
 } from '../../contexts/ProjectsContext';
+import { resolveStartContextFromProjectSlug } from '../../hooks/startContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { effectiveExecutionStationId } from '../../hooks/useExecutionStationCatalog';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
-import { resolveStartContextFromProjectSlug } from '../../hooks/startContext';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { useProjectIcons } from '../../hooks/useProjectIcons';
 import {

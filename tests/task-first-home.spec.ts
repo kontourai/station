@@ -1,5 +1,6 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from '@kontourai/station-contracts/project-identity';
 import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
 import type {
@@ -407,6 +408,93 @@ async function mockTaskFirstHome(
         } satisfies WorkspacePaneHostActionCatalog),
       );
       return;
+    }
+    // The open fixture chat's per-conversation reads, in the shapes the
+    // daily-driver shell declares: nothing scheduled, nothing queued, no
+    // terminal runs, and a turn directory derived from the fixture's events.
+    if (route.request().method() === 'GET') {
+      const url = new URL(route.request().url());
+      if (path === '/api/orchestration/agent-schedule/task-first-home') {
+        await route.fulfill(json({ wakeUps: [], jobProposals: [], jobs: [] }));
+        return;
+      }
+      // What a new chat in the project starts with: the fixed default, no
+      // last-used start recorded, no approval layer.
+      if (path === '/api/projects/station/chat-defaults') {
+        await route.fulfill(
+          json({
+            version: 'station.project-chat-defaults/v1',
+            projectSlug: 'station',
+            model: { selection: 'fixed', lastUsed: [] },
+            approvalMode: { selection: 'fixed', resolved: { source: 'none' } },
+          } satisfies ProjectChatDefaultsView),
+        );
+        return;
+      }
+      if (path === '/api/orchestration/conversations/task-first-home/inbox') {
+        await route.fulfill(json({ entries: [] }));
+        return;
+      }
+      if (
+        path === '/api/terminal/runs' &&
+        url.searchParams.get('conversationId') === 'task-first-home'
+      ) {
+        await route.fulfill(json({ runs: [] }));
+        return;
+      }
+      if (
+        path ===
+          '/api/orchestration/session-reads/task-first-home/turn-directory' &&
+        !url.searchParams.has('cursor')
+      ) {
+        const events = (options.sessionEvents ?? []) as Array<{
+          method?: string;
+          turnId?: unknown;
+          createdAt?: string;
+          prompt?: string;
+        }>;
+        if (events.length === 0) {
+          await route.fulfill({
+            status: 404,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: false,
+              error: 'Session not found',
+            }),
+          });
+          return;
+        }
+        const turns = events.flatMap((event) => {
+          if (
+            event.method !== 'turn.started' ||
+            typeof event.turnId !== 'string'
+          )
+            return [];
+          const terminal = events.find(
+            (item) =>
+              item.turnId === event.turnId && item.method === 'turn.completed',
+          );
+          return [
+            {
+              turnId: event.turnId,
+              startedAt: event.createdAt,
+              request: event.prompt,
+              outcome: terminal ? 'completed' : 'open',
+            },
+          ];
+        });
+        await route.fulfill(
+          json({
+            session: {
+              conversationId: 'task-first-home',
+              turnCount: turns.length,
+            },
+            turns: turns.reverse(),
+            nextCursor: null,
+          }),
+        );
+        return;
+      }
     }
     if (path === '/api/orchestration/sessions/task-first-home') {
       await route.fulfill(
@@ -1159,20 +1247,6 @@ test.describe('Task-first Home (#332, mocked)', () => {
     await expectStartedChatRuns(page, prompt, 'Codex', 'gpt-5.4');
   });
 
-  // A full load of a project page does not rebind the dock, so its binding
-  // can name another project (here none). The dock's New chat opens on the
-  // page's project and its chip says so.
-  test("the dock's New chat on a project page opens on that page's project", async ({
-    page,
-  }) => {
-    await mockTaskFirstHome(page);
-    await page.goto('/projects/station?dock=open');
-    const { draft } = await openNewChatDraft(page);
-    await expect(
-      draft.getByRole('button', { name: 'Project: Station', exact: true }),
-    ).toBeVisible();
-  });
-
   test('keeps sidebar, project-chat, help launch, and explicit maximize transitions connected', async ({
     page,
   }) => {
@@ -1497,14 +1571,13 @@ test.describe('Task-first Home (#332, mocked)', () => {
       .toBeNull();
     await expect(page.getByText('No chat open')).toBeVisible();
 
-    // Opening the project's work bound the dock to it, and the dock's draft
-    // (off a project page) opens there. Home does not follow that binding:
-    // its chip still says No project, with the same global Agent and Model
-    // the dock's draft names (#5392).
+    // The selection Home's chips name is the one the dock's draft opens
+    // with: the same chips, the same words. Opening the project's work bound
+    // the dock to it, so both now open on Station.
     await expect(advertised).toBeVisible();
     await expect(
       homeComposer.getByRole('button', {
-        name: 'Project: No project',
+        name: 'Project: Station',
         exact: true,
       }),
     ).toBeVisible();

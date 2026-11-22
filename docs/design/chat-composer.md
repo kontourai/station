@@ -616,7 +616,7 @@ when its execution ends; its result remains separate and can report unfinished w
 Choosing on a chip does not start an engine; a choice is remembered (Agent per
 context, Model per binding; Home's project is its own pick for this tab and
 Station access, and writes nothing the dock reads; the dock's draft opens on the
-project page it is opened on, else on the dock's own binding). A Project set to
+dock's own binding, the project last chosen in the dock). A Project set to
 **Last model used in this project** puts the model its person's last chat there
 started with (server-recorded, per Agent) above that memory, and its approval
 layer replaces the personal default in **Permissions**

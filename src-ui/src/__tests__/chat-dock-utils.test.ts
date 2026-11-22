@@ -314,7 +314,7 @@ describe('resolveSessionProjectMismatchLabel (station#4525 review MED-1)', () =>
   }
 });
 
-describe('resolveNewChatModalDefaultProjectSlug', () => {
+describe('resolveNewChatModalDefaultProjectSlug (station#4525 review MED-3)', () => {
   test('a fork confirmation always wins outright, over every other default', () => {
     expect(
       resolveNewChatModalDefaultProjectSlug({
@@ -322,7 +322,7 @@ describe('resolveNewChatModalDefaultProjectSlug', () => {
         hasImmutableProjectScope: true,
         immutableProjectSlug: 'layout-project',
         dockChromeProjectSlug: 'bound-project',
-        pageProjectSlug: 'viewed-project',
+        routeActiveProjectSlug: 'viewed-project',
       }),
     ).toBe('fork-source-project');
   });
@@ -334,54 +334,43 @@ describe('resolveNewChatModalDefaultProjectSlug', () => {
         hasImmutableProjectScope: true,
         immutableProjectSlug: 'layout-project',
         dockChromeProjectSlug: 'bound-project',
-        pageProjectSlug: 'viewed-project',
+        routeActiveProjectSlug: 'viewed-project',
       }),
     ).toBe('layout-project');
   });
 
-  // A full load or a Back into a project page does not rebind the dock, so
-  // the binding can name another project than the page on screen.
-  test('on a project page the ambient dock defaults to that page, not a binding to another project', () => {
+  test('the ambient dock with a bound project defaults to the binding, not the currently-viewed route project', () => {
     expect(
       resolveNewChatModalDefaultProjectSlug({
         forkProjectSlug: undefined,
         hasImmutableProjectScope: false,
         immutableProjectSlug: undefined,
         dockChromeProjectSlug: 'bound-project',
-        pageProjectSlug: 'viewed-project',
-      }),
-    ).toBe('viewed-project');
-    expect(
-      resolveNewChatModalDefaultProjectSlug({
-        forkProjectSlug: undefined,
-        hasImmutableProjectScope: false,
-        immutableProjectSlug: undefined,
-        dockChromeProjectSlug: null,
-        pageProjectSlug: 'viewed-project',
-      }),
-    ).toBe('viewed-project');
-  });
-
-  test('off a project page the ambient dock defaults to its binding', () => {
-    expect(
-      resolveNewChatModalDefaultProjectSlug({
-        forkProjectSlug: undefined,
-        hasImmutableProjectScope: false,
-        immutableProjectSlug: undefined,
-        dockChromeProjectSlug: 'bound-project',
-        pageProjectSlug: null,
+        routeActiveProjectSlug: 'viewed-project',
       }),
     ).toBe('bound-project');
   });
 
-  test('no binding and no project page -> undefined (genuinely unbound default)', () => {
+  test('No project in the dock remains unbound despite a previously viewed project', () => {
     expect(
       resolveNewChatModalDefaultProjectSlug({
         forkProjectSlug: undefined,
         hasImmutableProjectScope: false,
         immutableProjectSlug: undefined,
         dockChromeProjectSlug: null,
-        pageProjectSlug: null,
+        routeActiveProjectSlug: 'viewed-project',
+      }),
+    ).toBeUndefined();
+  });
+
+  test('no binding and no viewed project -> undefined (genuinely unbound default)', () => {
+    expect(
+      resolveNewChatModalDefaultProjectSlug({
+        forkProjectSlug: undefined,
+        hasImmutableProjectScope: false,
+        immutableProjectSlug: undefined,
+        dockChromeProjectSlug: null,
+        routeActiveProjectSlug: null,
       }),
     ).toBeUndefined();
   });
