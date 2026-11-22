@@ -1,0 +1,7 @@
+{
+  "revision": "0d8a3ff687e275de864403f16747a82d41fe7a33",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Cites api.md only for the terminal socket transport; the api.md edit is in Save a Connection and does not touch that section.","inputs":["docs/design/terminal.md","docs/reference/api.md"]}
+  ]
+}

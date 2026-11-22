@@ -1,0 +1,7 @@
+{
+  "revision": "9e4336e1905da60cfb96d14491094ce9dba0d744",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-tour.webm","note":"Historical tour of Connections; the change adds a reason line only under a blank OpenAI-compatible server URL and disables Create in that state, which the tour does not depict. Not recaptured.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/ProviderSettingsView.tsx","src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]}
+  ]
+}

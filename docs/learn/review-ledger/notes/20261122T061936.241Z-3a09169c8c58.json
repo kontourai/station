@@ -1,0 +1,7 @@
+{
+  "revision": "9e4336e1905da60cfb96d14491094ce9dba0d744",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"OpenAI-compatible steps now state the server URL is required: Create/Save stay unavailable while blank and the connection routes refuse the save (connection_address_required). Checked against the schema refinement in runtime.ts, connections.ts/providers.ts validate refusal, and the ProviderConnectionForm inline reason; the Create paragraph above remains accurate.","inputs":["docs/guides/connections.md","src-ui/src/views/ProviderSettingsView.tsx","src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]}
+  ]
+}
