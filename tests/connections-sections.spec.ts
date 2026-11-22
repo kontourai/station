@@ -127,12 +127,18 @@ const SECTIONS: ReadonlyArray<{
 
 const CUSTOMIZE_ITEMS = [
   ['Agents', '/agents'],
-  ['Skills', '/guidance'],
+  // Straight to its tab, so opening Skills is one history entry.
+  ['Skills', '/guidance?tab=skills'],
   ['Engines', '/customize/engines'],
   ['Providers', '/customize/providers'],
   ['Tools', '/customize/tools'],
   ['Knowledge', '/customize/knowledge'],
 ] as const;
+
+/** Where the page is, including the query that tells Skills its tab. */
+function address(url: URL) {
+  return `${url.pathname}${url.search}`;
+}
 
 const MODEL_TEST_FAILURE_REASON =
   'The endpoint returned 401 Unauthorized for the configured API key.';
@@ -336,20 +342,50 @@ test.describe('Customize page', () => {
       await list
         .getByRole('link', { name: new RegExp(`^${label}\\b`) })
         .click();
-      await expect(page).toHaveURL((url) => url.pathname === path);
+      await expect(page).toHaveURL((url) => address(url) === path);
       await expect(
         list.getByRole('link', { name: new RegExp(`^${label}\\b`) }),
       ).toHaveAttribute('aria-current', 'page');
     }
+    // One item per press, both ways: no item adds a second history entry
+    // (Skills used to rewrite /guidance to /guidance?tab=skills, so Back
+    // stayed on Skills).
     for (const [label, path] of [...CUSTOMIZE_ITEMS].reverse().slice(1)) {
       await page.goBack();
-      await expect(page).toHaveURL((url) => url.pathname === path);
+      await expect(page).toHaveURL((url) => address(url) === path);
       await expect(
         list.getByRole('link', { name: new RegExp(`^${label}\\b`) }),
       ).toHaveAttribute('aria-current', 'page');
     }
     await page.goBack();
-    await expect(page).toHaveURL((url) => url.pathname === '/customize');
+    await expect(page).toHaveURL((url) => address(url) === '/customize');
+    for (const [label, path] of CUSTOMIZE_ITEMS) {
+      await page.goForward();
+      await expect(page).toHaveURL((url) => address(url) === path);
+      await expect(
+        list.getByRole('link', { name: new RegExp(`^${label}\\b`) }),
+      ).toHaveAttribute('aria-current', 'page');
+    }
+  });
+
+  test('Computers is reachable from the landing and from its old section address', async ({
+    page,
+  }) => {
+    await page.goto('/customize');
+    await page
+      .locator('.customize-landing')
+      .getByRole('link', { name: 'Computers', exact: true })
+      .click();
+    await expect(page).toHaveURL(
+      (url) => url.pathname === '/connections/computers',
+    );
+    await expect(
+      page.getByRole('heading', { name: 'Computers', level: 1, exact: true }),
+    ).toBeVisible();
+    await page.goto('/connections?section=computers');
+    await expect(page).toHaveURL(
+      (url) => url.pathname === '/connections/computers',
+    );
   });
 
   test('old Connections addresses land on the matching Customize item', async ({
@@ -558,13 +594,13 @@ const ENGINES: readonly EngineConnection[] = [
 /**
  * The words DESIGN §7 retires from this hub. They are checked against the
  * rendered SECTION, not the whole document, so the sidebar's own labels do not
- * decide the result.
+ * decide the result. "Providers" left this list: the first-release design
+ * makes it the name of a Customize item.
  */
 const RETIRED_HUB_WORDS = [
   'ACP',
   'agent app',
   'Agent app',
-  'Providers',
   'Remote work',
   'Developer services',
 ];
@@ -604,7 +640,9 @@ test.describe('Customize — Engines item', () => {
     ).toBeVisible();
     await expect(page.locator('.split-pane__item').first()).toBeVisible();
 
-    const section = await page.locator('main').innerText();
+    // The item's page only: the Customize list beside it names its siblings
+    // (Providers among them), which is the first-release design's word.
+    const section = await page.locator('.customize-shell__main').innerText();
     for (const word of RETIRED_HUB_WORDS) {
       expect(section, `the Engines section still says "${word}"`).not.toContain(
         word,
@@ -646,9 +684,19 @@ test.describe('Customize items at 390x844', () => {
         MIN_TOUCH_TARGET_PX - 0.001,
       );
       await link.tap();
-      await expect(page).toHaveURL((url) => url.pathname === path);
-      await page.goBack();
-      await expect(page).toHaveURL((url) => url.pathname === '/customize');
+      await expect(page).toHaveURL((url) => address(url) === path);
+      // The way back on a phone is the page's own Customize eyebrow, at the
+      // touch floor; Agents and Skills carry it too.
+      const back = page
+        .locator('.page__label')
+        .getByRole('link', { name: 'Customize', exact: true });
+      await expect(back).toBeVisible();
+      const backBox = (await back.boundingBox())!;
+      expect(backBox.height, `${label} way back`).toBeGreaterThanOrEqual(
+        MIN_TOUCH_TARGET_PX - 0.001,
+      );
+      await back.tap();
+      await expect(page).toHaveURL((url) => address(url) === '/customize');
     }
   });
 

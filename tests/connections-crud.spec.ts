@@ -820,8 +820,9 @@ test.describe('Connections CRUD', () => {
     );
 
     await page.goto('/customize/providers');
+    // The Customize item is Providers; it still lists model connections.
     await expect(
-      page.getByRole('heading', { name: 'Models', level: 1, exact: true }),
+      page.getByRole('heading', { name: 'Providers', level: 1, exact: true }),
     ).toBeVisible();
 
     // Exactly one detected entry, and it names what was detected. A count is
@@ -1438,15 +1439,17 @@ test.describe('Connections CRUD', () => {
     const modelRows = page.locator('.split-pane__list .split-pane__item');
     await expect(modelRows).toHaveCount(1);
     await expect(modelRows.first()).toHaveAccessibleName(/^Local Ollama/);
-    // Both counts come from one derivation
+    // The counts come from one derivation
     // (`views/connections-hub/connection-section-signals.ts`), so this also
-    // pins that nothing was invented in the Customize list.
+    // pins that nothing was invented in the Customize list: the loaded,
+    // empty engine list reads 0, and Providers carries no number until
+    // providers replace model connections.
     const customizeList = page.getByRole('navigation', { name: 'Customize' });
     await expect(
-      customizeList.getByRole('link', { name: /^Providers 1\b/ }),
+      customizeList.getByRole('link', { name: /^Engines 0\b/ }),
     ).toBeVisible();
     await expect(
-      customizeList.getByRole('link', { name: /^Engines 0\b/ }),
+      customizeList.getByRole('link', { name: 'Providers', exact: true }),
     ).toBeVisible();
 
     await page.goto('/customize/engines');
@@ -1500,12 +1503,14 @@ test.describe('Connections CRUD', () => {
     });
     await page.setViewportSize(desktopViewport);
 
-    // `/connections/providers` redirects to Models. The add flow is a ROUTE
-    // now, not a dialog: the frame's action navigates to `/models/new`, where
+    // `/connections/providers` redirects to Customize › Providers. The add
+    // flow is a ROUTE, not a dialog: the frame's action navigates to
+    // `/customize/providers/new`, where
     // the split pane's detail is the provider type picker.
     await page.goto('/customize/providers');
+    // The Customize item is Providers; it still lists model connections.
     await expect(
-      page.getByRole('heading', { name: 'Models', level: 1, exact: true }),
+      page.getByRole('heading', { name: 'Providers', level: 1, exact: true }),
     ).toBeVisible();
 
     await page

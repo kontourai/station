@@ -485,19 +485,30 @@ test.describe('compatibility-aware reconnect', () => {
             // reached the way a person does it there — up to the Customize
             // landing (the page eyebrow, when there is one), then the item.
             const openCustomizeItem = async (title: string) => {
-              if (new URL(page.url()).pathname !== '/customize') {
-                const up = page
+              // Every page this walk starts an item from carries the eyebrow
+              // (Customize items) or is Computers, whose landing link is the
+              // way in; a missing eyebrow fails here rather than being
+              // papered over with a reload.
+              if (new URL(page.url()).pathname === '/connections/computers') {
+                await page.goto('/customize');
+              } else if (new URL(page.url()).pathname !== '/customize') {
+                await page
                   .locator('.page__label')
-                  .getByRole('link', { name: 'Customize', exact: true });
-                if (await up.count()) await up.tap();
-                else await page.goto('/customize');
-                await expect(page).toHaveURL(
-                  (url) => url.pathname === '/customize',
-                );
+                  .getByRole('link', { name: 'Customize', exact: true })
+                  .tap();
               }
+              await expect(page).toHaveURL(
+                (url) => url.pathname === '/customize',
+              );
               await page
                 .locator('.customize-landing')
-                .getByRole('link', { name: new RegExp(`^${title}\\b`) })
+                .getByRole('link', {
+                  name:
+                    title === 'Computers'
+                      ? 'Computers'
+                      : new RegExp(`^${title}\\b`),
+                  exact: title === 'Computers',
+                })
                 .tap();
             };
 
@@ -534,11 +545,9 @@ test.describe('compatibility-aware reconnect', () => {
             ];
             for (const section of sections) {
               await test.step(section.title, async () => {
-                // Computers is not a Customize item: only its address
-                // reaches it until the Station page exists.
-                if (section.path === '/connections/computers')
-                  await page.goto(section.path);
-                else await openCustomizeItem(section.title);
+                // Computers is not a Customize item: the landing links to it
+                // until the Station page exists. Same walk: up, then in.
+                await openCustomizeItem(section.title);
                 await expect(page).toHaveURL(
                   (url) => url.pathname === section.path,
                 );
