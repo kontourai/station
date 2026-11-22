@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-22T05:55:40Z | nightly-desktop | 0.2.0-nightly.20261122 | `74256e1` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44987271694) |
+| 2026-11-22T05:55:40Z | nightly-android | 0.2.0-nightly.20261122 | `74256e1` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44987271694) |
+| 2026-11-22T05:04:41Z | nightly-npm | 0.12.0-nightly.20261122.44987271694 | `74256e1` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44987271694) |
 | 2026-11-21T22:56:40Z | nightly-desktop | 0.2.0-nightly.20261121.3 | `1bbeef7` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44953874657) |
 | 2026-11-21T22:56:40Z | nightly-android | 0.2.0-nightly.20261121.3 | `1bbeef7` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/44953874657) |
 | 2026-11-21T22:00:37Z | nightly-npm | 0.12.0-nightly.20261121.44953874657 | `1bbeef7` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/44953874657) |
@@ -531,6 +534,75 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-22T05:55:40Z · nightly-desktop · 0.2.0-nightly.20261122
+
+- Ship SHA: `74256e1d78f9b45c876f1ebc82b37af5f7dd564f`
+- Artifact built at: `2026-11-22T05:02:44.632Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 44987271694)
+
+### Changelog
+
+Commits since `1bbeef7` ([full sha](https://github.com/kontourai/station/commit/1bbeef7965e0309f2d72bb4b32751d7f2f0ae502)):
+
+**Fixes**
+
+- [#5383](https://github.com/kontourai/station/pull/5383) fix(nightly): retry the Google Play readback within a stated bound
+- [#5382](https://github.com/kontourai/station/pull/5382) fix(plugins): say a plugin is installed but not active when its activation runs out of time, and offer Recover
+- [#5381](https://github.com/kontourai/station/pull/5381) fix(browser): refuse agent script on a site-less blank tab and admit popups without hanging
+- [#5380](https://github.com/kontourai/station/pull/5380) fix(agents): keep a running session's tools across a reload that changes nothing, and restart it when its settings change
+- [#5379](https://github.com/kontourai/station/pull/5379) fix(ci): track hosted delivery validation separately
+
+**CI / workflow**
+
+- [#5378](https://github.com/kontourai/station/pull/5378) ci(health): open an issue when a scheduled workflow fails or stops running
+
+## 2026-11-22T05:55:40Z · nightly-android · 0.2.0-nightly.20261122
+
+- Ship SHA: `74256e1d78f9b45c876f1ebc82b37af5f7dd564f`
+- Artifact built at: `2026-11-22T05:02:03.607Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 44987271694)
+
+### Changelog
+
+Commits since `1bbeef7` ([full sha](https://github.com/kontourai/station/commit/1bbeef7965e0309f2d72bb4b32751d7f2f0ae502)):
+
+**Fixes**
+
+- [#5383](https://github.com/kontourai/station/pull/5383) fix(nightly): retry the Google Play readback within a stated bound
+- [#5382](https://github.com/kontourai/station/pull/5382) fix(plugins): say a plugin is installed but not active when its activation runs out of time, and offer Recover
+- [#5381](https://github.com/kontourai/station/pull/5381) fix(browser): refuse agent script on a site-less blank tab and admit popups without hanging
+- [#5380](https://github.com/kontourai/station/pull/5380) fix(agents): keep a running session's tools across a reload that changes nothing, and restart it when its settings change
+- [#5379](https://github.com/kontourai/station/pull/5379) fix(ci): track hosted delivery validation separately
+
+**CI / workflow**
+
+- [#5378](https://github.com/kontourai/station/pull/5378) ci(health): open an issue when a scheduled workflow fails or stops running
+
+## 2026-11-22T05:04:41Z · nightly-npm · 0.12.0-nightly.20261122.44987271694
+
+- Ship SHA: `74256e1d78f9b45c876f1ebc82b37af5f7dd564f`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261122.44987271694 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `1bbeef7` ([full sha](https://github.com/kontourai/station/commit/1bbeef7965e0309f2d72bb4b32751d7f2f0ae502)):
+
+**Fixes**
+
+- [#5383](https://github.com/kontourai/station/pull/5383) fix(nightly): retry the Google Play readback within a stated bound
+- [#5382](https://github.com/kontourai/station/pull/5382) fix(plugins): say a plugin is installed but not active when its activation runs out of time, and offer Recover
+- [#5381](https://github.com/kontourai/station/pull/5381) fix(browser): refuse agent script on a site-less blank tab and admit popups without hanging
+- [#5380](https://github.com/kontourai/station/pull/5380) fix(agents): keep a running session's tools across a reload that changes nothing, and restart it when its settings change
+- [#5379](https://github.com/kontourai/station/pull/5379) fix(ci): track hosted delivery validation separately
+
+**CI / workflow**
+
+- [#5378](https://github.com/kontourai/station/pull/5378) ci(health): open an issue when a scheduled workflow fails or stops running
 
 ## 2026-11-21T22:56:40Z · nightly-desktop · 0.2.0-nightly.20261121.3
 
