@@ -355,7 +355,8 @@ retired names.
   never `main`) is maximized, and each pane host's tree
   (`RegionArrangement` for the region half). It is persisted per device (the
   `regionArrangement` device setting): a property of the screen you are
-  sitting at, never of a project or a layout.
+  sitting at, never of a project or a layout. A maximize is the exception: it
+  belongs to the page where it was made and is not persisted.
 - **Panel** — a bounded visual grouping of controls or information within a
   page or pane, such as a Trust panel or inspector panel. A Panel is not
   persisted and is not a synonym for a pane.

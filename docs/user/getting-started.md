@@ -855,8 +855,9 @@ Developer tools, swipe left to reveal labelled actions; the row follows your
 finger and snaps open when released. Only one row's actions stay revealed.
 **Snooze** opens duration choices, and **Dismiss** hides the conversation.
 Swiping itself never runs an action. Dismissal leaves running work and history intact.
-Choose **Undo** in the toast, press **⌘Z** / **Ctrl+Z** outside an editor,
-or search the inbox, find matching **Dismissed** results, and choose
+Choose **Undo** in the toast, or press **⌘Z** / **Ctrl+Z** outside an editor
+while the toast is shown. After the toast has gone, search the inbox for the
+conversation, find it under **Dismissed** in the results, and choose
 **Restore to inbox**.
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
