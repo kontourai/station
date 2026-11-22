@@ -16,6 +16,7 @@ import { raceWithSignal, throwIfAborted } from '../../utils/bounded-async.js';
 import {
   connectionAddressRefusal,
   connectionSchema,
+  connectionUpdateSchema,
   errorMessage,
   getBody,
   param,
@@ -91,6 +92,9 @@ export function createConnectionRoutes(
 ) {
   const app = new Hono();
   const validateWrite = validate(connectionSchema, {
+    refusal: connectionAddressRefusal,
+  });
+  const validateUpdate = validate(connectionUpdateSchema, {
     refusal: connectionAddressRefusal,
   });
 
@@ -266,7 +270,7 @@ export function createConnectionRoutes(
     }
   });
 
-  app.put('/:id', validateWrite, async (c) => {
+  app.put('/:id', validateUpdate, async (c) => {
     try {
       const body = getBody(c) as ConnectionConfig;
       const id = param(c, 'id');

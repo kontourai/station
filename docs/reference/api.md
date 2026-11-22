@@ -3487,9 +3487,12 @@ configuration awaiting runtime activation returns 202 and
 redacted. Invalid saves return a structured 400 response. An
 OpenAI-compatible (`openai-compat`) Model connection without a non-blank
 `config.baseUrl` is refused on both POST and PUT with 400 and
-`code: "connection_address_required"`, and nothing is stored. The
-`/api/providers` writes (used by the `create_provider` control tool) apply the
-same rule. A POST whose `id`
+`code: "connection_address_required"`, and nothing is stored. One exception:
+a PUT with `enabled: false` is accepted without an address, so a connection
+saved before the rule can be turned off; turning it on, a create (even with
+`enabled: false`), and a `/api/providers` PUT that omits `enabled` still need
+the address. The `/api/providers` writes (used by the `create_provider`
+control tool) apply the same rule. A POST whose `id`
 names an existing Model connection returns 409 and changes nothing; replacing
 it, including its stored API key, is a PUT.
 

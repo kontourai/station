@@ -25,6 +25,7 @@ import {
   getBody,
   param,
   providerSchema,
+  providerUpdateSchema,
   validate,
 } from '../schemas/schemas.js';
 import {
@@ -75,6 +76,9 @@ export function createProviderRoutes(
 ) {
   const app = new Hono();
   const validateWrite = validate(providerSchema, {
+    refusal: connectionAddressRefusal,
+  });
+  const validateUpdate = validate(providerUpdateSchema, {
     refusal: connectionAddressRefusal,
   });
 
@@ -158,7 +162,7 @@ export function createProviderRoutes(
     }
   });
 
-  app.put('/:id', validateWrite, async (c) => {
+  app.put('/:id', validateUpdate, async (c) => {
     try {
       const id = param(c, 'id');
       const body = getBody(c) as Omit<ProviderConnectionConfig, 'id'>;

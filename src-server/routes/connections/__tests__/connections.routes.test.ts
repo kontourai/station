@@ -567,4 +567,81 @@ describe('Connection Routes', () => {
     expect(stored).toHaveLength(1);
     expect(stored[0].config.baseUrl).toBe('http://127.0.0.1:9/v1');
   });
+
+  test('PUT turns off an OpenAI-compatible connection saved with no server URL; turning it on or creating one still needs the URL', async () => {
+    const stored: any[] = [];
+    const providerService = {
+      listProviderConnections: vi.fn(() => stored),
+      saveProviderConnection: vi.fn((connection: any) => {
+        const index = stored.findIndex((entry) => entry.id === connection.id);
+        if (index >= 0) stored[index] = connection;
+        else stored.push(connection);
+      }),
+      deleteProviderConnection: vi.fn(),
+      checkHealth: vi.fn().mockResolvedValue(true),
+    };
+    const service = createConnectionServiceForTest(
+      providerService as any,
+      () => [],
+      async () => [],
+      () => ({ connections: [] }),
+      async () => ({}) as any,
+      vi.fn(async (updates: any) => updates),
+    );
+    const app = createConnectionRoutes(service);
+    const send = (
+      method: 'POST' | 'PUT',
+      path: string,
+      enabled: boolean,
+      baseUrl?: string,
+    ) =>
+      app.request(path, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          id: 'legacy',
+          kind: 'model',
+          type: 'openai-compat',
+          name: 'Legacy',
+          enabled,
+          config:
+            baseUrl === undefined ? { apiKey: '' } : { baseUrl, apiKey: '' },
+          capabilities: ['llm', 'embedding'],
+        }),
+      });
+    const refusal = {
+      success: false,
+      code: 'connection_address_required',
+      error: 'A server URL is required to save this connection.',
+    };
+
+    for (const baseUrl of [undefined, '', '   ']) {
+      // A record written before saves required an address, still turned on.
+      stored.splice(0, stored.length, {
+        id: 'legacy',
+        type: 'openai-compat',
+        name: 'Legacy',
+        config: {},
+        enabled: true,
+        capabilities: ['llm', 'embedding'],
+      });
+      const off = await send('PUT', '/legacy', false, baseUrl);
+      expect(off.status).toBe(200);
+      expect(stored).toEqual([
+        expect.objectContaining({ id: 'legacy', enabled: false }),
+      ]);
+
+      const on = await send('PUT', '/legacy', true, baseUrl);
+      expect(on.status).toBe(400);
+      expect(await json(on)).toMatchObject(refusal);
+      expect(stored[0].enabled).toBe(false);
+    }
+
+    // A connection that cannot be used is not creatable, turned off or not.
+    stored.splice(0, stored.length);
+    const create = await send('POST', '/', false);
+    expect(create.status).toBe(400);
+    expect(await json(create)).toMatchObject(refusal);
+    expect(stored).toEqual([]);
+  });
 });

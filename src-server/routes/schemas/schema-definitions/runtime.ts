@@ -542,14 +542,21 @@ export const rateSchema = z.object({
  * missing a prerequisite while capability lookups (the Knowledge embedding
  * connection among them) still selected it, because they read `enabled` and
  * `capabilities`, not readiness. Refusing the write here covers create and
- * update on both connection routes.
+ * update on both connection routes; an update that turns the connection off
+ * is the one exception (see refuseMissingAddressUnlessTurnedOff).
  */
 const CONNECTION_ADDRESS_REQUIRED_CODE = 'connection_address_required';
 const CONNECTION_ADDRESS_REQUIRED_MESSAGE =
   'A server URL is required to save this connection.';
 
+type ConnectionAddressInput = {
+  type: string;
+  config?: Record<string, unknown>;
+  enabled?: boolean;
+};
+
 function refuseMissingOpenAICompatAddress(
-  data: { type: string; config?: Record<string, unknown> },
+  data: ConnectionAddressInput,
   ctx: z.RefinementCtx,
 ) {
   if (data.type !== 'openai-compat') return;
@@ -561,6 +568,20 @@ function refuseMissingOpenAICompatAddress(
     message: CONNECTION_ADDRESS_REQUIRED_MESSAGE,
     params: { code: CONNECTION_ADDRESS_REQUIRED_CODE },
   });
+}
+
+/**
+ * An update that leaves the connection turned off needs no address, so a
+ * record saved before addresses were required can be turned off without
+ * inventing one. Only an explicit `enabled: false` qualifies: turning it on,
+ * an update that omits `enabled`, and every create still need the address.
+ */
+function refuseMissingAddressUnlessTurnedOff(
+  data: ConnectionAddressInput,
+  ctx: z.RefinementCtx,
+) {
+  if (data.enabled === false) return;
+  refuseMissingOpenAICompatAddress(data, ctx);
 }
 
 /** `validate()` refusal that names the missing address instead of "Validation failed". */
@@ -576,97 +597,112 @@ export function connectionAddressRefusal(issues: z.ZodIssue[]) {
 }
 
 // Provider
-export const providerSchema = z
-  .object({
-    type: z.string().min(1),
-    name: z.string().min(1),
-    config: z.record(z.any()),
-    enabled: z.boolean().optional(),
-    capabilities: z.array(z.string()).optional(),
-  })
-  .superRefine(refuseMissingOpenAICompatAddress);
+const providerFields = z.object({
+  type: z.string().min(1),
+  name: z.string().min(1),
+  config: z.record(z.any()),
+  enabled: z.boolean().optional(),
+  capabilities: z.array(z.string()).optional(),
+});
+
+export const providerSchema = providerFields.superRefine(
+  refuseMissingOpenAICompatAddress,
+);
+
+export const providerUpdateSchema = providerFields.superRefine(
+  refuseMissingAddressUnlessTurnedOff,
+);
 
 const BEDROCK_AUTH_MODES = ['chain', 'profile', 'api-key'] as const;
 
-export const connectionSchema = z
-  .object({
-    id: z.string().optional(),
-    kind: z.enum(['model', 'agent', 'runtime']),
-    type: z.string().min(1),
-    name: z.string().min(1),
-    description: z.string().optional(),
-    config: z.record(z.any()),
-    enabled: z.boolean(),
-    capabilities: z.array(z.string()),
-    status: z
-      .enum(['ready', 'degraded', 'missing_prerequisites', 'disabled', 'error'])
-      .optional(),
-    prerequisites: z
-      .array(
-        z.object({
-          id: z.string(),
-          name: z.string(),
-          description: z.string(),
-          status: z.enum(['installed', 'missing', 'error']),
-          category: z.enum(['required', 'optional']),
-          source: z.string().optional(),
-          installGuide: z
-            .object({
-              steps: z.array(z.string()),
-              commands: z.array(z.string()).optional(),
-              links: z.array(z.string()).optional(),
-            })
-            .optional(),
-        }),
-      )
-      .optional(),
-    lastCheckedAt: z.string().nullable().optional(),
-  })
-  .superRefine(refuseMissingOpenAICompatAddress)
-  // Bedrock's auth-mode discriminant (docs/design/connections-onboarding.md
-  // §3.1) is enforced here, not just at the credential-resolution helper: a
-  // save must never persist a mode with its required field missing, which
-  // would otherwise silently resolve to the default credential chain later
-  // (HIGH-2, review fix round). `config` stays a generic `z.record` for
-  // every other connection type — this refinement only fires for `bedrock`.
-  .superRefine((data, ctx) => {
-    if (data.type !== 'bedrock') return;
-    const authMode = data.config?.authMode;
-    if (authMode === undefined) return;
-    if (
-      !BEDROCK_AUTH_MODES.includes(
-        authMode as (typeof BEDROCK_AUTH_MODES)[number],
-      )
-    ) {
+const connectionFields = z.object({
+  id: z.string().optional(),
+  kind: z.enum(['model', 'agent', 'runtime']),
+  type: z.string().min(1),
+  name: z.string().min(1),
+  description: z.string().optional(),
+  config: z.record(z.any()),
+  enabled: z.boolean(),
+  capabilities: z.array(z.string()),
+  status: z
+    .enum(['ready', 'degraded', 'missing_prerequisites', 'disabled', 'error'])
+    .optional(),
+  prerequisites: z
+    .array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        description: z.string(),
+        status: z.enum(['installed', 'missing', 'error']),
+        category: z.enum(['required', 'optional']),
+        source: z.string().optional(),
+        installGuide: z
+          .object({
+            steps: z.array(z.string()),
+            commands: z.array(z.string()).optional(),
+            links: z.array(z.string()).optional(),
+          })
+          .optional(),
+      }),
+    )
+    .optional(),
+  lastCheckedAt: z.string().nullable().optional(),
+});
+
+// Bedrock's auth-mode discriminant (docs/design/connections-onboarding.md
+// §3.1) is enforced here, not just at the credential-resolution helper: a
+// save must never persist a mode with its required field missing, which
+// would otherwise silently resolve to the default credential chain later
+// (HIGH-2, review fix round). `config` stays a generic `z.record` for
+// every other connection type — this refinement only fires for `bedrock`.
+function refuseIncompleteBedrockAuth(
+  data: z.infer<typeof connectionFields>,
+  ctx: z.RefinementCtx,
+) {
+  if (data.type !== 'bedrock') return;
+  const authMode = data.config?.authMode;
+  if (authMode === undefined) return;
+  if (
+    !BEDROCK_AUTH_MODES.includes(
+      authMode as (typeof BEDROCK_AUTH_MODES)[number],
+    )
+  ) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['config', 'authMode'],
+      message: `Bedrock authMode must be one of: ${BEDROCK_AUTH_MODES.join(', ')}.`,
+    });
+    return;
+  }
+  if (authMode === 'profile') {
+    const profile = data.config?.profile;
+    if (typeof profile !== 'string' || profile.trim().length === 0) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ['config', 'authMode'],
-        message: `Bedrock authMode must be one of: ${BEDROCK_AUTH_MODES.join(', ')}.`,
+        path: ['config', 'profile'],
+        message: 'A named AWS profile is required when authMode is "profile".',
       });
-      return;
     }
-    if (authMode === 'profile') {
-      const profile = data.config?.profile;
-      if (typeof profile !== 'string' || profile.trim().length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['config', 'profile'],
-          message:
-            'A named AWS profile is required when authMode is "profile".',
-        });
-      }
+  }
+  if (authMode === 'api-key') {
+    const apiKey = data.config?.apiKey;
+    if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['config', 'apiKey'],
+        message: 'A Bedrock API key is required when authMode is "api-key".',
+      });
     }
-    if (authMode === 'api-key') {
-      const apiKey = data.config?.apiKey;
-      if (typeof apiKey !== 'string' || apiKey.trim().length === 0) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ['config', 'apiKey'],
-          message: 'A Bedrock API key is required when authMode is "api-key".',
-        });
-      }
-    }
-  });
+  }
+}
+
+export const connectionSchema = connectionFields
+  .superRefine(refuseMissingOpenAICompatAddress)
+  .superRefine(refuseIncompleteBedrockAuth);
+
+export const connectionUpdateSchema = connectionFields
+  .superRefine(refuseMissingAddressUnlessTurnedOff)
+  .superRefine(refuseIncompleteBedrockAuth);
 
 // Conversation context
 export const contextActionSchema = z.object({

@@ -169,6 +169,62 @@ describe('Provider Routes', () => {
     ]);
   });
 
+  test('PUT turns off an OpenAI-compatible provider with no server URL; turning it on or creating one still needs the URL', async () => {
+    const svc = createMockProviderService();
+    const app = createProviderRoutes(svc as any);
+    const send = (
+      method: 'POST' | 'PUT',
+      path: string,
+      enabled: boolean | undefined,
+      baseUrl: string | undefined,
+    ) =>
+      app.request(path, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'openai-compat',
+          name: 'Legacy',
+          config: baseUrl === undefined ? {} : { baseUrl },
+          ...(enabled === undefined ? {} : { enabled }),
+        }),
+      });
+
+    for (const baseUrl of [undefined, '', '   ']) {
+      svc.saveProviderConnection({
+        id: 'p1',
+        type: 'openai-compat',
+        name: 'Legacy',
+        config: {},
+        enabled: true,
+      });
+      const off = await send('PUT', '/p1', false, baseUrl);
+      expect(off.status).toBe(200);
+      expect(svc.listProviderConnections()).toEqual([
+        expect.objectContaining({ id: 'p1', enabled: false }),
+      ]);
+
+      // Turning it on, or an update that does not say, still needs the URL.
+      for (const enabled of [true, undefined]) {
+        const refused = await send('PUT', '/p1', enabled, baseUrl);
+        expect(refused.status).toBe(400);
+        expect(await json(refused)).toMatchObject({
+          code: 'connection_address_required',
+        });
+      }
+      expect(svc.listProviderConnections()).toEqual([
+        expect.objectContaining({ id: 'p1', enabled: false }),
+      ]);
+    }
+
+    svc.deleteProviderConnection('p1');
+    const create = await send('POST', '/', false, undefined);
+    expect(create.status).toBe(400);
+    expect(await json(create)).toMatchObject({
+      code: 'connection_address_required',
+    });
+    expect(svc.listProviderConnections()).toEqual([]);
+  });
+
   test('PUT /:id makes the path authoritative and updates exactly one provider', async () => {
     const svc = createMockProviderService();
     svc.saveProviderConnection({

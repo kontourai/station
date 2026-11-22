@@ -21,8 +21,27 @@ import { hasConnectionAddress } from './utils';
 /** The inline reason Create/Save is unavailable; the header button points at it. */
 export const CONNECTION_ADDRESS_REQUIRED_ID = 'provider-address-required';
 /** Same sentence the server answers with (`connection_address_required`). */
-export const CONNECTION_ADDRESS_REQUIRED_MESSAGE =
+const CONNECTION_ADDRESS_REQUIRED_MESSAGE =
   'A server URL is required to save this connection.';
+/** A saved connection turned off can be saved without one (only to stay off). */
+const CONNECTION_ADDRESS_TO_TURN_ON_MESSAGE =
+  'A server URL is required to turn this connection on.';
+
+/**
+ * Why this OpenAI-compatible connection is missing its address, or `null`
+ * when it has one (or needs none). The server accepts an update that turns
+ * a saved connection off without an address, so Save stays available then.
+ */
+export function connectionAddressReason(
+  form: Pick<ProviderConnection, 'type' | 'config' | 'enabled'>,
+  isNew: boolean,
+): { message: string; blocksSave: boolean } | null {
+  if (form.type !== 'openai-compat' || hasConnectionAddress(form.config))
+    return null;
+  return !isNew && !form.enabled
+    ? { message: CONNECTION_ADDRESS_TO_TURN_ON_MESSAGE, blocksSave: false }
+    : { message: CONNECTION_ADDRESS_REQUIRED_MESSAGE, blocksSave: true };
+}
 
 /**
  * The connection's default model (archive#3652, archive#3654, and their review's).
@@ -191,6 +210,7 @@ export function ProviderConnectionForm({
   onLoadModels?: () => void;
 }) {
   const fieldId = useId();
+  const addressReason = connectionAddressReason(form, isNew);
   const nameId = `${fieldId}-name`;
   const serverUrlId = `${fieldId}-server-url`;
   const apiKeyId = `${fieldId}-api-key`;
@@ -595,19 +615,17 @@ export function ProviderConnectionForm({
               type="text"
               value={(form.config.baseUrl as string) ?? ''}
               placeholder="https://api.openai.com/v1"
-              aria-invalid={!hasConnectionAddress(form.config) || undefined}
+              aria-invalid={addressReason ? true : undefined}
               aria-describedby={
-                hasConnectionAddress(form.config)
-                  ? undefined
-                  : CONNECTION_ADDRESS_REQUIRED_ID
+                addressReason ? CONNECTION_ADDRESS_REQUIRED_ID : undefined
               }
               onChange={(event) =>
                 onSetConfigField('baseUrl', event.target.value)
               }
             />
-            {!hasConnectionAddress(form.config) && (
+            {addressReason && (
               <div id={CONNECTION_ADDRESS_REQUIRED_ID} className="editor-error">
-                {CONNECTION_ADDRESS_REQUIRED_MESSAGE}
+                {addressReason.message}
               </div>
             )}
           </div>

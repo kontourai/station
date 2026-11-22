@@ -31,7 +31,7 @@ import {
 } from './connections-hub/connection-health';
 import {
   CONNECTION_ADDRESS_REQUIRED_ID,
-  CONNECTION_ADDRESS_REQUIRED_MESSAGE,
+  connectionAddressReason,
   ProviderConnectionForm,
 } from './provider-settings/ProviderConnectionForm';
 import { ProviderStackOverview } from './provider-settings/ProviderStackOverview';
@@ -44,7 +44,6 @@ import {
   describeProvider,
   filterModelProviders,
   finalizeConnectionConfig,
-  hasConnectionAddress,
   isConnectionConfigValid,
   mergeServerIntoEdit,
   readFormPath,
@@ -439,6 +438,7 @@ export function ProviderSettingsView({
     });
   }
 
+  const addressReason = form ? connectionAddressReason(form, isNew) : null;
   const llmEmbeddingProviders = filterModelProviders(modelProviders, '');
   const filtered = filterModelProviders(modelProviders, search);
 
@@ -653,12 +653,7 @@ export function ProviderSettingsView({
             // The field-level reason can sit below the fold (a phone opening a
             // connection saved without an address); the sticky header keeps
             // the same sentence beside the disabled Create/Save.
-            subtitle={
-              form.type === 'openai-compat' &&
-              !hasConnectionAddress(form.config)
-                ? CONNECTION_ADDRESS_REQUIRED_MESSAGE
-                : undefined
-            }
+            subtitle={addressReason?.message}
           >
             {!isNew && selectedProviderId && (
               <button
@@ -677,10 +672,7 @@ export function ProviderSettingsView({
               aria-describedby={
                 [
                   isNew ? 'provider-create-disclosure' : null,
-                  form.type === 'openai-compat' &&
-                  !hasConnectionAddress(form.config)
-                    ? CONNECTION_ADDRESS_REQUIRED_ID
-                    : null,
+                  addressReason ? CONNECTION_ADDRESS_REQUIRED_ID : null,
                 ]
                   .filter(Boolean)
                   .join(' ') || undefined
@@ -688,7 +680,8 @@ export function ProviderSettingsView({
               disabled={
                 saveMutation.isPending ||
                 !form.name ||
-                !isConnectionConfigValid(form.type, form.config)
+                (!isConnectionConfigValid(form.type, form.config) &&
+                  addressReason?.blocksSave !== false)
               }
             >
               {saveMutation.isPending ? 'Saving…' : isNew ? 'Create' : 'Save'}
