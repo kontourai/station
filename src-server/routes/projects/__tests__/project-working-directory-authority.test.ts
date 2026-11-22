@@ -526,6 +526,28 @@ test('repository acquisition uses operator Git authority and returns one durable
     error:
       'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.',
   });
+  const wrongScheme = await f.send(
+    f.operator.credential,
+    'POST',
+    '/repository-acquisitions',
+    { requestId: randomUUID(), sourceUrl: 'http://example.test/repo.git' },
+  );
+  expect(wrongScheme.status).toBe(400);
+  expect(wrongScheme.body).toMatchObject({
+    error:
+      'Use an HTTPS or SSH repository URL. Other URL schemes are not accepted.',
+  });
+  const scpLike = await f.send(
+    f.operator.credential,
+    'POST',
+    '/repository-acquisitions',
+    { requestId: randomUUID(), sourceUrl: 'host:repo with space' },
+  );
+  expect(scpLike.status).toBe(400);
+  expect(scpLike.body).toMatchObject({
+    error:
+      'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.',
+  });
   const unrecorded = await f.send(
     f.operator.credential,
     'GET',

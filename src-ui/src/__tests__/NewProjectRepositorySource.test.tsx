@@ -360,6 +360,88 @@ test('a refused source keeps the form with the reason beside the URL and never r
   expect(screen.queryByText(reason)).toBeNull();
 });
 
+test.each([
+  ['branch', 'Branch or tag (optional)', 'release'],
+  ['subdirectory', 'Repository subdirectory (optional)', 'apps/web'],
+] as const)(
+  'a refused source reason clears when the %s is edited',
+  async (_, label, value) => {
+    // The exact body the route sends for a refused branch.
+    const reason =
+      'Choose a branch or tag without whitespace or a leading dash.';
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (
+          init?.method === 'POST' &&
+          url.endsWith('/api/projects/repository-acquisitions')
+        )
+          return Response.json(
+            {
+              success: false,
+              error: reason,
+              details: { formErrors: [reason], fieldErrors: {} },
+            },
+            { status: 400 },
+          );
+        throw new Error(`Unexpected fixture request: ${url}`);
+      }),
+    );
+    mount();
+    fireEvent.change(screen.getByLabelText('Repository URL'), {
+      target: { value: 'git@github.com:org/research.git' },
+    });
+    fireEvent.change(screen.getByLabelText('Branch or tag (optional)'), {
+      target: { value: '-bad' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Acquire repository' }));
+    await screen.findByText(reason);
+    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    expect(screen.queryByText(reason)).toBeNull();
+    expect(
+      screen.getByLabelText('Repository URL').getAttribute('aria-invalid'),
+    ).toBeNull();
+  },
+);
+
+test('a refusal for a caller who is not the operator keeps the form and never reads an operation', async () => {
+  const calls: string[] = [];
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push(`${init?.method ?? 'GET'} ${url}`);
+      if (
+        init?.method === 'POST' &&
+        url.endsWith('/api/projects/repository-acquisitions')
+      )
+        // The exact body the route's operator check sends.
+        return Response.json(
+          {
+            success: false,
+            error:
+              "Repository acquisition uses this Station's Git credentials and requires its operator.",
+          },
+          { status: 403 },
+        );
+      throw new Error(`Unexpected fixture request: ${url}`);
+    }),
+  );
+  mount();
+  enterSource();
+  const alert = await screen.findByText(
+    "Cloning uses this Station's Git credentials, so only its operator can do it.",
+  );
+  const field = screen.getByLabelText('Repository URL');
+  expect(field).toHaveProperty('value', 'git@github.com:org/research.git');
+  expect(field.getAttribute('aria-describedby')).toBe(alert.id);
+  expect(screen.queryByText(/Operation:/)).toBeNull();
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  expect(calls).toEqual([
+    'POST http://station.test/api/projects/repository-acquisitions',
+  ]);
+  expect(Object.keys(sessionStorage)).toEqual([]);
+});
+
 test('a recorded failed clone returns to the form with its source and reason, and trying again starts a new operation', async () => {
   const records = new Map<string, RepositoryAcquisition>();
   const posts: RepositoryAcquisitionRequest[] = [];

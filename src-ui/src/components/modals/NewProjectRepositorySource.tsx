@@ -47,11 +47,19 @@ function retainedId(key: string) {
 }
 
 /**
- * A 400 is refused before the server records anything, so there is no
- * operation to read or poll: the reason belongs beside the URL instead.
+ * A refusal the server answers before recording anything leaves no operation
+ * to read or poll, so its reason belongs beside the URL instead. A 400 names
+ * the rule the source broke. A 403 means this caller may not use the host's
+ * Git credentials; its copy is fixed here because a 403 can also come from the
+ * runtime's own admission, whose text is not written for this form. A 503 can
+ * follow a started attempt, so it keeps the operation to inspect.
  */
-function refusedBeforeRecording(error: unknown) {
-  return error instanceof StationHttpError && error.status === 400;
+function refusalBeforeRecording(error: unknown) {
+  if (!(error instanceof StationHttpError)) return '';
+  if (error.status === 400) return userFacingErrorMessage(error);
+  if (error.status === 403)
+    return "Cloning uses this Station's Git credentials, so only its operator can do it.";
+  return '';
 }
 
 function RepositorySourceControls({
@@ -116,8 +124,9 @@ function RepositorySourceControls({
         data,
       ),
     onError: (error) => {
-      if (!refusedBeforeRecording(error)) return;
-      setSourceFailure(userFacingErrorMessage(error));
+      const refusal = refusalBeforeRecording(error);
+      if (!refusal) return;
+      setSourceFailure(refusal);
       forgetOperation();
     },
   });
@@ -281,47 +290,59 @@ function RepositorySourceControls({
               setSourceRef(branch ?? '');
             }}
           />
-          <label className="editor-label" htmlFor={sourceId}>
-            Repository URL
-          </label>
-          <input
-            className="editor-input"
-            id={sourceId}
-            value={sourceUrl}
-            onChange={(event) => {
-              setSourceUrl(event.target.value);
-              setSourceFailure('');
-            }}
-            placeholder="https://github.com/owner/repository.git"
-            autoComplete="off"
-            aria-invalid={sourceFailure ? true : undefined}
-            aria-describedby={sourceFailure ? sourceFailureId : undefined}
-          />
-          {sourceFailure && (
-            <p className="editor-error" id={sourceFailureId} role="alert">
-              {sourceFailure}
-            </p>
-          )}
-          <label className="editor-label" htmlFor={refId}>
-            Branch or tag (optional)
-          </label>
-          <input
-            className="editor-input"
-            id={refId}
-            value={sourceRef}
-            onChange={(event) => setSourceRef(event.target.value)}
-            placeholder="Remote default branch"
-          />
-          <label className="editor-label" htmlFor={subdirectoryId}>
-            Repository subdirectory (optional)
-          </label>
-          <input
-            className="editor-input"
-            id={subdirectoryId}
-            value={subdirectory}
-            onChange={(event) => setSubdirectory(event.target.value)}
-            placeholder="packages/my-app"
-          />
+          <div className="editor-field">
+            <label className="editor-label" htmlFor={sourceId}>
+              Repository URL
+            </label>
+            <input
+              className="editor-input"
+              id={sourceId}
+              value={sourceUrl}
+              onChange={(event) => {
+                setSourceUrl(event.target.value);
+                setSourceFailure('');
+              }}
+              placeholder="https://github.com/owner/repository.git"
+              autoComplete="off"
+              aria-invalid={sourceFailure ? true : undefined}
+              aria-describedby={sourceFailure ? sourceFailureId : undefined}
+            />
+            {sourceFailure && (
+              <p className="editor-error" id={sourceFailureId} role="alert">
+                {sourceFailure}
+              </p>
+            )}
+          </div>
+          <div className="editor-field">
+            <label className="editor-label" htmlFor={refId}>
+              Branch or tag (optional)
+            </label>
+            <input
+              className="editor-input"
+              id={refId}
+              value={sourceRef}
+              onChange={(event) => {
+                setSourceRef(event.target.value);
+                setSourceFailure('');
+              }}
+              placeholder="Remote default branch"
+            />
+          </div>
+          <div className="editor-field">
+            <label className="editor-label" htmlFor={subdirectoryId}>
+              Repository subdirectory (optional)
+            </label>
+            <input
+              className="editor-input"
+              id={subdirectoryId}
+              value={subdirectory}
+              onChange={(event) => {
+                setSubdirectory(event.target.value);
+                setSourceFailure('');
+              }}
+              placeholder="packages/my-app"
+            />
+          </div>
           <p className="editor-hint">
             Use HTTPS or SSH without credentials in the URL. An absolute path to
             a local Git mirror is also supported. This step requires the Station

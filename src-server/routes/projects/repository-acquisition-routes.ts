@@ -245,7 +245,7 @@ function failure(c: Context, error: unknown) {
       {
         success: false,
         error:
-          'Repository source or request ID is invalid. Use an HTTPS or SSH URL without embedded credentials, or an absolute local mirror path.',
+          'Repository source or request ID is invalid. Use an HTTPS or SSH URL without embedded credentials, or an absolute path to a local mirror.',
         details: error.flatten(),
       },
       400,

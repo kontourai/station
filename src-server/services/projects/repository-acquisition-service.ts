@@ -99,8 +99,12 @@ function validateSource(
     } catch {
       throw new RepositoryAcquisitionInputError('Repository URL is malformed.');
     }
+    if (!['https:', 'ssh:'].includes(url.protocol)) {
+      throw new RepositoryAcquisitionInputError(
+        'Use an HTTPS or SSH repository URL. Other URL schemes are not accepted.',
+      );
+    }
     if (
-      !['https:', 'ssh:'].includes(url.protocol) ||
       url.password ||
       url.search ||
       url.hash ||
@@ -116,7 +120,7 @@ function validateSource(
     !/^(?:[a-zA-Z0-9._-]+@)?[a-zA-Z0-9.-]+:[a-zA-Z0-9._/-]+$/.test(source)
   ) {
     throw new RepositoryAcquisitionInputError(
-      'Use an HTTPS or SSH repository URL, or an absolute local mirror path.',
+      'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.',
     );
   }
   if (
@@ -547,7 +551,7 @@ export class RepositoryAcquisitionService {
           ...acquiring,
           phase: 'failed',
           error:
-            'Repository acquisition failed. Check source access and the requested branch or tag, then retry explicitly.',
+            'Repository acquisition failed. Check source access and the requested branch or tag, then try again.',
           updatedAt: new Date().toISOString(),
         };
         return await this.publish(failed, assertCurrent);
