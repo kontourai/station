@@ -22,12 +22,10 @@
  * and the case titles name the browser it found.
  */
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { stationControlCallerPrincipal } from '../../../tools/station-control-shared.js';
 import { LiveSurfaceRegistry } from '../../live-surface/registry.js';
 import {
@@ -54,7 +52,10 @@ import {
 } from '../station-listeners.js';
 import { playwrightChromium } from './real-chromium-selection.js';
 
-const acquisitionHome = mkdtempSync(join(tmpdir(), 'station-blank-acq-'));
+// Created before the suite's own afterAll, so it is removed after the browser
+// that uses these directories has shut down (after-hooks run in reverse order).
+const makeTempDir = trackTempDirs({ lifetime: 'file' });
+const acquisitionHome = makeTempDir('station-blank-acq-');
 const acquisitionStatus = new ChromiumAcquisition(
   acquisitionHome,
   defaultChromiumAcquisitionDeps(),
@@ -153,7 +154,7 @@ describe('browser_evaluate on a blank tab against a real installed Chromium', ()
       ),
     );
     fixtureUrl = `http://127.0.0.1:${port}/`;
-    home = mkdtempSync(join(tmpdir(), 'station-blank-real-'));
+    home = makeTempDir('station-blank-real-');
     const stationPort = port > 60_000 ? port - 10 : port + 10;
     const listeners = deriveStationListeners({
       serverPort: stationPort,
@@ -227,9 +228,7 @@ describe('browser_evaluate on a blank tab against a real installed Chromium', ()
       await new Promise<void>((r) =>
         fixture ? fixture.close(() => r()) : r(),
       );
-      if (home) rmSync(home, { recursive: true, force: true });
     }
-    rmSync(acquisitionHome, { recursive: true, force: true });
   }, 60_000);
 
   test('refuses on a new tab and on a browser-navigated about:blank, and runs on a page that went blank itself', async (ctx) => {
