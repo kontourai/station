@@ -151,8 +151,17 @@
 
 .skill-library__list-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--k-space-2);
   padding: 0 var(--k-space-3) var(--k-space-2);
+}
+
+/* Each action keeps its label on one line and wraps to a new row instead. */
+.skill-library__list-actions > .split-pane__add-btn,
+.skill-library__list-actions > .skill-library__codex-import {
+  flex: 1 1 auto;
+  width: auto;
+  white-space: nowrap;
 }
 
 .skill-library__welcome {
