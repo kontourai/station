@@ -114,7 +114,8 @@ function validateSource(
         'Use an HTTPS or SSH repository URL without embedded credentials, query or fragment.',
       );
     }
-    if (!url.hostname || url.pathname === '/') {
+    // A special scheme reports an empty path as '/', ssh:// as ''.
+    if (!url.hostname || url.pathname === '/' || url.pathname === '') {
       throw new RepositoryAcquisitionInputError(
         'Include the host and the repository path in the URL.',
       );

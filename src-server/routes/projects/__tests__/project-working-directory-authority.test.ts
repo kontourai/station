@@ -545,7 +545,11 @@ test('repository acquisition uses operator Git authority and returns one durable
     error:
       'Use an HTTPS or SSH repository URL. Other URL schemes are not accepted.',
   });
-  for (const sourceUrl of ['https://host.example/', 'ssh:///repo']) {
+  for (const sourceUrl of [
+    'https://host.example/',
+    'ssh:///repo',
+    'ssh://host.example',
+  ]) {
     const pathless = await f.send(
       f.operator.credential,
       'POST',
