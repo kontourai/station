@@ -1195,3 +1195,109 @@ describe('ChatDockBody marker actions follow callerAccess', () => {
     },
   );
 });
+
+// A reopened chat (a reload, another device) holds no in-memory marker and no
+// stored copy of one: only the stored events. The newest failed turn's card
+// is rebuilt from its stored `runtime.error`, with the actions the live card
+// had.
+describe('a failed turn read back from stored events', () => {
+  const at = (second: number) =>
+    `2026-11-21T10:00:${String(second).padStart(2, '0')}.000Z`;
+  const window = (fields: Record<string, unknown>[]) => ({
+    protocolVersion: 1,
+    watermark: 10,
+    hasMore: false,
+    events: fields.map((event, index) => ({
+      sequence: index + 1,
+      event: {
+        eventId: `e${index + 1}`,
+        provider: 'claude',
+        threadId: 'thread-failed',
+        createdAt: at(index + 1),
+        ...event,
+      },
+    })),
+  });
+  const failedTurn = (turnId: string, prompt: string) => [
+    { method: 'turn.started', turnId, prompt },
+    {
+      method: 'content.text-delta',
+      turnId,
+      delta: 'Starting a reply that will fail',
+    },
+    {
+      method: 'runtime.error',
+      turnId,
+      severity: 'error',
+      message: 'Scripted mid-stream failure',
+    },
+  ];
+  const reopened = () =>
+    buildSession({
+      id: 'thread-failed',
+      conversationId: 'conversation-failed',
+      status: 'idle',
+      orchestrationSessionStarted: true,
+      messages: [],
+    } as Partial<ChatSession>);
+
+  test('keeps Send again and Troubleshoot this, and both act on that turn', async () => {
+    sdk.fetchWindow.mockResolvedValue(
+      window(failedTurn('turn-1', 'Trigger the scripted failure.')),
+    );
+    const chatInput = buildChatInput();
+    const capture = captureTroubleshootSeeds();
+    try {
+      renderDock(reopened(), vi.fn(), chatInput);
+      fireEvent.click(
+        await screen.findByRole(
+          'button',
+          { name: 'Send again' },
+          { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+        ),
+      );
+      await waitFor(() =>
+        expect(chatInput.handleSend).toHaveBeenCalledWith(
+          'Trigger the scripted failure.',
+          [],
+        ),
+      );
+      // One card: the projected failure text is not shown a second time.
+      expect(
+        screen.getAllByText(/Scripted mid-stream failure/, { exact: false }),
+      ).toHaveLength(1);
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Troubleshoot this' }),
+      );
+      expect(capture.seeds).toHaveLength(1);
+      expect(capture.seeds[0]).toMatchObject({
+        conversationId: 'conversation-failed',
+        turnId: 'turn-1',
+      });
+      expect(capture.seeds[0]!.errorSummary).toMatch(
+        /Scripted mid-stream failure/,
+      );
+    } finally {
+      capture.stop();
+    }
+  });
+
+  test('a failure the person has moved past is not offered for resending', async () => {
+    sdk.fetchWindow.mockResolvedValue(
+      window([
+        ...failedTurn('turn-1', 'Trigger the scripted failure.'),
+        { method: 'turn.started', turnId: 'turn-2', prompt: 'Something else.' },
+        { method: 'turn.completed', turnId: 'turn-2', finishReason: 'stop' },
+      ]),
+    );
+    renderDock(reopened(), vi.fn());
+    expect(
+      await screen.findByText(
+        /Scripted mid-stream failure/,
+        { exact: false },
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send again' })).toBeNull();
+  });
+});
