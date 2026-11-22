@@ -802,7 +802,7 @@ export async function collectDoctorReport(
   });
   const recommendation =
     enabledLlmProviders.length > 0
-      ? 'Chat looks reachable. Review Customize if you want to change the default path.'
+      ? 'Chat looks reachable. Change the default path in Customize.'
       : ollamaReachable
         ? 'Ollama is reachable, but no saved model connection exists yet. Add an Ollama connection in Customize → Providers.'
         : awsConfigured

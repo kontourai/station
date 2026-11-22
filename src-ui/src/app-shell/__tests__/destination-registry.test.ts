@@ -1,4 +1,5 @@
 import { describe, expect, test } from 'vitest';
+import { rankCommands } from '../../components/command-palette-utils';
 import {
   APP_DESTINATION_REGISTRY,
   createDestinationRegistry,
@@ -133,6 +134,29 @@ describe('DestinationRegistry', () => {
     ]) {
       expect(paletteRoutes, `${route} has no palette entry`).toContain(route);
     }
+  });
+
+  // Words people learned for the retired Connections tabs that the new
+  // labels do not contain. A literal list, so a keyword trim cannot drop one
+  // silently; ranked by the palette's own scorer over the same label and
+  // keywords the palette builds from each destination.
+  test.each([
+    ['tool servers', 'tools'],
+    ['tool server', 'tools'],
+    ['acp', 'engines'],
+    ['search', 'knowledge'],
+    ['set up', 'customize'],
+  ])('the palette answers "%s" with the %s destination first', (query, id) => {
+    const commands = APP_DESTINATION_REGISTRY.getPalette(
+      new Set([DEVELOPER_TOOLS_FLAG]),
+    ).map((destination) => ({
+      id: destination.id,
+      label: destination.label(),
+      group: 'Navigation',
+      keywords: destination.keywords ? [...destination.keywords] : undefined,
+      run: () => {},
+    }));
+    expect(rankCommands(query, commands)[0]?.id).toBe(id);
   });
 
   // A literal inventory, not a re-read of `getCustomizeNav()`: comparing the

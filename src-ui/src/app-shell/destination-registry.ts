@@ -373,12 +373,12 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
   {
     // Connections is no longer a destination: its parts are the items below,
     // and this page lists them. Its old words stay as keywords so ⌘K still
-    // answers someone who learned them. Item keywords add only what the
-    // label does not already match.
+    // answers someone who learned them. Item keywords drop only words the
+    // label already matches; the palette test pins the rest.
     id: 'customize',
     route: '/customize',
     label: () => 'Customize',
-    keywords: ['connections', 'providers', 'models', 'integrations'],
+    keywords: ['connections', 'set up', 'providers', 'models', 'integrations'],
     icon: 'customize',
     managementGroup: 'customize',
     palette: { order: 50 },
@@ -389,7 +389,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     id: 'engines',
     route: '/customize/engines',
     label: () => 'Engines',
-    keywords: ['claude code', 'codex'],
+    keywords: ['claude code', 'codex', 'acp'],
     customizeNav: { group: 'run-on', order: 10 },
     managementGroup: 'customize',
     palette: { order: 51 },
@@ -413,7 +413,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     id: 'tools',
     route: '/customize/tools',
     label: () => 'Tools',
-    keywords: ['mcp', 'integrations'],
+    keywords: ['tool servers', 'mcp', 'integrations'],
     customizeNav: { group: 'can-reach', order: 10 },
     managementGroup: 'customize',
     palette: { order: 53 },
@@ -423,7 +423,7 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     id: 'knowledge',
     route: '/customize/knowledge',
     label: () => 'Knowledge',
-    keywords: ['embeddings'],
+    keywords: ['search', 'embeddings'],
     customizeNav: { group: 'can-reach', order: 20 },
     managementGroup: 'customize',
     palette: { order: 54 },
