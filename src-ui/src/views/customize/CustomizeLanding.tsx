@@ -46,8 +46,6 @@ export function CustomizeLanding() {
         </section>
       ))}
       <p className="customize-landing__note">
-        Pairing and other Stations are in the Station menu at the top right.
-        Paired devices and SSH computers are on{' '}
         <a
           href={COMPUTERS_PATH}
           onClick={(event) => {
@@ -63,8 +61,9 @@ export function CustomizeLanding() {
           }}
         >
           Computers
-        </a>
-        .
+        </a>{' '}
+        lists paired devices and SSH computers. Pairing and other Stations are
+        in the Station menu at the top right.
       </p>
     </div>
   );
