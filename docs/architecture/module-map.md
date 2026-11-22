@@ -5586,8 +5586,10 @@ executes those claims through a required `ScheduledTurnAdapter` whose result
 is `completed`, `definitely-not-invoked` or `indeterminate`.
 
 **State, retry and authority.** SQLite serializes claims and mutations across
-processes. A stable `jobId` is distinct from the editable name; deleting and
-recreating a job gives it a new scheduled-job principal. The due claim records
+processes. A stable `jobId` is distinct from the job's `name` (a slug that routes and
+runs are keyed by) and from its optional `displayName`, the only name an edit
+can change; deleting and recreating a job gives it a new scheduled-job
+principal. The due claim records
 its occurrence and firing time. Terminal outcomes consume that occurrence;
 manual runs do not advance the recurring cursor. Claim and `beginInvocation`
 persist before their respective effects. A dead initial pre-invocation owner
