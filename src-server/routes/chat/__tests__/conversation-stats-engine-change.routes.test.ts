@@ -12,6 +12,12 @@
  * - Codex: `thread/tokenUsage/updated` mapped from `tokenUsage.total`, the
  *   running total since the thread started (`codex-adapter-notifications.ts`),
  *   with no cost and no cache-write figure.
+ *
+ * Start metadata is the adapters' too (`codex-adapter.ts`, `claude-adapter.ts`):
+ * Codex records `codexThreadId` on `session.started` and `session.configured`,
+ * and `nativeResumeIdentity: 'matched'` on `session.configured` only when it
+ * resumed the cursor's thread; Claude Code records `nativeSessionResumed: true`
+ * on `session.started` only for a resumed transcript.
  */
 import { join } from 'node:path';
 import type { ConversationStatsResponse } from '@kontourai/station-contracts/runtime';
@@ -54,6 +60,16 @@ interface CodexRunningTotal {
   cachedInput: number;
 }
 
+/** What the adapter recorded when the Session's engine started. */
+interface Start {
+  /** Codex's `codexThreadId`; absent in history written before it. */
+  codexThreadId?: string;
+  /** Codex's `nativeResumeIdentity: 'matched'`. */
+  codexResumed?: boolean;
+  /** Claude Code's `nativeSessionResumed: true`. */
+  claudeResumed?: boolean;
+}
+
 function fixture() {
   const directory = makeTempDir('station-stats-engine-change-');
   const store = new EventStore(join(directory, 'events.sqlite'));
@@ -75,8 +91,8 @@ function fixture() {
   };
   let predecessor: string | undefined;
 
-  /** One execution Session of the conversation, appended to its lineage. */
-  function session(threadId: string, provider: Provider) {
+  /** A Session reserved in the lineage. */
+  function reserve(threadId: string) {
     if (predecessor)
       store.reserveNextConversationSession({
         conversationId: CONVERSATION,
@@ -85,6 +101,16 @@ function fixture() {
         createdAt: at(),
       });
     predecessor = threadId;
+  }
+
+  /** A Session reserved that never started, so it has no events. */
+  function neverStarted(threadId: string) {
+    reserve(threadId);
+  }
+
+  /** One execution Session of the conversation, appended to its lineage. */
+  function session(threadId: string, provider: Provider, start: Start = {}) {
+    reserve(threadId);
     const createdAt = at();
     store.upsertSession({
       provider,
@@ -100,8 +126,29 @@ function fixture() {
       provider,
       method: 'session.started',
       createdAt,
-      metadata: { userId: OWNER },
+      metadata: {
+        userId: OWNER,
+        ...(start.codexThreadId ? { codexThreadId: start.codexThreadId } : {}),
+        ...(start.claudeResumed ? { nativeSessionResumed: true } : {}),
+      },
     } as CanonicalRuntimeEvent);
+    if (provider === 'codex')
+      store.appendEvent({
+        eventId: `${threadId}:configured`,
+        threadId,
+        sessionId: threadId,
+        provider,
+        method: 'session.configured',
+        createdAt: at(),
+        model: 'codex-model',
+        metadata: {
+          userId: OWNER,
+          ...(start.codexResumed ? { nativeResumeIdentity: 'matched' } : {}),
+          ...(start.codexThreadId
+            ? { codexThreadId: start.codexThreadId }
+            : {}),
+        },
+      } as CanonicalRuntimeEvent);
     let turns = 0;
     const nextTurnId = () => {
       turns += 1;
@@ -178,7 +225,7 @@ function fixture() {
       .data;
   }
 
-  return { session, stats, store };
+  return { session, neverStarted, stats, store };
 }
 
 describe('GET /:slug/conversations/:conversationId/stats after an engine change (#5389)', () => {
@@ -199,7 +246,9 @@ describe('GET /:slug/conversations/:conversationId/stats after an engine change 
       cacheWrite: 0,
       runningCostUsd: 0.25,
     });
-    const codex = f.session(`${CONVERSATION}:session:codex`, 'codex');
+    const codex = f.session(`${CONVERSATION}:session:codex`, 'codex', {
+      codexThreadId: 'codex-thread-a',
+    });
     codex.codexTurn({ input: 300, output: 40, total: 340, cachedInput: 200 });
     codex.codexTurn({ input: 700, output: 90, total: 790, cachedInput: 500 });
     expect(f.store.conversationSessions(CONVERSATION)).toHaveLength(2);
@@ -238,6 +287,7 @@ describe('GET /:slug/conversations/:conversationId/stats after an engine change 
         outputTokens: 90,
         totalTokens: 790,
         cacheReadTokens: 500,
+        modelId: 'codex-model',
       },
     ]);
     // Counts Station observes itself, and USD, are one scale.
@@ -251,7 +301,9 @@ describe('GET /:slug/conversations/:conversationId/stats after an engine change 
 
   test('a return to Codex starts a new Codex thread whose running total adds to the first one', async () => {
     const f = fixture();
-    f.session(CONVERSATION, 'codex').codexTurn({
+    f.session(CONVERSATION, 'codex', {
+      codexThreadId: 'codex-thread-a',
+    }).codexTurn({
       input: 500,
       output: 50,
       total: 550,
@@ -266,7 +318,9 @@ describe('GET /:slug/conversations/:conversationId/stats after an engine change 
     });
     // An engine change resets the provider cursor, so this is a fresh Codex
     // thread and its running total starts again from zero.
-    f.session(`${CONVERSATION}:session:codex-again`, 'codex').codexTurn({
+    f.session(`${CONVERSATION}:session:codex-again`, 'codex', {
+      codexThreadId: 'codex-thread-b',
+    }).codexTurn({
       input: 80,
       output: 8,
       total: 88,
@@ -290,22 +344,16 @@ describe('GET /:slug/conversations/:conversationId/stats after an engine change 
     expect(stats.turns).toBe(3);
   });
 
-  test('a single-engine lineage reads exactly as before: its successor continues the running total it resumed', async () => {
+  test('a Codex successor that resumed the same thread continues its running total', async () => {
     const f = fixture();
-    f.session(CONVERSATION, 'codex').codexTurn({
-      input: 300,
-      output: 30,
-      total: 330,
-      cachedInput: 50,
-    });
-    // A same-engine successor may resume the predecessor's native thread,
-    // whose counter already includes the first Session's usage.
-    f.session(`${CONVERSATION}:session:resumed`, 'codex').codexTurn({
-      input: 450,
-      output: 45,
-      total: 495,
-      cachedInput: 80,
-    });
+    f.session(CONVERSATION, 'codex', {
+      codexThreadId: 'codex-thread-a',
+    }).codexTurn({ input: 300, output: 30, total: 330, cachedInput: 50 });
+    // The counter of a resumed thread already includes the first Session.
+    f.session(`${CONVERSATION}:session:resumed`, 'codex', {
+      codexThreadId: 'codex-thread-a',
+      codexResumed: true,
+    }).codexTurn({ input: 450, output: 45, total: 495, cachedInput: 80 });
 
     const stats = await f.stats();
 
@@ -326,7 +374,91 @@ describe('GET /:slug/conversations/:conversationId/stats after an engine change 
         outputTokens: 45,
         totalTokens: 495,
         cacheReadTokens: 80,
+        modelId: 'codex-model',
       },
     ]);
+  });
+
+  test("a Codex successor on a fresh thread adds to its predecessor's total, also past a Session that never started", async () => {
+    for (const between of [false, true]) {
+      const f = fixture();
+      f.session(CONVERSATION, 'codex', {
+        codexThreadId: 'codex-thread-a',
+      }).codexTurn({ input: 1100, output: 110, total: 1210, cachedInput: 0 });
+      if (between) f.neverStarted(`${CONVERSATION}:session:unstarted`);
+      // A fresh context: no cursor, so a new thread whose total restarts.
+      f.session(`${CONVERSATION}:session:fresh`, 'codex', {
+        codexThreadId: 'codex-thread-b',
+      }).codexTurn({ input: 220, output: 22, total: 242, cachedInput: 0 });
+
+      const stats = await f.stats();
+
+      expect(stats, `between: ${between}`).toMatchObject({
+        inputTokens: 1320,
+        outputTokens: 132,
+        totalTokens: 1452,
+        turns: 2,
+      });
+    }
+  });
+
+  test('a Codex successor that recorded no thread id is counted as a fresh thread', async () => {
+    const f = fixture();
+    // History written before the adapter recorded `codexThreadId`. Absent
+    // is read as not resumed: a total that is visibly too high, never a
+    // running total replacing what was counted.
+    f.session(CONVERSATION, 'codex').codexTurn({
+      input: 300,
+      output: 30,
+      total: 330,
+      cachedInput: 0,
+    });
+    f.session(`${CONVERSATION}:session:older`, 'codex').codexTurn({
+      input: 450,
+      output: 45,
+      total: 495,
+      cachedInput: 0,
+    });
+
+    const stats = await f.stats();
+
+    expect(stats).toMatchObject({ inputTokens: 750, totalTokens: 825 });
+  });
+
+  test('a Claude Code successor adds its tokens; its cost adds after a fresh start and continues after a resume', async () => {
+    const totals = async (claudeResumed: boolean) => {
+      const f = fixture();
+      f.session(CONVERSATION, 'claude').claudeTurn({
+        input: 14,
+        output: 11,
+        cacheRead: 0,
+        cacheWrite: 0,
+        runningCostUsd: 0.25,
+      });
+      f.session(`${CONVERSATION}:session:next`, 'claude', {
+        claudeResumed,
+      }).claudeTurn({
+        input: 6,
+        output: 4,
+        cacheRead: 0,
+        cacheWrite: 0,
+        // A fresh process's total starts again; a resumed one carries on.
+        runningCostUsd: claudeResumed ? 0.4 : 0.05,
+      });
+      return f.stats();
+    };
+
+    expect(await totals(false)).toMatchObject({
+      inputTokens: 20,
+      outputTokens: 15,
+      turns: 2,
+      estimatedCost: 0.3,
+    });
+    expect(await totals(true)).toMatchObject({
+      inputTokens: 20,
+      outputTokens: 15,
+      turns: 2,
+      estimatedCost: 0.4,
+    });
   });
 });

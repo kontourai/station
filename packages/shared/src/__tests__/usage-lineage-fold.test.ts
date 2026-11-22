@@ -118,4 +118,118 @@ describe('foldLineageUsageEvents (#5389)', () => {
     ]);
     expect(foldLineageUsageEvents([[], []])).toEqual(foldUsageEvents([]));
   });
+
+  // Codex's start metadata as `codex-adapter.ts` writes it.
+  const codexSession = (
+    threadId: string,
+    codexThreadId: string | undefined,
+    total: number,
+    resumed = false,
+  ) => [
+    ev({
+      method: 'session.started',
+      provider: 'codex',
+      threadId,
+      metadata: codexThreadId ? { codexThreadId } : {},
+    }),
+    ev({
+      method: 'session.configured',
+      provider: 'codex',
+      threadId,
+      metadata: {
+        ...(resumed ? { nativeResumeIdentity: 'matched' } : {}),
+        ...(codexThreadId ? { codexThreadId } : {}),
+      },
+    }),
+    ev({
+      method: 'token-usage.updated',
+      provider: 'codex',
+      threadId,
+      turnId: `${threadId}:t`,
+      promptTokens: total,
+    }),
+    ev({
+      method: 'turn.completed',
+      provider: 'codex',
+      threadId,
+      turnId: `${threadId}:t`,
+    }),
+  ];
+  const claudeSession = (threadId: string, input: number) => [
+    ev({ method: 'session.started', provider: 'claude', threadId }),
+    ev({
+      method: 'token-usage.updated',
+      provider: 'claude',
+      threadId,
+      turnId: `${threadId}:t`,
+      promptTokens: input,
+    }),
+  ];
+  const codexInput = (sessions: CanonicalRuntimeEvent[][]) =>
+    foldLineageUsageEvents(sessions).engines?.find(
+      (engine) => engine.provider === 'codex',
+    )?.inputTokens;
+
+  it('adds a fresh Codex thread to the earlier one and continues a resumed thread', () => {
+    expect(
+      codexInput([codexSession('s1', 'X', 1100), codexSession('s2', 'Y', 220)]),
+    ).toBe(1320);
+    expect(
+      codexInput([codexSession('s1', 'X', 300), codexSession('s2', 'Y', 450)]),
+    ).toBe(750);
+    expect(
+      codexInput([
+        claudeSession('s0', 10),
+        codexSession('s1', 'X', 1100),
+        codexSession('s2', 'Y', 220),
+      ]),
+    ).toBe(1320);
+    // A Session with no events between them does not join the two threads.
+    expect(
+      codexInput([
+        codexSession('s1', 'X', 1100),
+        [],
+        codexSession('s3', 'Y', 220),
+      ]),
+    ).toBe(1320);
+    expect(
+      codexInput([
+        codexSession('s1', 'X', 1100),
+        codexSession('s2', 'X', 1650, true),
+      ]),
+    ).toBe(1650);
+  });
+
+  it('counts a Codex Session that recorded no thread id as a fresh thread', () => {
+    expect(
+      codexInput([
+        codexSession('s1', undefined, 300),
+        codexSession('s2', undefined, 450),
+      ]),
+    ).toBe(750);
+    expect(
+      codexInput([
+        codexSession('s1', 'X', 300),
+        codexSession('s2', undefined, 450),
+      ]),
+    ).toBe(750);
+  });
+
+  it('leaves the conversation token figures absent when two engines reported tokens', () => {
+    const aggregate = foldLineageUsageEvents([
+      claudeSession('s1', 14),
+      codexSession('s2', 'X', 700),
+    ]);
+    for (const field of [
+      'inputTokens',
+      'outputTokens',
+      'totalTokens',
+      'cacheReadTokens',
+      'cacheWriteTokens',
+    ] as const)
+      expect(aggregate[field], field).toBeUndefined();
+    expect(aggregate.engines?.map((engine) => engine.inputTokens)).toEqual([
+      14, 700,
+    ]);
+  });
 });

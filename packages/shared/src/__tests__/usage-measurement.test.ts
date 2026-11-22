@@ -145,6 +145,17 @@ describe('the one unreported-measurement representation (station#3201)', () => {
         () => 'Codex',
       ),
     ).toBeNull();
+    // A cache figure is a reported token count too.
+    expect(
+      unreportedMeasurementClasses(
+        conversationStatsMeasurementView({
+          ...mixed,
+          engines: [
+            { provider: 'claude', turns: 1, toolCalls: 0, cacheReadTokens: 9 },
+          ],
+        }),
+      ),
+    ).toEqual([]);
     // An engine row without token figures does not stand in for them.
     expect(
       unreportedMeasurementClasses(

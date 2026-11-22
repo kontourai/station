@@ -1,6 +1,11 @@
-import { CONVERSATION_REPORTED_COST_UNITS_MAX } from '@kontourai/station-contracts/runtime';
+import {
+  CONVERSATION_ENGINE_TOKEN_FIGURES,
+  CONVERSATION_REPORTED_COST_UNITS_MAX,
+  reportsEngineTokens,
+} from '@kontourai/station-contracts/runtime';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
+  CUMULATIVE_USAGE_PROVIDERS,
   type DroppedUsageFigure,
   type EngineReportedCostTotal,
   foldUsageEvents,
@@ -36,40 +41,53 @@ export interface LineageUsageAggregate extends SessionUsageAggregate {
   engines?: EngineUsageAggregate[];
 }
 
-const TOKEN_FIGURES = [
-  'inputTokens',
-  'outputTokens',
-  'totalTokens',
-  'cacheReadTokens',
-  'cacheWriteTokens',
-] as const;
+const TOKEN_FIGURES = CONVERSATION_ENGINE_TOKEN_FIGURES;
+
+/**
+ * Where a cumulative provider records the native thread its running total
+ * counts from, on `session.started` and `session.configured` metadata. Codex
+ * writes `codexThreadId` (`codex-adapter.ts`): the thread it started, resumed
+ * or forked. A resumed thread keeps its counter; a new thread starts at zero.
+ */
+const NATIVE_THREAD_METADATA_KEY: ReadonlyMap<string, string> = new Map([
+  ['codex', 'codexThreadId'],
+]);
 
 /**
  * #5389: one conversation's usage from its execution Sessions' events, in
  * lineage order, kept per engine.
  *
- * Folding the whole lineage as one stream let an engine that reports a
- * running total (Codex) assign it over what a per-turn engine (Claude Code)
- * had summed. So consecutive Sessions of one engine are folded as one stream
- * (a run) with {@link foldUsageEvents}, and runs are combined afterwards:
+ * Folding the whole lineage as one stream let a running total (Codex) be
+ * assigned over what had been counted before it, whether by another engine
+ * or by an earlier native thread of the same engine. So Sessions are grouped
+ * into runs, each run is folded as one stream with {@link foldUsageEvents}
+ * (exactly the Session fold), and runs are combined afterwards:
  *
- * - Within a run the stream is folded exactly as before. A successor resumes
- *   its predecessor's native transcript only when both ran the same engine
- *   (`continuationLaunchContext` in `conversation-lineage.ts`), and a resumed
- *   Codex thread's running total, or Claude Code's resumed cost, already
- *   includes the predecessor's usage; folding each Session alone and adding
- *   them would count it twice.
- * - A different engine between two runs reset the provider cursor, so the
- *   later run started a new native conversation and its figures add to the
- *   earlier run's.
+ * - A provider that reports a running total (`CUMULATIVE_USAGE_PROVIDERS`)
+ *   continues a run only on the same native thread: the Session's first
+ *   recorded thread id equals the run's last one. Codex writes its
+ *   `nativeResumeIdentity: 'matched'` marker only when the thread it opened is
+ *   the cursor's (the same id it records as `codexThreadId`), so a real
+ *   resume always shows as equal ids. A different thread (a fresh context,
+ *   another connection, a refused or dead cursor) starts a new run whose
+ *   totals add to the engine's earlier runs. A Session that records no thread
+ *   id (history written before the adapter recorded one) also starts a new
+ *   run. Like a Claude Code process start without `nativeSessionResumed`,
+ *   absence is read as "not resumed": the error direction is a total that is
+ *   visibly too high, never a running total silently replacing spend.
+ * - Every other provider continues the run of the Session before it when that
+ *   Session ran the same engine. Its tokens add per turn either way, and its
+ *   cost already splits at `session.started` by `nativeSessionResumed`, which
+ *   keeps a resumed Claude Code cost total from being counted twice.
  *
  * Each engine's runs sum into its {@link EngineUsageAggregate}. The
  * conversation's own token figures are an engine's when it is the only one
- * that reported tokens, and absent when several did: engines count tokens on
- * different scales, and a sum would be a figure no engine reported. Turns and
- * tool calls (Station counts them) and costs (per unit, never converted) are
- * summed. The latest figures (model, context, MCP servers, provider) come from
- * the newest run that has one, as the single-stream fold gave them.
+ * that reported tokens ({@link reportsEngineTokens}), and absent when several
+ * did: engines count tokens on different scales, and a sum would be a figure
+ * no engine reported. Turns and tool calls (Station counts them) and costs
+ * (per unit, never converted) are summed. The latest figures (model, context,
+ * MCP servers, provider) come from the newest run that has one, as the
+ * single-stream fold gave them.
  *
  * A module of its own so the cached per-Session fold
  * (`USAGE_PROJECTION_VERSION`, pinned to `usage-fold.ts`) is not invalidated
@@ -79,15 +97,37 @@ export function foldLineageUsageEvents(
   sessions: readonly (readonly CanonicalRuntimeEvent[])[],
   onDroppedFigure?: (dropped: DroppedUsageFigure) => void,
 ): LineageUsageAggregate {
-  const runs: { provider: string; events: CanonicalRuntimeEvent[] }[] = [];
+  const runs: {
+    provider: string;
+    events: CanonicalRuntimeEvent[];
+    lastThread?: string;
+  }[] = [];
   for (const events of sessions) {
     // The Session's engine as its own fold names it: the newest event's.
     let provider: string | undefined;
     for (const event of events) if (event.provider) provider = event.provider;
     if (!provider) continue;
-    const last = runs[runs.length - 1];
-    if (last?.provider === provider) last.events.push(...events);
-    else runs.push({ provider, events: [...events] });
+    let run: (typeof runs)[number] | undefined;
+    let threads: string[] = [];
+    if (CUMULATIVE_USAGE_PROVIDERS.has(provider)) {
+      threads = nativeThreads(events, provider);
+      const first = threads[0];
+      if (first !== undefined)
+        for (let index = runs.length - 1; index >= 0 && !run; index -= 1)
+          if (
+            runs[index]!.provider === provider &&
+            runs[index]!.lastThread === first
+          )
+            run = runs[index];
+    } else if (runs[runs.length - 1]?.provider === provider) {
+      run = runs[runs.length - 1];
+    }
+    if (run) run.events.push(...events);
+    else {
+      run = { provider, events: [...events] };
+      runs.push(run);
+    }
+    if (threads.length > 0) run.lastThread = threads[threads.length - 1];
   }
   if (runs.length === 0) return foldUsageEvents([]);
 
@@ -142,9 +182,7 @@ export function foldLineageUsageEvents(
         engine.reportedCosts,
       );
   }
-  const counted = perEngine.filter((engine) =>
-    TOKEN_FIGURES.some((field) => engine[field] !== undefined),
-  );
+  const counted = perEngine.filter(reportsEngineTokens);
   if (counted.length === 1)
     for (const field of TOKEN_FIGURES) {
       const value = counted[0]![field];
@@ -152,6 +190,32 @@ export function foldLineageUsageEvents(
     }
   aggregate.engines = perEngine;
   return aggregate;
+}
+
+/** The native thread ids a Session recorded, in order, without repeats. */
+function nativeThreads(
+  events: readonly CanonicalRuntimeEvent[],
+  provider: string,
+): string[] {
+  const key = NATIVE_THREAD_METADATA_KEY.get(provider);
+  if (!key) return [];
+  const threads: string[] = [];
+  for (const event of events) {
+    if (
+      event.provider !== provider ||
+      (event.method !== 'session.started' &&
+        event.method !== 'session.configured')
+    )
+      continue;
+    const thread = event.metadata?.[key];
+    if (
+      typeof thread === 'string' &&
+      thread.length > 0 &&
+      threads[threads.length - 1] !== thread
+    )
+      threads.push(thread);
+  }
+  return threads;
 }
 
 function addOptional(current: number | undefined, value: number): number {

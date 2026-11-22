@@ -1,4 +1,7 @@
-import type { ConversationStatsResponse } from '@kontourai/station-contracts/runtime';
+import {
+  type ConversationStatsResponse,
+  reportsEngineTokens,
+} from '@kontourai/station-contracts/runtime';
 
 /**
  * ONE representation of "nobody measured this", for every surface
@@ -166,12 +169,7 @@ export function conversationStatsMeasurementView(
       ? { reportedCostUnits: stats.reportedCosts.length }
       : {}),
     contextTokens: stats.contextTokens,
-    ...(stats.engines?.some(
-      (engine) =>
-        engine.inputTokens !== undefined ||
-        engine.outputTokens !== undefined ||
-        engine.totalTokens !== undefined,
-    )
+    ...(stats.engines?.some(reportsEngineTokens)
       ? { tokensReportedPerEngine: true as const }
       : {}),
     // Without a token pair the percentage can only be the engine's own.

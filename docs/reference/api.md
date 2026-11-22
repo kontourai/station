@@ -3058,14 +3058,20 @@ message read, stats cover every Session in the conversation's lineage: stored
 cumulative figures (tokens, turns, tool calls, cost) sum across the Sessions'
 records, and context occupancy comes from the newest one. Without a stored
 record, the orchestration usage fold runs over every authorized Session's
-events in lineage order, kept per engine (#5389): consecutive Sessions of one
-engine fold as one stream, so a resumed running total is not counted twice.
-`engines` lists each engine's own figures (`provider`, `turns`, `toolCalls`,
-token figures, `estimatedCost`, `reportedCosts`, `modelId`) in the order the
-engines first ran. When more than one engine reported tokens, the response's
-own token figures are absent: engines count on different scales, so no
-single total exists. Turns, tool calls and costs (per unit) stay
-conversation-wide.
+events in lineage order, kept per engine (#5389). An engine that reports a
+running total (Codex) continues a run of Sessions only on the same native
+thread: a Session whose first recorded `codexThreadId` equals the run's last
+one continues its total, and any other Session, including one that recorded
+no thread id, adds a new total to that engine's earlier ones. Other engines
+continue the run of the Session before them when it ran the same engine;
+their tokens add per turn, and their cost continues only after a recorded
+resume (`nativeSessionResumed`). `engines` lists each engine's own figures
+(`provider`, `turns`, `toolCalls`, token figures, `estimatedCost`,
+`reportedCosts`, `modelId`), one row per engine in the order the engines
+first ran, on every engine-events view. When more than one engine reported
+tokens, the response's own token figures are absent: engines count on
+different scales, so no single total exists. Turns, tool calls and costs (per
+unit) stay conversation-wide.
 
 `engineMcp`, present when the engine reported its MCP servers, is the latest
 `engine-mcp.status` reports folded per Session of the lineage (a later
