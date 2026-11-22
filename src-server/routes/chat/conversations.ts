@@ -1040,7 +1040,12 @@ export function createConversationRoutes(
 
   app.post(
     '/:slug/conversations/:conversationId/fork',
-    validate(forkConversationSchema),
+    validate(forkConversationSchema, {
+      refusal: () => ({
+        code: CONVERSATION_FORK_REFUSAL_CODES.invalidRequest,
+        error: 'Invalid fork request',
+      }),
+    }),
     async (c) => {
       try {
         let sourceAgent: string;
@@ -1229,6 +1234,8 @@ export function createConversationRoutes(
             );
             lineageSource = read?.messages.length ? read : null;
           } catch (error) {
+            if (error instanceof ConversationForkContextError)
+              return forkRefusal(c, 409, error.code, error.message);
             logger.warn('Fork source history could not be read', {
               conversationId: sourceConversationId,
               error: errorMessage(error).slice(0, 500),

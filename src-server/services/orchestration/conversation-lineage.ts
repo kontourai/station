@@ -14,6 +14,7 @@ import type {
   StagedConversationHandoff,
 } from '@kontourai/station-contracts/orchestration';
 import {
+  CONVERSATION_FORK_REFUSAL_CODES,
   CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
   CONVERSATION_HANDOFF_REFUSAL_CODES,
   type ConversationHandoffRefusalCode,
@@ -293,6 +294,16 @@ interface ConversationLineageDeps {
 }
 
 /** Deliberately shared by absent, unauthorized, and cross-tenant requests. */
+/**
+ * The most history a fork reads in its one synchronous pass, decided from
+ * SQL before any payload loads. Measured on 40 tool-heavy Codex turns (2,563
+ * events, 1.7 MB stored: 58 ms to read, 156 ms for the whole fork) and on ten
+ * times that (25,603 events, 17.2 MB: 446 ms and 723 ms); these allow about
+ * nine times the first and keep the read well under a second.
+ */
+export const FORK_SOURCE_MAX_EVENTS = 32_000;
+export const FORK_SOURCE_MAX_BYTES = 16 * 1024 * 1024;
+
 export class ConversationContextBoundaryNotFoundError extends Error {
   readonly name = 'ConversationContextBoundaryNotFoundError';
   constructor() {
@@ -1911,12 +1922,14 @@ export class ConversationLineage {
         throw new ConversationStartContextError(
           'Retained summary source is no longer authorized.',
         );
-    const carried = await this.authorizedLineageSeedMessages(
-      filtered.sources,
-      authority,
-    );
-    if (!carried) throw new Error('Conversation context is not authorized.');
-    return [...this.summaryMessages(filtered.seed), ...carried];
+    if (!(await this.lineageReadable(filtered.sources, authority)))
+      throw new Error('Conversation context is not authorized.');
+    return [
+      ...this.summaryMessages(filtered.seed),
+      ...filtered.sources.flatMap((entry) =>
+        this.deps.readSessionSeedMessages(entry.sessionId, authority),
+      ),
+    ];
   }
 
   /**
@@ -1954,11 +1967,24 @@ export class ConversationLineage {
     ) {
       lineage = lineage.slice(0, -1);
     }
-    const messages = await this.authorizedLineageSeedMessages(
-      lineage,
-      authority,
+    if (!(await this.lineageReadable(lineage, authority))) return null;
+    // A fork reads from the first turn, so the whole history is loaded,
+    // resolved and projected in one synchronous pass. Its size is decided
+    // from SQL first, after authorization so it discloses nothing.
+    const footprint = store.readSessionsHistoryFootprint(
+      lineage.map((entry) => entry.sessionId),
     );
-    if (!messages) return null;
+    if (
+      footprint.events > FORK_SOURCE_MAX_EVENTS ||
+      footprint.bytes > FORK_SOURCE_MAX_BYTES
+    )
+      throw new ConversationForkContextError(
+        'This conversation is too long to fork in one piece.',
+        CONVERSATION_FORK_REFUSAL_CODES.historyTooLarge,
+      );
+    const messages = lineage.flatMap((entry) =>
+      this.deps.readSessionSeedMessages(entry.sessionId, authority),
+    );
     const current = await this.readSessionConversation(
       lineage.at(-1)!.sessionId,
       authority,
@@ -1970,17 +1996,15 @@ export class ConversationLineage {
     };
   }
 
-  /** Null unless the caller may read every Session; never a partial read. */
-  private async authorizedLineageSeedMessages(
+  /** Whether the caller may read every Session; a read is never partial. */
+  private async lineageReadable(
     sources: readonly { sessionId: string }[],
     authority: SessionReadScope,
-  ): Promise<ConversationMessage[] | null> {
+  ): Promise<boolean> {
     for (const entry of sources)
       if (!(await this.deps.readSession(entry.sessionId, authority)))
-        return null;
-    return sources.flatMap((entry) =>
-      this.deps.readSessionSeedMessages(entry.sessionId, authority),
-    );
+        return false;
+    return true;
   }
 
   private contextSources(sources: readonly { sessionId: string }[]) {

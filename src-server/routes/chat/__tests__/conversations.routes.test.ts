@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { CONVERSATION_FORK_REFUSAL_CODES } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   parseHostedTenantRegistry,
@@ -18,6 +19,7 @@ import {
   FileConversationAcknowledgementStore,
   PERSONAL_OWNER_ACKNOWLEDGEMENT_KEY,
 } from '../../../services/orchestration/conversation-acknowledgement-store.js';
+import { ConversationForkContextError } from '../../../services/orchestration/conversation-fork-context.js';
 import { ConversationWorkStateStore } from '../../../services/orchestration/conversation-work-state-store.js';
 import { resolveRuntimeAgent } from '../../agents/runtime-agent-resolver.js';
 
@@ -2574,6 +2576,68 @@ describe('Conversation Routes', () => {
       }).toEqual(before);
     },
   );
+
+  function boundedForkRoutes(reader: Record<string, unknown>) {
+    const source = createMockAdapter();
+    source.getConversation.mockResolvedValue(null);
+    const eventStore = {
+      appendConversationFork: vi.fn(),
+      appendConversationForkIfAbsent: vi.fn(),
+      readConversationForkProvenance: vi.fn(() => ({ forkedTo: [] })),
+    };
+    const app = createForkConversationRoutes(
+      new Map([['codex', source]]) as any,
+      mockLogger,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      () => source as any,
+      { ...emptyHistoryReader(), ...reader } as any,
+      () => 'user',
+      undefined,
+      undefined,
+      eventStore,
+      () => true,
+    );
+    return { app, eventStore };
+  }
+
+  test('a fork whose history is past the read bound answers its stable code', async () => {
+    const { app, eventStore } = boundedForkRoutes({
+      readConversationForkSource: vi.fn(async () => {
+        throw new ConversationForkContextError(
+          'This conversation is too long to fork in one piece.',
+          CONVERSATION_FORK_REFUSAL_CODES.historyTooLarge,
+        );
+      }),
+    });
+    const response = await app.request('/codex/conversations/huge/fork', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetAgent: 'codex' }),
+    });
+    expect(response.status).toBe(409);
+    expect(await json(response)).toMatchObject({
+      code: CONVERSATION_FORK_REFUSAL_CODES.historyTooLarge,
+      error: 'This conversation is too long to fork in one piece.',
+    });
+    expect(eventStore.appendConversationForkIfAbsent).not.toHaveBeenCalled();
+  });
+
+  test('a fork body that fails its schema answers the invalid-request code', async () => {
+    const { app } = boundedForkRoutes({});
+    const response = await app.request('/codex/conversations/any/fork', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ targetAgent: 'codex', unexpected: true }),
+    });
+    expect(response.status).toBe(400);
+    expect(await json(response)).toMatchObject({
+      code: CONVERSATION_FORK_REFUSAL_CODES.invalidRequest,
+    });
+  });
 
   test('a fork past the lineage read bound is refused before its history is read', async () => {
     const source = createMockAdapter();
