@@ -160,6 +160,8 @@ async function world(
     storedProject?: string;
     /** The rule's episode `maxAttempts` (default the fixture's). */
     maxAttempts?: number;
+    /** The store compares Project references as written (no lookup). */
+    unresolvedStore?: boolean;
   } = {},
 ) {
   const ruleModes = options.ruleModes ?? ['live'];
@@ -173,7 +175,9 @@ async function world(
   const projects = real?.service ?? {
     listProjects: () => [{ id: 'project', slug: 'project' }],
   };
-  const store = new AutomationStore(home, undefined, projects);
+  const store = options.unresolvedStore
+    ? new AutomationStore(home)
+    : new AutomationStore(home, undefined, projects);
   const source = (
     await store.createSource({
       kind: 'github-poll',
@@ -1857,12 +1861,10 @@ test('an intent recorded with a slug before slugs were resolved is refused as a 
   // As intake recorded it before the store resolved slugs.
   recordAutomationEvent({
     ledger: w.ledger,
-    rules: w.store
-      .actionableRules(w.source.id)
-      .map((rule) => ({
-        ...rule,
-        action: { ...rule.action, projectId: 'station' },
-      })),
+    rules: w.store.actionableRules(w.source.id).map((rule) => ({
+      ...rule,
+      action: { ...rule.action, projectId: 'station' },
+    })),
     source: w.store.read().sources[0],
     event: laterFailure(w),
     transportId: 'legacy-slug-intent',
@@ -1883,4 +1885,17 @@ test('an intent recorded with a slug before slugs were resolved is refused as a 
       String(message).includes('was not found'),
     ),
   ).toBe(false);
+});
+
+test('the runtime acts only for an exact current Project id, even when the rule itself names the slug', async () => {
+  const w = await world({
+    projects: [STATION_PROJECT],
+    storedProject: 'station',
+    unresolvedStore: true,
+  });
+  expect(w.ledger.listActionIntents()[0]?.action.projectId).toBe('station');
+  await liveTick(w);
+  await w.runtime.tick();
+  expect(w.agentStarts).toEqual([]);
+  expect(w.graph.listTasks()).toEqual([]);
 });
