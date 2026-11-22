@@ -446,15 +446,15 @@ export function translateChatError(
       body: 'Station cannot tell whether your earlier message reached the agent, so this one was not sent.',
       hint:
         code === TURN_START_HELD_CODE
-          ? 'Wait for that turn to finish. If the agent has stopped, send again: Station then records the earlier turn as interrupted instead of refusing.'
-          : 'This agent does not report when it stops, so Station keeps refusing until that turn reports its end. To send now, restart Station (quit and reopen the app, or restart the Station service): the earlier turn is then recorded as interrupted.',
+          ? 'Wait for that turn to finish. If the agent has stopped, send again: the earlier turn is then recorded as interrupted.'
+          : 'This agent does not report when it stops. To send now, restart Station (quit and reopen the app): the earlier turn is then interrupted.',
       retryable: false,
     };
   if (code === CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE)
     return {
       title: 'The previous agent is still stopping',
       body: 'This chat’s agent failed, and its process has not stopped yet, so Station did not start a new one beside it. This message was not sent.',
-      hint: 'Send again in a moment. If this keeps happening, restart Station (quit and reopen the app, or restart the Station service), which stops that process.',
+      hint: 'Send again in a moment. If this keeps happening, restart Station (quit and reopen the app), which stops that process.',
       retryable: false,
     };
   if (code === TURN_START_BUSY_CODE)

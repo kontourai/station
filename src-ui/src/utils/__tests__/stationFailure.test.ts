@@ -266,6 +266,6 @@ describe('Station authority failure translation', () => {
       /try again in a moment|chat:session/i,
     );
     if (code !== 'turn_start_held')
-      expect(held.hint).not.toMatch(/send again: Station then records/);
+      expect(held.hint).not.toMatch(/send again: the earlier turn/);
   });
 });
