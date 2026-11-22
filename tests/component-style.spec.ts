@@ -206,13 +206,17 @@ for (const theme of ['light', 'dark']) {
             top: style.paddingTop,
             right: style.paddingRight,
             fontSize: style.fontSize,
+            textSm: getComputedStyle(document.documentElement)
+              .getPropertyValue('--k-text-sm')
+              .trim(),
           };
         });
       expect(retryStyle.top).toBe('6px');
       expect(retryStyle.right).toBe('12px');
-      // #4403: a control is at least 12px. The default Comfortable density
-      // (#4723, tokens.css) sets `--k-text-sm` to 13px; Compact keeps 12.5px.
-      if (width === 1280) expect(retryStyle.fontSize).toBe('13px');
+      // #4403: a control is at least 12px. It reads the shared small text
+      // size, which the person's density sets (tokens.css).
+      expect(Number.parseFloat(retryStyle.fontSize)).toBeGreaterThanOrEqual(12);
+      if (width === 1280) expect(retryStyle.fontSize).toBe(retryStyle.textSm);
       if (width === 390) {
         const header = page.getByLabel('Collapsed dock geometry');
         const control = page.getByRole('button', { name: 'Open dock' });
