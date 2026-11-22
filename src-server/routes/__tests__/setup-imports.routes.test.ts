@@ -489,8 +489,10 @@ describe('setup import routes', () => {
   // Three layers refuse to write over an existing skill: apply's
   // target-not-absent check, `createLocalSkillIfAbsent`, and the check inside
   // `createLocalSkillOwned`. This test pins the OUTCOME (the person's files
-  // are byte-identical) through all of them; any one layer alone still keeps
-  // it green, so it proves the property, not each layer.
+  // are byte-identical, checked first) through all of them. Removing any one
+  // layer leaves it green because the other two still protect the bytes; it
+  // fails only when all three are gone. It proves the property, not each
+  // layer.
   test('an import aimed at an existing skill, or a case variant of it, never changes its files', async () => {
     const { codex, project, service, post } = await realImportApp();
     await service.createLocalSkill(
@@ -507,11 +509,11 @@ describe('setup import routes', () => {
     const receipt = await importWith(post, (entry) =>
       entry.name === 'exact.md' ? 'mine' : 'Mine',
     );
-    expect(
-      receipt.items.map((item: { outcome: string }) => item.outcome),
-    ).toEqual(['failed', 'failed']);
     files.forEach((file, index) => {
       expect(readFileSync(file).equals(before[index]!), file).toBe(true);
     });
+    expect(
+      receipt.items.map((item: { outcome: string }) => item.outcome),
+    ).toEqual(['failed', 'failed']);
   });
 });
