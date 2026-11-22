@@ -137,10 +137,6 @@
       "count": 1,
       "reason": "FORK: hand-rolled bottom sheet. Retire with the sheet primitive."
     },
-    "src-ui/src/components/setup/ExistingSetupImportStepper.css": {
-      "count": 1,
-      "reason": "The embedded setup-import workflow stacks its own heading and full-width Review import control inside both First Run and Settings; neither host nor the shared action-row primitive owns that internal heading geometry."
-    },
     "src-ui/src/components/status/live-status.css": {
       "count": 1,
       "reason": "The shared chat status pill owns its actionable 44px touch floor at phone width or on a coarse pointer. The host-qualified selector preserves that floor against the composer button reset. Stacked popup positioning is owned by the composer container rule in chat.css."
