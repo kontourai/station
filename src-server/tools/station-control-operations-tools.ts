@@ -442,11 +442,9 @@ export function registerOperationsTools(
       // and derives an unused slug from `displayName` when `name` is omitted.
       name: z.string().optional().describe('Slug'),
       displayName: z.string().optional().describe('Readable name'),
-      cron: z.string().optional().describe('Cron expression'),
-      schedule: schedulerScheduleSchema
-        .optional()
-        .describe('Cron, fixed interval, or one-shot schedule'),
-      prompt: z.string().describe('Prompt to run'),
+      cron: z.string().optional(),
+      schedule: schedulerScheduleSchema.optional().describe('Instead of cron'),
+      prompt: z.string(),
       agent: z.string().optional().describe('Agent slug (default: default)'),
       provider: z.string().optional(),
       notifyStart: z.boolean().optional(),
