@@ -309,6 +309,28 @@ describe('chat-14: the approval toast offers Allow once, Deny and one menu of se
     expect(queue.getAttribute('aria-expanded')).toBe('false');
   });
 
+  test('an outside press with a menu open closes only the menu; the next one closes the queue', async () => {
+    const card = openRequest(claudeBash([rule('npm ls *')]));
+    const queue = screen.getByRole('button', { name: '1 pending approval' });
+    fireEvent.click(queue);
+    fireEvent.click(within(card).getByRole('button', { name: MENU }));
+    await screen.findAllByRole('menuitem');
+    // A press outside an open menu lands on its dismiss backdrop, which is
+    // portalled to the body and so outside the queue too.
+    const backdrop = screen.getByRole('button', {
+      name: 'Close allow for this session',
+    });
+    fireEvent.pointerDown(backdrop);
+    fireEvent.click(backdrop);
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+    expect(queue.getAttribute('aria-expanded')).toBe('true');
+    expect(resolveOrchestrationRequest).not.toHaveBeenCalled();
+    // With no menu open, a press outside the queue closes it.
+    fireEvent.pointerDown(document.body);
+    expect(queue.getAttribute('aria-expanded')).toBe('false');
+    expect(resolveOrchestrationRequest).not.toHaveBeenCalled();
+  });
+
   test.each([
     ['Allow once', claudeBash([rule('npm ls *')]), 'accept', undefined],
     ['Deny', claudeBash([rule('npm ls *')]), 'decline', undefined],
