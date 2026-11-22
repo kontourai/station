@@ -129,3 +129,71 @@ describe('the exported SKILL.md round-trips through the import parser', () => {
     expect(parsed.body).toBe('Body');
   });
 });
+
+// Codex saved prompts (and many hand-written `.md` files dropped on "Import
+// .md") open with front matter the Agent Skills spec parser refuses: a
+// `description` and an `argument-hint`, but no `name`. The block is metadata,
+// never instructions, so it must not reach the skill body.
+describe('front matter the spec parser refuses', () => {
+  const cases = [
+    {
+      label: 'description only',
+      file: 'review-pr.md',
+      text: '---\ndescription: Review a pull request\n---\nReview $1 carefully.\n',
+      name: 'review-pr',
+      description: 'Review a pull request',
+    },
+    {
+      label: 'description and argument-hint',
+      file: 'explain.md',
+      text: '---\ndescription: "Explain a file: plainly"\nargument-hint: [FILE=<path>]\n---\n\nExplain $FILE in plain words.\n',
+      name: 'explain',
+      description: 'Explain a file: plainly',
+    },
+    {
+      label: 'name only',
+      file: 'changelog.md',
+      text: '---\nname: release-notes\n---\nDraft the changelog for $ARGUMENTS.\n',
+      name: 'changelog',
+      description: undefined,
+    },
+    {
+      label: 'CRLF line endings',
+      file: 'crlf.md',
+      text: '---\r\ndescription: Windows prompt\r\n---\r\nDo the thing.\r\n',
+      name: 'crlf',
+      description: 'Windows prompt',
+    },
+    {
+      label: 'unparseable YAML',
+      file: 'broken.md',
+      text: '---\ndescription: [unclosed\n---\nStill a body.\n',
+      name: 'broken',
+      description: undefined,
+    },
+  ];
+  for (const { label, file, text, name, description } of cases) {
+    test(`${label}: the block leaves the body and the file name names the skill`, () => {
+      const parsed = parseImportedSkillMarkdown(file, text);
+      expect(parsed.name).toBe(name);
+      expect(parsed.description).toBe(description);
+      expect(parsed.body.startsWith('---')).toBe(false);
+      expect(parsed.body).not.toContain('description:');
+      expect(parsed.body).not.toContain('argument-hint');
+      expect(parsed.command).toBeUndefined();
+    });
+  }
+
+  test('placeholders in the body are copied as written', () => {
+    const parsed = parseImportedSkillMarkdown(
+      'args.md',
+      '---\ndescription: Args\n---\nUse $1, $ARGUMENTS and $NAME.\n',
+    );
+    expect(parsed.body).toBe('Use $1, $ARGUMENTS and $NAME.');
+  });
+
+  test('a file with no front matter is unchanged', () => {
+    const parsed = parseImportedSkillMarkdown('plain.md', 'Just text.\n');
+    expect(parsed).toEqual({ name: 'plain', body: 'Just text.' });
+  });
+});

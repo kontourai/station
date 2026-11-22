@@ -14,6 +14,7 @@ import type {
   SkillVariable,
 } from '@kontourai/station-contracts/catalog';
 import { parseFrontmatter } from 'agent-skills-ts-sdk';
+import { load as loadYaml } from 'js-yaml';
 import { isRecord } from '../../utils/is-record.js';
 
 const SKILL_ORIGINS: readonly SkillOrigin[] = [
@@ -82,6 +83,36 @@ export function readSkillOrigin(value: unknown): SkillOrigin | undefined {
  */
 export { serializeSkillMarkdown } from '@kontourai/station-contracts/skill-markdown';
 
+/** A leading `---` … `---` block and the text after it, or nothing. */
+function leadingFrontmatterBlock(
+  content: string,
+): { yaml: string; body: string } | undefined {
+  const match =
+    /^\uFEFF?---[ \t]*\r?\n(?:([\s\S]*?)\r?\n)?---[ \t]*(?:\r?\n|$)/.exec(
+      content,
+    );
+  if (!match) return undefined;
+  return {
+    yaml: match[1] ?? '',
+    body: content.slice(match[0].length).trim(),
+  };
+}
+
+/** `description` from a block the spec parser refused, when it is text. */
+function lenientDescription(yaml: string): string | undefined {
+  try {
+    const value = loadYaml(yaml, { maxAliases: 0 });
+    if (value === null || typeof value !== 'object' || Array.isArray(value))
+      return undefined;
+    const description = (value as Record<string, unknown>).description;
+    return typeof description === 'string' && description.trim() !== ''
+      ? description.trim()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** What an imported `.md` file contributes to a new local skill. */
 export interface ImportedSkillMarkdown {
   name: string;
@@ -123,9 +154,19 @@ export function parseImportedSkillMarkdown(
     frontmatter = parsed.metadata as unknown as Record<string, unknown>;
     body = parsed.body;
   } catch {
-    // No frontmatter, or frontmatter the spec parser refuses. Both mean "this
-    // file declares nothing" — never "this file is broken", since its text is
-    // still a perfectly good skill body.
+    // No frontmatter, or frontmatter the spec parser refuses. Neither means
+    // "this file is broken": its text is still a good skill body. A refused
+    // block is still a block, though. Codex prompts open with `description:`
+    // and `argument-hint:` and no `name`, which the spec parser refuses; the
+    // block is not part of the instructions, so it is removed from the body
+    // and only a plain-text `description` is read from it. Nothing else in a
+    // refused block (name, command, variables) is trusted.
+    const refused = leadingFrontmatterBlock(content);
+    if (refused) {
+      body = refused.body;
+      const description = lenientDescription(refused.yaml);
+      if (description !== undefined) frontmatter = { description };
+    }
   }
 
   const declaredName =
