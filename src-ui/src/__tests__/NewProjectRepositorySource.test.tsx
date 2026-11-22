@@ -452,7 +452,7 @@ test.each([
   },
 );
 
-test('a failure brings Acquire repository into view without scrolling on an untouched form', async () => {
+test('a failure brings its reason and then Acquire repository into view, and an untouched form does not scroll', async () => {
   const reason =
     'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.';
   const scrolled: Array<{ text: string | null; options: unknown }> = [];
@@ -488,6 +488,7 @@ test('a failure brings Acquire repository into view without scrolling on an unto
     await screen.findByText(reason);
     await waitFor(() =>
       expect(scrolled).toEqual([
+        { text: reason, options: { block: 'nearest' } },
         { text: 'Acquire repository', options: { block: 'nearest' } },
       ]),
     );

@@ -89,6 +89,7 @@ function RepositorySourceControls({
   const refId = useId();
   const subdirectoryId = useId();
   const acquireRef = useRef<HTMLButtonElement>(null);
+  const sourceFailureRef = useRef<HTMLParagraphElement>(null);
   const client = useQueryClient();
   const key = [
     'repository-acquisition',
@@ -249,11 +250,14 @@ function RepositorySourceControls({
   }, [record, acquire.isPending, forgetOperation]);
 
   // The reason is beside the URL, but the next step is Acquire, which can sit
-  // below the dialog's fold. `nearest` leaves an already visible button alone,
-  // and scrolling does not move focus.
+  // below the dialog's fold. Bringing the reason and then the button into view
+  // with `nearest` shows both when they fit, keeps the button in view when they
+  // do not, and leaves an already visible form alone. Scrolling never moves
+  // focus.
   useEffect(() => {
-    if (sourceFailure && !requestId)
-      acquireRef.current?.scrollIntoView?.({ block: 'nearest' });
+    if (!sourceFailure || requestId) return;
+    sourceFailureRef.current?.scrollIntoView?.({ block: 'nearest' });
+    acquireRef.current?.scrollIntoView?.({ block: 'nearest' });
   }, [sourceFailure, requestId]);
 
   function begin() {
@@ -318,7 +322,12 @@ function RepositorySourceControls({
               aria-describedby={sourceFailure ? sourceFailureId : undefined}
             />
             {sourceFailure && (
-              <p className="editor-error" id={sourceFailureId} role="alert">
+              <p
+                ref={sourceFailureRef}
+                className="editor-error"
+                id={sourceFailureId}
+                role="alert"
+              >
                 {sourceFailure}
               </p>
             )}
