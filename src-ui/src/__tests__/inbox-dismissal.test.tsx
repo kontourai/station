@@ -13,6 +13,10 @@ import { InboxDismissUndo } from '../components/chat-dock/inbox-dismissals';
 import { useInboxNeedsYouCount } from '../components/chat-dock/useInboxGroups';
 import { NotificationContainer } from '../components/notifications/NotificationContainer';
 import { UndoableActionShortcut } from '../components/undo/UndoableActionShortcut';
+import {
+  offerUndoableAction,
+  resetUndoableActionsForTest,
+} from '../components/undo/undoable-actions';
 import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
 import { ActiveChatsStore } from '../contexts/active-chats-store';
 import {
@@ -504,6 +508,47 @@ describe('inbox dismissal through the rendered panel', () => {
     expect(dismissNoticeShown()).toBe(true);
     fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
     expect(row()).toBeTruthy();
+  });
+
+  it('a dismissal notice that closed without Undo leaves the undo stack, so Cmd+Z reaches the earlier action still on screen', () => {
+    resetUndoableActionsForTest();
+    try {
+      render(<Harness items={[thread]} />);
+      const commit = vi.fn(() => Promise.resolve());
+      const onUndo = vi.fn();
+      // An earlier undoable action from another surface, through the same
+      // owner a Board delete uses.
+      act(() =>
+        offerUndoableAction({
+          key: 'board:daily-brief',
+          message: 'Board deleted',
+          restoredMessage: 'Restored Daily brief',
+          commit,
+          failureMessage: 'Could not delete the Board.',
+          onUndo,
+        }),
+      );
+      dismiss();
+      const notice = toastStore
+        .getSnapshot()
+        .find((toast) => toast.message === 'Conversation dismissed');
+      expect(notice).toBeTruthy();
+      // The dismissal's notice goes away without Undo; the Board's stays.
+      act(() => toastStore.dismiss(notice!.id));
+
+      fireEvent.keyDown(window, { key: 'z', ctrlKey: true });
+
+      expect(
+        onUndo,
+        'Cmd+Z should undo the Board delete still on screen',
+      ).toHaveBeenCalledTimes(1);
+      expect(commit).not.toHaveBeenCalled();
+      expect(
+        screen.queryByRole('button', { name: /^Review the inbox\b/ }),
+      ).toBeNull();
+    } finally {
+      resetUndoableActionsForTest();
+    }
   });
 
   it('changing Station closes the dismissal notice, and Cmd+Z then restores nothing', () => {
