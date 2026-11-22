@@ -817,7 +817,9 @@ test.describe('Mobile request sheet (#3331)', () => {
     const posted = await openChatWith(page, APPROVAL_EVENTS, PHONE, true);
     const dialog = page.getByRole('dialog', { name: 'Needs approval' });
     await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: 'Allow for this session' }).click();
+    await dialog
+      .getByRole('button', { name: 'Allow for this session' })
+      .click();
     await page.getByRole('menuitem', { name: /for this session/ }).click();
     await expect.poll(() => answers(posted).length).toBe(1);
     expect(answers(posted)[0]).toMatchObject({
