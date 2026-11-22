@@ -93,6 +93,7 @@
 }
 
 .codex-import__rename {
+  width: 100%;
   max-width: 360px;
 }
 
@@ -107,9 +108,10 @@
   font-size: var(--k-text-sm);
 }
 
-/* The footnote takes the free space so the buttons stay at the end. */
+/* The footnote takes the free space so the buttons stay at the end, and
+   takes a line of its own once the row is too narrow for both. */
 .codex-import__footnote {
-  flex: 1 1 auto;
+  flex: 1 1 14rem;
   align-self: center;
 }
 
@@ -126,14 +128,4 @@
   + .codex-import__rows
   .codex-import__conflict-text {
   padding-inline-start: 0;
-}
-
-@media (max-width: 640px) {
-  .codex-import__rename {
-    max-width: none;
-  }
-
-  .codex-import__footnote {
-    flex-basis: 100%;
-  }
 }

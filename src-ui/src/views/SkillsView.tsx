@@ -722,17 +722,21 @@ export function SkillsView({
               >
                 {importSkillsMutation.isPending ? 'Importing…' : 'Import .md'}
               </button>
-              {codexPromptsAvailable && (
+            </div>
+            {/* Its own row: the list's action row carries at most two
+                labelled actions. The Skills page's New skill menu (first-run-08
+                change 4) is where this entry moves when the page gains it. */}
+            {codexPromptsAvailable && (
+              <div className="skill-library__codex-import-row">
                 <Button
                   variant="secondary"
                   size="sm"
-                  className="skill-library__codex-import"
                   onClick={() => setShowCodexImport(true)}
                 >
                   Import from Codex…
                 </Button>
-              )}
-            </div>
+              </div>
+            )}
           </>
         }
       >
@@ -1102,6 +1106,7 @@ export function SkillsView({
       <CodexPromptImportDialog
         open={showCodexImport}
         onClose={() => setShowCodexImport(false)}
+        existingSkillNames={skills.map((skill) => skill.name)}
       />
       <DiscardModal />
     </div>

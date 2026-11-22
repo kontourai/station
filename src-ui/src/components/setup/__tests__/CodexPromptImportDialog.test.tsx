@@ -92,13 +92,15 @@ const hooks = vi.hoisted(() => ({
   apply: vi.fn(),
   rollback: vi.fn(),
   previewData: undefined as unknown,
+  previewError: undefined as unknown,
 }));
 
 vi.mock('@kontourai/station-sdk/setup-imports-query', () => ({
   useCreateSetupImportPreviewMutation: () => ({
-    data: hooks.previewData,
+    data: hooks.previewError ? undefined : hooks.previewData,
     isPending: false,
-    isError: false,
+    isError: Boolean(hooks.previewError),
+    error: hooks.previewError,
     mutate: hooks.preview,
   }),
   useReviewSetupImportTargetsMutation: () => ({
@@ -120,15 +122,39 @@ vi.mock('@kontourai/station-sdk/setup-imports-query', () => ({
 
 import { CodexPromptImportDialog } from '../CodexPromptImportDialog';
 
-function renderDialog() {
-  render(<CodexPromptImportDialog open onClose={() => {}} />);
+function renderDialog(
+  existingSkillNames: readonly string[] = ['changelog', 'browser-test'],
+) {
+  render(
+    <CodexPromptImportDialog
+      open
+      onClose={() => {}}
+      existingSkillNames={existingSkillNames}
+    />,
+  );
   return screen.getByRole('dialog');
 }
+
+function entry(id: string, skillName: string, collision = false) {
+  return {
+    id,
+    name: `${id}.md`,
+    size: 10,
+    digest: id.padEnd(64, '0'),
+    skillName,
+    collision,
+    warnings: collision ? ['target-collision'] : [],
+  };
+}
+
+const button = (dialog: HTMLElement, name: string) =>
+  within(dialog).getByRole('button', { name }) as HTMLButtonElement;
 
 describe('CodexPromptImportDialog', () => {
   beforeEach(() => {
     hooks.preview.mockReset();
     hooks.previewData = preview;
+    hooks.previewError = undefined;
     hooks.review.mockReset();
     hooks.apply.mockReset();
     hooks.rollback.mockReset();
@@ -159,7 +185,9 @@ describe('CodexPromptImportDialog', () => {
       name: 'Import 0 skills',
     }) as HTMLButtonElement;
     expect(importButton.disabled).toBe(true);
-    expect(within(dialog).getByText(/undo the whole import/)).toBeTruthy();
+    expect(
+      within(dialog).getByText(/undo the whole import before you close/),
+    ).toBeTruthy();
   });
 
   test('solves a name conflict inline: typing a new name picks the prompt', () => {
@@ -290,5 +318,166 @@ describe('CodexPromptImportDialog', () => {
       within(dialog).queryByRole('button', { name: /^Import/ }),
     ).toBeNull();
     expect(within(dialog).getByRole('button', { name: 'Close' })).toBeTruthy();
+  });
+
+  test('the suggested name skips names already taken, ignoring case', () => {
+    const dialog = renderDialog([
+      'changelog',
+      'Changelog-Codex',
+      'browser-test',
+    ]);
+    const rename = within(dialog).getByRole('textbox', {
+      name: 'New name for changelog',
+    }) as HTMLInputElement;
+    expect(rename.value).toBe('changelog-codex-2');
+
+    fireEvent.change(rename, { target: { value: 'CHANGELOG' } });
+    expect(
+      within(dialog).getByText('You already have a skill called “changelog”.'),
+    ).toBeTruthy();
+    expect(button(dialog, 'Import 1 skill').disabled).toBe(true);
+    // A built-in skill's name is taken too.
+    fireEvent.change(rename, { target: { value: 'Browser-Test' } });
+    expect(
+      within(dialog).getByText(
+        'You already have a skill called “browser-test”.',
+      ),
+    ).toBeTruthy();
+    expect(button(dialog, 'Import 1 skill').disabled).toBe(true);
+  });
+
+  test('a prompt whose name matches an existing skill only in case needs a name', () => {
+    hooks.previewData = {
+      ...preview,
+      entries: [entry('upper', 'Changelog')],
+    };
+    const dialog = renderDialog();
+    expect(within(dialog).getByText('Needs a name')).toBeTruthy();
+    expect(
+      (
+        within(dialog).getByRole('textbox', {
+          name: 'New name for Changelog',
+        }) as HTMLInputElement
+      ).value,
+    ).toBe('Changelog-codex');
+  });
+
+  test('two prompts that derive the same name can each be renamed', () => {
+    hooks.previewData = {
+      ...preview,
+      entries: [entry('a b', 'a-b'), entry('a-b', 'a-b')],
+    };
+    const dialog = renderDialog();
+    expect(within(dialog).getAllByText('Needs a name')).toHaveLength(2);
+    const [first, second] = within(dialog).getAllByRole('textbox', {
+      name: 'New name for a-b',
+    }) as HTMLInputElement[];
+    expect(first!.value).toBe('a-b');
+    expect(second!.value).toBe('a-b-codex');
+    fireEvent.click(button(dialog, 'Select all'));
+    fireEvent.click(button(dialog, 'Import 2 skills'));
+    expect(hooks.review.mock.calls[0]![0].items).toEqual([
+      { id: 'a b', action: 'import', targetName: 'a-b' },
+      { id: 'a-b', action: 'import', targetName: 'a-b-codex' },
+    ]);
+  });
+
+  test('a name error says what is wrong and is tied to its field', () => {
+    const dialog = renderDialog();
+    const rename = within(dialog).getByRole('textbox', {
+      name: 'New name for changelog',
+    });
+    fireEvent.change(rename, { target: { value: 'x'.repeat(129) } });
+    const error = within(dialog).getByText(
+      'Use a name of 128 characters or fewer.',
+    );
+    expect(rename.getAttribute('aria-invalid')).toBe('true');
+    expect(rename.getAttribute('aria-describedby')).toContain(error.id);
+    fireEvent.change(rename, { target: { value: 'a/b' } });
+    expect(
+      within(dialog).getByText('Choose a name without slashes or "..".'),
+    ).toBeTruthy();
+  });
+
+  test('the cap on prompts per import is named when it left some out', () => {
+    hooks.previewData = {
+      ...preview,
+      excluded: { 'count-limit': 3, 'not-markdown': 1, 'unsafe-name': 1 },
+    };
+    const dialog = renderDialog();
+    expect(
+      within(dialog).getByText(
+        '3 more prompts were left out: Station imports up to 32 prompts at a time.',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByText(
+        '2 other files in the Codex prompts folder can’t be imported.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('a folder with too many files is explained, with no retry', () => {
+    hooks.previewError = Object.assign(new Error('too many'), {
+      status: 422,
+      code: 'TOO_MANY_FILES',
+    });
+    const dialog = renderDialog();
+    expect(
+      within(dialog).getByText('Your Codex prompts folder has too many files'),
+    ).toBeTruthy();
+    expect(
+      within(dialog).queryByRole('button', { name: 'Try again' }),
+    ).toBeNull();
+  });
+
+  test('undo is offered only until the window closes, and says so', () => {
+    const dialog = renderDialog();
+    expect(
+      within(dialog).getByText(
+        /undo the whole import before you close this window/,
+      ),
+    ).toBeTruthy();
+    fireEvent.click(
+      within(dialog).getByRole('checkbox', { name: 'review-pr' }),
+    );
+    fireEvent.click(button(dialog, 'Import 1 skill'));
+    expect(
+      within(screen.getByRole('dialog')).getByText(
+        'Closing this window ends undo.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('an import that created nothing does not read as a success', () => {
+    hooks.apply.mockImplementation((_input, options: Callbacks<unknown>) =>
+      options.onSuccess?.({
+        ...receipt,
+        retryable: false,
+        items: [
+          {
+            sourceId: 'review',
+            reviewedTarget: 'review-pr',
+            state: 'failed',
+            outcome: 'failed',
+            reasonCode: 'target-not-absent',
+            rollback: { state: 'failed', retryable: false },
+          },
+        ],
+      }),
+    );
+    const dialog = renderDialog();
+    fireEvent.click(
+      within(dialog).getByRole('checkbox', { name: 'review-pr' }),
+    );
+    fireEvent.click(button(dialog, 'Import 1 skill'));
+    const result = screen.getByRole('dialog');
+    expect(within(result).getByText('Nothing was imported.')).toBeTruthy();
+    expect(
+      within(result).getByText('A skill with this name already exists.'),
+    ).toBeTruthy();
+    expect(
+      within(result).queryByRole('button', { name: 'Undo import' }),
+    ).toBeNull();
   });
 });
