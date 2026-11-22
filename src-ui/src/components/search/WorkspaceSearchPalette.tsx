@@ -202,7 +202,11 @@ export default function WorkspaceSearchPalette({
       <input
         ref={inputRef}
         type="text"
-        aria-label="Search this Station's work"
+        aria-label={
+          projectId
+            ? "Search this Project's work"
+            : "Search this Station's work"
+        }
         placeholder="Search Tasks and messages…"
         value={query}
         role="combobox"

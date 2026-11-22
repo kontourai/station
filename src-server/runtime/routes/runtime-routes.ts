@@ -5576,6 +5576,7 @@ export function configureRuntimeRoutes(
     createSearchRoutes(context.runtimeSearch, {
       readAuthorityForRequest: conversationReadAuthorityForRequest,
       isRequestPrincipalCurrent,
+      projects: context.projectService,
     }),
   );
   const sessionInventoryAppRead = createSessionInventoryAppReadModule({

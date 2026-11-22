@@ -74,7 +74,7 @@ test('the Project rail Search scopes to the Project slug and stays out of the co
     );
     fireEvent.click(screen.getByRole('button', { name: 'Search' }));
     const input = await screen.findByRole('combobox', {
-      name: "Search this Station's work",
+      name: "Search this Project's work",
     });
     fireEvent.change(input, { target: { value: 'zebrafinch' } });
     expect(
