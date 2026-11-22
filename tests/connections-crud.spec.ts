@@ -1611,6 +1611,50 @@ test.describe('Connections CRUD', () => {
     await expect(page.locator('#int-name')).not.toBeVisible();
   });
 
+  // The Secret bindings section sits after the split pane in the same column.
+  // Opening it used to shrink the pane to zero height and paint the form over
+  // the editor, so a click on its buttons landed on the section instead.
+  test('the tool server editor stays usable with Secret bindings open', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1440, height: 600 });
+    await page.goto('/connections/tools');
+    await page.getByRole('button', { name: /Filesystem Tools/ }).click();
+    await page.waitForSelector('#int-name', { timeout: 15_000 });
+
+    const stack = page.locator('.integration-editor-stack');
+    const pane = page.locator('.integration-editor-stack > .split-pane');
+    const section = page.locator('.editor__expandable');
+    await expect(section).toBeVisible();
+    // Closed: the column adds no scrollbar of its own.
+    expect(
+      await stack.evaluate((el) => el.scrollHeight - el.clientHeight),
+    ).toBeLessThanOrEqual(1);
+
+    await section.getByText('Advanced: Secret bindings').click();
+    await expect(section).toHaveJSProperty('open', true);
+    // The opened section is scrolled into the column's view.
+    await expect
+      .poll(async () => {
+        const box = (await section.boundingBox())!;
+        const column = (await stack.boundingBox())!;
+        return box.y < column.y + column.height;
+      })
+      .toBe(true);
+    const paneBox = (await pane.boundingBox())!;
+    expect(paneBox.height).toBeGreaterThan(200);
+    const sectionBox = (await section.boundingBox())!;
+    expect(sectionBox.y).toBeGreaterThanOrEqual(paneBox.y + paneBox.height - 1);
+
+    const reconnect = page.waitForRequest(
+      (request) =>
+        request.method() === 'POST' &&
+        /\/integrations\/filesystem-tools\/reconnect$/.test(request.url()),
+    );
+    await page.getByRole('button', { name: 'Reconnect' }).click();
+    await reconnect;
+  });
+
   // #1180: `connections-tools` is one of the routes where `SplitPaneLayout`'s
   // mobile detail sheet marks `PageFrame`'s route frame `inert`
   // (PageFrame.tsx:155) while it is open. `DeleteIntegrationModal` opens from

@@ -160,10 +160,11 @@
   margin: 0 0 var(--k-space-4);
 }
 
-/* The tool server editor and the Secret bindings section share one scrolling
-   column. Without it the split pane shrinks to nothing once the section opens
-   and the section is painted over the editor. The pane keeps a usable height
-   and the column scrolls to reach the section. */
+/* The tool server editor and the Secret bindings section share one column.
+   Closed, the split pane keeps its ordinary size. Open, the section would
+   otherwise take the whole bounded panel, shrink the pane to nothing and be
+   painted over the editor; so the pane keeps a usable height (never more than
+   the panel) and the column scrolls to reach the section. */
 .integration-editor-stack {
   display: flex;
   flex: 1 1 auto;
@@ -172,6 +173,6 @@
   overflow-y: auto;
 }
 
-.integration-editor-stack > .split-pane {
-  flex: 1 0 32rem;
+.integration-editor-stack:has(.editor__expandable[open]) > .split-pane {
+  flex: 1 0 min(32rem, 100%);
 }
