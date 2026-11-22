@@ -143,5 +143,9 @@
 }
 
 .customize-landing__note a {
+  display: inline-flex;
+  align-items: center;
+  /* A way in on a phone, so it gets the touch floor there. */
+  min-block-size: var(--touch-target-min, 0px);
   color: var(--k-action);
 }

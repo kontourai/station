@@ -389,7 +389,7 @@ export function KnowledgeConnectionView({
                     navigate(getPathForView({ type: 'connections-models' })!)
                   }
                 >
-                  Add one in Models →
+                  Add one in Providers →
                 </button>
               }
             />

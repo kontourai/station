@@ -83,7 +83,7 @@ describe('KnowledgeConnectionView (#242 shell port)', () => {
 
     expect(screen.getByText('No embedding model configured.')).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: /Add one in Models/ }),
+      screen.getByRole('button', { name: /Add one in Providers/ }),
     ).toBeTruthy();
   });
 
