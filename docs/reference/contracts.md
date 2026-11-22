@@ -1580,7 +1580,8 @@ treated as for a held key. When the client's
 automatic re-sends run out, the message stays queued with a reason and Retry.
 A send with a new key to a Session whose earlier turn start blocks it is
 refused, and nothing is sent (codes in `@kontourai/station-contracts/orchestration`;
-none is a provider failure kind or retryable as such). `turn_start_held`: an
+the failure-kind table above gives each one's kind: `busy` and retryable, except
+`turn_start_held_until_restart`, which is `conflict`). `turn_start_held`: an
 earlier start by this Station process may have reached the engine; the next
 send settles it once the Session's engine is observed to have ended.
 `turn_start_held_until_restart`: the same, on an engine that does not report
