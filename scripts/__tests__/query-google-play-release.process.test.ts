@@ -16,9 +16,11 @@ const IDENTITY = JSON.stringify({
   versionCode: 242801,
   versionName: '0.1.3-nightly.242801',
 });
-// Generous: a child that never exits is the failure under test, and a
-// healthy one finishes in a few seconds even on a loaded host.
-const KILL_AFTER_MS = 45_000;
+// A child that never exits is the failure under test, and the test kills it
+// before vitest's 30 s test timeout so that failure shows as the `killed`
+// assertion rather than a timeout. A healthy child finishes in a few seconds
+// even on a loaded host.
+const KILL_AFTER_MS = 20_000;
 
 /** The parent's environment without any Google credential of its own. */
 const childEnv = (extra: Record<string, string>) => {
@@ -147,7 +149,7 @@ describe('query-google-play-release token time limit', () => {
     });
     expect(result).toMatchObject({ status: 1, killed: false, stdout: '' });
     // The 8 s budget plus node start-up; an abandoned STS socket that kept
-    // the process alive would run to the 45 s kill instead.
+    // the process alive would run to the 20 s kill instead.
     expect(Date.now() - started).toBeLessThan(20_000);
     expect(result.stderr).toContain(
       'acquire-token local deadline elapsed (attempt 1 of 3); retrying in 2000 ms from a new edit',

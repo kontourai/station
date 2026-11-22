@@ -411,17 +411,24 @@ async function observeOnce(identity, encodedPackage, context) {
 }
 
 /**
- * A failed read whose cleanup also failed is final. A good read whose
+ * A failed read whose cleanup also failed carries both details and is retried
+ * only when both failures are retryable: one network stall is likely to cover
+ * the read and its cleanup, and nothing depends on the delete. A cleanup
+ * failure of any other kind after a failed read is final. A good read whose
  * cleanup failed returns the observation with a stderr warning naming the
- * edit: nothing depends on the delete, because the edit is never committed,
- * never changes the live app, and Play invalidates it at this account's next
- * edit.
+ * edit: the edit is never committed, never changes the live app, and Play
+ * invalidates it at this account's next edit.
  */
 function settleAttempt(result, operationError, cleanupError, editId, context) {
   if (cleanupError && operationError)
     throw new ReadbackFailure(
       `${cleanupError.detail} after ${operationError.detail}`,
-      { cause: new AggregateError([cleanupError, operationError]) },
+      {
+        cause: new AggregateError([cleanupError, operationError]),
+        retryable:
+          operationError.retryable === true && cleanupError.retryable === true,
+        retryAfterMs: operationError.retryAfterMs,
+      },
     );
   if (operationError) throw operationError;
   if (cleanupError)
@@ -493,8 +500,8 @@ function readbackContext(options) {
  * 5xx, in the token stage or any request) is retried from a new client and a
  * new edit, within MAX_ATTEMPTS and TOTAL_BUDGET_MS. Still fail-closed: any
  * other HTTP status, an observation the parser rejects, a spent budget, and
- * a cleanup failure after a failed read. A cleanup failure after a good read
- * is a warning (see settleAttempt).
+ * a cleanup failure after a failed read unless both failures are retryable. A
+ * cleanup failure after a good read is a warning (see settleAttempt).
  */
 /** @param {any} options */
 export async function queryGooglePlayInternal(identity, options = {}) {

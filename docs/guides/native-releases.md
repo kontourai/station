@@ -268,10 +268,19 @@ readback ends within 65 s; the verifier allows it 90 s, and the workflow step
 allows 3 minutes, after which the unknown claim is recorded. Still fail-closed:
 any other HTTP status (a 403 or 404 means the identity or grant is wrong), an
 observation the parser rejects, a spent budget, and a cleanup that fails after
-a failed read. A cleanup that fails after a good read is a stderr warning that
+a failed read, unless both failures are of a retryable class (one stall is
+likely to cover the read and its cleanup), in which case the attempt is retried
+like any other. A cleanup that fails after a good read is a stderr warning that
 names the phase and the edit, because an uncommitted edit never changes the
-live app and Play invalidates it when the same account next creates one. Each
-failure names the phase and the attempt, never the provider's own error text.
+live app. Google's edits documentation says Play invalidates an open edit when
+the same account next creates one; that is not verified here. If it holds, an
+attempt whose create is abandoned client-side but still lands at Play after the
+next attempt's create could invalidate the later attempt's edit, and its read
+would fail with an HTTP status that is not retried; the message names the
+phase, the attempt and the status, so such a failure is recognisable. When the
+verifier's 90 s limit on the readback trips, it reports that the adapter did not
+finish and includes the adapter's stderr lines. Each failure names the phase
+and the attempt, never the provider's own error text.
 Not verified: stable releases upload a different package with the same service
 account, and if Play's one-open-edit rule spans apps, a readback's edit (up to
 three on the retry path) could invalidate an overlapping stable upload's edit.

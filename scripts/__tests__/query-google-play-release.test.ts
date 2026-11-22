@@ -4,6 +4,7 @@ import {
   queryGooglePlayInternal,
   READBACK_WORST_CASE_MS,
 } from '../query-google-play-release.mjs';
+import { PLAY_ADAPTER_LIMIT_MS } from '../verify-release-cohort.mjs';
 
 const identity = {
   packageName: 'io.kontourai.station.nightly',
@@ -24,8 +25,6 @@ const response = () => ({
     bundles: [{ versionCode: identity.versionCode, sha256: 'a'.repeat(64) }],
   },
 });
-// The verifier's spawnSync limit on this adapter (verify-release-cohort.mjs).
-const VERIFIER_ADAPTER_LIMIT_MS = 90_000;
 const NODE_STARTUP_HEADROOM_MS = 20_000;
 
 const httpError = (status: number, headers: Record<string, string> = {}) =>
@@ -539,9 +538,12 @@ describe('Google Play readback budget', () => {
 
   test('the worst case with the real defaults ends within READBACK_WORST_CASE_MS, under the verifier limit', async () => {
     expect(READBACK_WORST_CASE_MS).toBe(65_000);
+    // The verifier's real limit on this adapter, pinned beside the import so
+    // the headroom check does not derive everything from the constant.
+    expect(PLAY_ADAPTER_LIMIT_MS).toBe(90_000);
     expect(
       READBACK_WORST_CASE_MS + NODE_STARTUP_HEADROOM_MS,
-    ).toBeLessThanOrEqual(VERIFIER_ADAPTER_LIMIT_MS);
+    ).toBeLessThanOrEqual(PLAY_ADAPTER_LIMIT_MS);
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
     // Attempt 1: create stalls (15 s), wait 2 s. Attempt 2: token stalls
     // (15 s), wait 5 s. Attempt 3 starts at 37 s: track answers after 14 s,
@@ -615,7 +617,36 @@ describe('Google Play readback cleanup', () => {
     },
   );
 
-  test('a cleanup failure after a failed read is final, even when both are retryable', async () => {
+  test('a read and its cleanup that both fail transiently are retried and can succeed', async () => {
+    const play = publisher((request, attempt) =>
+      attempt === 1 &&
+      (request.method === 'DELETE' || request.url.endsWith('/tracks/internal'))
+        ? Promise.reject(httpError(503))
+        : undefined,
+    );
+    const time = fakeTime();
+    await expect(
+      queryGooglePlayInternal(identity, {
+        ...time.options,
+        authFactory: play.authFactory,
+      }),
+    ).resolves.toMatchObject({ provider: 'google-play' });
+    expect(play.methods()).toEqual([
+      'POST',
+      'GET',
+      'DELETE',
+      'POST',
+      'GET',
+      'GET',
+      'DELETE',
+    ]);
+    expect(time.state.sleeps).toEqual([2_000]);
+    expect(time.state.logs).toEqual([
+      'Google Play cohort verification failed: delete-edit failed with HTTP 503 (attempt 1 of 3) after read-track failed with HTTP 503 (attempt 1 of 3); retrying in 2000 ms from a new edit',
+    ]);
+  });
+
+  test('both-transient failures end when every attempt fails, naming both phases', async () => {
     const play = publisher((request) =>
       request.method === 'DELETE' || request.url.endsWith('/tracks/internal')
         ? Promise.reject(httpError(503))
@@ -627,13 +658,35 @@ describe('Google Play readback cleanup', () => {
         ...time.options,
         authFactory: play.authFactory,
       }),
+    ).rejects.toThrow(
+      'delete-edit failed with HTTP 503 (attempt 3 of 3) after read-track failed with HTTP 503 (attempt 3 of 3)',
+    );
+    expect(play.methods().filter((method) => method === 'POST')).toHaveLength(
+      3,
+    );
+  });
+
+  test('a transient read failure with a cleanup that is not transient is final', async () => {
+    const play = publisher((request) =>
+      request.method === 'DELETE'
+        ? Promise.reject(httpError(403))
+        : request.url.endsWith('/tracks/internal')
+          ? Promise.reject(httpError(503))
+          : undefined,
+    );
+    const time = fakeTime();
+    await expect(
+      queryGooglePlayInternal(identity, {
+        ...time.options,
+        authFactory: play.authFactory,
+      }),
     ).rejects.toMatchObject({
       message:
-        'Google Play cohort verification failed: delete-edit failed with HTTP 503 (attempt 1 of 3) after read-track failed with HTTP 503 (attempt 1 of 3)',
+        'Google Play cohort verification failed: delete-edit failed with HTTP 403 (attempt 1 of 3) after read-track failed with HTTP 503 (attempt 1 of 3)',
       cause: expect.objectContaining({
         errors: [
           expect.objectContaining({
-            cause: expect.objectContaining({ status: 503 }),
+            cause: expect.objectContaining({ status: 403 }),
           }),
           expect.objectContaining({
             cause: expect.objectContaining({ status: 503 }),
