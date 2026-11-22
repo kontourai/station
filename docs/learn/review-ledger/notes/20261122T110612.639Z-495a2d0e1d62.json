@@ -1,0 +1,7 @@
+{
+  "revision": "03608b8d8a6389c15557e84d850bce1b120f7dee",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Amended in this change (#5398): new Flags bullet for Last reply may not have arrived with Check, device-local and separate from synced status and settlement. Checked against work-facts.ts, home-view-model.ts and the row flag.","inputs":["docs/glossary.md"]}
+  ]
+}

@@ -136,7 +136,7 @@ On a phone: A segmented lane picker with counts, one lane at a time (swipe). The
 
 1. **The lanes are task status: To do, In progress, In review, Done. Blocked, Canceled and Backlog sit on a shelf.** These are the real statuses. Today's lanes (Needs you, Running, In review, Ready to merge, Idle) mix agent activity with task status, which is how one item ended up in two places. _(layout; slice 3.7)_
 2. **"Waiting on you" is a flag on a card, not a lane.** It comes from session attention, so a card is in one lane only. _(layout; slice 3.7)_
-3. **"Last reply may not have arrived · Check" is the old "Delivery unconfirmed" as a quiet flag.** It no longer competes with status. _(layout; slice 3.7)_
+3. **"Last message may not have arrived · Check" is the old "Delivery unconfirmed" as a quiet flag.** It no longer competes with status. _(layout; slice 3.7)_
 4. **The PR chip ("PR #12 · Checks passed") is kept from the overview preview.** _(layout; slice 3.7)_
 5. **The Board and List switch is kept, and a "Needs you" filter chip is added. Refresh Tasks is removed.** The data is live. _(layout; slice 3.7)_
 6. **One Tasks view replaces the Tasks section and the Tasks layout.** Today the same thing exists twice. _(layout; slice 3.7)_

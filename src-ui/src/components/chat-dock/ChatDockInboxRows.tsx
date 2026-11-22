@@ -70,6 +70,7 @@ import {
 } from '../inbox-row/inbox-row-actions';
 import { inboxRowChips } from '../inbox-row/inbox-row-chips';
 import { rowProjectMarks } from '../inbox-row/row-project-marks';
+import { UnconfirmedDeliveryFlag } from '../inbox-row/UnconfirmedDeliveryFlag';
 import { WorkGroupLabel } from '../inbox-row/WorkGroupLabel';
 import { WorkItemFamily } from '../inbox-row/WorkItemFamily';
 import { LazyBoundary } from '../LazyBoundary';
@@ -975,6 +976,7 @@ export function InboxRow({
   });
   const reasonId = `${statusId}-reason`;
   const durationId = `${statusId}-duration`;
+  const flagId = `${statusId}-flag`;
   const explanation =
     size === 'slim'
       ? (status.detail ?? status.reason)
@@ -985,6 +987,8 @@ export function InboxRow({
     [
       explanation && reasonId,
       size !== 'slim' && status.since !== undefined && durationId,
+      // #5398: the flag sits outside the button; the row's name carries it.
+      facts?.unconfirmedDelivery && flagId,
     ]
       .filter(Boolean)
       .join(' ') || undefined;
@@ -1295,6 +1299,14 @@ export function InboxRow({
               ) : null,
             )}
         </div>
+      )}
+      {facts?.unconfirmedDelivery && (
+        <UnconfirmedDeliveryFlag
+          turns={facts.unconfirmedDelivery}
+          checkable={!remoteProject && facts.hostDetails !== false}
+          title={item.title}
+          id={flagId}
+        />
       )}
       {inlineApproval &&
         status.rung === 'approval' &&

@@ -5,7 +5,10 @@ import type {
   TaskListRecord,
 } from '@kontourai/station-sdk';
 import type { ChatStationBindingV1 } from '../../connections/station-connection';
-import { chatBelongsToStation } from '../../connections/station-state';
+import {
+  chatBelongsToStation,
+  conversationStateKey,
+} from '../../connections/station-state';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import { serverWorkLive } from '../../utils/conversation-activity';
 import {
@@ -14,7 +17,11 @@ import {
 } from '../../utils/session-state';
 import { requestAttentionKind } from '../../utils/waiting-approvals';
 import { groupDelegatedSessionRuns } from '../sessions/run-groups';
-import type { HomeWorkItem } from './home-view-model';
+import {
+  chatQueuedToSend,
+  type HomeWorkItem,
+  unconfirmedOutboundTurns,
+} from './home-view-model';
 
 /**
  * THE FACTS BEHIND A ROW'S STATUS WORDS (#3042), derived BESIDE the work
@@ -46,13 +53,16 @@ import type { HomeWorkItem } from './home-view-model';
  * - `blocked`: the session's `blocked` state, or a durable Task's.
  * - `queued`: a send queued on this device while offline.
  * - `waiting`: owed something, kind not recorded.
+ *
+ * A message whose delivery nothing can confirm is not one of these: nothing
+ * is owed and nothing waits to send, so it is a flag beside the status
+ * (`WorkFacts.unconfirmedDelivery`), never a status of its own (#5398).
  */
 export type WorkAttentionKind =
   | 'approval'
   | 'answer'
   | 'interrupted'
   | 'blocked'
-  | 'delivery-unconfirmed'
   | 'queued'
   | 'waiting';
 
@@ -79,6 +89,19 @@ export interface WorkFacts {
   attention?: WorkAttentionKind;
   attentionStartedAt?: number;
   activity?: WorkActivity;
+  /**
+   * #5398: messages this device sent in this conversation whose delivery
+   * nothing can confirm (`unconfirmedOutboundTurns`), oldest first, with the
+   * chat that holds each. A device-local fact read from this device's outbox,
+   * beside the conversation's synced status: it never moves the row to
+   * another lane and never settles or reopens the conversation. The row shows
+   * it as the flag "Last message may not have arrived" with Check.
+   */
+  unconfirmedDelivery?: readonly {
+    chatSessionId: string;
+    clientTurnId: string;
+    createdAt: number;
+  }[];
   ownedWorkState?: NonNullable<
     OrchestrationSessionSummary['ownedWork']
   >['state'];
@@ -102,7 +125,6 @@ const WORK_ATTENTION_ORDER: readonly WorkAttentionKind[] = [
   'approval',
   'answer',
   'waiting',
-  'delivery-unconfirmed',
   'queued',
   'blocked',
   'interrupted',
@@ -167,15 +189,7 @@ function chatAttentionKind(chat: ChatUIState): WorkAttentionKind | undefined {
   // answered one waits on the engine (utils/waiting-approvals).
   const requestKind = requestAttentionKind(chat);
   if (requestKind) return requestKind;
-  if (
-    chat.outboundQueuedTurns?.some(
-      (turn) =>
-        turn.status === 'may-have-started' ||
-        (turn.status === 'invoking' && turn.awaitingLookup),
-    )
-  )
-    return 'delivery-unconfirmed';
-  if (chat.status === 'queued') return 'queued';
+  if (chatQueuedToSend(chat)) return 'queued';
   if (chat.orchestrationStatus === 'awaiting-approval') return 'waiting';
   return undefined;
 }
@@ -224,6 +238,36 @@ export function buildWorkFacts({
   const answerTaskIds = new Set(
     tasks.filter(taskAwaitsAnswer).map((task) => task.id),
   );
+  // #5398: every chat on this device that holds an unconfirmed message, by
+  // the row identity `buildActiveChatTaskItems` gives it. Two chats can hold
+  // one conversation (a reopen mints a new chat key); the merged row shows
+  // only one of them, so the flag is read from all of them.
+  const unconfirmedByRow = new Map<
+    string,
+    { chatSessionId: string; clientTurnId: string; createdAt: number }[]
+  >();
+  // A send waiting, or not sent, in any of those chats is the row's owed
+  // "Queued to send", like its Needs attention label (`buildActiveChatTaskItems`).
+  const queuedRows = new Set<string>();
+  for (const [chatSessionId, chat] of Object.entries(chats)) {
+    const turns = unconfirmedOutboundTurns(chat);
+    const queued = chatQueuedToSend(chat);
+    if (turns.length === 0 && !queued) continue;
+    const rowIds = new Set([
+      chatSessionId,
+      conversationStateKey(
+        chat.stationBinding,
+        chat.conversationId || chatSessionId,
+      ),
+    ]);
+    for (const rowId of rowIds) {
+      if (queued) queuedRows.add(rowId);
+      if (turns.length === 0) continue;
+      const held = unconfirmedByRow.get(rowId) ?? [];
+      held.push(...turns.map((turn) => ({ chatSessionId, ...turn })));
+      unconfirmedByRow.set(rowId, held);
+    }
+  }
   const facts = new Map<string, WorkFacts>();
   for (const item of items) {
     const session =
@@ -273,6 +317,19 @@ export function buildWorkFacts({
         : session.latestTurnTrigger === 'provider')
     )
       entry.engineOpenedTurn = true;
+    if (item.kind !== 'remote-session') {
+      const unconfirmed = [
+        ...new Map(
+          [
+            ...(unconfirmedByRow.get(item.id) ?? []),
+            ...(item.chatSessionId
+              ? (unconfirmedByRow.get(item.chatSessionId) ?? [])
+              : []),
+          ].map((turn) => [turn.clientTurnId, turn] as const),
+        ).values(),
+      ].sort((left, right) => left.createdAt - right.createdAt);
+      if (unconfirmed.length > 0) entry.unconfirmedDelivery = unconfirmed;
+    }
     if (item.lifecycleLabel === 'Needs attention') {
       if (
         session?.lifecycleState === 'needs_input' &&
@@ -289,11 +346,19 @@ export function buildWorkFacts({
           chat ? chatAttentionKind(chat) : undefined,
         ),
         moreUrgentAttention(
-          item.kind === 'task' && answerTaskIds.has(item.id)
-            ? 'answer'
-            : undefined,
-          item.kind === 'task' && blockedTaskIds.has(item.id)
-            ? 'blocked'
+          moreUrgentAttention(
+            item.kind === 'task' && answerTaskIds.has(item.id)
+              ? 'answer'
+              : undefined,
+            item.kind === 'task' && blockedTaskIds.has(item.id)
+              ? 'blocked'
+              : undefined,
+          ),
+          item.kind !== 'remote-session' &&
+            (queuedRows.has(item.id) ||
+              (item.chatSessionId !== undefined &&
+                queuedRows.has(item.chatSessionId)))
+            ? 'queued'
             : undefined,
         ),
       );
