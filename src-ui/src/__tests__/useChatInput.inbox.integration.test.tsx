@@ -208,7 +208,7 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
   // where the code put it: the composer for a direct send, the pending list
   // for an outbox send.
   for (const path of ['direct send', 'outbox send'] as const) {
-    test(`a held refusal of a ${path} says where the message is`, async () => {
+    test(`a held refusal of the ${path} says where the message is`, async () => {
       vi.stubGlobal(
         'Uint8Array',
         Object.getPrototypeOf(Buffer.prototype).constructor,
