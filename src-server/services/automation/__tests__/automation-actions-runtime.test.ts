@@ -2491,18 +2491,21 @@ test.each([
   ['blocked by a person', 'blocked'],
   ['done', 'done'],
   ['canceled', 'canceled'],
-] as const)('a Task already %s when the first turn ends keeps its status', async (_label, status) => {
-  const w = await world({ projects: [STATION_PROJECT] });
-  const intent = await running(w);
-  await w.graph.updateTaskStatus(intent.taskId!, status);
-  await endFirstTurn(w, intent, {
-    method: 'turn.completed',
-    finishReason: 'stop',
-  });
-  await w.runtime.tick();
-  expect(w.ledger.readIntent(intent.intentId)?.state).toBe('completed');
-  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe(status);
-});
+] as const)(
+  'a Task already %s when the first turn ends keeps its status',
+  async (_label, status) => {
+    const w = await world({ projects: [STATION_PROJECT] });
+    const intent = await running(w);
+    await w.graph.updateTaskStatus(intent.taskId!, status);
+    await endFirstTurn(w, intent, {
+      method: 'turn.completed',
+      finishReason: 'stop',
+    });
+    await w.runtime.tick();
+    expect(w.ledger.readIntent(intent.intentId)?.state).toBe('completed');
+    expect(w.graph.readTaskView(intent.taskId!)?.status).toBe(status);
+  },
+);
 
 test('a Task blocked by the rule being disabled keeps blocked when the stopped turn ends', async () => {
   const w = await world({ approvalMode: 'auto' });
