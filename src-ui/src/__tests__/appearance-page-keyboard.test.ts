@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { type Browser, chromium, type Page } from '@playwright/test';
 import { build } from 'esbuild';
@@ -115,6 +115,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     // The page's own rules must be in the sheet, or the focus assertion below
     // would be measuring nothing.
     expect(pageStyles).toContain('.appearance-theme');
+    // Distinct fixture tokens identify the focus and selection paint owners.
     styles = `${PRODUCT_STYLES}
       :root {
         --accent-primary: #ff0000;
@@ -152,6 +153,20 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
       const path = new URL(route.request().url()).pathname;
       if (path === '/harness.js')
         return route.fulfill({ contentType: 'text/javascript', body: script });
+      const font = /^\/fonts\/([a-z0-9-]+\.woff2)$/.exec(path)?.[1];
+      if (font) {
+        const stationFont = resolve(PUBLIC_DIR, 'fonts', font);
+        return route.fulfill({
+          contentType: 'font/woff2',
+          path: existsSync(stationFont)
+            ? stationFont
+            : resolve(
+                REPO_ROOT,
+                'node_modules/@kontourai/ui/tokens/fonts',
+                font,
+              ),
+        });
+      }
       const sheet = /^\/color-themes\/([a-z-]+)\.css$/.exec(path);
       if (sheet) {
         requests.push(sheet[1]!);
@@ -174,6 +189,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     });
     await page.goto(`${ORIGIN}/`);
     await page.getByRole('radiogroup', { name: 'Color theme' }).waitFor();
+    await page.evaluate(() => document.fonts.ready);
     expect(errors).toEqual([]);
     return page;
   }
