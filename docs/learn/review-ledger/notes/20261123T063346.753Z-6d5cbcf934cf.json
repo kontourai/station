@@ -1,0 +1,15 @@
+{
+  "revision": "ddb1d1a864db4b9c2f5f3d1a42f482f869591e62",
+
+  "notes": [
+    {"path":"README.md","note":"Checked: cli.md only gained the offline refusal of the two route-written settings; pages citing it for other commands stay accurate.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked: cli.md only gained the offline refusal of the two route-written settings; pages citing it for other commands stay accurate.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Checked: cli.md only gained the offline refusal of the two route-written settings; pages citing it for other commands stay accurate.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked: cli.md only gained the offline refusal of the two route-written settings; pages citing it for other commands stay accurate.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Checked: cli.md only gained the offline refusal of the two route-written settings; pages citing it for other commands stay accurate.","inputs":["docs/reference/cli.md"]}
+  ]
+}
