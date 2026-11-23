@@ -35,8 +35,8 @@ engine-proxy or general Station routes, and Device/internal tokens cannot
 substitute on the outside resource.
 
 The [dispatch owner](../../src-server/services/outside-agent/mcp-dispatch.ts)
-currently exposes only `list_projects` and `get_project`, with stable Project
-scope from the live grant. Global grants list no Projects. Each request,
+exposes `list_projects` and `get_project` in the R4a composition, with stable
+Project scope from the live grant. Global grants list no Projects. Each request,
 dispatch and outward chunk checks live authority; grant changes invalidate the
 old session and cursors while the existing bearer can initialize under the new
 selection. Revocation cannot recall bytes already handed to the network.
@@ -48,10 +48,25 @@ Access checks and the periodic session recheck only read the store.
 The request's shared ingress budget still charges under the SQLite writer
 lock, so a competing writer can delay the request and lead to HTTP 503.
 Five sessions and ten in-flight calls per grant, bounded requests/results and
-bounded replay queues are local to this single transport owner. Discovery,
-host-exclusion counts and the remaining reads belong to R4b/R4c. See the
+bounded replay queues are local to this single transport owner. See the
 [isolated R4a receipt](../design/outside-agent-mcp-r4a-evidence.md) for executed
 faults, real-client checks and topology/release limits.
+
+The isolated active-work composition also offers `list_active_work`. It
+admits rows by the grant's stable Project ID and recorded owner before
+loading projection events or counts. Every Session in a conversation's
+lineage must pass the same scope and inventory checks, which omit ephemeral
+Sessions. Earlier host starts or full-access decisions
+still exclude a conversation after its current posture narrows. The reader
+checks admission again after refreshing the runtime inventory.
+The response identifies partial coverage when it excludes host access or
+hits a scan limit. The reader checks scope for at most 4,000 inventory-visible
+candidate IDs for the grant's owner and Project and admits up to 2,000.
+At either limit, the host exclusion
+count is a lower bound. Its cursors bind to the grant, token family, grant
+version, Project scope and activity window, and expire when the server
+restarts. Conversation search and the rest of the read catalog follow in
+R4b and R4c. [Active-work reader](../../src-server/services/outside-agent/active-work.ts)
 
 `O` is one exact configured canonical origin, persisted with the store's Station
 identity. `R` is exactly `O + /mcp`. Issuer changes require an explicit credential

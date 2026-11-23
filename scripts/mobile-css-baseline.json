@@ -214,8 +214,8 @@
       "reason": "Three breakpoints: the two-up diff collapses at 900px (a content width, not a device), detail padding and action stretch at mobile, run-modal fields at 640px."
     },
     "src-ui/src/views/ScheduleView.css": {
-      "count": 2,
-      "reason": "The cron editor, detail fields and table scrollers; at 640px two table columns are dropped and the row name is clamped \u2014 a decision about THIS table's columns that no primitive can hold."
+      "count": 1,
+      "reason": "The cron editor, form fields and run-history scroller of the automation form and detail."
     },
     "src-ui/src/views/SessionsView.css": {
       "count": 2,
@@ -240,6 +240,10 @@
     "src-ui/src/views/editor-layout.css": {
       "count": 1,
       "reason": "The editor family's shared mobile geometry \u2014 grids to one column, field and control floors, label rows wrapping. This is where the agent editor's forked `agent-editor-mobile.css` was folded back to, and it applies to every editor rather than one page."
+    },
+    "src-ui/src/views/schedule/automations-list.css": {
+      "count": 1,
+      "reason": "On a phone the Next 7 days grid becomes the Next up list and each automation row stacks its columns: a decision about this list's own columns that no primitive can hold."
     },
     "src-ui/src/views/settings/KeyboardShortcutsSection.css": {
       "count": 1,

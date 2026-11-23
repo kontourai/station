@@ -68,6 +68,11 @@ export interface NativeModelContainerOptions {
     input: NativeModelRequest,
     signal: AbortSignal,
   ): NativeModelChannelRequest;
+  /** Separate host broker whose presence offers transport only. */
+  delegationRpc?(
+    input: NativeModelRequest,
+    signal: AbortSignal,
+  ): NativeModelChannelRequest;
 }
 
 interface OwnedNativeTextRun {
@@ -277,25 +282,13 @@ export class NativeModelContainer {
           })();
         return stopping;
       };
+      const { request, delegationRpc } = this.options;
       this.#channel = new NativeModelStdioChannel(
         { input: stdin, output: stdout, settled, stop },
-        (input, signal) => {
-          const admitted = (async () => {
-            if (!this.#engaged || this.#retiring)
-              throw new Error('native_container_not_engaged');
-            await this.#inspect(true);
-            signal.throwIfAborted();
-            if (!this.#engaged || this.#retiring)
-              throw new Error('native_container_not_engaged');
-            return this.options.request(input, signal);
-          })();
-          return {
-            response: admitted.then((owner) => owner.response),
-            settled: admitted.then((owner) => owner.settled),
-            invokeDelivery: async (write) =>
-              (await admitted).invokeDelivery(write),
-          };
-        },
+        (input, signal) => this.#admitRequest(request, input, signal),
+        delegationRpc
+          ? (input, signal) => this.#admitRequest(delegationRpc, input, signal)
+          : undefined,
       );
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
@@ -351,6 +344,27 @@ export class NativeModelContainer {
       containerId: this.#id,
       baseUrl: `http://127.0.0.1:${this.#ready.port}`,
       token: this.#channel.token,
+    };
+  }
+
+  #admitRequest(
+    owner: NativeModelContainerOptions['request'],
+    input: NativeModelRequest,
+    signal: AbortSignal,
+  ): NativeModelChannelRequest {
+    const admitted = (async () => {
+      if (!this.#engaged || this.#retiring)
+        throw new Error('native_container_not_engaged');
+      await this.#inspect(true);
+      signal.throwIfAborted();
+      if (!this.#engaged || this.#retiring)
+        throw new Error('native_container_not_engaged');
+      return Reflect.apply(owner, this.options, [input, signal]);
+    })();
+    return {
+      response: admitted.then((request) => request.response),
+      settled: admitted.then((request) => request.settled),
+      invokeDelivery: async (write) => (await admitted).invokeDelivery(write),
     };
   }
 

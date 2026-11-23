@@ -1,0 +1,7 @@
+{
+  "revision": "74ed7fc59de962d2f038d76b78282a7ff3028e15",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Updated the automation state row: Done for a one-time automation that has run, and \"didn't work\" instead of \"failed\" for the run count Station pauses on, because that count includes runs whose outcome is unknown.","inputs":["docs/glossary.md"]}
+  ]
+}
