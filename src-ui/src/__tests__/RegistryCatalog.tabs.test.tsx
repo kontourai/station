@@ -50,7 +50,7 @@ function makeActions(): RegistryCatalogActions {
 }
 
 describe('RegistryCatalog tab strip', () => {
-  test('renders all six tabs, sticky, and a click activates one (setActiveTab, clearMessage, setSearch)', () => {
+  test('renders the five catalogue tabs (plugins are in Apps › Discover), sticky, and a click activates one (setActiveTab, clearMessage, setSearch)', () => {
     const actions = makeActions();
     render(<RegistryCatalog model={model} actions={actions} />);
 
@@ -59,7 +59,6 @@ describe('RegistryCatalog tab strip', () => {
       'Agents',
       'Skills',
       'Integrations',
-      'Plugins',
       'Layouts',
       'Kits',
     ]);
@@ -67,9 +66,9 @@ describe('RegistryCatalog tab strip', () => {
       'page__tabs--sticky',
     );
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Plugins' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Layouts' }));
     expect(actions.clearMessage).toHaveBeenCalled();
     expect(actions.setSearch).toHaveBeenCalledWith('');
-    expect(actions.setActiveTab).toHaveBeenCalledWith('plugins');
+    expect(actions.setActiveTab).toHaveBeenCalledWith('layouts');
   });
 });

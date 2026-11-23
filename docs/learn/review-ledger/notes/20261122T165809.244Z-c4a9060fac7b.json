@@ -1,0 +1,17 @@
+{
+  "revision": "0672bb70a7355525e1c217ebe9e4f713930638ff",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only a comment was added on the registry destination; checked citing pages for destination names and routes, none changed.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/design/pane-or-shell.md","note":"Only a comment was added on the registry destination; checked citing pages for destination names and routes, none changed.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Only a comment was added on the registry destination; checked citing pages for destination names and routes, none changed.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/glossary.md","note":"Only a comment was added on the registry destination; checked citing pages for destination names and routes, none changed.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Only a comment was added on the registry destination; checked citing pages for destination names and routes, none changed.","inputs":["src-ui/src/app-shell/destination-registry.ts"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Only a comment was added on the registry destination; checked citing pages for destination names and routes, none changed.","inputs":["src-ui/src/app-shell/destination-registry.ts"]}
+  ]
+}

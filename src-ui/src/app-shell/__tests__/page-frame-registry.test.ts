@@ -28,7 +28,7 @@ const ROUTES: NavigationView[] = [
   { type: 'connections-tools' },
   { type: 'connections-tool-edit', id: 't' },
   { type: 'connections-knowledge' },
-  { type: 'plugins' },
+  { type: 'apps', tab: 'discover' },
   { type: 'registry' },
   { type: 'developer' },
   { type: 'schedule' },
@@ -145,7 +145,7 @@ describe('page-frame registry', () => {
       'connections-models',
       'connections-engines',
       'connections-tools',
-      'plugins',
+      'apps',
       'guidance',
     ] as const) {
       const spec = resolvePageFrame({ type } as NavigationView);
@@ -190,7 +190,7 @@ describe('page-frame registry', () => {
     for (const type of [
       'customize',
       'registry',
-      'plugins',
+      'apps',
       'activity',
       'schedule',
       'settings',
@@ -240,7 +240,8 @@ describe('page-frame registry', () => {
     for (const view of [
       { type: 'customize' },
       { type: 'connections-computers' },
-      { type: 'plugins' },
+      { type: 'apps', tab: 'discover' },
+      { type: 'apps', tab: 'library' },
       { type: 'settings' },
     ] as NavigationView[]) {
       expect(eyebrowHtml(view), view.type).toBeNull();

@@ -188,7 +188,13 @@ test.describe('Settings', () => {
           )
           .toBe(true);
       }
-      for (const gone of ['Registry', 'Developer', 'Plugins', 'Connections']) {
+      for (const gone of [
+        'Registry',
+        'Developer',
+        'Plugins',
+        'Apps',
+        'Connections',
+      ]) {
         await expect(
           chooser.getByRole('link', { name: new RegExp(`^${gone}`) }),
         ).toHaveCount(0);
@@ -227,8 +233,37 @@ test.describe('Settings', () => {
       .getByRole('link', { name: /^Tools\b/ })
       .click();
     await expect(page).toHaveURL(/\/customize\/tools$/);
+    // The list holds exactly its six items: Apps is not one of them.
+    const customizeList = page.getByRole('navigation', { name: 'Customize' });
+    await expect(customizeList.getByRole('link')).toHaveCount(6);
+    await expect(
+      customizeList.getByRole('link', { name: /^Apps\b/ }),
+    ).toHaveCount(0);
     // The way back is the sidebar footer's account menu, which stays on
     // screen beside the Customize page.
+    await page
+      .getByRole('navigation', { name: 'Primary navigation' })
+      .getByRole('button', { name: /^Profile and settings:/ })
+      .click();
+    await page.getByRole('menuitem', { name: 'Open settings' }).click();
+    await expect(page).toHaveURL(/\/settings$/);
+    await expect(page.locator('#section-agent-runs')).toBeVisible();
+  });
+
+  test('Apps keeps Settings easy to return to, outside Customize', async ({
+    page,
+  }) => {
+    await page.goto('/apps');
+    await expect(page).toHaveURL(/\/apps$/);
+    await expect(
+      page.getByRole('heading', { name: 'Apps', exact: true }),
+    ).toBeVisible();
+    // Apps is not a Customize item, so no Customize list stands beside it.
+    await expect(
+      page.getByRole('navigation', { name: 'Customize' }),
+    ).toHaveCount(0);
+    // The way back is the sidebar footer's account menu, which stays on
+    // screen beside Apps.
     await page
       .getByRole('navigation', { name: 'Primary navigation' })
       .getByRole('button', { name: /^Profile and settings:/ })

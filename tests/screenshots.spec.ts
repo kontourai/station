@@ -6740,7 +6740,13 @@ const SCREENS: Screen[] = [
     path: '/guidance?tab=skills',
     viewport: DESKTOP,
   },
-  { name: 'registry', title: 'Registry', path: '/registry', viewport: DESKTOP },
+  // The plugin catalogue moved to Apps › Discover; the name is kept.
+  {
+    name: 'registry',
+    title: 'Apps › Discover',
+    path: '/apps/discover',
+    viewport: DESKTOP,
+  },
   {
     name: 'connections',
     title: 'Customize',
@@ -6783,7 +6789,13 @@ const SCREENS: Screen[] = [
   // Flow reviews, review evidence) this spec does not stub, so pointing the
   // same entry at it would photograph an empty state under a name that claims
   // otherwise. A real capture is new work with its own fixtures.
-  { name: 'plugins', title: 'Plugins', path: '/plugins', viewport: DESKTOP },
+  // Installed plugins moved to Apps › Library; the name is kept.
+  {
+    name: 'plugins',
+    title: 'Apps › Library',
+    path: '/apps/library',
+    viewport: DESKTOP,
+  },
   (() => {
     let cleanup: () => Promise<void> = async () => {};
     return {

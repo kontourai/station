@@ -27,12 +27,12 @@ const TABS = [
   { key: 'agents', label: 'Agents' },
   { key: 'skills', label: 'Skills' },
   { key: 'integrations', label: 'Integrations' },
-  { key: 'plugins', label: 'Plugins' },
   { key: 'layouts', label: 'Layouts' },
   { key: 'kits', label: 'Kits' },
 ] as const satisfies readonly { key: RegistryCatalogTab; label: string }[];
+// Plugins are browsed in Apps › Discover, not as a tab here.
 type RegistryTabKeysExhaustive =
-  RegistryCatalogTab extends (typeof TABS)[number]['key']
+  Exclude<RegistryCatalogTab, 'plugins'> extends (typeof TABS)[number]['key']
     ? true
     : [
         'TABS is missing a RegistryCatalogTab member:',

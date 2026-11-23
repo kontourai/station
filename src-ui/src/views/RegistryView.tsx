@@ -1,17 +1,11 @@
-import { pluginLifecycleUnapplied } from '@kontourai/station-contracts/plugin';
 import {
   type RegistryCatalogTab,
   useInstalledRegistryItemsQuery,
   useInvalidateQuery,
-  usePluginRegistryInstallMutation,
-  usePluginRegistryPreviewMutation,
-  usePluginsQuery,
-  useRegistryAgentActionMutation,
   useRegistryIntegrationActionMutation,
   useRegistryItemsQuery,
   useRegistryLayoutActionMutation,
   useRegistrySkillActionMutation,
-  useReloadPluginsMutation,
 } from '@kontourai/station-sdk';
 import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { Button } from '../components/Button';
@@ -32,25 +26,16 @@ import {
   useStationExtensionsAccess,
 } from '../components/registry/StationExtensionsAccess';
 import { useNavigation } from '../contexts/NavigationContext';
-import { useToast } from '../contexts/ToastContext';
 import { useShowSurface } from '../contexts/useShowSurface';
-import { usePermissions } from '../core/PermissionManager';
 import { pluginRegistry } from '../core/PluginRegistry';
-import { describeStationFailure } from '../utils/stationFailure';
 import { AgentToolCatalog } from './agent-editor/AgentToolCatalog';
-import { InstallPreviewExtensionAccess } from './plugin-management/InstallPreviewExtensionAccess';
-import { InstallPreviewModal } from './plugin-management/InstallPreviewModal';
-import {
-  installedDependencyPermissions,
-  type PreviewData,
-} from './plugin-management/types';
-import {
-  unappliedMessage,
-  unappliedTone,
-} from './plugin-management/view-utils';
+import { usePluginCatalogInstall } from './plugin-management/usePluginCatalogInstall';
 import './PluginManagementView.css';
 import './RegistryView.css';
 import './page-layout.css';
+
+/** The source kinds the catalogue tabs on this page list. */
+const REGISTRY_PAGE_SOURCE_KINDS = ['skills', 'agents'] as const;
 
 function registryInstallationKey(tab: RegistryCatalogTab, itemId: string) {
   return `${tab}:${itemId}`;
@@ -75,7 +60,6 @@ export function RegistryView({
   installTarget?: string;
 } = {}) {
   const { navigate } = useNavigation();
-  const { showToast } = useToast();
   // #928 C2a: "Open a Project" means Home by name; reveal the surface.
   const showSurface = useShowSurface();
   const invalidateQuery = useInvalidateQuery();
@@ -119,25 +103,6 @@ export function RegistryView({
   const [installationOverrides, setInstallationOverrides] = useState(
     () => new Map<string, boolean>(),
   );
-  // A registry entry that resolves as a PLUGIN is installed the way the
-  // Plugins view installs one (archive#4288): preview the resolved source,
-  // take the operator's decision on what the preview found, and send that
-  // decision with the install. Without it the server refuses any plugin that
-  // contributes code — refusing is the honest no-decision behavior; the old
-  // one-click path materialized the plugin tree without ever building its
-  // bundle, so its layout components could never register (#765 D1).
-  const [pluginInstallPreview, setPluginInstallPreview] = useState<{
-    tab: RegistryCatalogTab;
-    item: RegistryItem;
-    itemId: string;
-    data: PreviewData;
-  } | null>(null);
-  const [previewSkips, setPreviewSkips] = useState<Set<string>>(
-    () => new Set(),
-  );
-  const previewMutation = usePluginRegistryPreviewMutation();
-  const reloadPluginsMutation = useReloadPluginsMutation();
-  const { requestConsent, requestInstallConsent } = usePermissions();
   const pluginRegistryStatus = useSyncExternalStore(
     pluginRegistry.subscribe,
     pluginRegistry.getLoadStatus,
@@ -167,14 +132,21 @@ export function RegistryView({
   }, [availableError, availableUpdatedAt, invalidateQuery]);
   const available = availableData ?? [];
   const installed = installedData ?? [];
-  const agentMutation = useRegistryAgentActionMutation();
   const integrationMutation = useRegistryIntegrationActionMutation();
-  const pluginMutation = usePluginRegistryInstallMutation();
-  // Which installed plugins read Needs recovery, so an install of one offers
-  // Recover instead of a second copy.
-  const { data: installedPluginRows } = usePluginsQuery();
   const skillMutation = useRegistrySkillActionMutation();
   const layoutMutation = useRegistryLayoutActionMutation();
+  const {
+    startInstall,
+    previewMutation,
+    agentMutation,
+    pluginMutation,
+    modal: pluginInstallModal,
+  } = usePluginCatalogInstall({
+    // Read when an install settles, after `actionCallbacks` below exists.
+    actionCallbacks: (...args) => actionCallbacks(...args),
+    setMessage,
+    onInstalled,
+  });
 
   const installedIds = useMemo(
     () => new Set(installed.map(getRegistryItemId)),
@@ -326,45 +298,7 @@ export function RegistryView({
       action === 'install' &&
       (activeTab === 'agents' || activeTab === 'plugins')
     ) {
-      const tab = activeTab;
-      setMessage(null);
-      // A failed preview is terminal mutation state, not a disabled install
-      // action. Clear it before each attempt so the selected-card entry point
-      // remains live after a refusal, transport error, or malformed response.
-      previewMutation.reset();
-      previewMutation.mutate(itemId, {
-        onSuccess: (data: PreviewData & { code?: string }) => {
-          if (data.code === 'registry-plugin-not-found' && tab === 'agents') {
-            agentMutation.mutate(
-              { id: itemId, action },
-              actionCallbacks(tab, item, itemId, isInstalled),
-            );
-            return;
-          }
-          if (
-            !data.valid ||
-            !data.contentDigest ||
-            !data.permissions ||
-            !Array.isArray(data.components) ||
-            !Array.isArray(data.conflicts)
-          ) {
-            setMessage(
-              data.error ||
-                `Could not preview ${item.displayName || itemId} before install`,
-            );
-            return;
-          }
-          setPreviewSkips(
-            new Set(
-              data.conflicts.map((conflict) => {
-                return `${conflict.type}:${conflict.id}`;
-              }),
-            ),
-          );
-          setPluginInstallPreview({ tab, item, itemId, data });
-        },
-        onError: (error: Error) => setMessage(error.message),
-      });
+      startInstall(activeTab, item, itemId);
       return;
     }
     const callbacks = actionCallbacks(activeTab, item, itemId, isInstalled);
@@ -382,225 +316,6 @@ export function RegistryView({
         },
         callbacks,
       );
-    }
-  };
-
-  const confirmPluginInstall = async (installAgainWhileInactive = false) => {
-    const preview = pluginInstallPreview;
-    if (!preview) return;
-    const { data, item, itemId, tab } = preview;
-    if (!data.contentDigest || !data.permissions) return;
-    const displayName =
-      data.manifest?.displayName ||
-      data.manifest?.name ||
-      item.displayName ||
-      itemId;
-    const inactiveName = (installedPluginRows ?? []).find(
-      (row) =>
-        !('status' in row && row.status === 'rejected') &&
-        row.name === data.manifest?.name &&
-        'installationReadiness' in row &&
-        row.installationReadiness?.state === 'pending' &&
-        !('activationInFlight' in row && row.activationInFlight),
-    )?.name;
-    if (inactiveName && !installAgainWhileInactive) {
-      // Recovered, not installed again: see the Plugins view's install.
-      showToast(
-        `${displayName} is already installed but not active. Recover it to activate it; installing it again adds another copy of its code.`,
-        undefined,
-        undefined,
-        [
-          {
-            label: 'Recover plugin',
-            variant: 'primary' as const,
-            onClick: () => {
-              setPluginInstallPreview(null);
-              navigate(`/plugins/${encodeURIComponent(inactiveName)}`);
-            },
-          },
-          {
-            label: 'Install again anyway',
-            onClick: () => void confirmPluginInstall(true),
-          },
-        ],
-        'warning',
-      );
-      return;
-    }
-    const pendingConsent = [
-      ...data.permissions.pendingConsent,
-      ...(data.dependencies ?? []).flatMap((dependency) =>
-        (dependency.consent?.pendingConsent ?? []).map((entry) => ({
-          ...entry,
-          permission: `${dependency.id}: ${entry.permission}`,
-        })),
-      ),
-    ];
-    if (pendingConsent.length > 0) {
-      const approved = await requestInstallConsent(
-        data.manifest?.name || itemId,
-        displayName,
-        pendingConsent,
-      );
-      if (!approved) {
-        setPluginInstallPreview(null);
-        setMessage(
-          `Install declined for ${displayName} — nothing was added or changed.`,
-        );
-        return;
-      }
-    }
-    setPluginInstallPreview(null);
-    // The installed plugin's own name, which is what selects it in Plugins —
-    // a registry id is only the catalog's handle for it.
-    const installedPluginName = data.manifest?.name;
-    // The preview's own component list is what the modal just showed the
-    // operator, and the server derives it from the staged manifest — so the
-    // offer to place a layout is made exactly when a layout was reviewed.
-    const addsLayout = data.components.some(
-      (component) => component.type === 'layout',
-    );
-    const baseCallbacks = actionCallbacks(tab, item, itemId, false, () => {
-      setMessage(null);
-      showToast(
-        `Installed ${displayName}`,
-        undefined,
-        undefined,
-        // Named for what it DOES. It navigates to the installed
-        // plugin's detail page, where "What it adds" carries the action that
-        // actually places the layout (and adds it outright when there is only
-        // one project); calling it "Add to project" promised an add this button
-        // does not perform.
-        addsLayout && installedPluginName
-          ? [
-              {
-                label: 'Open plugin',
-                variant: 'primary' as const,
-                onClick: () =>
-                  navigate(
-                    `/plugins/${encodeURIComponent(installedPluginName)}`,
-                  ),
-              },
-            ]
-          : undefined,
-        'success',
-      );
-    });
-    const callbacks = {
-      onError: baseCallbacks.onError,
-      onSuccess: async (result: unknown) => {
-        const unapplied = pluginLifecycleUnapplied(result);
-        if (unapplied) {
-          // Saved, not applied: the same outcome the Plugins view reports.
-          // No dependency host review now; it refuses a plugin that is not
-          // active, and the plugin's own row finishes the activation.
-          actionCallbacks(tab, item, itemId, false, () => {
-            setMessage(null);
-            showToast(
-              unappliedMessage('installed', displayName, unapplied),
-              undefined,
-              undefined,
-              installedPluginName
-                ? [
-                    {
-                      label: 'Open plugin',
-                      variant: 'primary' as const,
-                      onClick: () =>
-                        navigate(
-                          `/plugins/${encodeURIComponent(installedPluginName)}`,
-                        ),
-                    },
-                  ]
-                : undefined,
-              unappliedTone(unapplied),
-            );
-          }).onSuccess();
-          if (unapplied.kind === 'projection')
-            await reloadPluginsMutation.mutateAsync().catch(() => {});
-          return;
-        }
-        baseCallbacks.onSuccess();
-        void pluginRegistry.reload();
-        const dependencyStatus = installedDependencyPermissions(result);
-        if (
-          dependencyStatus === undefined &&
-          (data.dependencies?.length ?? 0) > 0
-        ) {
-          setMessage(
-            `${displayName} is installed, but Station did not report current dependency approval status. Check Plugins on the Station host.`,
-          );
-        }
-        for (const dependency of dependencyStatus ?? []) {
-          const dependencyPending = dependency.pendingConsent;
-          if (dependencyPending.length === 0) continue;
-          const approved = await requestConsent(
-            dependency.id,
-            dependency.id,
-            dependencyPending,
-          );
-          if (!approved) {
-            setMessage(
-              `${displayName} is installed, but dependency ${dependency.id} still requires host approval.`,
-            );
-            break;
-          }
-        }
-        await reloadPluginsMutation.mutateAsync().catch((error) => {
-          setMessage(
-            `Installed ${displayName}, but plugin activation could not be refreshed: ${describeStationFailure(error).body}`,
-          );
-        });
-        // The server announces the install over SSE too; reloading here makes
-        // the new layout components register without depending on that
-        // connection being up.
-        await pluginRegistry.reload();
-        onInstalled?.();
-      },
-    };
-    const variables = {
-      id: itemId,
-      action: 'install' as const,
-      consent: {
-        registryTrustRevision: data.registryTrustRevision,
-        ...(data.grantRevision !== undefined
-          ? { grantRevision: data.grantRevision }
-          : {}),
-        permissions: data.permissions.required,
-        contentDigest: data.contentDigest,
-        dependencies: (data.dependencies ?? []).map(
-          (dependency) => dependency.id,
-        ),
-        ...((data.dependencies ?? []).some((dependency) => dependency.consent)
-          ? {
-              dependencyApprovals: (data.dependencies ?? []).flatMap(
-                (dependency) =>
-                  dependency.consent
-                    ? [
-                        {
-                          id: dependency.id,
-                          registryTrustRevision:
-                            dependency.consent.registryTrustRevision,
-                          ...(dependency.consent.grantRevision !== undefined
-                            ? {
-                                grantRevision: dependency.consent.grantRevision,
-                              }
-                            : {}),
-                          permissions: dependency.consent.permissions,
-                          contentDigest: dependency.consent.contentDigest,
-                          dependencies: dependency.consent.dependencies,
-                        },
-                      ]
-                    : [],
-              ),
-            }
-          : {}),
-      },
-      skip: Array.from(previewSkips),
-    };
-    if (tab === 'agents') {
-      agentMutation.mutate(variables, callbacks);
-    } else {
-      pluginMutation.mutate(variables, callbacks);
     }
   };
 
@@ -629,11 +344,16 @@ export function RegistryView({
           onSelect={(id, _kind, supplied) => {
             setSelectedSource(id);
             // Show the chosen source's catalog: keep the tab when the source
-            // supplies it, otherwise open its primary kind's tab.
-            const tabs: readonly RegistryCatalogTab[] = supplied ?? [];
+            // supplies it, otherwise open its first kind this page lists.
+            // Plugins are browsed in Apps › Discover, not here.
+            const tabs: readonly RegistryCatalogTab[] = (supplied ?? []).filter(
+              (tab) => tab !== 'plugins',
+            );
             if (tabs.length > 0 && !tabs.includes(activeTab))
               selectTab(tabs[0]!, id);
           }}
+          // A source that only supplies plugins has nothing on these tabs.
+          kinds={REGISTRY_PAGE_SOURCE_KINDS}
           manage="dialog"
         />
       )}
@@ -727,7 +447,7 @@ export function RegistryView({
               }),
             manageSkills: () => navigate('/guidance?tab=skills'),
             managePlugins: () => {
-              if (!toolPicker) navigate('/plugins');
+              if (!toolPicker) navigate('/apps/library');
             },
             openProjects: () => showSurface('home'),
             retryInstalled: () => {
@@ -741,31 +461,7 @@ export function RegistryView({
         />
       )}
       {!remoteIsolationActive && remoteBundlesSection}
-      {pluginInstallPreview && (
-        <InstallPreviewModal
-          previewData={pluginInstallPreview.data}
-          extensionAccess={
-            <InstallPreviewExtensionAccess
-              preview={pluginInstallPreview.data}
-            />
-          }
-          previewSkips={previewSkips}
-          installPending={agentMutation.isPending || pluginMutation.isPending}
-          onClose={() => setPluginInstallPreview(null)}
-          onToggleSkip={(key) =>
-            setPreviewSkips((current) => {
-              const next = new Set(current);
-              if (next.has(key)) {
-                next.delete(key);
-              } else {
-                next.add(key);
-              }
-              return next;
-            })
-          }
-          onConfirm={() => void confirmPluginInstall()}
-        />
-      )}
+      {pluginInstallModal}
     </div>
   );
 }

@@ -332,7 +332,7 @@ describe('New Chat repair and return', () => {
     );
     await screen.findByRole('button', { name: 'Return to New Chat' });
     await waitFor(() =>
-      expect(navigationStore.getSnapshot().pathname).toBe('/registry'),
+      expect(navigationStore.getSnapshot().pathname).toBe('/apps/discover'),
     );
     experienceRead.inventory = {
       executionContract: '1.0',

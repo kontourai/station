@@ -4612,7 +4612,7 @@ station plugin create [name] [--template=<pane|full|provider>]
 
 Every template writes an Agent Plugins 1.0 `plugin.json` whose Station
 settings live under `extensions["io.kontourai.station"]`. The same templates
-back the in-app **Plugins → New plugin** action
+back the in-app **Apps › Library → New plugin** action
 (`packages/shared/src/plugin-scaffold.ts`). The name must match the Agent
 Plugins name grammar: lowercase letters, digits, hyphens or periods.
 

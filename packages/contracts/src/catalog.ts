@@ -219,14 +219,14 @@ export interface RegistryItem {
  * Where an app's screen can open: as a screen of its own, as a view inside a
  * project, or as a pane beside other work.
  */
-type RegistryAppPlacement = 'screen' | 'project-view' | 'pane';
+export type RegistryAppPlacement = 'screen' | 'project-view' | 'pane';
 
 /**
  * What an app works with. Each is read from a manifest declaration: agents,
  * chat capabilities and prompt actions; knowledge namespaces; panes that need
  * a task; and panes or layouts that need a project's files.
  */
-type RegistryAppWorksWith =
+export type RegistryAppWorksWith =
   | 'chats-and-agents'
   | 'knowledge'
   | 'tasks'
@@ -247,7 +247,10 @@ export type RegistryAppFacts =
       readonly worksWith: readonly RegistryAppWorksWith[];
       /** Agents the package brings. */
       readonly agents: number;
-      /** Labels of the prompt actions on its screens and panes. */
+      /**
+       * One label per distinct prompt its screens, panes and package actions
+       * send. Two actions that send the same plugin prompt are one prompt.
+       */
       readonly promptActions: readonly string[];
       /** Labels of the knowledge collections it brings. */
       readonly knowledge: readonly string[];
@@ -255,6 +258,11 @@ export type RegistryAppFacts =
       readonly toolServers: readonly string[];
       /** Whether one of its views is an MCP tool UI in a sandboxed frame. */
       readonly sandboxedToolView: boolean;
+      /**
+       * Whether it ships screen code that runs inside Station's window (a
+       * manifest `entrypoint`), with no isolation from Station.
+       */
+      readonly inProcessScreen: boolean;
     }
   | { readonly kind: 'none' };
 
@@ -345,7 +353,8 @@ export function parseRegistryAppFacts(value: unknown): RegistryAppFacts | null {
     !Number.isSafeInteger(value.agents) ||
     value.agents < 0 ||
     value.agents > REGISTRY_APP_LIST_BOUND ||
-    typeof value.sandboxedToolView !== 'boolean'
+    typeof value.sandboxedToolView !== 'boolean' ||
+    typeof value.inProcessScreen !== 'boolean'
   )
     return null;
   return {
@@ -359,11 +368,14 @@ export function parseRegistryAppFacts(value: unknown): RegistryAppFacts | null {
     knowledge,
     toolServers,
     sandboxedToolView: value.sandboxedToolView,
+    inProcessScreen: value.inProcessScreen,
   };
 }
 
 /** The manifest fields {@link deriveRegistryAppFacts} reads. */
 interface RegistryAppManifest {
+  name?: string;
+  entrypoint?: string;
   capabilities?: readonly string[];
   permissions?: readonly string[];
   agents?: readonly unknown[];
@@ -374,8 +386,24 @@ interface RegistryAppManifest {
 }
 
 const PROMPT_ACTION_TYPES = new Set(['prompt', 'inline-prompt']);
+const HOST_PROMPT_INTENT_KINDS = new Set(['prompt', 'plugin-prompt']);
 
-function promptActionLabels(actions: unknown): unknown[] | null {
+/** A prompt an action sends, and the label it is offered under. */
+interface PromptAction {
+  key: string;
+  label: unknown;
+}
+
+/**
+ * The prompt actions of a tab or pane. A layout action whose `data` is
+ * `<plugin>:<prompt id>` sends that plugin prompt, the same identity a
+ * package action's `plugin-prompt` intent names; any other `data` is the
+ * prompt text itself.
+ */
+function layoutPromptActions(
+  actions: unknown,
+  pluginName: string | undefined,
+): PromptAction[] | null {
   if (actions === undefined) return [];
   if (!Array.isArray(actions)) return null;
   return actions
@@ -383,7 +411,17 @@ function promptActionLabels(actions: unknown): unknown[] | null {
       (action) =>
         isAppRecord(action) && PROMPT_ACTION_TYPES.has(String(action.type)),
     )
-    .map((action) => (action as Record<string, unknown>).label);
+    .map((action) => {
+      const { data, label } = action as Record<string, unknown>;
+      const prefix = pluginName ? `${pluginName}:` : undefined;
+      const key =
+        typeof data !== 'string'
+          ? `label:${String(label)}`
+          : prefix && data.startsWith(prefix)
+            ? `plugin:${data.slice(prefix.length)}`
+            : `text:${data}`;
+      return { key, label };
+    });
 }
 
 /**
@@ -408,7 +446,7 @@ export function deriveRegistryAppFacts(input: {
   const opensAs = new Set<RegistryAppPlacement>();
   const worksWith = new Set<RegistryAppWorksWith>();
   const screenLabels: unknown[] = [];
-  const actionLabels: unknown[] = [];
+  const layoutActions: PromptAction[] = [];
   let sandboxedToolView = false;
 
   for (const layout of layouts) {
@@ -430,9 +468,9 @@ export function deriveRegistryAppFacts(input: {
       screenLabels.push(tab.label);
       if (isAppRecord(tab.component) && tab.component.kind === 'mcp-tool-ui')
         sandboxedToolView = true;
-      const labels = promptActionLabels(tab.actions);
-      if (!labels) return null;
-      actionLabels.push(...labels);
+      const actions = layoutPromptActions(tab.actions, manifest.name);
+      if (!actions) return null;
+      layoutActions.push(...actions);
     }
   }
 
@@ -465,15 +503,37 @@ export function deriveRegistryAppFacts(input: {
       opensAs.add(needsProject ? 'project-view' : 'screen');
     if (regions.includes('secondary') || regions.includes('docked'))
       opensAs.add('pane');
-    const labels = promptActionLabels(pane.actions);
-    if (!labels) return null;
-    actionLabels.push(...labels);
+    const actions = layoutPromptActions(pane.actions, manifest.name);
+    if (!actions) return null;
+    layoutActions.push(...actions);
   }
 
   const hostActions = manifest.workspacePaneHost?.actions ?? [];
   if (!Array.isArray(hostActions)) return null;
-  for (const action of hostActions)
-    actionLabels.push(isAppRecord(action) ? action.label : undefined);
+  const packageActions: PromptAction[] = [];
+  for (const action of hostActions) {
+    if (!isAppRecord(action)) return null;
+    // Both intent kinds the host contribution defines send a prompt.
+    const intent = action.intent;
+    if (
+      !isAppRecord(intent) ||
+      !HOST_PROMPT_INTENT_KINDS.has(String(intent.kind))
+    )
+      continue;
+    packageActions.push({
+      key:
+        intent.kind === 'plugin-prompt'
+          ? `plugin:${String(intent.promptId)}`
+          : `text:${String(intent.prompt)}`,
+      label: action.label,
+    });
+  }
+  // One label per distinct prompt; a package action's label is preferred.
+  const promptsByKey = new Map<string, unknown>();
+  for (const action of [...packageActions, ...layoutActions])
+    if (!promptsByKey.has(action.key))
+      promptsByKey.set(action.key, action.label);
+  const actionLabels = [...promptsByKey.values()];
 
   const namespaces = manifest.knowledge?.namespaces ?? [];
   if (!Array.isArray(namespaces)) return null;
@@ -520,6 +580,9 @@ export function deriveRegistryAppFacts(input: {
     knowledge,
     toolServers,
     sandboxedToolView,
+    inProcessScreen:
+      typeof manifest.entrypoint === 'string' &&
+      manifest.entrypoint.trim().length > 0,
   };
 }
 

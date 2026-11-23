@@ -1168,7 +1168,7 @@ plugins recovery action.
 
 **Seam, Implementation, callers, and tests.** The canonical collection route, provider
 resolver, and JSON manifest registry share this scanner; the SDK validates the
-rejected-row union and the existing Plugins view renders it. Unit tests cover
+rejected-row union and Apps › Library renders it. Unit tests cover
 classification, secret/path suppression, fresh repair recovery, logger routing, SDK
 validation, view-model reload ordering, and visible detail controls.
 `tests/plugin-rejection-visibility.spec.ts` is the managed-browser repair/reload

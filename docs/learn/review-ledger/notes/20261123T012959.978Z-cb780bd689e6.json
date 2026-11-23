@@ -1,0 +1,7 @@
+{
+  "revision": "dc418699cc4048c45468401e33b814aca4b056c4",
+
+  "notes": [
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"The campaign plan links the coverage matrix as the route to specs only; the Registry row's added coverage does not change that.","inputs":["docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}

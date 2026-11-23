@@ -553,7 +553,7 @@ export function NewChatModal({
       ),
     onCancel: onClose,
     onLeave,
-    allowedPaths: ['/registry', '/customize', '/agents'],
+    allowedPaths: ['/apps', '/registry', '/customize', '/agents'],
     revalidate: async () => {
       // Visual skills can show in the composer (opened there, or handed
       // over from Home with a message), so a Registry round trip refetches
@@ -1670,7 +1670,7 @@ export function NewChatModal({
               onBrowse={() => {
                 preservedAgentSlug.current = flatList[selectedAgentIndex]?.slug;
                 preserveSetupContext.current = true;
-                setupReturn.begin('/registry');
+                setupReturn.begin('/apps/discover');
               }}
             />
           )}
@@ -2148,7 +2148,7 @@ export function NewChatModal({
                 onBrowse={() => {
                   preservedAgentSlug.current = draftAgent?.slug;
                   preserveSetupContext.current = true;
-                  setupReturn.begin('/registry');
+                  setupReturn.begin('/apps/discover');
                 }}
               />
             )}

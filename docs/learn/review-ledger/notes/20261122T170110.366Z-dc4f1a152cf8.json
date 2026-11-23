@@ -1,0 +1,7 @@
+{
+  "revision": "0672bb70a7355525e1c217ebe9e4f713930638ff",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Module map entry now says plugins are installed from Apps > Library; routing and destination entries still accurate.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

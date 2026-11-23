@@ -442,27 +442,29 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
   },
   {
     id: 'registry',
-    route: '/registry',
+    // Bare /registry redirects to Apps › Discover (`getLegacyPathRedirect`),
+    // so the remaining catalogue opens on its first tab.
+    route: '/registry/agents',
     label: () => 'Registry',
     keywords: ['registry', 'browse', 'install'],
     icon: 'registry',
     managementGroup: 'registry',
-    palette: { order: 40 },
     managementViewTypes: ['registry'],
-    view: { type: 'registry' },
+    view: { type: 'registry', tab: 'agents' },
   },
   {
     id: 'plugins',
-    route: '/plugins',
-    label: () => 'Plugins',
-    keywords: ['plugins'],
+    route: '/apps',
+    label: () => 'Apps',
+    keywords: ['apps', 'discover', 'library', 'plugins'],
     icon: 'plugins',
-    // Plugins left the Customize list: installable things become Apps. The
-    // route and its palette entry stay until that work replaces them.
+    // Apps is not a Customize item. Until it has a sidebar row, the palette,
+    // the links that point here and the redirects from `/plugins` and
+    // `/registry` are its doors.
     managementGroup: 'plugins',
     palette: { order: 60 },
-    managementViewTypes: ['plugins'],
-    view: { type: 'plugins' },
+    managementViewTypes: ['apps'],
+    view: { type: 'apps', tab: 'discover' },
   },
   {
     id: 'notifications',

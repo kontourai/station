@@ -159,7 +159,7 @@ describe('PluginManagementView error wiring (Review H1)', () => {
     viewModel = baseViewModel({
       updateCheck: { isError: true, refetch: refetchUpdateCheck },
     });
-    const { rerender } = render(<PluginManagementView onNavigate={vi.fn()} />);
+    const { rerender } = render(<PluginManagementView />);
     expect(screen.getByText('Plugin update check unavailable.')).toBeTruthy();
     expect(screen.queryByText('No plugin updates found.')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Retry update check' }));
@@ -168,7 +168,7 @@ describe('PluginManagementView error wiring (Review H1)', () => {
     viewModel = baseViewModel({
       updateCheck: { data: { status: 'complete', updates: [] } },
     });
-    rerender(<PluginManagementView onNavigate={vi.fn()} />);
+    rerender(<PluginManagementView />);
     expect(screen.getByText('No plugin updates found.')).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: 'Retry update check' }),
@@ -189,7 +189,7 @@ describe('PluginManagementView error wiring (Review H1)', () => {
       },
       updates: [update],
     });
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
     expect(
       screen.getByText('Some plugin update sources could not be checked.'),
     ).toBeTruthy();
@@ -201,7 +201,7 @@ describe('PluginManagementView error wiring (Review H1)', () => {
     viewModel = baseViewModel({
       pluginsError: new Error('plugins read failed'),
     });
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     expect(screen.getByRole('alert')).toBeTruthy();
     expect(screen.getByText('Unable to load plugins')).toBeTruthy();
@@ -210,7 +210,7 @@ describe('PluginManagementView error wiring (Review H1)', () => {
   });
 
   test('a settled-empty read (no error) still renders "No plugins installed yet", with no error state', () => {
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     expect(screen.getByText('No plugins installed yet')).toBeTruthy();
     expect(screen.queryByRole('alert')).toBeNull();
@@ -224,7 +224,7 @@ describe('PluginManagementView error wiring (Review H1)', () => {
         label: 'Register system providers',
       },
     });
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     expect(
       screen.getByText(
@@ -244,7 +244,7 @@ describe('PluginManagementView error wiring (Review H1)', () => {
         action: { label: 'Retry cleanup', invoke },
       },
     });
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     fireEvent.click(screen.getByRole('button', { name: 'Retry cleanup' }));
     expect(invoke).toHaveBeenCalledOnce();
@@ -263,7 +263,7 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
   // rendered anyway when the list was genuinely empty — beside the list
   // pane's own "No plugins installed yet".
   test('no plugins installed renders one empty message, not "Nothing selected" too', () => {
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     expect(screen.getByText('No plugins installed yet')).toBeTruthy();
     expect(screen.queryByText('Nothing selected')).toBeNull();
@@ -274,7 +274,7 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
       items: [{ id: 'a', name: 'Alpha' }],
       filtered: [{ name: 'alpha' }],
     });
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     expect(screen.queryByText('No plugins installed yet')).toBeNull();
     expect(screen.getByText('Nothing selected')).toBeTruthy();
@@ -292,7 +292,7 @@ describe('the double-empty rule (station#4463 slice 2)', () => {
       filtered: [],
       search: 'zzz-does-not-match',
     });
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     expect(screen.queryByText('No plugins installed yet')).toBeNull();
     expect(
@@ -333,7 +333,7 @@ describe('rejected installed plugins', () => {
       selected: rejected,
     });
 
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     expect(screen.getByText('Rejected', { exact: true })).toBeTruthy();
     expect(screen.getByRole('alert').textContent).toContain(
@@ -384,7 +384,7 @@ describe('rejected installed plugins', () => {
       },
     });
 
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     expect(
       screen.getByText(
@@ -428,7 +428,7 @@ describe('what an installed plugin adds (#1536 G2)', () => {
       addPluginLayout,
       ...overrides,
     });
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
     return addPluginLayout;
   }
 
@@ -505,7 +505,7 @@ describe('what an installed plugin adds (#1536 G2)', () => {
       projects: [{ slug: 'demo', name: 'Demo' }],
     });
 
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     expect(screen.queryByText('What it adds')).toBeNull();
   });
@@ -527,7 +527,7 @@ describe('what an installed plugin adds (#1536 G2)', () => {
       projects: [{ slug: 'demo', name: 'Demo' }],
     });
 
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     expect(screen.getByText('First Steps')).toBeTruthy();
     expect(screen.queryByText('Getting Started')).toBeNull();
@@ -560,7 +560,7 @@ describe('#2323 S4 Reinstall from source on the plugin detail', () => {
       selectedLocalSource,
       reinstallFromSource,
     });
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
     return reinstallFromSource;
   }
 
@@ -629,7 +629,7 @@ describe('held permissions on the plugin detail (archive#3815)', () => {
       selectedPlugin: 'dock',
       selected: plugin,
     });
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     const tiers = [
       ...document.querySelectorAll(
@@ -671,7 +671,7 @@ describe('registry verification on the plugin detail (#1521)', () => {
       selectedPlugin: 'signed-tools',
       selected: plugin,
     });
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
     const region = screen.getByRole('region', {
       name: 'Registry verification',
     });
@@ -694,7 +694,7 @@ describe('registry verification on the plugin detail (#1521)', () => {
       selectedPlugin: 'local-tools',
       selected: plugin,
     });
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
     expect(
       screen.getByRole('region', { name: 'Registry verification' }).textContent,
     ).toContain('No verified registry claim.');
@@ -718,7 +718,7 @@ describe('a plugin installed but not active', () => {
       // The real projection the view model uses, so the label is guarded.
       items: buildPluginListItems([inactive as never]),
     });
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     expect(
       screen.getByText((text) => text.startsWith('Needs recovery · v1.0.0')),
@@ -740,7 +740,7 @@ describe('a plugin installed but not active', () => {
       filtered: [activating],
       items: buildPluginListItems([activating as never]),
     });
-    render(<PluginManagementView onNavigate={vi.fn()} />);
+    render(<PluginManagementView />);
 
     expect(
       screen.getByText((text) => text.startsWith('Activating… · v1.0.0')),

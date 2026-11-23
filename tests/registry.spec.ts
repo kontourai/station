@@ -213,20 +213,20 @@ async function mockRegistry(page: Page) {
 test.describe('Registry page', () => {
   test.beforeEach(async ({ page }) => {
     await mockStationIdentity(page);
-    await page.goto('/registry');
+    // The catalogue root is Apps › Discover; its remaining tabs stay here.
+    await page.goto('/registry/agents');
     // Wait for the app to load past the onboarding gate
     await page.waitForSelector('.page__tab', { timeout: 15_000 });
   });
 
   test('registry page loads with tabs', async ({ page }) => {
     const tabs = page.locator('.page__tab');
-    await expect(tabs).toHaveCount(6);
+    await expect(tabs).toHaveCount(5);
     await expect(tabs.nth(0)).toHaveText('Agents');
     await expect(tabs.nth(1)).toHaveText('Skills');
     await expect(tabs.nth(2)).toHaveText('Integrations');
-    await expect(tabs.nth(3)).toHaveText('Plugins');
-    await expect(tabs.nth(4)).toHaveText('Layouts');
-    await expect(tabs.nth(5)).toHaveText('Kits');
+    await expect(tabs.nth(3)).toHaveText('Layouts');
+    await expect(tabs.nth(4)).toHaveText('Kits');
   });
 
   test('switching tabs works', async ({ page }) => {
@@ -236,10 +236,10 @@ test.describe('Registry page', () => {
     // Verify Skills tab is active
     await expect(page.locator('.page__tab--active')).toHaveText('Skills');
 
-    // Click Plugins tab
-    await page.locator('.page__tab', { hasText: 'Plugins' }).click();
+    // Click Integrations tab
+    await page.locator('.page__tab', { hasText: 'Integrations' }).click();
 
-    await expect(page.locator('.page__tab--active')).toHaveText('Plugins');
+    await expect(page.locator('.page__tab--active')).toHaveText('Integrations');
   });
 
   test('Layouts shows standard Coding and Tasks starters', async ({ page }) => {
@@ -277,16 +277,13 @@ test.describe('Registry page', () => {
     await expect(detail.getByRole('button', { name: 'Use' })).toBeVisible();
   });
 
-  // #2059: Registry is configuration, so it left the left panel. #2144
-  // decision 4 FOLDED it into Plugins, and the first-release design took
-  // Plugins out of the Customize list (installable things become Apps). Until
-  // that lands, the command palette is the advertised control.
-  //
-  // The guarantee is unchanged — an advertised control someone can press
-  // reaches this surface — and the whole path is walked by pressing, because a
-  // fold is exactly the shape that can drop a surface while every individual
-  // list still looks complete.
-  test('the command palette reaches Registry through Plugins', async ({
+  // #2059: Registry is configuration, so it left the left panel. Its plugin
+  // catalogue is Apps › Discover and installed plugins are Apps › Library.
+  // Apps is not a Customize item; until it has a sidebar row the command
+  // palette is its advertised control, and the old word still finds it. The
+  // whole path is walked by pressing, because a fold is exactly the shape
+  // that can drop a surface while every individual list still looks complete.
+  test('the command palette reaches Apps, and Library steps to Discover', async ({
     page,
   }) => {
     const navigation = page.getByRole('navigation', {
@@ -316,21 +313,21 @@ test.describe('Registry page', () => {
       .getByRole('combobox', { name: 'Search commands' })
       .fill('Plugins');
     await page
-      .getByRole('option', { name: /^Plugins/ })
+      .getByRole('option', { name: /^Apps/ })
       .first()
       .click();
-    await expect(page).toHaveURL(/\/plugins$/);
-    await page
-      .getByRole('button', { name: 'Browse Registry', exact: true })
-      .click();
-    await expect(page).toHaveURL(/\/registry/);
+    await expect(page).toHaveURL(/\/apps$/);
+    await page.getByRole('tab', { name: 'Library', exact: true }).click();
+    await expect(page).toHaveURL(/\/apps\/library$/);
+    await page.getByRole('tab', { name: 'Discover', exact: true }).click();
+    await expect(page).toHaveURL(/\/apps\/discover$/);
   });
 
   test('skill cards open preview details before explicit install', async ({
     page,
   }) => {
     const { installCalls } = await mockRegistry(page);
-    await page.goto('/registry');
+    await page.goto('/registry/skills');
     await page.waitForSelector('.page__tab', { timeout: 15_000 });
 
     await page.getByRole('tab', { name: 'Skills', exact: true }).click();
@@ -355,7 +352,7 @@ test.describe('Registry page', () => {
     page,
   }) => {
     await mockRegistry(page);
-    await page.goto('/registry');
+    await page.goto('/registry/agents');
     await page.waitForSelector('.page__tab', { timeout: 15_000 });
 
     const cases = [
@@ -374,12 +371,6 @@ test.describe('Registry page', () => {
       {
         tab: 'Integrations',
         item: 'Slack Notifier',
-        install: 'Install',
-        remove: 'Remove',
-      },
-      {
-        tab: 'Plugins',
-        item: 'Demo Layout',
         install: 'Install',
         remove: 'Remove',
       },
@@ -412,9 +403,6 @@ test.describe('Registry page', () => {
         .getByTestId('registry-detail')
         .getByRole('button', { name: entry.install })
         .click();
-      if (entry.tab === 'Plugins') {
-        await page.getByRole('button', { name: 'Confirm Install' }).click();
-      }
       await expect(page.getByText(`Installed ${entry.item}`)).toBeVisible();
       await expect(
         page
@@ -439,6 +427,78 @@ test.describe('Registry page', () => {
       .click();
     await expect(page.getByText('Install blocked by policy')).toBeVisible();
   });
+
+  // Registry's Plugins tab is Apps › Discover: the same preview, install and
+  // removal, from the app's card.
+  test('Discover reviews, installs, searches and removes an app', async ({
+    page,
+  }) => {
+    await mockRegistry(page);
+    await page.goto('/registry/plugins');
+    await expect(page).toHaveURL(/\/apps\/discover$/);
+    const card = page.getByRole('listitem', { name: 'Demo Layout' });
+    await expect(card).toBeVisible({ timeout: 15_000 });
+
+    await page.getByLabel('Search apps').fill('no-match');
+    await expect(
+      page.getByText('Nothing in apps matches “no-match”'),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Clear filter' }).click();
+    await expect(card).toBeVisible();
+
+    await card.getByRole('button', { name: 'Review Demo Layout' }).click();
+    await page.getByRole('button', { name: 'Confirm Install' }).click();
+    await expect(page.getByText('Installed Demo Layout')).toBeVisible();
+    await expect(card.getByText('Added', { exact: true })).toBeVisible();
+
+    // Remove asks Library's question first; nothing is removed until it is
+    // confirmed, and focus lands on the card's Review afterwards.
+    await card.getByRole('button', { name: 'Remove Demo Layout' }).click();
+    const confirm = page.getByRole('dialog', { name: 'Remove plugin' });
+    await expect(confirm).toContainText(
+      'Remove “Demo Layout” from Station? This cannot be undone.',
+    );
+    await confirm.getByRole('button', { name: 'Remove', exact: true }).click();
+    await expect(page.getByText('Removed Demo Layout')).toBeVisible();
+    await expect(
+      card.getByRole('button', { name: 'Review Demo Layout' }),
+    ).toBeFocused();
+  });
+
+  test('Discover keeps every control at the touch floor on a phone', async ({
+    page,
+  }) => {
+    await mockRegistry(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto('/apps/discover');
+    await dismissSetupLauncher(page);
+    const moreFilters = page.getByRole('button', { name: /^More filters/ });
+    await expect(moreFilters).toBeVisible({ timeout: 15_000 });
+    const controls = page.locator(
+      '.discover button:visible, .discover input:visible, .discover select:visible',
+    );
+    const shortControls = async () =>
+      controls.evaluateAll(
+        (elements, floor) =>
+          elements
+            .map((element) => ({
+              name:
+                element.getAttribute('aria-label') ||
+                element.textContent?.trim() ||
+                element.tagName,
+              width: element.getBoundingClientRect().width,
+              height: element.getBoundingClientRect().height,
+            }))
+            .filter(
+              (control) => control.width < floor || control.height < floor,
+            ),
+        MIN_TOUCH_TARGET_PX,
+      );
+    expect(await shortControls()).toEqual([]);
+    await moreFilters.click();
+    await expect(moreFilters).toHaveAttribute('aria-expanded', 'true');
+    expect(await shortControls()).toEqual([]);
+  });
 });
 
 test('registry actions do not overlap at phone widths', async ({ page }) => {
@@ -461,11 +521,11 @@ test('registry actions do not overlap at phone widths', async ({ page }) => {
       },
     }),
   );
-  await page.goto('/registry');
+  await page.goto('/registry/agents');
   await dismissSetupLauncher(page);
 
   const tabs = page.locator('.registry-view .page__tab');
-  await expect(tabs).toHaveCount(6);
+  await expect(tabs).toHaveCount(5);
   for (const width of [320, 390, 430]) {
     await page.setViewportSize({ width, height: 844 });
     const boxes = await tabs.evaluateAll((elements) =>

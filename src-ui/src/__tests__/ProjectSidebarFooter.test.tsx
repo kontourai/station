@@ -173,8 +173,13 @@ describe('ProjectSidebarFooter', () => {
   });
 
   test('marks neither control on an unrelated route', () => {
-    // Plugins and Computers are not Customize items.
-    for (const activePath of ['/plugins', '/connections/computers']) {
+    // Apps and Computers are not Customize items.
+    for (const activePath of [
+      '/apps',
+      '/apps/discover',
+      '/apps/library',
+      '/connections/computers',
+    ]) {
       const { unmount } = renderFooter({ activePath });
       expect(
         screen

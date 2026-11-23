@@ -6036,7 +6036,7 @@ own these stages.
 A row also carries `activationInFlight: true` while this server is still
 activating the plugin: it settles on its own, so offer no recovery and read the
 list again until the flag is gone, for no longer than the activation deadline
-plus a margin (the Plugins view stops at 15 seconds). Absence preserves compatibility
+plus a margin (Apps › Library stops at 15 seconds). Absence preserves compatibility
 with older servers; it is not a new readiness proof. Keep pending rows visible,
 but do not load their bundles or enable their actions. The server sets
 `hasBundle: false` until readiness is established. Project Pane availability

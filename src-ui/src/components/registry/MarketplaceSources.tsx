@@ -119,6 +119,8 @@ export function MarketplaceSources({
   onSelect,
   kinds,
   manage = 'inline',
+  label = 'Browse marketplace',
+  hideLabel = false,
 }: {
   selected: string;
   /**
@@ -128,6 +130,9 @@ export function MarketplaceSources({
   onSelect: OnSelect;
   kinds?: readonly CatalogKind[];
   manage?: 'inline' | 'dialog';
+  /** The source picker's name; a host with its own heading can hide it. */
+  label?: string;
+  hideLabel?: boolean;
 }) {
   const sources = useRegistrySourcesQuery();
   const mutation = useRegistrySourceActionMutation();
@@ -158,7 +163,7 @@ export function MarketplaceSources({
     <section className="marketplaces" aria-label="Discover sources">
       <div className="marketplaces__toolbar">
         <label>
-          Browse marketplace
+          <span className={hideLabel ? 'sr-only' : undefined}>{label}</span>
           <select
             className="choice-trigger"
             value={selected}

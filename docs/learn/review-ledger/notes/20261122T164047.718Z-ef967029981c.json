@@ -1,0 +1,13 @@
+{
+  "revision": "92ed09256361ad3abf3af74fdf3e4d44d1c94dd4",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Only the registryUrl help and description changed, to name Apps › Discover and the agent and skill catalogues instead of the Registry page; checked each citing page: none quotes that text, and config.md's registryUrl row stays accurate.","inputs":["packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Only the registryUrl help and description changed, to name Apps › Discover and the agent and skill catalogues instead of the Registry page; checked each citing page: none quotes that text, and config.md's registryUrl row stays accurate.","inputs":["packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Only the registryUrl help and description changed, to name Apps › Discover and the agent and skill catalogues instead of the Registry page; checked each citing page: none quotes that text, and config.md's registryUrl row stays accurate.","inputs":["packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Only the registryUrl help and description changed, to name Apps › Discover and the agent and skill catalogues instead of the Registry page; checked each citing page: none quotes that text, and config.md's registryUrl row stays accurate.","inputs":["packages/contracts/src/settings-registry.ts"]}
+  ]
+}

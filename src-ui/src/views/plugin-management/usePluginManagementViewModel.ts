@@ -77,7 +77,7 @@ export function installDeclinedMessage(pluginName: string) {
 
 /**
  * #2323 S5: the proposal a Needs attention row linked to
- * (`/plugins?proposal=<id>`), read once from the URL the view opened on.
+ * (`/apps/library?proposal=<id>`), read once from the URL the view opened on.
  */
 function readRequestedProposalId(): string | null {
   try {
@@ -102,7 +102,7 @@ export function usePluginManagementViewModel() {
     selectedId: selectedPlugin,
     select: selectPlugin,
     deselect: deselectPlugin,
-  } = useUrlSelection('/plugins');
+  } = useUrlSelection('/apps/library');
   const selectedPluginRef = useRef(selectedPlugin);
   selectedPluginRef.current = selectedPlugin;
 

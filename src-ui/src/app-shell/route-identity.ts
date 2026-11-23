@@ -41,6 +41,8 @@ export function routeIdentity(view: NavigationView): string {
       return `guidance:${view.tab ?? 'remembered'}`;
     case 'registry':
       return `registry:${view.tab ?? 'default'}`;
+    case 'apps':
+      return `apps:${view.tab}`;
     case 'developer':
       return `developer:${view.tab ?? 'default'}`;
     case 'task':

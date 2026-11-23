@@ -100,8 +100,8 @@ function sectionLabel(view: NavigationView): string | null {
   if (t === 'connections-computers') return 'Computers';
   if (t === 'customize' || t.startsWith('connections')) return 'Customize';
   switch (t) {
-    case 'plugins':
-      return 'Plugins';
+    case 'apps':
+      return 'Apps';
     case 'registry':
       return 'Registry';
     case 'developer':

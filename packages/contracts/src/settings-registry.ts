@@ -356,9 +356,9 @@ export const APP_SETTINGS_REGISTRY = [
     scope: 'station',
     descriptor: { kind: 'string' },
     label: 'Registry URL',
-    help: 'After a restart, the Registry page loads its catalog of agents, skills, and plugins from here.',
+    help: 'After a restart, Apps › Discover and the agent and skill catalogues load from here.',
     description:
-      'Where the Registry page loads its catalog of agents, skills, and plugins after the next Station restart. Leave empty for the default catalog.',
+      'Where Apps › Discover and the agent and skill catalogues load their entries after the next Station restart. Leave empty for the default catalog.',
   }),
   defineSetting({
     key: 'registryTrust',

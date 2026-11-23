@@ -202,7 +202,7 @@ station plugin create full-workspace --template=full
 - `layout` is an alias for `pane`.
 
 Every template writes an Agent Plugins 1.0 `plugin.json`. Station can also
-create the same scaffold from **Plugins → New plugin**, which makes the
+create the same scaffold from **Apps › Library → New plugin**, which makes the
 Project for you.
 
 `station plugin init` still works, but it is now just a compatibility alias for the `full` template.

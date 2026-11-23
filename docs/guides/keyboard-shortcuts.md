@@ -137,7 +137,7 @@ Mod+Shift+S takes a Browser screenshot even with the preview off and while the l
 
 Plugins register shortcuts with the SDK's `useShortcut`. They join the same
 registry under `plugin.<plugin>.<id>`, so they appear in the shortcut list
-(under **Plugins**) and in Settings, and an active modal suppresses them like
+(grouped under **Plugins**) and in Settings, and an active modal suppresses them like
 any other. A plugin cannot replace a Station shortcut through the SDK,
 because no Station id starts with `plugin.`. Plugin shortcuts rank below
 Station's own, so a Station shortcut on the same chord wins whichever

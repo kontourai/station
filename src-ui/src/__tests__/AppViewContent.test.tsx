@@ -83,8 +83,8 @@ vi.mock('../views/HomeView', () => ({
 vi.mock('../views/DeveloperView', () => ({
   DeveloperView: () => <div>Developer</div>,
 }));
-vi.mock('../views/PluginManagementView', () => ({
-  PluginManagementView: () => <div>Plugins</div>,
+vi.mock('../views/apps/AppsView', () => ({
+  AppsView: () => <div>Apps</div>,
 }));
 vi.mock('../views/ProjectPage', () => ({
   ProjectPage: () => <div>Project</div>,
@@ -312,15 +312,18 @@ describe('AppViewContent — the page header while a route loads', () => {
     );
 
     rerender(
-      <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
+      <AppViewContent
+        {...baseProps}
+        currentView={{ type: 'apps', tab: 'library' }}
+      />,
     );
 
-    // Plugins' chunk has not resolved yet: the header must already say
-    // Plugins rather than keep naming the page the user just left.
+    // Apps' chunk has not resolved yet: the header must already say Apps
+    // rather than keep naming the page the user just left.
     expect(screen.getByText('Loading route')).toBeTruthy();
     const heading = screen.getByRole('heading', { level: 1 });
     expect(heading.textContent).not.toBe('Providers');
-    expect(heading.textContent).toBe('Plugins');
+    expect(heading.textContent).toBe('Apps');
   });
 });
 
@@ -395,7 +398,8 @@ describe('AppViewContent — the Customize page', () => {
 
   test('leaves the list off pages that are not Customize items', async () => {
     for (const view of [
-      { type: 'plugins' },
+      { type: 'apps', tab: 'discover' },
+      { type: 'apps', tab: 'library' },
       { type: 'settings' },
       { type: 'connections-computers' },
     ] as const) {

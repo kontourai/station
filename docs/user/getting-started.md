@@ -964,7 +964,7 @@ never queues it for automatic replay. A changed source requires a new review.
 Use **Remove unsent visual skill** to deliberately return to ordinary chat.
 **Prepare another stage in this conversation** binds a new unsent preparation
 to the current recorded stage; sending still requires the same source to be
-available. **Browse marketplaces** opens Registry while retaining the picker
+available. **Browse marketplaces** opens Apps › Discover while retaining the picker
 inputs and choices. Return or browser Back refetches the inventory and setup;
 it never installs a plugin or starts the skill automatically.
 
@@ -1228,7 +1228,7 @@ To add skills, choose **Browse Registry Skills** (**Browse Registry** while the
 library is empty) and inspect the available catalog before installing. **Import .md** accepts standalone Markdown skill
 files and reports the outcome of each file. Open an imported skill from its
 result to review and use it. Import does not copy a repository's
-scripts or supporting files. Load plugin packages through Registry. A
+scripts or supporting files. Load plugin packages through Apps › Library. A
 front-matter block Station cannot read as a skill header is removed from the
 imported body; its description is kept only when it is a single line of plain
 text of at most 1,024 characters.

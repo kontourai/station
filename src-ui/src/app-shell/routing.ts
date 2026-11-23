@@ -101,6 +101,22 @@ export function getLegacyPathRedirect(path: string): string | null {
     return `${canonicalPrefix}${suffix}${mergedSearch ? `?${mergedSearch}` : ''}`;
   };
 
+  // The catalogue root and its Plugins tab (with any trailing segment) are
+  // Apps › Discover; Apps' own addresses accept a trailing slash. This pairs
+  // with the `registry` destination, whose route is `/registry/agents`, the
+  // first remaining tab: nothing may build a `{ type: 'registry' }` view
+  // without a tab, because its bare path lands here, on Discover.
+  if (
+    pathname === '/registry' ||
+    pathname === '/registry/' ||
+    pathname === '/registry/plugins' ||
+    pathname.startsWith('/registry/plugins/')
+  ) {
+    return preserveSearch('/apps/discover');
+  }
+  if (pathname === '/apps/' || pathname === '/apps/discover/') {
+    return preserveSearch(pathname.slice(0, -1));
+  }
   if (pathname === '/developer/config') {
     // #2182 dissolved the `station-config` section this used to name, and a
     // redirect cannot choose one of the six sections its rows went to. It
@@ -149,7 +165,10 @@ export function getLegacyPathRedirect(path: string): string | null {
     ['/integrations', '/customize/tools'],
     ['/manage/agents', '/agents'],
     ['/manage/prompts', '/guidance', 'tab=skills'],
-    ['/manage/plugins', '/plugins'],
+    ['/manage/plugins', '/apps/library'],
+    // Plugins and the Registry's Plugins catalogue are Apps' Library and
+    // Discover; an installed plugin's link keeps its name.
+    ['/plugins', '/apps/library'],
     ['/manage/integrations', '/customize/tools'],
     ['/manage/providers', '/customize/providers'],
   ] as const;
@@ -341,6 +360,7 @@ export function resolveViewFromPath(
       ...(selectedId ? { selectedId } : {}),
     };
   }
+  if (path === '/registry') return { type: 'registry' };
   if (path.startsWith('/registry/')) {
     const tabSegment = path.startsWith('/registry/')
       ? path.split('/')[2]
@@ -350,8 +370,9 @@ export function resolveViewFromPath(
     }
     return { type: 'registry' };
   }
-  if (path.startsWith('/plugins/')) {
-    return { type: 'plugins' };
+  if (path === '/apps/discover') return { type: 'apps', tab: 'discover' };
+  if (path === '/apps/library' || path.startsWith('/apps/library/')) {
+    return { type: 'apps', tab: 'library' };
   }
   if (path === '/customize') {
     return { type: 'customize' };
@@ -584,8 +605,8 @@ export function getPathForView(view: NavigationView): string | null {
       return '/agents';
     case 'guidance':
       return `/guidance${view.selectedId ? `/${encodeURIComponent(view.selectedId)}` : ''}${view.tab ? `?tab=${view.tab}${view.filter ? `&filter=${view.filter}` : ''}` : ''}`;
-    case 'plugins':
-      return '/plugins';
+    case 'apps':
+      return `/apps/${view.tab}`;
     case 'registry':
       return view.tab ? `/registry/${view.tab}` : '/registry';
     case 'customize':
@@ -678,7 +699,7 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'agents':
     case 'customize':
     case 'guidance':
-    case 'plugins':
+    case 'apps':
     case 'developer':
     case 'schedule':
     case 'notifications':
@@ -731,8 +752,10 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'board':
     case 'not-found':
       return { type: 'home' };
+    // The catalogue root is Apps › Discover now, so its tabs have no
+    // level up of their own.
     case 'registry':
-      return view.tab ? { type: 'registry' } : null;
+      return null;
     default:
       return null;
   }

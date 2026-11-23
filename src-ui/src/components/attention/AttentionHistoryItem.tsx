@@ -256,7 +256,7 @@ function openLinkLabel(kind: AttentionItem['kind']): string {
       return 'Open in Review';
     case 'gate-review':
       return 'Open review';
-    // #2323 S5: the proposal opens on the Plugins page.
+    // #2323 S5: the proposal opens in Apps › Library.
     case 'tool-request':
       return 'Review tool request';
     case 'plugin-lifecycle-proposal':

@@ -586,9 +586,9 @@ describe('navigationStore shell surface intents', () => {
       focus: 'evidence',
     });
 
-    navigationStore.navigate('/registry');
+    navigationStore.navigate('/agents');
     expect(window.location.pathname + window.location.search).toBe(
-      '/registry?surface=chat&session=thread%2Falpha&focus=evidence',
+      '/agents?surface=chat&session=thread%2Falpha&focus=evidence',
     );
   });
 });
@@ -964,9 +964,9 @@ describe('navigationStore route-change query hygiene (6-OPS-30)', () => {
       '',
       '/settings?view=appearance&dock=open&maximize=true&fontSize=15',
     );
-    navigationStore.navigate('/registry');
+    navigationStore.navigate('/agents');
     const params = new URLSearchParams(window.location.search);
-    expect(window.location.pathname).toBe('/registry');
+    expect(window.location.pathname).toBe('/agents');
     expect(params.get('dock')).toBe('open');
     expect(params.get('maximize')).toBe('true');
     expect(params.get('fontSize')).toBe('15');

@@ -50,11 +50,20 @@ describe('app facts in the repository catalog', () => {
       knowledge: ['Starter Documents'],
       toolServers: [],
       sandboxedToolView: false,
+      inProcessScreen: true,
     });
+    // Four package actions and four tab actions send four distinct prompts,
+    // one per file in its prompts folder.
     expect(facts.get('enterprise-layout')).toMatchObject({
       kind: 'app',
       screens: ['Dashboard', 'Calendar', 'CRM', 'Notes'],
       agents: 1,
+      promptActions: [
+        'Daily Overview',
+        'Log Activity',
+        'Customer Outreach',
+        'Generate Report',
+      ],
       knowledge: ['Meeting Notes'],
     });
     // Two primary panes that need a project, and no layout.
@@ -162,6 +171,7 @@ describe('app facts read from a local catalog', () => {
       knowledge: [],
       toolServers: ['station-sessions-mcp'],
       sandboxedToolView: true,
+      inProcessScreen: false,
     });
     expect(facts.get('knowledge')).toMatchObject({
       kind: 'app',

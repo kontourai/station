@@ -42,6 +42,78 @@ describe('deriveRegistryAppFacts', () => {
     });
   });
 
+  test('counts only host actions that send a prompt', () => {
+    const facts = deriveRegistryAppFacts({
+      manifest: {
+        workspacePaneHost: {
+          actions: [
+            { label: 'Daily overview', intent: { kind: 'plugin-prompt' } },
+            { label: 'Summarize', intent: { kind: 'prompt' } },
+            { label: 'Open settings', intent: { kind: 'navigate' } },
+          ],
+        },
+      },
+      layouts: [{ tabs: tabs(1) }],
+    });
+    expect(facts).toMatchObject({
+      promptActions: ['Daily overview', 'Summarize'],
+    });
+  });
+
+  test('counts a prompt once when a package action and a tab action send it', () => {
+    const facts = deriveRegistryAppFacts({
+      manifest: {
+        name: 'demo',
+        workspacePaneHost: {
+          actions: [
+            {
+              label: 'Log activity',
+              intent: { kind: 'plugin-prompt', promptId: 'activity' },
+            },
+          ],
+        },
+      },
+      layouts: [
+        {
+          tabs: [
+            {
+              id: 'a',
+              label: 'A',
+              component: 'a',
+              actions: [
+                {
+                  type: 'prompt',
+                  label: 'Review activity',
+                  data: 'demo:activity',
+                },
+                {
+                  type: 'prompt',
+                  label: 'Summarize',
+                  data: 'Summarize this tab',
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(facts).toMatchObject({
+      promptActions: ['Log activity', 'Summarize'],
+    });
+  });
+
+  test('says whether screen code runs inside Station', () => {
+    expect(
+      deriveRegistryAppFacts({
+        manifest: { entrypoint: 'src/index.tsx' },
+        layouts: [{ tabs: tabs(1) }],
+      }),
+    ).toMatchObject({ inProcessScreen: true });
+    expect(
+      deriveRegistryAppFacts({ manifest: {}, layouts: [{ tabs: tabs(1) }] }),
+    ).toMatchObject({ inProcessScreen: false });
+  });
+
   test('a pane that needs a Task works with Tasks', () => {
     expect(
       deriveRegistryAppFacts({

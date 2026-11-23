@@ -1909,7 +1909,7 @@ describe('TaskWorkspaceView', () => {
     ).toBeTruthy();
     expect(screen.getByText('Continue delivery in Builder Kit.')).toBeTruthy();
     expect(screen.queryByText(/isn't connected/)).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Manage plugins' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Open Library' })).toBeNull();
   });
 
   test('a disabled producer is not a producer this page can open', () => {
@@ -1954,8 +1954,8 @@ describe('TaskWorkspaceView', () => {
       screen.getByRole('heading', { name: 'Task inspection' }),
     ).toBeTruthy();
     expect(
-      screen.getByRole('link', { name: 'Add plugins' }).getAttribute('href'),
-    ).toBe('/plugins');
+      screen.getByRole('link', { name: 'Find apps' }).getAttribute('href'),
+    ).toBe('/apps/discover');
     expect(screen.queryByRole('button', { name: /Deliver/i })).toBeNull();
   });
 
@@ -1963,7 +1963,7 @@ describe('TaskWorkspaceView', () => {
     render(<TaskWorkspaceView taskId="task-alpha" />);
     expect(screen.getAllByText('Inspect the workspace')).toHaveLength(2);
     expect(screen.getByText('task-alpha')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Add plugins' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Find apps' })).toBeTruthy();
     expect(screen.queryByText('Task experiences')).toBeNull();
     expect(
       within(screen.getByRole('tabpanel', { name: 'Details' })).queryByText(
@@ -1992,7 +1992,7 @@ describe('TaskWorkspaceView', () => {
     });
     render(<TaskWorkspaceView taskId="task-alpha" />);
 
-    expect(screen.getByRole('link', { name: 'Add plugins' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Find apps' })).toBeTruthy();
     expect(
       screen.getByRole('button', { name: /attacker\.example/i }),
     ).toBeTruthy();

@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 103,
+  "pageLocalMediaQueryCeiling": 104,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -192,6 +192,10 @@
     "src-ui/src/views/ProjectPage.css": {
       "count": 3,
       "reason": "Three blocks at two breakpoints: task grids single-column at 760px, then two that both open at 768px \u2014 the live-work row's touch floor, and the touch floors, card grid, git-commit rows and namespace config bar of the page's own content. The narrow gutters this reason used to name moved to project-page-frame.css with the frame itself (#1636); this file no longer declares them."
+    },
+    "src-ui/src/views/apps/AppsView.css": {
+      "count": 1,
+      "reason": "Apps › Discover's own phone layout: one column with Works with as a row of chips, the other filters folded under a More filters control, then the apps. No shared primitive lays this out."
     },
     "src-ui/src/views/project-page-frame.css": {
       "count": 1,

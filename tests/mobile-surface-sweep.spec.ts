@@ -37,9 +37,9 @@ const ROUTES: readonly string[] = [
   '/developer/telemetry',
   '/guidance',
   '/notifications',
-  '/plugins',
+  '/apps',
   '/profile',
-  '/registry',
+  '/registry/agents',
   '/automations',
   '/settings',
 ];

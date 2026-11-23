@@ -250,7 +250,7 @@ independent security review or hosted release behavior.
 
 ## Directory Structure
 
-A new plugin (what `station plugin create` and **Plugins → New plugin**
+A new plugin (what `station plugin create` and **Apps › Library → New plugin**
 scaffold, from `packages/shared/src/plugin-scaffold.ts`):
 
 ```
@@ -542,7 +542,9 @@ For local agent-assisted visual Skill conversion, review and evaluation, use
 
 ## Plugin registry
 
-The Registry page browses installable plugins from a JSON manifest.
+**Apps › Discover** browses installable plugins from a JSON manifest. Skills,
+tool servers, layouts and agent entries from the same sources keep their own
+catalogue pages, reached from Skills, Tools and a project's **Add layout**.
 
 When `registryUrl` is unset,
 Station serves a bundled manifest at `examples/registry/default.json`, so a
@@ -587,20 +589,20 @@ Managing connected sources requires the Station operator and an
 `access:manage` credential. Standard paired clients can browse ordinary
 catalog items without gaining host source-management authority.
 
-The Registry's **Add source** flow connects additional sources without
+The **Add source** flow on Discover connects additional sources without
 changing `registryUrl`. A source is a location, with an optional ref for a
 GitHub repository. Station detects what it provides from its content:
 `SKILL.md` packages, a Station manifest's plugins and agents, and a Claude Code
 marketplace index or MCP definitions, which are recognized but not yet
 installable ([decision](../decisions/registry-sources-detected-by-structure.md)). Each
-source under **Manage sources** (opened from the Registry toolbar, so the
+source under **Manage sources** (opened from Discover's source picker, so the
 catalog comes first) shows its trust tier
 (Station, Default, Plugin, or Unverified for one a person added), what it was
 detected to provide with counts (a default catalog shows its last count, or
 that it has not been scanned yet), and when it was last read and last changed
 upstream. Sources with the same name are told apart by their location, and a
 source that reads the same repository or folder as another says they overlap.
-Choosing a source keeps it selected across the Registry tabs. Sources persist separately, can be refreshed or disabled,
+Choosing a source keeps it selected across the catalogue tabs. Sources persist separately, can be refreshed or disabled,
 and report offline/stale/error status independently. Offline plugin rows retain
 the current installed state from the local Library, even after an update or
 removal; cached catalog metadata cannot declare a package installed. Removing one preserves
@@ -663,18 +665,22 @@ a bound leaves only that row without `app`.
 
 ### Install and use a bundled layout
 
-Registry is the discovery and installation surface; **Plugins** is the
-installed-plugin management surface. On a fresh Station installation, open
-**Registry → Plugins**, select a bundled starter such as **Minimal Layout**,
-and choose **Install**. No local path is needed for a bundled item.
+**Apps › Discover** is the discovery and installation surface; **Apps ›
+Library** manages what is installed. On a fresh Station installation, open
+**Apps › Discover**, find a bundled starter such as **Minimal Workspace**,
+choose **Review**, and confirm the install. No local path is needed for a
+bundled item. Discover's filters and card facts come from each entry's `app`
+facts; an entry that has no screen, or whose facts Station could not read,
+appears only with no filter chosen.
 
-After installation, refresh Registry or open **Plugins** to confirm the item is
-installed and runtime activation is ready. A ready installation makes a layout
+After installation, its card reads **Added**; open **Apps › Library** to confirm
+that runtime activation is ready. A ready installation makes a layout
 contribution available; it does not add that layout to every project. Open the target project, choose **Add**, then
 select the installed layout and open it from the project's layout cards.
 
-Removing a plugin from Registry or Plugins removes its installed contribution
-and returns the registry item to Available. Existing project layout records are
+Removing a plugin from Discover or Library asks first, with the same question
+in both places; once confirmed it removes the installed contribution and
+returns the registry item to Available. Existing project layout records are
 preserved so a reinstall restores the same project choice; until then, opening
 one renders Station's explicit unavailable-component recovery state rather than
 silently substituting another layout. Reinstall the same registry item, refresh
@@ -709,7 +715,7 @@ it becomes ready by itself or, once stopped, **Needs recovery**. Plugins
 then says the plugin was installed (or updated) but is not active, and opens
 its row, which reads **Needs recovery**. It did not fail, and installing it
 again would install a second copy: installing a plugin that reads **Needs
-recovery**, from Plugins, Registry or `station plugin install`, offers
+recovery**, from Apps › Discover, Apps › Library or `station plugin install`, offers
 recovery instead, and installs again only when you ask (**Install again
 anyway**, or `--reinstall`). Station does not ask for its trusted
 permissions yet, because their host approval needs an active plugin; a
@@ -719,7 +725,7 @@ outcome. A removal saved this way needs nothing from you: Station finishes
 unloading the plugin in the background.
 
 A **Needs recovery** plugin retains its code and data while its runtime
-contributions remain unavailable. Open **Plugins** and select it: the recovery
+contributions remain unavailable. Open **Apps › Library** and select it: the recovery
 review loads with the row. Review the permissions and retained dependencies,
 then choose **Recover plugin** and confirm the permission review. Recovery does
 not fetch replacement code or reset stored data. Once the plugin is active,
@@ -1342,7 +1348,7 @@ failures; it can report `incomplete`, including when the runtime is unavailable.
 Recorded approval therefore does not establish that the server module or
 providers are active. Inspect the reconciliation result and current plugin
 status before treating trusted behavior as available. Denial does not grant the
-requested permissions. You can revisit an installed plugin from **Plugins**,
+requested permissions. You can revisit an installed plugin from **Apps › Library**,
 select it, and choose **Review Permissions**.
 
 Recorded permissions and currently effective permissions can also differ after

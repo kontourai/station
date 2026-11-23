@@ -194,10 +194,10 @@ These extend **Station agents**; External agents bring their own (the app owns t
 with two explicit, structurally identical exceptions, both off by default and never silent:
 
 - **Skill** — a reusable bundle of instructions/behavior an agent adopts. THE one authored concept: a skill may declare itself runnable as a `/command`, which is what the retired "Prompt"/"Playbook" noun used to name. The word "playbook" survives only as accurate history (the `migrated-playbook` skill origin, `station doctor --migrate-playbooks`).
-- **Integration** — an MCP server that exposes tools.
+- **Integration** — an MCP server that exposes tools. People see it as a **tool server**.
 - **Tool** — one callable: a function from an integration, or a `station-control` platform function.
 - **Command** — a slash command.
-- **Plugin** — an installable platform extension (layouts, agents, integrations, providers, …).
+- **Plugin** — an installable platform extension (layouts, agents, integrations, providers, …). It is the packaging and developer word (`plugin.json`, `station plugin`, the developer docs). A plugin with a screen of its own is what people see as an **App**; one that only adds skills, agents or providers is found where those are used. The **Registry** is the catalogue infrastructure behind sources; its plugin catalogue is shown as **Apps › Discover**.
 - **Personal access token** — a credential a person makes for a script (`stp_…`): it acts as them, carries Read and optionally Operate, never exceeds their own access, and can expire or be revoked (#3557). It is not a paired device: it cannot manage Station access or a Project's members.
 - **Telemetry producer token** — a credential the operator makes for a program that only reports activity (`sti_…`), such as Flow Agents' telemetry hooks. It is accepted only on `POST /v1/agent-events`, `/v1/traces` and `/v1/logs`, works from this machine unless created with remote access, can expire or be revoked, and names itself on every row it writes (`station.telemetry.producer`). It is not a personal access token or a paired device: it reads nothing.
 - **Station group** — Admin or Member: what any device tied to a person may do at most, Station-wide (#3557). Not a Project role: Project roles (Viewer, Contributor, Admin, Owner) say what a person may do in one Project, and neither grants the other. The operator is the Owner, outside both.
@@ -491,6 +491,8 @@ release delivery.
 | A selectable inference option within a connection | **Model** |
 | This device's saved binding to one Station | **Station** (verbs: Add / Edit / **Forget**) |
 | A project's named view | **Layout** |
+| Something installable with a screen of its own | **App**: **Apps › Discover** finds them and **Apps › Library** manages what is installed. Not the Project's **Library** of files. "Plugin" stays the packaging and developer word |
+| An MCP server that provides tools | **Tool server** |
 | A place at the edge of the window a surface can occupy | **Region** |
 | A thing that can occupy a region (Chat, Agents) | **Surface** |
 | The smallest addressable unit of workspace UI | **Pane** (developer contract: **Workspace Pane**) |

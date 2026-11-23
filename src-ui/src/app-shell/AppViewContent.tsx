@@ -81,9 +81,9 @@ const GuidanceView = lazy(() =>
     default: module.GuidanceView,
   })),
 );
-const PluginManagementView = lazy(() =>
-  import('../views/PluginManagementView').then((module) => ({
-    default: module.PluginManagementView,
+const AppsView = lazy(() =>
+  import('../views/apps/AppsView').then((module) => ({
+    default: module.AppsView,
   })),
 );
 const ProfilePage = lazy(() =>
@@ -292,8 +292,8 @@ function AppViewContentBody({
   if (currentView.type === 'registry') {
     return <RegistryView initialTab={currentView.tab} />;
   }
-  if (currentView.type === 'plugins') {
-    return <PluginManagementView onNavigate={onNavigate} />;
+  if (currentView.type === 'apps') {
+    return <AppsView tab={currentView.tab} />;
   }
   if (currentView.type === 'customize') {
     return <CustomizeLanding />;

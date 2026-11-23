@@ -30,8 +30,8 @@ vi.mock('../../views/AgentsView', async () => {
   };
 });
 
-vi.mock('../../views/PluginManagementView', () => ({
-  PluginManagementView: () => <div>Installed plugins list</div>,
+vi.mock('../../views/apps/AppsView', () => ({
+  AppsView: () => <div>Installed plugins list</div>,
 }));
 
 /** Guidance's chunk, held open the same way, for the tab-shape case. */
@@ -144,7 +144,7 @@ describe('routePendingShape — read off the destination’s own frame', () => {
   test('a split-pane route’s placeholder is a split pane', () => {
     // Asserted through the REAL route table, not a hand-written spec: the
     // claim is about what Plugins and Agents are declared to be.
-    expect(shapeOf({ type: 'plugins' })).toBe('split-pane');
+    expect(shapeOf({ type: 'apps', tab: 'library' })).toBe('split-pane');
     expect(shapeOf({ type: 'agents' })).toBe('split-pane');
     expect(shapeOf({ type: 'task', taskId: 't1' })).toBe('split-pane');
   });
@@ -213,7 +213,9 @@ describe('routePendingShape — read off the destination’s own frame', () => {
 
     test('a route that names none opens on its list', () => {
       expect(shapeOf({ type: 'agents' }, true)).toBe('split-pane');
-      expect(shapeOf({ type: 'plugins' }, true)).toBe('split-pane');
+      expect(shapeOf({ type: 'apps', tab: 'library' }, true)).toBe(
+        'split-pane',
+      );
       expect(shapeOf({ type: 'connections-models' }, true)).toBe('split-pane');
     });
 
@@ -254,7 +256,7 @@ describe('routePendingShape — read off the destination’s own frame', () => {
       expect(shapeOf({ type: 'connections-models' })).toBe('split-pane');
       // Plugins persists nothing at all — it mounts its pane without an id,
       // so it always starts expanded.
-      expect(shapeOf({ type: 'plugins' })).toBe('split-pane');
+      expect(shapeOf({ type: 'apps', tab: 'library' })).toBe('split-pane');
     });
 
     test('an expanded or unreadable entry is not a collapse', () => {
@@ -419,7 +421,10 @@ describe('the body while a route chunk is in flight (#3660)', () => {
 
   test('cold: the header names Agents, and the body holds Agents’ shape — not the Plugins list', async () => {
     const { container, rerender } = render(
-      <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
+      <AppViewContent
+        {...baseProps}
+        currentView={{ type: 'apps', tab: 'library' }}
+      />,
     );
     expect(await screen.findByText('Installed plugins list')).toBeTruthy();
 
@@ -462,7 +467,10 @@ describe('the body while a route chunk is in flight (#3660)', () => {
       // A suspended module may start before the test installs its clock.
       // Start a fresh pending route instance under the fake clock.
       rerender(
-        <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
+        <AppViewContent
+          {...baseProps}
+          currentView={{ type: 'apps', tab: 'library' }}
+        />,
       );
       rerender(
         <AppViewContent {...baseProps} currentView={{ type: 'agents' }} />,
@@ -502,7 +510,10 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     warmUp.unmount();
 
     const { container, rerender } = render(
-      <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
+      <AppViewContent
+        {...baseProps}
+        currentView={{ type: 'apps', tab: 'library' }}
+      />,
     );
     expect(await screen.findByText('Installed plugins list')).toBeTruthy();
     published.length = 0;
@@ -528,7 +539,10 @@ describe('the body while a route chunk is in flight (#3660)', () => {
     // frame alone would have drawn a rail here and then jumped to a
     // single-column list. The tab is in the URL before the chunk exists.
     const { container, rerender } = render(
-      <AppViewContent {...baseProps} currentView={{ type: 'plugins' }} />,
+      <AppViewContent
+        {...baseProps}
+        currentView={{ type: 'apps', tab: 'library' }}
+      />,
     );
     expect(await screen.findByText('Installed plugins list')).toBeTruthy();
 

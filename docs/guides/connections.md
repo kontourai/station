@@ -2598,7 +2598,8 @@ The Customize, Guidance and Tool-server URLs have a single canonical route per c
 | Computers (not a Customize item) | `/connections/computers` | `/connections/environments` |
 | Skills | `/guidance?tab=skills` | `/skills`, and the retired `/playbooks`, `/prompts`, `/manage/prompts` |
 | Tool servers | `/customize/tools` | `/connections/tools`, `/integrations`, `/tools`, `/manage/integrations` |
-| Registry | `/registry` (optionally `/registry/:tab` for `agents`\|`skills`\|`integrations`\|`plugins`\|`layouts`\|`kits`) | — |
+| Apps | `/apps/discover`, `/apps/library` | `/registry` and `/registry/plugins` (Discover), `/plugins` (Library) |
+| Registry | `/registry/:tab` for `agents`\|`skills`\|`integrations`\|`layouts`\|`kits` | — |
 
 The connection section registry and `getPathForView` emit canonical routes.
 Navigation ingestion also normalizes the listed aliases, including old deep

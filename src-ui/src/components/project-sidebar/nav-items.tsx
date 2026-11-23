@@ -19,7 +19,7 @@ function sidebarIcon(children: ReactNode): ReactNode {
   );
 }
 
-const PLUGINS_ICON = sidebarIcon(
+const CUSTOMIZE_ICON = sidebarIcon(
   <>
     <path d="M12 2v4m0 12v4M2 12h4m12 0h4" />
     <circle cx="12" cy="12" r="3" />
@@ -52,9 +52,18 @@ const DESTINATION_ICONS: Readonly<Record<DestinationIconId, ReactNode>> = {
       <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
     </>,
   ),
-  plugins: PLUGINS_ICON,
+  // Apps: the grid of squares the Customize page's Overview row draws
+  // (`customize-glyphs.tsx`), so Apps no longer shares Customize's mark.
+  plugins: sidebarIcon(
+    <>
+      <rect x="3" y="3" width="7" height="7" rx="1" />
+      <rect x="14" y="3" width="7" height="7" rx="1" />
+      <rect x="3" y="14" width="7" height="7" rx="1" />
+      <rect x="14" y="14" width="7" height="7" rx="1" />
+    </>,
+  ),
   // The same mark the sidebar footer's Customize button has always shown.
-  customize: PLUGINS_ICON,
+  customize: CUSTOMIZE_ICON,
   notifications: sidebarIcon(
     <>
       <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />

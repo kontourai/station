@@ -5928,7 +5928,7 @@ Each entry whose package is local carries `app`, derived from its
 `plugin.json` and the layout files it names when the catalog is listed:
 `{kind: 'none'}` for a plugin with no layout and no Workspace Pane, or
 `{kind: 'app', screens, panes, opensAs, worksWith, agents, promptActions,
-knowledge, toolServers, sandboxedToolView}`. A remote package is never fetched
+knowledge, toolServers, sandboxedToolView, inProcessScreen}`. A remote package is never fetched
 to list it, and a manifest or layout that is missing, malformed or over a
 bound leaves `app` absent for that entry only. Lists over their bound are
 refused, not cut short. See `RegistryAppFacts` in

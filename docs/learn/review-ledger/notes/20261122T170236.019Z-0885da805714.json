@@ -1,0 +1,7 @@
+{
+  "revision": "04bd4f768351f1ce7c2500c561698108b9c67e06",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Install and finish steps name Apps > Library > Install plugin.","inputs":["docs/guides/plugins.md"]}
+  ]
+}

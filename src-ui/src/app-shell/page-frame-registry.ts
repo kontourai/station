@@ -72,7 +72,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
     flush: true,
   },
 
-  plugins: SPLIT_PANE,
+  apps: SPLIT_PANE,
   registry: {
     title: 'Registry',
     width: 'full',

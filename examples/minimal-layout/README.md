@@ -19,7 +19,7 @@ candidate build does not imply that its SDK or CLI has been published to npm.
 ## Install and place
 
 1. Preview the source with `station plugin preview ./examples/minimal-layout`,
-   or enter its path in **Plugins → Install plugin**.
+   or enter its path in **Apps › Library → Install plugin**.
 2. Review the declared `navigation.dock` permission and install. Installation
    registers the contribution; it does not attach it to every Project.
 3. Open the target Project, choose **Add pane**, select **Minimal Workspace**,

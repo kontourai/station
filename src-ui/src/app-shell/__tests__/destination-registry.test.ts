@@ -35,7 +35,6 @@ describe('DestinationRegistry', () => {
       'agents',
       'guidance-commands',
       'guidance-skills',
-      'registry',
       'customize',
       'engines',
       'providers',
@@ -64,7 +63,6 @@ describe('DestinationRegistry', () => {
       'agents',
       'guidance-commands',
       'guidance-skills',
-      'registry',
       'customize',
       'engines',
       'providers',
@@ -125,7 +123,8 @@ describe('DestinationRegistry', () => {
       '/guidance',
       // Connections was entered at its Engines section.
       '/customize/engines',
-      '/plugins',
+      // Plugins is Apps, which has no Customize item either.
+      '/apps',
       '/developer',
       '/appearance',
       '/settings',
@@ -134,6 +133,13 @@ describe('DestinationRegistry', () => {
     ]) {
       expect(paletteRoutes, `${route} has no palette entry`).toContain(route);
     }
+    // The plugin catalogue is Apps › Discover; the Registry keeps no palette
+    // entry of its own.
+    expect(
+      APP_DESTINATION_REGISTRY.getPalette(flags).map(
+        (destination) => destination.id,
+      ),
+    ).not.toContain('registry');
   });
 
   // Words people learned for the retired Connections tabs that the new
@@ -146,6 +152,11 @@ describe('DestinationRegistry', () => {
     ['acp', 'engines'],
     ['search', 'knowledge'],
     ['set up', 'customize'],
+    // Apps has no Customize item, so the palette is its standing door.
+    ['apps', 'plugins'],
+    ['discover', 'plugins'],
+    ['library', 'plugins'],
+    ['plugins', 'plugins'],
   ])('the palette answers "%s" with the %s destination first', (query, id) => {
     const commands = APP_DESTINATION_REGISTRY.getPalette(
       new Set([DEVELOPER_TOOLS_FLAG]),
@@ -207,6 +218,17 @@ describe('DestinationRegistry', () => {
         route: '/customize/knowledge',
       },
     ]);
+    // Apps is not a Customize item: it is reached from the palette, the
+    // links that point at it and the old addresses' redirects. Registry is
+    // absent too: its plugin catalogue is Apps › Discover.
+    const ids = APP_DESTINATION_REGISTRY.getCustomizeNav().map(
+      (entry) => entry.id,
+    );
+    expect(ids).not.toContain('plugins');
+    expect(ids).not.toContain('registry');
+    expect(
+      APP_DESTINATION_REGISTRY.getCustomizeNav().map((entry) => entry.route),
+    ).not.toContain('/apps');
     // The developer flag adds nothing: Developer is not a Customize item.
     expect(
       APP_DESTINATION_REGISTRY.getCustomizeNav(
@@ -240,7 +262,8 @@ describe('DestinationRegistry', () => {
       [{ type: 'connections-knowledge' }, 'knowledge'],
       // Not Customize items.
       [{ type: 'connections-computers' }, null],
-      [{ type: 'plugins' }, null],
+      [{ type: 'apps', tab: 'discover' }, null],
+      [{ type: 'apps', tab: 'library' }, null],
       [{ type: 'settings' }, null],
       [{ type: 'home' }, null],
     ];

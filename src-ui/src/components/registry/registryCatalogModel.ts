@@ -10,6 +10,7 @@ export interface RegistryItem
     | 'installedPluginName'
     | 'toolOrigin'
     | 'mcpServer'
+    | 'app'
   > {
   id: string;
   displayName?: string;

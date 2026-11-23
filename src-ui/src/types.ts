@@ -636,7 +636,7 @@ export type NavigationView =
   | { type: 'connections-tool-edit'; id: string }
   | { type: 'connections-knowledge' }
   | { type: 'connections-computers' }
-  | { type: 'plugins' }
+  | { type: 'apps'; tab: 'discover' | 'library' }
   | { type: 'registry'; tab?: RegistryCatalogTab }
   | { type: 'developer'; tab?: DeveloperTab }
   | { type: 'schedule' }

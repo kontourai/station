@@ -31,7 +31,7 @@ inside Station's sandboxed plugin frame.
 
 1. Build it with `station plugin build` in this directory, then install the
    directory with `station plugin install ./examples/related-reports` (or
-   through **Plugins → Install plugin**).
+   through **Apps › Library → Install plugin**).
 2. Open a Project, choose **Add pane**, and open **Reports**.
 3. Choose **Open Weekly report**. It opens beside Reports with the opener's
    way back above it.

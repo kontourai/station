@@ -16,10 +16,11 @@ const PLUGIN_NAME = 'Minimal Workspace';
 // A 5s locator assertion can delete the plugin while that valid load is pending.
 const PANE_READY_TIMEOUT_MS = 30_000;
 
-async function openBundledPluginInRegistry(
+/** The bundled package's card in Apps › Discover. */
+async function openBundledPluginInDiscover(
   page: import('@playwright/test').Page,
 ) {
-  await page.goto('/registry');
+  await page.goto('/apps/discover');
   const decideLater = page.getByRole('button', {
     name: 'Decide later',
     exact: true,
@@ -27,11 +28,9 @@ async function openBundledPluginInRegistry(
   if (await decideLater.isVisible().catch(() => false)) {
     await decideLater.click();
   }
-  await page.getByRole('tab', { name: 'Plugins', exact: true }).click();
-  await page
-    .getByRole('button', { name: `View ${PLUGIN_NAME} details` })
-    .click();
-  return page.getByRole('region', { name: PLUGIN_NAME });
+  const card = page.getByRole('listitem', { name: PLUGIN_NAME });
+  await expect(card).toBeVisible();
+  return card;
 }
 
 /**
@@ -131,9 +130,9 @@ test.describe('Bundled plugin registry lifecycle', () => {
       await page.addInitScript(() =>
         localStorage.setItem('station:onboarding-setup-dismissed', '1'),
       );
-      const detail = await openBundledPluginInRegistry(page);
-      await detail
-        .getByRole('button', { name: 'Install', exact: true })
+      const card = await openBundledPluginInDiscover(page);
+      await card
+        .getByRole('button', { name: `Review ${PLUGIN_NAME}`, exact: true })
         .click();
       await page
         .getByRole('dialog', { name: 'Install Preview' })
@@ -146,12 +145,15 @@ test.describe('Bundled plugin registry lifecycle', () => {
       // A reload must project the persisted registry alias as installed, not
       // merely preserve optimistic client mutation state.
       await page.reload();
-      await page.getByRole('tab', { name: 'Plugins', exact: true }).click();
       await expect(
-        page.getByRole('article').filter({ hasText: PLUGIN_NAME }).first(),
-      ).toContainText('Installed');
+        page
+          .getByRole('listitem', { name: PLUGIN_NAME })
+          .getByText('Added', { exact: true }),
+      ).toBeVisible();
 
+      // The old Plugins address lands on Apps › Library, which lists it.
       await page.goto('/plugins');
+      await expect(page).toHaveURL(/\/apps\/library$/);
       await expect(
         page.getByText(PLUGIN_NAME, { exact: true }).first(),
       ).toBeVisible();
@@ -181,7 +183,7 @@ test.describe('Bundled plugin registry lifecycle', () => {
       });
       await page.setViewportSize({ width: 1280, height: 900 });
 
-      const removeDetail = await openBundledPluginInRegistry(page);
+      const removeCard = await openBundledPluginInDiscover(page);
       // The uninstall DELETE can take ~24s under fixture-budget load; await the
       // exact response (bounded) before asserting the success toast, rather
       // than racing a short locator timeout against a slow mutation.
@@ -192,8 +194,13 @@ test.describe('Bundled plugin registry lifecycle', () => {
             '/api/registry/plugins/minimal-layout',
         { timeout: 60_000 },
       );
-      await removeDetail
-        .getByRole('button', { name: 'Remove plugin', exact: true })
+      await removeCard
+        .getByRole('button', { name: `Remove ${PLUGIN_NAME}`, exact: true })
+        .click();
+      // Remove asks first; the DELETE starts only once it is confirmed.
+      await page
+        .getByRole('dialog', { name: 'Remove plugin' })
+        .getByRole('button', { name: 'Remove', exact: true })
         .click();
       const removed = await pluginRemoval;
       expect(removed.ok()).toBe(true);
@@ -209,9 +216,9 @@ test.describe('Bundled plugin registry lifecycle', () => {
         page.getByRole('button', { name: 'Open Chat Dock', exact: true }),
       ).toHaveCount(0);
 
-      const reinstallDetail = await openBundledPluginInRegistry(page);
-      await reinstallDetail
-        .getByRole('button', { name: 'Install', exact: true })
+      const reinstallCard = await openBundledPluginInDiscover(page);
+      await reinstallCard
+        .getByRole('button', { name: `Review ${PLUGIN_NAME}`, exact: true })
         .click();
       await page
         .getByRole('dialog', { name: 'Install Preview' })

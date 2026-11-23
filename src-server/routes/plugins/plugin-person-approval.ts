@@ -86,7 +86,7 @@ function personApprovalRequiredBody(what: string) {
   return {
     success: false as const,
     code: PLUGIN_PERSON_APPROVAL_REQUIRED,
-    error: `A person must approve this in Station: Station's agent tools and delegated Stations cannot ${what}. Station's agent tools can propose it instead (propose_plugin_install, update_plugin or remove_plugin), and a person completes it from Plugins.`,
+    error: `A person must approve this in Station: Station's agent tools and delegated Stations cannot ${what}. Station's agent tools can propose it instead (propose_plugin_install, update_plugin or remove_plugin), and a person completes it from Apps › Library.`,
   };
 }
 

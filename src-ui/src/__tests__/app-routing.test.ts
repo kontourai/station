@@ -80,8 +80,20 @@ const LEGACY_PATH_CASES = [
   ['/manage/agents/planner', '/agents/planner'],
   ['/manage/prompts', '/guidance?tab=skills'],
   ['/manage/prompts/release-review', '/guidance/release-review?tab=skills'],
-  ['/manage/plugins', '/plugins'],
-  ['/manage/plugins/example', '/plugins/example'],
+  ['/manage/plugins', '/apps/library'],
+  ['/manage/plugins/example', '/apps/library/example'],
+  // Plugins is Apps › Library and the Registry's Plugins catalogue is Apps ›
+  // Discover; an installed plugin keeps its name and a proposal link its id.
+  ['/plugins', '/apps/library'],
+  ['/plugins/enterprise-layout', '/apps/library/enterprise-layout'],
+  ['/plugins?proposal=p-1', '/apps/library?proposal=p-1'],
+  ['/registry', '/apps/discover'],
+  ['/registry/', '/apps/discover'],
+  ['/registry/plugins', '/apps/discover'],
+  ['/registry/plugins/', '/apps/discover'],
+  ['/registry/plugins/demo-layout', '/apps/discover'],
+  ['/apps/', '/apps'],
+  ['/apps/discover/', '/apps/discover'],
   ['/manage/integrations', '/customize/tools'],
   ['/manage/integrations/example', '/customize/tools/example'],
   ['/manage/providers', '/customize/providers'],
@@ -134,8 +146,9 @@ const CANONICAL_VIEWS = [
   { type: 'connections-tool-edit', id: 'tool' },
   { type: 'connections-knowledge' },
   { type: 'connections-computers' },
-  { type: 'plugins' },
-  { type: 'registry', tab: 'plugins' },
+  { type: 'apps', tab: 'discover' },
+  { type: 'apps', tab: 'library' },
+  { type: 'registry', tab: 'skills' },
   { type: 'developer', tab: 'telemetry' },
   { type: 'schedule' },
   { type: 'settings' },
@@ -289,9 +302,6 @@ describe('app-shell routing', () => {
         layoutSlug: 'coding',
       }),
     ).toEqual({ type: 'project', slug: 'station' });
-    expect(getParentView({ type: 'registry', tab: 'plugins' })).toEqual({
-      type: 'registry',
-    });
     expect(getParentView({ type: 'settings' })).toEqual({ type: 'home' });
   });
   // #1582 H3: the fallback used to hand every unlisted view `{type:'home'}`,
@@ -304,7 +314,7 @@ describe('app-shell routing', () => {
     ['agents'],
     ['customize'],
     ['guidance'],
-    ['plugins'],
+    ['apps'],
     ['developer'],
     ['schedule'],
     ['notifications'],
@@ -336,12 +346,10 @@ describe('app-shell routing', () => {
         type: 'connections-engines',
       },
     );
-    // Registry with no tab is a top-level destination, so it has no level up;
-    // a tab is one level inside it.
+    // The catalogue root is Apps › Discover, so a remaining catalogue tab
+    // has no level up of its own.
     expect(getParentView({ type: 'registry' })).toBeNull();
-    expect(getParentView({ type: 'registry', tab: 'plugins' })).toEqual({
-      type: 'registry',
-    });
+    expect(getParentView({ type: 'registry', tab: 'skills' })).toBeNull();
   });
   test('resolveViewFromPath maps agent, connection, and project routes', () => {
     expect(resolveViewFromPath('/agents/new')).toEqual({ type: 'agent-new' });
@@ -476,6 +484,37 @@ describe('app-shell routing', () => {
     // than propagating an unvalidated string into the view.
     expect(resolveViewFromPath('/registry/not-a-real-tab')).toEqual({
       type: 'registry',
+    });
+  });
+
+  // Skills, tool servers, layouts and agent entries keep their catalogue
+  // pages until their own screens take them over; only the root and the
+  // Plugins tab moved to Apps.
+  test.each([
+    '/registry/skills',
+    '/registry/integrations',
+    '/registry/layouts',
+    '/registry/agents',
+  ])('keeps the catalogue page %s where it is', (path) => {
+    expect(getLegacyPathRedirect(path)).toBeNull();
+  });
+
+  test('resolveViewFromPath maps the Apps tabs and a Library selection', () => {
+    expect(resolveViewFromPath('/apps')).toEqual({
+      type: 'apps',
+      tab: 'discover',
+    });
+    expect(resolveViewFromPath('/apps/discover')).toEqual({
+      type: 'apps',
+      tab: 'discover',
+    });
+    expect(resolveViewFromPath('/apps/library/')).toEqual({
+      type: 'apps',
+      tab: 'library',
+    });
+    expect(resolveViewFromPath('/apps/library/enterprise-layout')).toEqual({
+      type: 'apps',
+      tab: 'library',
     });
   });
 

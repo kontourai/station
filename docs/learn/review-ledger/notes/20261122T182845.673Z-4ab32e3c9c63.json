@@ -1,0 +1,7 @@
+{
+  "revision": "dc418699cc4048c45468401e33b814aca4b056c4",
+
+  "notes": [
+    {"path":"docs/guides/code-hygiene.md","note":"Two bespoke confirm buttons moved with the remove dialog from PluginModalStack to RemovePluginModal; totals unchanged; the hygiene guide makes no per-file claim.","inputs":["scripts/component-style-hygiene-baseline.json"]}
+  ]
+}
