@@ -123,10 +123,21 @@ legend.discover__facet-title {
   align-items: stretch;
 }
 .discover__elsewhere {
-  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
   color: var(--k-text-muted);
   font-size: var(--k-text-sm);
   line-height: var(--k-leading-normal);
+}
+.discover__elsewhere-text {
+  margin: 0;
+}
+/* The links sit on their own row beneath the sentence. */
+.discover__elsewhere-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-3);
 }
 .discover__link {
   padding: 0;
@@ -267,8 +278,7 @@ legend.discover__facet-title {
   .discover__more-toggle {
     min-height: var(--touch-target-min);
   }
-  /* The Skills and Tools links sit in a sentence; on a phone each still
-     takes a whole touch target. */
+  /* On a phone the Skills and Tools links are each a whole touch target. */
   .discover__link {
     display: inline-flex;
     align-items: center;

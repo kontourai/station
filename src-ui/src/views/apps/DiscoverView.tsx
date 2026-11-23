@@ -258,25 +258,30 @@ export function DiscoverView() {
                   hideLabel
                 />
               </div>
-              <p className="discover__elsewhere">
-                Skills and tool servers are found where you use them:{' '}
-                <button
-                  type="button"
-                  className="discover__link"
-                  onClick={() => navigate('/guidance?tab=skills')}
-                >
-                  Skills
-                </button>{' '}
-                and{' '}
-                <button
-                  type="button"
-                  className="discover__link"
-                  onClick={() => navigate('/customize/tools')}
-                >
-                  Tools
-                </button>
-                .
-              </p>
+              {/* The sentence ends before the links, so a phone that puts
+                  each link on its own touch target never strands a word or
+                  the full stop. */}
+              <div className="discover__elsewhere">
+                <p className="discover__elsewhere-text">
+                  Skills and tool servers are found where you use them.
+                </p>
+                <div className="discover__elsewhere-links">
+                  <button
+                    type="button"
+                    className="discover__link"
+                    onClick={() => navigate('/guidance?tab=skills')}
+                  >
+                    Skills
+                  </button>
+                  <button
+                    type="button"
+                    className="discover__link"
+                    onClick={() => navigate('/customize/tools')}
+                  >
+                    Tools
+                  </button>
+                </div>
+              </div>
             </div>
           )}
         </aside>

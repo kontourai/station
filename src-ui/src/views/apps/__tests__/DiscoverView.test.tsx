@@ -482,14 +482,25 @@ describe('Apps › Discover', () => {
     expect(cardNames()).toEqual(['Session Activity Pane']);
   });
 
-  test('sends people to Skills and to the Customize Tools item for what is not an app', () => {
+  test('ends the sentence before the Skills and Tools links, which open Skills and the Customize Tools item', () => {
     render(<DiscoverView />);
     const moreFilters = screen.getByRole('complementary', {
       name: 'More filters',
     });
-    fireEvent.click(within(moreFilters).getByRole('button', { name: 'Skills' }));
+    // The sentence ends before the links, which stand on their own row after
+    // it, so no word or full stop can be stranded beside a link.
+    const sentence = within(moreFilters).getByText(
+      'Skills and tool servers are found where you use them.',
+    );
+    expect(sentence.tagName).toBe('P');
+    expect(within(sentence).queryAllByRole('button')).toHaveLength(0);
+    const skills = within(moreFilters).getByRole('button', { name: 'Skills' });
+    const tools = within(moreFilters).getByRole('button', { name: 'Tools' });
+    expect(skills.parentElement).toBe(tools.parentElement);
+    expect(skills.parentElement?.textContent).toBe('SkillsTools');
+    fireEvent.click(skills);
     expect(state.navigate).toHaveBeenLastCalledWith('/guidance?tab=skills');
-    fireEvent.click(within(moreFilters).getByRole('button', { name: 'Tools' }));
+    fireEvent.click(tools);
     expect(state.navigate).toHaveBeenLastCalledWith('/customize/tools');
   });
 
