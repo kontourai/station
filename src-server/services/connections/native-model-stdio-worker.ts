@@ -3,6 +3,7 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type ServerResponse } from 'node:http';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { runNativeDelegationRpcClient } from './native-delegation-rpc-client.js';
 import {
   NATIVE_DELEGATION_RPC_PATH,
   NATIVE_MODEL_CHANNEL_LIMITS,
@@ -254,7 +255,11 @@ if (
   process.argv[1] &&
   pathToFileURL(resolve(process.argv[1])).href === import.meta.url
 )
-  void main().catch(() => {
+  void (
+    process.argv[2] === '--delegation-rpc-client'
+      ? runNativeDelegationRpcClient()
+      : main()
+  ).catch(() => {
     process.stderr.write('Native model worker failed.\n');
     process.exitCode = 1;
   });
