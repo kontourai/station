@@ -19,6 +19,7 @@ import {
   type ConnectionSectionId,
 } from './connections-hub/connection-sections';
 import { IntegrationStatusSection } from './connections-hub/IntegrationStatusSection';
+import { OutsideClientsSection } from './connections-hub/OutsideClientsSection';
 
 // archive#4463: the rail now renders the shared `Tabs` primitive,
 // which self-imports `.page__tabs`/`.page__tab`'s stylesheet — the frame no
@@ -149,6 +150,7 @@ function ConnectionsSectionFrameInner({
         aria-labelledby={tabElementId(TABS_ID, sectionId)}
         className="tab-panel"
       >
+        {sectionId === 'tools' && <OutsideClientsSection />}
         <PageHeaderScope>{children}</PageHeaderScope>
       </div>
       <AddMachineModal

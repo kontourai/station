@@ -135,10 +135,10 @@
   padding: 0;
 }
 
-/* Section tabs above flush content (Connections) are page navigation, not
-   the content's chrome: they keep the header's inset so they line up with
-   the title above them. */
-.page-frame--flush > .page-frame__body .page__tabs--frame-inset {
+/* Navigation and controls around flush content align with the page header. */
+.page-frame--flush
+  > .page-frame__body
+  :is(.page__tabs--frame-inset, .page-frame__body-inset) {
   padding-inline: 1.5rem;
 }
 
@@ -155,7 +155,9 @@
     padding: 0;
   }
 
-  .page-frame--flush > .page-frame__body .page__tabs--frame-inset {
+  .page-frame--flush
+    > .page-frame__body
+    :is(.page__tabs--frame-inset, .page-frame__body-inset) {
     padding-inline: 1rem;
   }
 }

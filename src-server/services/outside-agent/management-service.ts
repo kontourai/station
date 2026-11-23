@@ -24,7 +24,11 @@ const id = z.string().regex(/^[A-Za-z0-9_-]{20,128}$/);
 const digest = z.string().regex(/^[a-f0-9]{64}$/);
 const project = z.union([
   z
-    .object({ kind: z.literal('project'), slug: z.string().min(1).max(128) })
+    .object({
+      kind: z.literal('project'),
+      slug: z.string().min(1).max(128),
+      expectedId: z.string().min(1).max(128).optional(),
+    })
     .strict(),
   z.object({ kind: z.literal('global') }).strict(),
 ]);
@@ -294,7 +298,7 @@ export class OutsideAgentManagementService {
     scope: Records['intent']['selection']['projectScope'],
   ) {
     if (scope.kind === 'global')
-      return [{ label: 'Project scope', detail: 'All Projects (global)' }];
+      return [{ label: 'Project scope', detail: 'Work outside Projects' }];
     const project = this.authority.describeProject(scope.projectId);
     if (!project) return refuse();
     return [
@@ -312,15 +316,19 @@ export class OutsideAgentManagementService {
     >,
     actor: OutsideDecisionActor,
   ) {
-    const resolved =
-      action.project.kind === 'global'
-        ? { kind: 'global' as const }
-        : {
-            kind: 'project' as const,
-            projectId:
-              this.authority.resolveProject(action.project.slug)?.id ?? '',
-          };
-    if (resolved.kind === 'project' && !resolved.projectId) refuse();
+    let resolved: Records['intent']['selection']['projectScope'] = {
+      kind: 'global',
+    };
+    if (action.project.kind === 'project') {
+      const project = this.authority.resolveProject(action.project.slug);
+      if (
+        !project ||
+        (action.project.expectedId !== undefined &&
+          project.id !== action.project.expectedId)
+      )
+        return refuse();
+      resolved = { kind: 'project', projectId: project.id };
+    }
     this.#assertActor(actor, resolved);
     if (
       action.expiresAt < this.now() + 5 * MINUTE ||

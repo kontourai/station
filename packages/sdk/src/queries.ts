@@ -466,6 +466,11 @@ export {
   useOperatingStateQuery,
 } from './query-domains/operatingState';
 export {
+  type OutsideClientReviewAction,
+  useOutsideClientReviewMutation,
+  useOutsideClientsQuery,
+} from './query-domains/outsideClients';
+export {
   fetchPeerCredentials,
   type PeerCredentialSummary,
   peerCredentialQueries,

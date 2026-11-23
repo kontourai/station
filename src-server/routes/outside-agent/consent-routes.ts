@@ -141,8 +141,23 @@ export function registerOutsideAgentConsentRoutes(
   });
   app.get('/api/outside-agent/clients', (c, next) => {
     const session = sessionFor(c);
-    if (!session) return next();
     c.header('Cache-Control', 'no-store');
+    if (!session) {
+      const principal = getRuntimeAuthenticatedRequestPrincipal(c.req.raw);
+      if (
+        principal?.authority !== 'device-credential' ||
+        !principal.deviceId ||
+        principal.deviceKind === 'delegation' ||
+        principal.mintKind === 'local-grant'
+      )
+        return next();
+      const channel = deps.service.channel;
+      const signInUrl =
+        channel.trustedOrigin && channel.state().status === 'listening'
+          ? new URL('/operator/sign-in', channel.trustedOrigin).href
+          : undefined;
+      return c.json({ error: 'operator_session_required', signInUrl }, 403);
+    }
     return c.json(
       deps.service.management.list(
         deps.service.actorFor(session, session.passkeyId),
