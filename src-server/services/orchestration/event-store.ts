@@ -8,7 +8,7 @@ import {
 import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import type { SQLOutputValue } from 'node:sqlite';
+import type { SQLOutputValue, StatementSync } from 'node:sqlite';
 import {
   awaitTurnResolution,
   createPreparedTurnClaim,
@@ -1844,6 +1844,7 @@ const { DatabaseSync } = require('node:sqlite') as {
       run: (...args: unknown[]) => unknown;
       get: (...args: unknown[]) => Record<string, SQLOutputValue> | undefined;
       all: (...args: unknown[]) => Record<string, SQLOutputValue>[];
+      iterate: StatementSync['iterate'];
     };
     close(): void;
     function(
