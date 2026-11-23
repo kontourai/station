@@ -798,7 +798,10 @@ next navigation; answers that already saved remain saved.
 Opening the composer or changing a chip starts no conversation or engine;
 **Start** opens the conversation and submits the message once. With no
 remembered Agent, the composer uses the project’s **Default agent**, then the
-current layout default or Station’s runnable suggestion. Any of these that
+current layout default, then this Station’s **Default for new chats**. Station
+records that default once, from the first engine that can run a chat in the
+order Claude Code, Codex, other engines, Station’s own engine; an engine signed
+in later does not change it, and the agent menu tags it. Any of these that
 is not set up is skipped for the next one that is, so a new chat never opens on
 an Agent that cannot start. An Agent you pick from the menu in this tab stays
 visible with its setup action.
