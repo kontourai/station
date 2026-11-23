@@ -233,9 +233,22 @@ test.describe('Settings', () => {
       .getByRole('link', { name: /^Tools\b/ })
       .click();
     await expect(page).toHaveURL(/\/customize\/tools$/);
-    // The list holds exactly its six items: Apps is not one of them.
+    // The list holds Overview and exactly its six items: Apps is not one.
     const customizeList = page.getByRole('navigation', { name: 'Customize' });
-    await expect(customizeList.getByRole('link')).toHaveCount(6);
+    await expect(customizeList.getByRole('link')).toHaveCount(7);
+    for (const label of [
+      'Overview',
+      'Agents',
+      'Skills',
+      'Engines',
+      'Providers',
+      'Tools',
+      'Knowledge',
+    ]) {
+      await expect(
+        customizeList.getByRole('link', { name: new RegExp(`^${label}\\b`) }),
+      ).toHaveCount(1);
+    }
     await expect(
       customizeList.getByRole('link', { name: /^Apps\b/ }),
     ).toHaveCount(0);
