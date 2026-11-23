@@ -790,7 +790,7 @@ for (const [width, viewport] of [
           // dock already shows it beside the chat.
           if (phone)
             await page
-              .getByRole('button', { name: 'Chats', exact: true })
+              .getByRole('button', { name: 'Chat list', exact: true })
               .click();
           await expect(
             page.locator('[aria-label="Chats"], [aria-label="Inbox"]').first(),

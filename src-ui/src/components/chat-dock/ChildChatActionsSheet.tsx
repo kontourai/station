@@ -126,7 +126,7 @@ export function ChildChatActionsSheet({
             onInbox();
           }}
         >
-          Chats
+          Chat list
         </Button>
         <Button
           variant="ghost"

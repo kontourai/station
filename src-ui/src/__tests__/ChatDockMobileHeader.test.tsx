@@ -291,7 +291,7 @@ describe('mobile conversation focus', () => {
     renderHeader({
       onToggleInbox,
     });
-    const inbox = screen.getByRole('button', { name: 'Chats' });
+    const inbox = screen.getByRole('button', { name: 'Chat list' });
     const identity = inbox
       .closest('.chat-dock__mobile-header')!
       .querySelector('.chat-dock__mobile-identity')!;
@@ -310,7 +310,7 @@ describe('mobile conversation focus', () => {
       screen.queryByRole('button', { name: /^Switch project/ }),
     ).toBeNull();
     expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Chats' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Chat list' })).toBeTruthy();
   });
   test('the activity dot on chat actions says what it means', () => {
     renderHeader({ activeCount: 2, unreadCount: 1 });
@@ -401,7 +401,7 @@ describe('mobile conversation focus', () => {
   test('chat overflow is chats and dock chrome, not Profile or a second conversation list', async () => {
     renderHeader();
     await openActions();
-    expect(screen.getByRole('menuitem', { name: 'Chats' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Chat list' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'New chat' })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: 'Profile' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Settings' })).toBeNull();
@@ -456,7 +456,7 @@ describe('mobile conversation focus', () => {
 describe('the mobile dock bar control set (#928 C2b)', () => {
   test('an open bar exposes navigation, primary context actions, and secondary actions', () => {
     renderHeader();
-    for (const name of ['Chats', 'Chat actions']) {
+    for (const name of ['Chat list', 'Chat actions']) {
       expect(screen.getByRole('button', { name })).toBeTruthy();
     }
   });

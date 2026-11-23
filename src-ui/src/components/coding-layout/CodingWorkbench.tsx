@@ -1366,7 +1366,7 @@ export function CodingWorkbench({
                     className="coding-workbench__crumb-link"
                     onClick={openInbox}
                   >
-                    Chats
+                    Chat list
                   </button>
                 </li>
                 {(!isMobile || page === 'drill-in') && (
@@ -1505,7 +1505,7 @@ export function CodingWorkbench({
                     data-testid="coding-inbox-edge"
                     // Pointer-only: the bar's inbox toggle is the one
                     // control a keyboard or screen reader meets, with the
-                    // same name ("Show chats, 3 need you"). Two controls
+                    // same name ("Show chat list, 3 need you"). Two controls
                     // with one name read the same thing twice.
                     aria-hidden="true"
                     tabIndex={-1}

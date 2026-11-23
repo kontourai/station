@@ -1129,7 +1129,7 @@ async function expectChatProject(page: Page, project: string) {
   if (await mobile.isVisible()) {
     const inbox = page.getByRole('region', { name: 'Chats', exact: true });
     if (!(await inbox.isVisible()))
-      await mobile.getByRole('button', { name: 'Chats', exact: true }).click();
+      await mobile.getByRole('button', { name: 'Chat list', exact: true }).click();
     const current = inbox.locator('button[aria-current="true"]');
     const expectedProject = PROJECTS.find((entry) => entry.name === project);
     expect(expectedProject).toBeDefined();
@@ -1841,7 +1841,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
         header.getByRole('button', { name: /^Switch project/ }),
       ).toHaveCount(0);
       const inboxToggle = header.getByRole('button', {
-        name: 'Chats',
+        name: 'Chat list',
         exact: true,
       });
       const extent = header.getByRole('button', {

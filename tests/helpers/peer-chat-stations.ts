@@ -787,7 +787,7 @@ export async function ensureConnectionInboxOpen(page: Page) {
   if (await mobileHeader.isVisible()) {
     const inbox = page.getByRole('region', { name: 'Chats', exact: true });
     const entry = mobileHeader.getByRole('button', {
-      name: 'Chats',
+      name: 'Chat list',
       exact: true,
     });
     await expect(entry.or(inbox)).toBeVisible();
@@ -795,7 +795,7 @@ export async function ensureConnectionInboxOpen(page: Page) {
     await expect(inbox).toBeVisible();
     return inbox;
   }
-  const entry = page.getByRole('button', { name: /^Show chats/ });
+  const entry = page.getByRole('button', { name: /^Show chat list/ });
   if (await entry.isVisible()) await entry.click();
   const inbox = page.getByRole('complementary', { name: 'Chats' });
   await expect(inbox).toBeVisible();

@@ -3470,7 +3470,7 @@ test('the maximized phone dock header clears the status bar once, not twice', as
     .boundingBox())!;
   expect(identity.width).toBeGreaterThanOrEqual(180);
   const back = (await header
-    .getByRole('button', { name: 'Chats', exact: true })
+    .getByRole('button', { name: 'Chat list', exact: true })
     .boundingBox())!;
   expect(back.width).toBeGreaterThanOrEqual(44);
   expect(back.x + back.width).toBeLessThanOrEqual(identity.x + 1);
@@ -5297,7 +5297,7 @@ test('the mobile Inbox lists chats beyond the first rows', async ({ page }) => {
     exact: true,
   });
   const menu = page.getByRole('menu', { name: 'Chat actions' });
-  await page.getByRole('button', { name: 'Chats', exact: true }).click();
+  await page.getByRole('button', { name: 'Chat list', exact: true }).click();
   const sheet = page.getByRole('region', { name: 'Chats', exact: true });
   await expect(sheet).toBeVisible();
   await expect(navigation).not.toBeVisible();
@@ -5331,7 +5331,7 @@ for (const width of [320, 431]) {
     const input = await openComposer(page);
     const header = page.getByTestId('chat-dock-mobile-header');
     const back = (await header
-      .getByRole('button', { name: 'Chats', exact: true })
+      .getByRole('button', { name: 'Chat list', exact: true })
       .boundingBox())!;
     const actions = (await header
       .locator('.chat-dock__mobile-actions')

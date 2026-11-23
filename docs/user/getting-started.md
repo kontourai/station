@@ -723,7 +723,7 @@ started. If you close the dock's draft instead, the message comes back to Home
 as you left it in the dock, the same way as a draft from setup (below). If no
 chat dock is open to take it, Home keeps the message and says so.
 
-In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed Chats bar),
+In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed chat-list bar),
 **⌘T**, and the floating button in the phone's Chats list open the same composer.
 **Explore agents** remains available for deliberate customization.
 
@@ -818,10 +818,10 @@ On a phone, the dock starts at **Chats** unless you open a specific
 conversation. A conversation opens full screen; **Restore chat size** in the
 chat bar shrinks it to a peek and **Full screen chat** grows it back or opens it
 directly from the collapsed bar. The menu drawer lists places and Projects.
-The chat bar's Chats icon returns to the work list; the chat title stays
+The chat bar’s **Chat list** button returns to the work list; the chat title stays
 as context. Search opens from the magnifier. Your search, list position and
 unsent message stay in place when switching back to a conversation. Collapsing a conversation keeps its title in the bar. Tap the title to resume it.
-Use the floating **New chat** button in Chats, the compose icon on the collapsed Chats bar, or **New chat** in Chat actions. The three-dot menu holds chat actions, including **This chat**:
+Use the floating **New chat** button in Chats, the compose icon on the collapsed chat-list bar, or **New chat** in Chat actions. The three-dot menu holds chat actions, including **This chat**:
 the chat's workspace, branch and changed files, status, background tasks and
 linked pull requests, each opening its own view. On a computer, a wide dock
 shows the same panel beside the transcript, and a narrower one puts it behind
@@ -1721,7 +1721,8 @@ request version, once. A review request with recorded evidence offers
 **Inspect request** instead, where **Request identity** shows its exact record.
 A row's ⋯ menu holds **Mark done**, and **Snooze** (the same choices as the
 chat inbox) when the Attention snooze preview is on. Mark done there waits behind its notice's **Undo** (or **⌘Z**) and is sent
-when the notice closes. A failed run shows once:
+when the notice closes; reload, close the tab or switch Station before then and the
+item is not marked done (a background tab keeps the notice open). A failed run shows once:
 its row stands for the failed message too, and Mark done marks both done.
 
 A conversation’s Chats row also shows the request and **Approve once** or

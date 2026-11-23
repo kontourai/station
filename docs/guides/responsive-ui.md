@@ -278,7 +278,7 @@ from its row. Its work-chat disclosure stays separate. A desktop row's ⋯ menu
 appears on hover or keyboard focus. Open Search from its icon or the narrow header menu. **New chat** floats over the Chats list. This list replaces the title-triggered Chats and tasks sheet
 and shares the desktop Chats list's scope and history preferences. It stays mounted
 behind a conversation, retaining its search and list position. While reading a
-chat, **Chats** in Chat actions opens the same list. **Browse all conversations**
+chat, **Chat list** in Chat actions opens the same list. **Browse all conversations**
 opens the saved conversation list.
 Project choice belongs to the start composer on phone and desktop; the dock
 header has no project picker, including while empty or showing Chats. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
@@ -326,7 +326,7 @@ Stations are under **More ways to connect**. Native capability and coarse-pointe
 presentation determine that screen; narrow desktop browsers retain access to
 their current Station.
 
-The collapsed mobile Chats bar’s **New chat** uses an icon-only chat-bubble-plus control in
+The collapsed mobile chat-list bar’s **New chat** uses an icon-only chat-bubble-plus control in
 the same toolbar button family as its neighbours, retaining its accessible
 name. Source and component checks establish these placements and disabled
 states. The relay UX screenshot harness omits the real dock and uses stubbed

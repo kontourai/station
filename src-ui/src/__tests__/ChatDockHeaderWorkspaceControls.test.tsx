@@ -95,11 +95,11 @@ function openMoreMenu() {
 }
 
 describe('header inbox toggle (from #1064 AC1/AC2)', () => {
-  test('open state renders "Hide chats" checked', async () => {
+  test('open state renders "Hide chat list" checked', async () => {
     const controls = workspaceControls();
     renderHeader({ workspaceControls: controls });
     const row = await screen.findByRole('button', {
-      name: 'Hide chats',
+      name: 'Hide chat list',
     });
     expect(row.getAttribute('aria-pressed')).toBe('true');
     fireEvent.click(row);
@@ -108,18 +108,18 @@ describe('header inbox toggle (from #1064 AC1/AC2)', () => {
 
   test('renders the chat-header custom-appearance hook', async () => {
     renderHeader({ workspaceControls: workspaceControls() });
-    const toggle = await screen.findByRole('button', { name: 'Hide chats' });
+    const toggle = await screen.findByRole('button', { name: 'Hide chat list' });
     expect(
       document.querySelector(appearanceHook('chat-header'))?.contains(toggle),
     ).toBe(true);
   });
 
-  test('collapsed state renders "Show chats" unchecked', async () => {
+  test('collapsed state renders "Show chat list" unchecked', async () => {
     renderHeader({
       workspaceControls: workspaceControls({ isInboxOpen: false }),
     });
     const row = await screen.findByRole('button', {
-      name: 'Show chats',
+      name: 'Show chat list',
     });
     expect(row.getAttribute('aria-pressed')).toBe('false');
   });
@@ -132,17 +132,17 @@ describe('header inbox toggle (from #1064 AC1/AC2)', () => {
       }),
     });
     const toggle = await screen.findByRole('button', {
-      name: 'Show chats, 3 need you',
+      name: 'Show chat list, 3 need you',
     });
-    expect(toggle.getAttribute('title')).toBe('Show chats, 3 need you');
+    expect(toggle.getAttribute('title')).toBe('Show chat list, 3 need you');
   });
 
-  test('an open inbox is just "Hide chats", whatever it holds', async () => {
+  test('an open inbox is just "Hide chat list", whatever it holds', async () => {
     renderHeader({
       workspaceControls: workspaceControls({ inboxNeedsYouCount: 3 }),
     });
     expect(
-      await screen.findByRole('button', { name: 'Hide chats' }),
+      await screen.findByRole('button', { name: 'Hide chat list' }),
     ).toBeTruthy();
   });
 
@@ -152,8 +152,8 @@ describe('header inbox toggle (from #1064 AC1/AC2)', () => {
     });
     openMoreMenu();
 
-    expect(screen.queryByRole('button', { name: 'Hide chats' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Show chats' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Hide chat list' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Show chat list' })).toBeNull();
     // Its neighbours are still there, so an empty menu cannot pass this.
     expect(
       screen.getByRole('menuitem', { name: 'Background tasks' }),
@@ -367,7 +367,7 @@ describe('one-bar rule (#3309)', () => {
     ).toBeNull();
     expect(screen.getByRole('button', { name: 'Chat settings' })).toBeTruthy();
     expect(
-      screen.queryByRole('menuitemcheckbox', { name: 'Hide chats' }),
+      screen.queryByRole('menuitemcheckbox', { name: 'Hide chat list' }),
     ).toBeNull();
     expect(
       screen.queryByRole('menuitem', { name: 'Background tasks' }),
@@ -466,7 +466,7 @@ describe('one-bar rule (#3309)', () => {
       // The placement grab, maximize and the visibility chevron that used to
       // bracket these are the REGION's since #2046 2b and render in the
       // region bar (`RegionChromeBar.test.tsx` pins them there).
-      'Hide chats',
+      'Hide chat list',
       // Chat settings came back out of the menu as the bar's one gear.
       'Chat settings',
       'More dock actions',
@@ -538,7 +538,7 @@ describe('working chats ride the inbox toggle and the one More menu', () => {
   test('the inbox toggle shows the working count and names it', async () => {
     renderWorking({ isInboxOpen: false, inboxNeedsYouCount: 1 }, 2);
     const toggle = await screen.findByRole('button', {
-      name: 'Show chats, 2 working, 1 needs you, 2 unread',
+      name: 'Show chat list, 2 working, 1 needs you, 2 unread',
     });
     expect(toggle.querySelector('.chat-dock__inbox-working')?.textContent).toBe(
       '2',
@@ -569,7 +569,7 @@ describe('working chats ride the inbox toggle and the one More menu', () => {
   test('the toggle’s number is the inbox’s Running rows when the dock has them, not the open tabs', async () => {
     renderWorking({ isInboxOpen: true, inboxWorkingCount: 3 });
     const toggle = await screen.findByRole('button', {
-      name: 'Hide chats, 3 working',
+      name: 'Hide chat list, 3 working',
     });
     expect(toggle.querySelector('.chat-dock__inbox-working')?.textContent).toBe(
       '3',

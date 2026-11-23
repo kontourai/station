@@ -210,7 +210,7 @@ export function ChatDockMobileHeader({
   const Identity = resumeChat && !childTrail ? 'button' : 'div';
   // The dot on ⋯ used to be decoration only: an unexplained orange mark on
   // the chat-actions button. It means chats (this one included) are working
-  // or have unread replies — the sheet's Chats row is where they are — so it
+  // or have unread replies — the sheet's Chat list row is where they are — so it
   // says so, as the button's description rather than its name.
   const activitySummary = [
     activeCount > 0
@@ -250,8 +250,8 @@ export function ChatDockMobileHeader({
             ref={inboxTriggerRef}
             variant="ghost"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
-            aria-label="Chats"
-            title="Back to Chats"
+            aria-label="Chat list"
+            title="Back to the chat list"
             data-no-dock-drag=""
             onClick={onToggleInbox}
           >
@@ -306,7 +306,7 @@ export function ChatDockMobileHeader({
                   onToggleInbox();
                 }}
               >
-                Chats
+                Chat list
               </button>
             ) : inboxActive ? (
               'Chats'

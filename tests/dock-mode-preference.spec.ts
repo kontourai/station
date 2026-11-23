@@ -263,10 +263,10 @@ test.describe('Dock Mode Preference', () => {
     await settleDock(page);
     await dismissSetupLauncher(page);
     // The bar's inbox toggle is a pressed/unpressed button named for what
-    // it does: "Hide chats" while open, "Show chats" (with what is waiting)
+    // it does: "Hide chat list" while open, "Show chat list" (with what is waiting)
     // while hidden.
-    const hide = page.getByRole('button', { name: 'Hide chats', exact: true });
-    const show = page.getByRole('button', { name: /^Show chats/ });
+    const hide = page.getByRole('button', { name: 'Hide chat list', exact: true });
+    const show = page.getByRole('button', { name: /^Show chat list/ });
     await expect(hide.or(show)).toBeVisible();
     if (await show.isVisible()) await show.click();
     await expect(hide).toHaveAttribute('aria-pressed', 'true');
@@ -319,7 +319,7 @@ test.describe('Dock Mode Preference', () => {
     await expect(
       page.getByRole('complementary', { name: 'Chats' }),
     ).toHaveCount(0);
-    // The toggle is the bar's "Hide chats" / "Show chats…" button, the one
+    // The toggle is the bar's "Hide chat list" / "Show chat list…" button, the one
     // `bottom-mode inbox toggle…` above presses. (This used to look for a
     // `menuitemcheckbox` named "chat list" that nothing renders any more, so
     // it passed with the toggle on screen; #3312.)
