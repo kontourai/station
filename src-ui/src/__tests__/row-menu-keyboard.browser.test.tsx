@@ -117,6 +117,11 @@ test('the row menu works from the keyboard in the dock and on the inbox page', a
       await page.keyboard.press('Enter');
       const menu = page.getByRole('menu');
       await expectBrowser(menu).toBeVisible();
+      // The row's metadata card stays shut while its menu is open.
+      await page.waitForTimeout(400);
+      await expectBrowser(page.getByTestId('inbox-row-hover-card')).toHaveCount(
+        0,
+      );
       const items = menu.getByRole('menuitem');
       await expectBrowser(items.first()).toBeFocused();
       await page.keyboard.press('ArrowDown');
