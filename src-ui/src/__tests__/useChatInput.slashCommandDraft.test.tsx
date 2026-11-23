@@ -128,8 +128,9 @@ describe('slash commands and the saved draft', () => {
     await act(async () => {
       await result.current.handleCommandSelect({
         cmd: '/help',
-        desc: 'Show available commands',
-      } as Parameters<typeof result.current.handleCommandSelect>[0]);
+        description: 'Show available commands',
+        source: 'builtin',
+      });
     });
     await pastDraftSave();
     expect(notices().some((notice) => notice.includes('/help'))).toBe(true);
