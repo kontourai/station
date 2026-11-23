@@ -1,0 +1,15 @@
+{
+  "revision": "de2d4b1774a7a2b4338fef71d6544e8cb2bef175",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked the Ensemble parser and exact per-member brief renderer against the subpath and documented authority boundary. Twenty focused tests and contract typechecking passed. Restoring the prior renderer failed both assignment cases before restoring green. Server preparation and execution remain separate.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed existing documentation claims against the manifest change. The new Ensemble subpath points to a pure source parser and formatter. Existing exports, dependencies, provider and Task-room behavior, and shared contract ownership retain their reviewed behavior.","inputs":["packages/contracts/package.json"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the new Ensemble entry and the documentation that routes to this reference. The v1 parser enforces closed declarations and bounds. Engine and model availability stay with preparation, and the preset grants no authority. The new package entry changes no existing integration route.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the new Ensemble entry and the documentation that routes to this reference. The v1 parser enforces closed declarations and bounds. Engine and model availability stay with preparation, and the preset grants no authority. The new package entry changes no existing integration route.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the new Ensemble entry and the documentation that routes to this reference. The v1 parser enforces closed declarations and bounds. Engine and model availability stay with preparation, and the preset grants no authority. The new package entry changes no existing integration route.","inputs":["docs/reference/contracts.md"]}
+  ]
+}
