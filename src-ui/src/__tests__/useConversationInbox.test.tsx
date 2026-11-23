@@ -15,6 +15,7 @@ import {
   waitFor,
 } from '@testing-library/react';
 
+import { useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { useConversationInbox } from '../hooks/useConversationInbox';
 import { useConversationInboxSnapshot } from '../hooks/useConversationInboxSnapshot';
@@ -841,7 +842,13 @@ test('a held message lists the files it carries by name, never their bytes', asy
 
 const SCOPE_PREFIX = ['conversation-inbox', 'http://station.test', 'device-a'];
 
+// The reader's own re-render registers its options last: the query keeps the
+// options of whichever observer set them most recently.
+const readerRerender = { run: () => {} };
+
 function SnapshotProbe() {
+  const [, setTick] = useState(0);
+  readerRerender.run = () => setTick((tick) => tick + 1);
   const entries = useConversationInboxSnapshot('conversation');
   return (
     <output data-testid="snapshot">
@@ -895,10 +902,20 @@ for (const readerFirst of [false, true]) {
       expect(screen.getByTestId('snapshot').textContent).toBe('call-1'),
     );
     const before = calls;
+    act(() => readerRerender.run());
+    // The list's query must never pass through an error state: the notice
+    // above the composer renders from the first one.
+    const errors: unknown[] = [];
+    const unsubscribe = client.getQueryCache().subscribe((event) => {
+      if (event.query.state.error) errors.push(event.query.state.error);
+    });
     await act(async () => {
       await client.invalidateQueries({ queryKey: SCOPE_PREFIX });
     });
-    await waitFor(() => expect(calls).toBeGreaterThan(before));
+    unsubscribe();
+    expect(errors).toEqual([]);
+    expect(calls).toBe(before + 1);
+    expect(screen.queryByText(/load inbox entries/)).toBeNull();
     const query = client
       .getQueryCache()
       .find({ queryKey: [...SCOPE_PREFIX, 'conversation'], exact: true });
