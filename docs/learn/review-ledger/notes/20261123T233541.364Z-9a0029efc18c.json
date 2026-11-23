@@ -1,0 +1,7 @@
+{
+  "revision": "6f4a18ee215c0de3973c2ecb8bcde09cc5f20288",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Confirmed the Mac Store signer imports and calls the file mode operation before signing the app. The documented package and receipt boundaries are unchanged.","inputs":["ops/release/macos-store-stage.mjs"]}
+  ]
+}
