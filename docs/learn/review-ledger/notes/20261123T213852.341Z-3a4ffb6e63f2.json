@@ -1,0 +1,11 @@
+{
+  "revision": "3bc70b44ddfde9626927ae52afff314d18646601",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Traced the brokered preparer through bounded parsing, exact selected tool declarations, call/result history validation, final output bounds, and preservation of Responses tool_choice none. The fixture cases exercise wire syntax and preserve the fixed no-tools profile. Provider forwarding still requires the separate grant, effect and physical-attempt owners.","inputs":["docs/guides/native-model-channel-lab.md","src-server/runtime/conversation/__tests__/native-text-model-request.test.ts","src-server/runtime/conversation/native-text-model-request.ts"]},
+
+    {"path":"docs/README.md","note":"Reviewed the new dormant brokered-wire paragraph against the retained fixed-text and loopback transport references. Existing namespace, credential, accounting, and qualification limits still apply.","inputs":["docs/guides/native-model-channel-lab.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the new dormant brokered-wire paragraph against the retained fixed-text and loopback transport references. Existing namespace, credential, accounting, and qualification limits still apply.","inputs":["docs/guides/native-model-channel-lab.md"]}
+  ]
+}
