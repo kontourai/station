@@ -68,6 +68,7 @@ additional first-run, workspace, approval, contribution, and preview settings.
 |---|---|---|
 | `defaultModel` | string | Fallback model ID on the selected Model connection when no closer choice supplies one. New homes seed an empty string; the model must exist on that connection. |
 | `defaultLLMProvider` | string | ID of an existing Model connection used when no closer choice names one. This does not create a connection. |
+| `newChatDefault` | `{ agent, reason }` | The Agent new chats start with when nothing closer names one; `reason` is `first-signed-in` or `chosen`. Written only through [`POST /config/new-chat-default`](api.md#default-for-new-chats), never `PUT /config/app` or a settings file. |
 | `invokeModel` | string | Preferred model for the global `/invoke` tool-calling pass; falls back to `defaultModel`. |
 | `structureModel` | string | Preferred model for the global `/invoke` structured-output pass; falls back to the resolved invoke model, then `defaultModel`. This is separate from a named Agent's `/agents/:slug/invoke`. |
 
