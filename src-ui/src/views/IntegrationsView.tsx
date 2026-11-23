@@ -12,6 +12,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
+import { Button } from '../components/Button';
 import { SettingsGlyph } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -349,13 +350,13 @@ export function IntegrationsView({
         listIntro={
           selection ? undefined : (
             <div className="integrations-view__list-actions">
-              <button
-                type="button"
-                className="split-pane__add-btn split-pane__add-btn--secondary"
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={() => navigate('/registry/integrations')}
               >
                 Browse tool servers
-              </button>
+              </Button>
             </div>
           )
         }
