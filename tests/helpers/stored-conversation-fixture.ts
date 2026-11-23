@@ -19,10 +19,10 @@ export const json = (body: unknown) => ({
 export const THREAD_ID = 'thread-stored-conversation';
 // Recent, so the inbox lists it among current work rather than history.
 export const UPDATED_AT = new Date(Date.now() - 5 * 60_000).toISOString();
-export const CREATED_AT = new Date(Date.now() - 10 * 60_000).toISOString();
-export const TITLE = 'Stored pricing review';
+const CREATED_AT = new Date(Date.now() - 10 * 60_000).toISOString();
+const TITLE = 'Stored pricing review';
 export const ANSWER = 'The stored answer is back on screen.';
-export const PROMPT = 'Review the stored pricing.';
+const PROMPT = 'Review the stored pricing.';
 
 export async function mockStoredTurnDirectory(page: Page) {
   await page.route(
