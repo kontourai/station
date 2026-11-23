@@ -253,38 +253,38 @@ describe('fork and handoff deliver the transcript seed across engine families', 
       const adapter = adapters.get(engine)!;
       const before = adapter.turns.length;
       const turnId = `${engine}-handoff-turn-${before + 1}`;
-      const projected = Promise.withResolvers<void>();
-      const unsubscribe = receiptBus.subscribeForTest((receipt) => {
-        if (
-          receipt.kind === 'turn.event.projected' &&
-          receipt.reason === 'completed' &&
-          receipt.turnId === turnId &&
-          receipt.threadId === adapter.turns[before]?.threadId
-        ) {
-          projected.resolve();
-        }
+      const projected = new Promise<void>((resolve) => {
+        const unsubscribe = receiptBus.subscribeForTest((receipt) => {
+          if (
+            receipt.kind === 'turn.event.projected' &&
+            receipt.reason === 'completed' &&
+            receipt.turnId === turnId &&
+            receipt.threadId === adapter.turns[before]?.threadId
+          ) {
+            unsubscribe();
+            resolve();
+          }
+        });
+        onTestFinished(unsubscribe);
       });
-      onTestFinished(unsubscribe);
-      try {
-        const handle = await executeForegroundMessage(
-          {
-            target: { environment: { kind: 'current' }, agent: agentId(agent) },
-            conversationId,
-            message,
-            userId: OWNER,
-            ...(handoffKey
-              ? { handoffIntent: createConversationHandoffIntent(handoffKey) }
-              : {}),
-          },
-          deps,
-        );
-        expect(handle.providerTurnId).toBe(turnId);
-        await projected.promise;
-        expect(adapter.turns).toHaveLength(before + 1);
-        return { sent: adapter.turns[before]!, turnId };
-      } finally {
-        unsubscribe();
-      }
+      const handle = await executeForegroundMessage(
+        {
+          target: { environment: { kind: 'current' }, agent: agentId(agent) },
+          conversationId,
+          message,
+          userId: OWNER,
+          ...(handoffKey
+            ? { handoffIntent: createConversationHandoffIntent(handoffKey) }
+            : {}),
+        },
+        deps,
+      );
+      expect(handle.providerTurnId).toBe(turnId);
+      await projected;
+      expect(adapter.turns).toHaveLength(before + 1);
+      const sent = adapter.turns[before]!;
+      expect(handle.sessionId).toBe(sent.threadId);
+      return { sent, turnId };
     };
     const fork = (
       source: string,
