@@ -30,7 +30,9 @@
 
     "scripts/lib/heavy-check-slots.mjs",
 
-    "scripts/child-work-native-container-lifecycle-lab.ts"
+    "scripts/child-work-native-container-lifecycle-lab.ts",
+
+    "src-server/services/connections/__tests__/native-model-container.test.ts"
   ],
 
   "checks": []
