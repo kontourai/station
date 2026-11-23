@@ -1796,7 +1796,9 @@
 
     "src-server/services/orchestration/__tests__/engine-start-capacity-recovery.test.ts",
 
-    "src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts"
+    "src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts",
+
+    "src-server/services/orchestration/cli-session-group.ts"
   ],
 
   "checks": [

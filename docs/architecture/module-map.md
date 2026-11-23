@@ -2427,13 +2427,16 @@ ownership, or an implicit change to completed-session behavior.
 
 ## SessionCommandModule
 
-The dormant [CLI Session group owner](../../src-server/services/orchestration/cli-session-group.ts)
-captures create inputs before acquiring the storage lock and reserves each
-member start durably before calling its host adapter. Flow supplies dependency
-readiness and claims. A missing Session receipt leaves the reservation occupied.
-A zero dispatch allowance closes admission at creation. The allowance counts
-reserved member starts. Dollar, token, and physical-attempt caps are unavailable.
-Issue #91 tracks production composition with Station Session authority.
+The [CLI Session group owner](../../src-server/services/orchestration/cli-session-group.ts)
+is reachable through the personal Station's **Session groups** preview. It
+captures the plan before acquiring the storage lock and reserves each member
+start before invoking authorized Task dispatch. Flow owns dependency readiness
+and claims. Station checks the creating credential and exact reserved Session
+and first-turn IDs at the provider boundaries. A missing receipt leaves the
+reservation occupied. Cancel targets an accepted initial turn and checks
+authority again before interruption or escalation. A zero dispatch allowance
+closes admission at creation. The allowance counts reserved member starts.
+Dollar, token, and physical-attempt caps are unavailable in this preview.
 
 Starting a Session crosses two boundaries: an engine may start, and Station must record the command’s result. The [command owner](../../src-server/services/orchestration/session-command-module.ts) reports those facts separately; losing a receipt must not invite a second engine start.
 

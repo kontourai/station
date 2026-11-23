@@ -1595,7 +1595,9 @@ Running a group can spend provider credits. A completed dependency requires
 positive terminal evidence for that member's accepted initial turn.
 `POST /api/orchestration/session-groups/:groupId/cancel` closes further
 admission and requests stops for the group's confirmed initial turns.
-Missing acceptance remains unconfirmed. Paired callers need
+Station retains one stop intent per accepted member and rechecks authority
+before the provider interrupt and any escalation.
+Missing acceptance or stop evidence remains unconfirmed. Paired callers need
 `orchestration:read` for inspection and `orchestration:operate` for mutations.
 
 ## Personal Task room agent requests

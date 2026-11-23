@@ -105,6 +105,66 @@ describe('CooperativeStop (unit pins)', () => {
     expect(adapter.stopSession).toHaveBeenCalledOnce();
   });
 
+  it('refuses a revoked stop before the deferred provider interrupt', async () => {
+    const deps = makeDeps();
+    const stop = new CooperativeStop(deps);
+    const adapter = makeAdapter(
+      vi.fn(async () => ({ outcome: 'no-active-turn' as const })),
+    );
+    let current = true;
+    const outcome = stop.interruptUserTurnCooperatively(
+      adapter,
+      'unit-thread',
+      'turn-a',
+      'user',
+      true,
+      () => {
+        if (!current) throw new Error('revoked group credential');
+      },
+    );
+    const observed = outcome.catch((error: unknown) => error);
+    current = false;
+    await vi.advanceTimersByTimeAsync(0);
+    expect(adapter.interruptTurn).not.toHaveBeenCalled();
+    expect(await observed).toMatchObject({
+      message: 'revoked group credential',
+    });
+    expect(adapter.stopSession).not.toHaveBeenCalled();
+    expect(deps.publishEvent).not.toHaveBeenCalled();
+  });
+
+  it('does not escalate a group stop after its grant is withdrawn', async () => {
+    const deps = makeDeps();
+    const stop = new CooperativeStop(deps);
+    const adapter = makeAdapter(
+      vi.fn(async () => ({ outcome: 'no-active-turn' as const })),
+    );
+    let current = true;
+    const outcome = stop.interruptUserTurnCooperatively(
+      adapter,
+      'unit-thread',
+      'turn-a',
+      'user',
+      true,
+      () => {
+        if (!current) throw new Error('revoked group credential');
+      },
+    );
+    const observed = outcome.catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(adapter.interruptTurn).toHaveBeenCalledExactlyOnceWith(
+      'unit-thread',
+      'turn-a',
+    );
+    current = false;
+    await vi.advanceTimersByTimeAsync(COOPERATIVE_STOP_BUDGET_MS);
+    expect(await observed).toMatchObject({
+      message: 'revoked group credential',
+    });
+    expect(adapter.stopSession).not.toHaveBeenCalled();
+    expect(deps.publishEvent).not.toHaveBeenCalled();
+  });
+
   it('marks the warm session resumable in memory on an acknowledged stop, and does not forget it', async () => {
     const deps = makeDeps({ configuredBudgetMs: () => 50 });
     const stop = new CooperativeStop(deps);
