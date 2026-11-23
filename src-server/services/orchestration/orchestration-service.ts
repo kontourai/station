@@ -2628,8 +2628,11 @@ export class OrchestrationService {
     { ownerId: string; parentSessionId: string; clientTurnId: string }
   >();
   private readonly coordinatorToolGenerations = new Map<string, number>();
-  /** Automation Sessions a person took over (#4511); see `recordPersonTakeover`. */
-  private readonly personTakeovers = new Set<string>();
+  /**
+   * Automation Sessions a person took over (#4511), to the Task each
+   * automation created for it; see `recordPersonTakeover`.
+   */
+  private readonly personTakeovers = new Map<string, string>();
   /**
    * Turn progress + turn-stall observation (epic archive#4024, archive#4116):
    * owns the stall watchdog, per-thread windows, and the process-local
@@ -16406,41 +16409,39 @@ export class OrchestrationService {
   }
 
   /**
-   * #4511: a person took over this automation Session. Recorded by the
-   * automation runtime at each of that person's turn admissions, so a restart
-   * that forgets it restores it before the person's next turn starts.
+   * #4511: a person took over this automation Session, which the automation
+   * started for `taskId`. Recorded by the automation runtime at each of that
+   * person's turn admissions, so a restart that forgets it restores it before
+   * the person's next turn starts.
    */
-  recordPersonTakeover(threadId: string): void {
-    this.personTakeovers.add(threadId);
+  recordPersonTakeover(threadId: string, taskId: string): void {
+    this.personTakeovers.set(threadId, taskId);
   }
 
   /**
-   * The principal a Station Control call from this Session acts for. Usually
-   * the recorded acting principal. In an automation Session a person took
-   * over, whose start acts for no one, the turn that person typed and that is
-   * running now acts for the Session's recorded owner, as any chat Session
-   * does: only the owner, or a device of the owner's account, may send a turn
-   * into it. Any other turn (the automation's own, an engine-opened one, a
-   * later wake) and the time between turns act for no one.
+   * The Task a Station Control call from this Session may read and write as
+   * its own, when the Session itself acts for no one. Only in an automation
+   * Session a person took over, only while the turn that person typed is the
+   * running turn, and only the Task the automation created for it (the
+   * Session's room execution binding must still name it). The person's other
+   * authority is never lent: the Session's context began with content nobody
+   * on the owner's side wrote. Any other turn (the automation's own, an
+   * engine-opened one, a later wake) and the time between turns get none.
    */
-  stationControlActingPrincipal(
-    threadId: string,
-  ): import('./session-authorization.js').SessionActingPrincipal | undefined {
-    const recorded = this.resolveSessionActingPrincipal(threadId);
-    if (recorded || !this.personTakeovers.has(threadId)) return recorded;
+  stationControlOwnTaskGrant(threadId: string): string | undefined {
+    const taskId = this.personTakeovers.get(threadId);
     const store = this.options.eventStore;
-    const started = store?.latestOwnTurnStarted(threadId)?.payload;
+    if (!taskId || !store) return undefined;
+    if (store.readProjectTaskRoomExecutionBinding(threadId)?.taskId !== taskId)
+      return undefined;
+    const started = store.latestOwnTurnStarted(threadId)?.payload;
     if (
-      !store ||
       !started?.turnId ||
       !isPersonAuthoredTurn(started) ||
       this.activeTurnIdOfThread(threadId) !== started.turnId
     )
       return undefined;
-    const owner = store.findSessionOwnerAttribution(threadId).ownerUserId;
-    return owner === undefined
-      ? undefined
-      : { id: owner, source: 'session-owner' };
+    return taskId;
   }
 
   delegatedAppearanceOwner(threadId: string): string | undefined {

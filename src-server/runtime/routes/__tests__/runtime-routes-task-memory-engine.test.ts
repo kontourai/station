@@ -991,7 +991,7 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
       support.taskFollowUpWake = undefined;
     }
   });
-  test("a person's own turn in a taken-over automation Session acts for its owner; no other turn does (#4511)", async () => {
+  test("a person's own turn in a taken-over automation Session may write its own Task and nothing else; no other turn may (#4511)", async () => {
     const e = await setup();
     const { taskId, sessionId } = await e.dispatchedTask({
       unattributed: true,
@@ -1057,24 +1057,57 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     end(untaken);
     expect(e.stored(taskId).summary).toBeUndefined();
 
+    // A takeover recorded for a different Task grants nothing here.
+    const otherTask = await e.taskGraph.createTask({
+      projectId: PROJECT,
+      title: 'Another Task',
+    });
+    e.orchestration.recordPersonTakeover(sessionId, otherTask.id);
+    const misbound = turn({ authoredBy: 'person' });
+    await refusedEverywhere();
+    end(misbound);
+
     // The automation runtime records the takeover at the person's admission.
-    e.orchestration.recordPersonTakeover(sessionId);
+    e.orchestration.recordPersonTakeover(sessionId, taskId);
     const personTurn = turn({ authoredBy: 'person' });
     const allowed = await calls();
     expect(allowed.summary.body).toMatchObject({
       status: 'updated',
       taskId,
-      summary: { revision: 1, text: 'Concluded: nothing to change.' },
+      summary: {
+        revision: 1,
+        text: 'Concluded: nothing to change.',
+        author: { kind: 'session', sessionId },
+      },
     });
     expect(allowed.record.body).toMatchObject({ status: 'recorded' });
     expect(allowed.reply.body?.code).not.toBe(roleRequired);
     expect(allowed.brief.isError, JSON.stringify(allowed.brief.body)).toBe(
       false,
     );
-    expect(e.orchestration.stationControlActingPrincipal(sessionId)).toEqual({
-      id: LOCAL_OPERATOR_PRINCIPAL_ID,
-      source: 'session-owner',
-    });
+    expect(e.stored(otherTask.id).summary).toBeUndefined();
+    // Nothing else the person could do: no automation proposal, no new
+    // Project note, and the Session still acts for no one.
+    expect(
+      (
+        await call('propose_automation_source', {
+          kind: 'github-poll',
+          name: 'watch-it',
+          repository: 'kontourai/station',
+        })
+      ).body?.code,
+    ).toBe(roleRequired);
+    expect(
+      (
+        await call('remember_project_note', {
+          title: 'From the failed run',
+          body: 'Remember this.',
+        })
+      ).body?.code,
+    ).toBe(roleRequired);
+    expect(
+      e.orchestration.resolveSessionActingPrincipal(sessionId),
+    ).toBeUndefined();
 
     // Between turns, and in a later turn no person typed: refused again.
     end(personTurn);

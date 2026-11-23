@@ -2438,7 +2438,7 @@ test('a person stopping the first turn and continuing leaves the Task waiting fo
   ).toBeUndefined();
   expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('review');
   // The person continues in the same Session; it becomes theirs, and their
-  // own turn may act for them in Station Control.
+  // own typed turn may write this Task through Station Control.
   const takeovers = vi.spyOn(w.service, 'recordPersonTakeover');
   await w.service.dispatch(
     {
@@ -2449,7 +2449,7 @@ test('a person stopping the first turn and continuing leaves the Task waiting fo
   );
   await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(2));
   expect(w.ledger.readIntent(intent.intentId)?.personTakeoverAt).toBeTruthy();
-  expect(takeovers).toHaveBeenCalledWith(intent.sessionId);
+  expect(takeovers).toHaveBeenCalledWith(intent.sessionId, intent.taskId);
   await w.runtime.tick();
   expect(w.ledger.readIntent(intent.intentId)?.state).toBe('failed');
   expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('review');

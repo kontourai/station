@@ -248,11 +248,18 @@ The retained Task/Session binding keeps this boundary after an action settles
 and after a runtime restart. A missing binding or failed hand-over or approval
 write refuses the turn before provider send; it cannot preserve inherited Auto
 as a fallback. The person can retry once persistence is available.
-In Station Control, the turn that person typed acts for the Session's
-recorded owner while it runs, as in any chat Session, so the Agent can write
-its own Task's memory and threads then. The automation's own turns, an
-engine-opened turn and the time between turns act for no one, so those tools
-refuse there.
+For Station Control tools that authority is not lent to the Agent: the
+Session's context began with content nobody on the owner's side wrote, such
+as a failed run's logs. The Session still acts for no one. While the turn
+the person typed is running, it holds one narrow grant: the tools that only
+read or write the Session's own Task (`task_summary_update`, `task_record`,
+`get_task_brief`, `task_thread_list`, `task_thread_reply` and
+`task_thread_resolve`, marked `ownTask` in the policy table) work on the
+Task the automation created for it. Everything else stays refused there,
+including automation proposals, Project notes, delegation and messages. The
+automation's own turns, an engine-opened turn and the time between turns get
+no grant. The Task's records name the Session as their author, not the
+person.
 
 When an action creates its Task it captures an immutable
 `AutomationTaskMandate`: the rule name and id, source, episode (and operator
