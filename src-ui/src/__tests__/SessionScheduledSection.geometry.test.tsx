@@ -155,6 +155,12 @@ describe.skipIf(!chromiumAvailable)(
           expect(box!.x).toBeGreaterThanOrEqual(card!.x - 0.5);
           expect(box!.x + box!.width).toBeLessThanOrEqual(right + 0.5);
         }
+        // The two links keep together on one line (under the title when they
+        // do not fit beside it), not one stranded on a line of its own.
+        const newLink = await controls[0].boundingBox();
+        const allLink = await controls[1].boundingBox();
+        expect(Math.abs(newLink!.y - allLink!.y)).toBeLessThan(1);
+        expect(newLink!.x).toBeLessThan(allLink!.x);
         // Nothing in the card is wider than the card.
         const overflow = await page
           .getByTestId('card')
