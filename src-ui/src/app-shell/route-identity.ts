@@ -15,7 +15,7 @@ import type { NavigationView } from '../types';
  *   thing and the entrance replays.
  *
  * - INCLUDED — tabs that ARE routes: `guidance.tab`, `registry.tab`,
- *   `developer.tab`. Each has its own path (`/registry/agents`,
+ *   `developer.tab`. Each has its own path (`/registry/skills`,
  *   `/developer/telemetry`), its own palette entry, and swaps the whole
  *   surface. Reaching one is a navigation.
  *

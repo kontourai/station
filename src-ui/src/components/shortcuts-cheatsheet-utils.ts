@@ -6,7 +6,7 @@ import type { KeyboardShortcut } from '../contexts/KeyboardShortcutsContext';
 // namespace to a human label. Unmapped ids fall back to "Other".
 const CATEGORY_LABELS: Record<string, string> = {
   app: 'General',
-  plugin: 'Apps',
+  plugin: 'Plugins',
   'command-palette': 'General',
   nav: 'Navigation',
   dock: 'Chat & dock',
@@ -20,7 +20,7 @@ const CATEGORY_ORDER = [
   'Navigation',
   'Chat & dock',
   'Appearance',
-  'Apps',
+  'Plugins',
 ];
 
 export function categoryLabel(id: string): string {

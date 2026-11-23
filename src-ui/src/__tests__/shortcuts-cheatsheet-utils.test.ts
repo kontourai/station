@@ -17,7 +17,7 @@ describe('categoryLabel', () => {
     expect(categoryLabel('dock.toggle')).toBe('Chat & dock');
     expect(categoryLabel('theme.toggle')).toBe('Appearance');
     // The prefix the SDK shortcut binding gives every plugin shortcut.
-    expect(categoryLabel('plugin.acme-tools.openPicker')).toBe('Apps');
+    expect(categoryLabel('plugin.acme-tools.openPicker')).toBe('Plugins');
   });
 
   it('handles dotless ids matched on the whole id', () => {

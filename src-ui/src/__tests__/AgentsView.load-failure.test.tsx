@@ -2,8 +2,7 @@
  * @vitest-environment jsdom
  *
  * A failed agents read says what happened once, with one Retry: the layout's
- * error state when nothing is listed, or one banner over stale rows. And the
- * agent catalogue's link, which exists only while a source supplies agents.
+ * error state when nothing is listed, or one banner over stale rows.
  */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -122,34 +121,12 @@ describe('AgentsView after a failed agents read', () => {
   });
 });
 
-describe('the agent catalogue link', () => {
-  test.each([
-    ['no source supplies agents', { data: [] }],
-    ['the catalogue has not answered', { data: undefined }],
-    [
-      'the catalogue read failed',
-      { data: undefined, error: new Error('offline') },
-    ],
-  ])('is absent when %s', (_case, catalog) => {
-    state.agentCatalog = catalog;
-    render(
-      <AgentsView agents={[]} availableModels={[]} onNavigate={vi.fn()} />,
-    );
-    expect(screen.queryByRole('button', { name: 'Browse agents' })).toBeNull();
-  });
-
-  test('appears when a source supplies an agent, and opens the agent catalogue', () => {
-    state.agentCatalog = {
-      data: [{ id: 'planner', displayName: 'Project Planner' }],
-    };
-    const onNavigate = vi.fn();
-    render(
-      <AgentsView agents={[]} availableModels={[]} onNavigate={onNavigate} />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Browse agents' }));
-    expect(onNavigate).toHaveBeenCalledWith({
-      type: 'registry',
-      tab: 'agents',
-    });
-  });
+// Agents arrive inside apps: the agent catalogue is not a page and Agents
+// links to none, even when a source lists agent entries.
+test('Agents offers no agent catalogue, even when a source lists agents', () => {
+  state.agentCatalog = {
+    data: [{ id: 'planner', displayName: 'Project Planner' }],
+  };
+  render(<AgentsView agents={[]} availableModels={[]} onNavigate={vi.fn()} />);
+  expect(screen.queryByRole('button', { name: /browse agents/i })).toBeNull();
 });

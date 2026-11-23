@@ -242,7 +242,7 @@ function RegistryCatalogState({
           description={
             tab === 'layouts'
               ? 'Install a plugin that contributes a layout, then add that layout to a Project.'
-              : 'Add a marketplace, or ask the Station operator to add one.'
+              : 'Add a source, or ask the Station operator to add one.'
           }
           action={
             tab === 'plugins' ? (

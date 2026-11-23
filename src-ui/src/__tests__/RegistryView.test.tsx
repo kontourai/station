@@ -5,7 +5,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   act,
-  cleanup,
   fireEvent,
   render,
   screen,
@@ -523,7 +522,7 @@ describe('RegistryView', () => {
       />,
     );
     expect(screen.queryByRole('tab', { name: 'Agents' })).toBeNull();
-    expect(screen.getByRole('tab', { name: 'Apps' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Plugins' })).toBeTruthy();
     fireEvent.change(screen.getByRole('searchbox', { name: 'Find tools' }), {
       target: { value: 'Integration One' },
     });
@@ -579,131 +578,98 @@ describe('RegistryView', () => {
     ]);
   });
 
-  test('choosing a source opens its catalog tab unless it supplies the current one', () => {
-    registrySources.push(
-      {
-        id: 'skills-only',
-        kind: 'skills',
-        displayName: 'Skill library',
-        origin: 'user',
-        adapter: 'github',
-        enabled: true,
-        status: 'ready',
-        detection: {
-          state: 'detected',
-          checkedAt: '2026-11-12T00:00:00.000Z',
-          kinds: [
-            { kind: 'skills', count: 3, via: 'skill-md', installable: true },
-            {
-              kind: 'plugins',
-              count: 1,
-              via: 'claude-marketplace',
-              installable: false,
-            },
-          ],
-        },
+  // Each catalogue is its own page: its picker lists sources of the page's
+  // own kind, and choosing one narrows that page without leaving it.
+  const SOURCES = [
+    {
+      id: 'skills-only',
+      kind: 'skills',
+      displayName: 'Skill library',
+      origin: 'user',
+      adapter: 'github',
+      enabled: true,
+      status: 'ready',
+      detection: {
+        state: 'detected',
+        checkedAt: '2026-11-12T00:00:00.000Z',
+        kinds: [
+          { kind: 'skills', count: 3, via: 'skill-md', installable: true },
+        ],
       },
-      {
-        id: 'mixed',
-        kind: 'skills',
-        displayName: 'Team catalog',
-        origin: 'user',
-        adapter: 'directory',
-        enabled: true,
-        status: 'ready',
-        detection: {
-          state: 'detected',
-          checkedAt: '2026-11-12T00:00:00.000Z',
-          kinds: [
-            { kind: 'skills', count: 2, via: 'skill-md', installable: true },
-            {
-              kind: 'agents',
-              count: 1,
-              via: 'station-manifest',
-              installable: true,
-            },
-          ],
-        },
+    },
+    {
+      id: 'agents-only',
+      kind: 'agents',
+      displayName: 'Agent catalog',
+      origin: 'user',
+      adapter: 'directory',
+      enabled: true,
+      status: 'ready',
+      detection: {
+        state: 'detected',
+        checkedAt: '2026-11-12T00:00:00.000Z',
+        kinds: [
+          {
+            kind: 'agents',
+            count: 1,
+            via: 'station-manifest',
+            installable: true,
+          },
+        ],
       },
-    );
+    },
+    {
+      id: 'apps-only',
+      kind: 'plugins',
+      displayName: 'App catalog',
+      origin: 'user',
+      adapter: 'directory',
+      enabled: true,
+      status: 'ready',
+    },
+  ];
+
+  test('Browse skills lists only skill sources, and choosing one keeps the page', () => {
+    registrySources.push(...SOURCES);
     try {
-      render(<RegistryView />);
-      const browse = screen.getByLabelText('Browse marketplace');
-      fireEvent.change(browse, { target: { value: 'mixed' } });
-      expect(navigateMock).not.toHaveBeenCalled();
-      fireEvent.change(browse, { target: { value: 'skills-only' } });
-      expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
-      // The route remounts the view for the new tab; the choice survives it.
-      cleanup();
       render(<RegistryView initialTab="skills" />);
+      const picker = screen.getByLabelText('Source') as HTMLSelectElement;
+      expect([...picker.options].map((option) => option.value)).toEqual([
+        'all',
+        'skills-only',
+      ]);
+      fireEvent.change(picker, { target: { value: 'skills-only' } });
+      expect(picker.value).toBe('skills-only');
+      expect(navigateMock).not.toHaveBeenCalled();
       expect(
-        (screen.getByLabelText('Browse marketplace') as HTMLSelectElement)
-          .value,
-      ).toBe('skills-only');
+        screen.getByRole('textbox', { name: 'Search skills' }),
+      ).toBeTruthy();
     } finally {
       registrySources.length = 0;
     }
   });
 
-  test('plugin sources are left to Apps › Discover', () => {
-    registrySources.push(
-      {
-        id: 'apps-only',
-        kind: 'plugins',
-        displayName: 'App catalog',
-        origin: 'user',
-        adapter: 'directory',
-        enabled: true,
-        status: 'ready',
-      },
-      {
-        id: 'mixed',
-        kind: 'plugins',
-        displayName: 'Mixed catalog',
-        origin: 'user',
-        adapter: 'directory',
-        enabled: true,
-        status: 'ready',
-        detection: {
-          state: 'detected',
-          checkedAt: new Date(0).toISOString(),
-          kinds: [
-            {
-              kind: 'plugins',
-              count: 2,
-              via: 'station-manifest',
-              installable: true,
-            },
-            {
-              kind: 'agents',
-              count: 1,
-              via: 'station-manifest',
-              installable: true,
-            },
-          ],
-        },
-      },
-    );
-    try {
-      render(<RegistryView initialTab="skills" />);
-      const picker = screen.getByLabelText(
-        'Browse marketplace',
-      ) as HTMLSelectElement;
-      const offered = [...picker.options].map((option) => option.value);
-      expect(offered).not.toContain('apps-only');
-      expect(offered).toContain('mixed');
-      fireEvent.change(picker, { target: { value: 'mixed' } });
-      expect(navigateMock).toHaveBeenCalledWith('/registry/agents');
-      expect(navigateMock).not.toHaveBeenCalledWith('/registry/plugins');
-    } finally {
-      registrySources.length = 0;
-    }
-  });
+  test.each(['integrations', 'layouts'] as const)(
+    'the %s page has no source picker, because no source supplies it',
+    (tab) => {
+      registrySources.push(...SOURCES);
+      try {
+        render(<RegistryView initialTab={tab} />);
+        expect(screen.queryByLabelText('Source')).toBeNull();
+        expect(
+          screen.queryByRole('button', { name: /^Manage sources/ }),
+        ).toBeNull();
+        expect(navigateMock).not.toHaveBeenCalled();
+      } finally {
+        registrySources.length = 0;
+      }
+    },
+  );
 
   test('Discover comes first: management opens from the toolbar instead of sitting above the catalog', () => {
-    render(<RegistryView />);
-    const browse = screen.getByLabelText('Browse marketplace');
-    const tabs = screen.getByRole('textbox', { name: 'Search agents' });
+    render(<RegistryView initialTab="skills" />);
+    const browse = screen.getByLabelText('Source');
+    const tabs = screen.getByRole('textbox', { name: 'Search skills' });
     const follows = (a: Node, b: Node) =>
       Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     expect(follows(browse, tabs)).toBe(true);
@@ -919,9 +885,7 @@ describe('RegistryView', () => {
     expect(screen.getByText('No agents in your sources yet.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Manage plugins' })).toBeNull();
     expect(
-      screen.getByText(
-        'Add a marketplace, or ask the Station operator to add one.',
-      ),
+      screen.getByText('Add a source, or ask the Station operator to add one.'),
     ).toBeTruthy();
     expect(screen.queryByText(/station plugin install/i)).toBeNull();
     // Plugin guidance belongs to the Plugins tab only.

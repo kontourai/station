@@ -104,11 +104,9 @@ function sectionLabel(view: NavigationView): string | null {
       return 'Apps';
     // A catalogue page's section is the place it is entered from.
     case 'registry':
-      return view.tab === 'agents'
-        ? 'Agents'
-        : view.tab === 'skills' || view.tab === 'integrations'
-          ? 'Customize'
-          : null;
+      return view.tab === 'skills' || view.tab === 'integrations'
+        ? 'Customize'
+        : 'Apps';
     case 'developer':
       return 'Developer';
     case 'schedule':
@@ -133,7 +131,9 @@ function sectionRootView(view: NavigationView): NavigationView {
   if (t === 'connections-computers') return view;
   if (t.startsWith('connections')) return { type: 'customize' };
   if (t === 'registry')
-    return view.tab === 'agents' ? { type: 'agents' } : { type: 'customize' };
+    return view.tab === 'skills' || view.tab === 'integrations'
+      ? { type: 'customize' }
+      : { type: 'apps', tab: 'discover' };
   return view;
 }
 

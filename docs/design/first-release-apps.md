@@ -156,7 +156,7 @@ On a phone: The same transcript with a bottom sheet for the review.
 | Registry tab: Plugins | Simplify | Becomes Apps › Discover. |
 | Registry tab: Skills | Simplify | Becomes Skills › Browse. |
 | Registry tab: Integrations | Simplify | Becomes Customize › Tools › From the list. |
-| Registry tab: Agents | Simplify | Agents arrive inside apps, so the agent catalogue has no tab or navigation entry. It stays a page of its own, and the Agents page links to it only while a source the person added actually supplies agent entries. A fresh install shows no link. |
+| Registry tab: Agents | Remove | Empty on a fresh install; agents arrive inside apps. Its address opens Agents. A source that lists `type: "agent"` entries in a Station manifest has them no longer browsed: such an agent is still added by installing its package from its source (Apps › Library › Install plugin, or `station plugin install`). |
 | Layouts tab | Simplify | The tab goes and the concept stays: a Layout is how an app's screen is built, a developer word. The ready-made layouts stay a page of their own with no navigation entry, opened from a project's Add Layout, until adding apps as views from the project's plus replaces it (`apps-09`). |
 | Kits | Hide for the first release | Hidden for v1: the kit catalogue keeps its address with no entry. A read-only view from a portable package would appear as an app with a project view when one ships. |
 | Starter layout (New Project) | Simplify | Becomes an optional "Add apps as views", per the Projects design. |

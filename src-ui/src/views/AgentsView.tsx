@@ -1,4 +1,4 @@
-import { useAgentsQuery, useRegistryItemsQuery } from '@kontourai/station-sdk';
+import { useAgentsQuery } from '@kontourai/station-sdk';
 import { Button } from '../components/Button';
 import { AgentGlyph } from '../components/icons/Glyph';
 import { GLOBAL_CONTEXT } from '../components/modals/new-chat-modal-utils';
@@ -112,11 +112,6 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
         searchPlaceholder="Search agents…"
         onAdd={() => handleNew()}
         addLabel="New agent"
-        headerActions={
-          <BrowseAgentsLink
-            onOpen={() => onNavigate({ type: 'registry', tab: 'agents' })}
-          />
-        }
         // archive#4463: when the list is genuinely
         // empty (no filter active), authoredAgents.length is always 0 too, so
         // the detail pane's create-first-run card is always showing beside
@@ -220,20 +215,5 @@ export function AgentsView({ agents, onNavigate }: AgentsViewProps) {
 
       <DiscardModal />
     </>
-  );
-}
-
-/**
- * Agents arrive inside apps, so there is no agent catalogue to browse unless
- * a source the person added supplies agent entries. The link exists only
- * while the agents catalogue actually lists one; a failed read shows nothing.
- */
-function BrowseAgentsLink({ onOpen }: { onOpen: () => void }) {
-  const { data } = useRegistryItemsQuery<unknown>('agents');
-  if (!data || data.length === 0) return null;
-  return (
-    <Button variant="secondary" size="sm" onClick={onOpen}>
-      Browse agents
-    </Button>
   );
 }

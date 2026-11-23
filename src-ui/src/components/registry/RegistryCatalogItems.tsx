@@ -94,7 +94,7 @@ export function RegistryCatalogDetail({
         </div>
       )}
       {item.catalogFreshness === 'stale' && (
-        <p role="status">Offline marketplace · last successful catalog</p>
+        <p role="status">Offline source · last successful catalog</p>
       )}
       {item.version && !mcpServer && (
         <div className="page__subtitle">v{item.version}</div>

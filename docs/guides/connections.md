@@ -2602,8 +2602,8 @@ The Customize, Guidance and Tool-server URLs have a single canonical route per c
 | Computers (not a Customize item) | `/connections/computers` | `/connections/environments` |
 | Skills | `/guidance?tab=skills` | `/skills`, and the retired `/playbooks`, `/prompts`, `/manage/prompts` |
 | Tool servers | `/customize/tools` | `/connections/tools`, `/integrations`, `/tools`, `/manage/integrations` |
-| Apps | `/apps/discover`, `/apps/library` | `/registry`, `/registry/plugins` and any other unknown `/registry/<segment>` (Discover), `/plugins`, `/manage/plugins` (Library) |
-| Catalogue pages | `/registry/:tab` for `agents`\|`skills`\|`integrations`\|`layouts`\|`kits`: Browse agents (from Agents, only when a source supplies agents), Browse skills (from Skills), Browse tool servers (from Tools), Browse layouts (from a project's Add Layout), Browse kits (no entry) | — |
+| Apps | `/apps/discover`, `/apps/library` | `/registry`, `/registry/plugins` and any other `/registry/<segment>…` that is not a catalogue page (Discover), `/plugins`, `/manage/plugins` (Library), each in one step |
+| Catalogue pages | `/registry/:tab` for `skills`\|`integrations`\|`layouts`\|`kits`: Browse skills (from Skills), Browse tool servers (from Tools), Browse layouts (from a project's Add Layout), Browse kits (no entry) | `/registry/agents` (Agents) |
 
 The connection section registry and `getPathForView` emit canonical routes.
 Navigation ingestion also normalizes the listed aliases, including old deep

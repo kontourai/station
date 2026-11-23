@@ -51,7 +51,7 @@ export function AgentToolCatalog({
         aria-label="Tool catalogs"
         items={[
           { key: 'integrations', label: 'Servers' },
-          { key: 'plugins', label: 'Apps' },
+          { key: 'plugins', label: 'Plugins' },
         ]}
         activeKey={tab}
         onSelect={(key) => {

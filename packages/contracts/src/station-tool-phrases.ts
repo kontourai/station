@@ -706,7 +706,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     'Remove',
     named('Integration', 'id', 'an Integration'),
   ),
-  list_registry_integrations: listed('Integrations you can add'),
+  list_registry_integrations: listed('Tool servers you can add'),
   install_registry_integration: entry(
     'Installed',
     'Installing',
@@ -720,7 +720,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
     'Add',
     named('model provider', 'name', 'a model provider'),
   ),
-  list_plugins: listed('Apps'),
+  list_plugins: listed('Plugins'),
   install_plugin: entry(
     'Installed',
     'Installing',

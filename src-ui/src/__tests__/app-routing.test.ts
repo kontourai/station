@@ -92,6 +92,9 @@ const LEGACY_PATH_CASES = [
   ['/registry/plugins', '/apps/discover'],
   ['/registry/plugins/', '/apps/discover'],
   ['/registry/plugins/demo-layout', '/apps/discover'],
+  ['/registry/agents', '/agents'],
+  ['/plugins/', '/apps/library'],
+  ['/manage/plugins/', '/apps/library'],
   ['/apps/', '/apps'],
   ['/apps/discover/', '/apps/discover'],
   ['/manage/integrations', '/customize/tools'],
@@ -319,7 +322,6 @@ describe('app-shell routing', () => {
     ['schedule'],
     ['notifications'],
     ['profile'],
-    ['registry'],
   ])('getParentView reports no parent for the top-level view %s', (type) => {
     expect(
       getParentView({ type } as unknown as Parameters<typeof getParentView>[0]),
@@ -346,10 +348,22 @@ describe('app-shell routing', () => {
         type: 'connections-engines',
       },
     );
-    // The catalogue root is Apps › Discover, so a remaining catalogue tab
-    // has no level up of its own.
-    expect(getParentView({ type: 'registry' })).toBeNull();
-    expect(getParentView({ type: 'registry', tab: 'skills' })).toBeNull();
+    // Each catalogue page goes up to the place it is opened from.
+    expect(getParentView({ type: 'registry', tab: 'skills' })).toEqual({
+      type: 'guidance',
+      tab: 'skills',
+    });
+    expect(getParentView({ type: 'registry', tab: 'integrations' })).toEqual({
+      type: 'connections-tools',
+    });
+    expect(getParentView({ type: 'registry', tab: 'layouts' })).toEqual({
+      type: 'apps',
+      tab: 'discover',
+    });
+    expect(getParentView({ type: 'registry', tab: 'kits' })).toEqual({
+      type: 'apps',
+      tab: 'discover',
+    });
   });
   test('resolveViewFromPath maps agent, connection, and project routes', () => {
     expect(resolveViewFromPath('/agents/new')).toEqual({ type: 'agent-new' });
@@ -471,30 +485,34 @@ describe('app-shell routing', () => {
   });
 
   test('resolveViewFromPath resolves /registry/:tab deep links', () => {
-    expect(resolveViewFromPath('/registry')).toEqual({ type: 'registry' });
+    // Only a catalogue page resolves to a registry view; any other address
+    // resolves to where its redirect lands.
+    expect(resolveViewFromPath('/registry')).toEqual({
+      type: 'apps',
+      tab: 'discover',
+    });
     expect(resolveViewFromPath('/registry/plugins')).toEqual({
-      type: 'registry',
-      tab: 'plugins',
+      type: 'apps',
+      tab: 'discover',
     });
     expect(resolveViewFromPath('/registry/integrations')).toEqual({
       type: 'registry',
       tab: 'integrations',
     });
-    // An unknown tab segment falls back to plain registry behavior rather
-    // than propagating an unvalidated string into the view.
+    expect(resolveViewFromPath('/registry/agents')).toEqual({ type: 'agents' });
     expect(resolveViewFromPath('/registry/not-a-real-tab')).toEqual({
-      type: 'registry',
+      type: 'apps',
+      tab: 'discover',
     });
   });
 
-  // Skills, tool servers, layouts and agent entries keep their catalogue
-  // pages until their own screens take them over; only the root and the
-  // Plugins tab moved to Apps.
+  // Skills, tool servers, layouts and kits keep their catalogue pages until
+  // their own screens take them over.
   test.each([
     '/registry/skills',
     '/registry/integrations',
     '/registry/layouts',
-    '/registry/agents',
+    '/registry/kits',
   ])('keeps the catalogue page %s where it is', (path) => {
     expect(getLegacyPathRedirect(path)).toBeNull();
   });

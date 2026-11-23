@@ -229,7 +229,6 @@ test.describe('Catalogue pages', () => {
     page,
   }) => {
     for (const [path, title, search] of [
-      ['/registry/agents', 'Browse agents', 'Search agents'],
       ['/registry/skills', 'Browse skills', 'Search skills'],
       ['/registry/integrations', 'Browse tool servers', 'Search tool servers'],
       ['/registry/layouts', 'Browse layouts', 'Search layouts'],
@@ -242,6 +241,10 @@ test.describe('Catalogue pages', () => {
     }
     await page.goto('/registry');
     await expect(page).toHaveURL(/\/apps\/discover$/);
+    // Agents arrive inside apps: the agent catalogue is gone, and its old
+    // address opens Agents.
+    await page.goto('/registry/agents');
+    await expect(page).toHaveURL(/\/agents$/);
   });
 
   test('skills and tool servers are browsed from where they are used, and the eyebrow leads back', async ({
@@ -377,14 +380,6 @@ test.describe('Catalogue pages', () => {
     await mockRegistry(page);
 
     const cases = [
-      {
-        path: '/registry/agents',
-        title: 'Browse agents',
-        noun: 'agents',
-        item: 'Project Planner',
-        install: 'Install',
-        remove: 'Remove',
-      },
       {
         path: '/registry/skills',
         title: 'Browse skills',
@@ -549,15 +544,24 @@ test('catalogue pages keep every card inside a phone width', async ({
     }),
   );
   for (const [path, title] of [
-    ['/registry/agents', 'Browse agents'],
     ['/registry/skills', 'Browse skills'],
     ['/registry/integrations', 'Browse tool servers'],
+    ['/registry/layouts', 'Browse layouts'],
   ] as const) {
     await page.goto(path);
     await dismissSetupLauncher(page);
     await catalogueHeading(page, title);
     // No tab strip is left to crowd a phone: each catalogue is its own page.
     await expect(page.getByRole('tablist')).toHaveCount(0);
+    // The premise: the page lists cards from the mocked catalogue (the
+    // registry routes, registered after the catch-all, answer first), so the
+    // clipping check below measures real cards and buttons.
+    await expect(
+      page.locator('.registry-view .page__card-loose').first(),
+    ).toBeVisible();
+    await expect(
+      page.locator('.registry-view .page__card-footer button').first(),
+    ).toBeVisible();
     for (const width of [320, 390, 430]) {
       await page.setViewportSize({ width, height: 844 });
       const clippedCatalogElements = await page

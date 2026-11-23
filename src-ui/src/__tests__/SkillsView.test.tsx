@@ -529,6 +529,27 @@ describe('SkillsView', () => {
     expect(screen.getAllByText('This machine').length).toBeGreaterThan(0);
   });
 
+  // A skill added from a catalogue names where it came from in the
+  // glossary's word, a source; "Registry" is not a place.
+  test('a catalogue skill names its source, not the Registry', () => {
+    selectionState.selectedId = 'catalogue-skill';
+    localSkillsMock = [
+      {
+        name: 'catalogue-skill',
+        source: 'registry',
+        origin: 'registry',
+        installed: true,
+        writable: true,
+      },
+    ];
+    editableSkillMock = { name: 'catalogue-skill', body: 'do the thing' };
+
+    renderEditor();
+
+    expect(screen.getAllByText('From a source').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Registry', { exact: true })).toBeNull();
+  });
+
   // The Skills editor owns the whole authoring surface: the command switch,
   // the body's variables, usage counters, and test/export.
   describe('command skills', () => {

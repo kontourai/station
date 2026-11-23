@@ -124,6 +124,9 @@ export function getRegistryTabCopy(tab: RegistryCatalogTab): {
         description:
           'Browse ready layouts, then add an enabled layout to a project.',
         empty: 'No layouts are available for this workspace yet.',
+        // Opened from a project's Add Layout; a direct load climbs to Apps,
+        // where an app's screen is found.
+        owner: { label: 'Apps', path: '/apps/discover' },
       };
     case 'kits':
       return {
@@ -132,6 +135,7 @@ export function getRegistryTabCopy(tab: RegistryCatalogTab): {
         description:
           'Browse installed Kits and add their read-only views to a Project.',
         empty: 'No portable Kits are installed for this workspace yet.',
+        owner: { label: 'Apps', path: '/apps/discover' },
       };
   }
 }
@@ -141,7 +145,7 @@ export function getRegistrySkillInstallRefusal(
   item: RegistryItem,
 ): string | null {
   if (item.catalogFreshness === 'stale')
-    return 'This marketplace is offline. Refresh its source and inspect the item again before installing.';
+    return 'This source is offline. Refresh it and inspect the item again before installing.';
   // The server decides and enforces these; the page only repeats them.
   if (tab === 'integrations' && item.mcpServer?.unavailable.length)
     return item.mcpServer.unavailable.join(' ');

@@ -119,7 +119,7 @@ export function MarketplaceSources({
   onSelect,
   kinds,
   manage = 'inline',
-  label = 'Browse marketplace',
+  label = 'Source',
   hideLabel = false,
 }: {
   selected: string;

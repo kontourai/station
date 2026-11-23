@@ -82,7 +82,6 @@ function makeActions(): RegistryCatalogActions {
 
 describe('RegistryCatalog pages', () => {
   test.each([
-    ['agents', 'Browse agents', 'Agents', '/agents', 'Search agents'],
     [
       'skills',
       'Browse skills',
@@ -97,14 +96,18 @@ describe('RegistryCatalog pages', () => {
       '/customize/tools',
       'Search tool servers',
     ],
+    // Opened from a project's Add Layout; a direct load climbs to Apps.
+    ['layouts', 'Browse layouts', 'Apps', '/apps/discover', 'Search layouts'],
+    ['kits', 'Browse kits', 'Apps', '/apps/discover', null],
   ] as const)(
-    "the %s catalogue is its own page that climbs back to %s's owner",
+    'the %s catalogue is its own page that climbs back to its owner',
     (tab, title, ownerLabel, ownerPath, searchLabel) => {
       const actions = makeActions();
       render(<RegistryCatalog model={model(tab)} actions={actions} />);
       expect(screen.queryByRole('tablist')).toBeNull();
       expect(screen.queryByRole('tab')).toBeNull();
-      expect(screen.getByRole('textbox', { name: searchLabel })).toBeTruthy();
+      if (searchLabel)
+        expect(screen.getByRole('textbox', { name: searchLabel })).toBeTruthy();
       expect(header.last?.title).toBe(title);
       const eyebrow = render(<>{header.last?.eyebrow}</>);
       fireEvent.click(eyebrow.getByRole('button', { name: ownerLabel }));
@@ -112,27 +115,8 @@ describe('RegistryCatalog pages', () => {
     },
   );
 
-  test.each([
-    ['layouts', 'Browse layouts'],
-    ['kits', 'Browse kits'],
-  ] as const)(
-    'the %s catalogue names itself and has no owner to climb to',
-    (tab, title) => {
-      render(<RegistryCatalog model={model(tab)} actions={makeActions()} />);
-      expect(screen.queryByRole('tablist')).toBeNull();
-      expect(header.last?.title).toBe(title);
-      expect(header.last?.eyebrow).toBeUndefined();
-    },
-  );
-
   test('no page title or copy names the Registry', () => {
-    for (const tab of [
-      'agents',
-      'skills',
-      'integrations',
-      'layouts',
-      'kits',
-    ] as const) {
+    for (const tab of ['skills', 'integrations', 'layouts', 'kits'] as const) {
       const view = render(
         <RegistryCatalog model={model(tab)} actions={makeActions()} />,
       );

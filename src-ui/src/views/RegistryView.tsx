@@ -29,19 +29,18 @@ import './PluginManagementView.css';
 import './RegistryView.css';
 import './page-layout.css';
 
-/** The source kinds the catalogue tabs on this page list. */
-const REGISTRY_PAGE_SOURCE_KINDS = ['skills', 'agents'] as const;
+/**
+ * The source kind each catalogue page lists sources of. Only skills and agent
+ * entries come from sources; tool servers, layouts and kits do not, so those
+ * pages have no source picker.
+ */
+const PAGE_SOURCE_KINDS: Partial<
+  Record<RegistryCatalogTab, readonly ['skills'] | readonly ['agents']>
+> = { skills: ['skills'], agents: ['agents'] };
 
 function registryInstallationKey(tab: RegistryCatalogTab, itemId: string) {
   return `${tab}:${itemId}`;
 }
-
-/**
- * A source chosen together with a switch to its catalog tab. The route
- * boundary keys this view by route (`RouteViewBoundary`), so the tab switch
- * remounts it; the choice is handed to that next mount, for that tab only.
- */
-let sourceForNextTab: { tab: RegistryCatalogTab; source: string } | null = null;
 
 export function RegistryView({
   initialTab,
@@ -67,28 +66,11 @@ export function RegistryView({
   useEffect(() => {
     setActiveTab(initialTab ?? 'agents');
   }, [initialTab]);
-  // The route remounts this view for each tab (`RouteViewBoundary` keys by
-  // route), so the chosen source is handed to the next mount: browsing a
-  // source keeps it across tabs.
-  const selectTab = (
-    tab: RegistryCatalogTab,
-    source: string = selectedSource,
-  ) => {
-    setActiveTab(tab);
-    if (!toolPicker) {
-      sourceForNextTab = { tab, source };
-      navigate(`/registry/${tab}`);
-    }
-  };
+  // The agent editor's tool picker switches its own tabs in place.
+  const selectTab = (tab: RegistryCatalogTab) => setActiveTab(tab);
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState(installTarget ?? '');
-  const [selectedSource, setSelectedSource] = useState(() => {
-    const handed = sourceForNextTab;
-    sourceForNextTab = null;
-    return handed && handed.tab === (initialTab ?? 'agents')
-      ? handed.source
-      : 'all';
-  });
+  const [selectedSource, setSelectedSource] = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectedSelection, setInspectedSelection] = useState<{
     tab: RegistryCatalogTab;
@@ -314,22 +296,13 @@ export function RegistryView({
   // Library) and Discover, where extension code is added and runs.
   return (
     <div className="registry-view">
-      {!toolPicker && (
+      {/* A source narrows this page's own list; choosing one never opens
+          another page. */}
+      {!toolPicker && PAGE_SOURCE_KINDS[activeTab] && (
         <MarketplaceSources
           selected={selectedSource}
-          onSelect={(id, _kind, supplied) => {
-            setSelectedSource(id);
-            // Show the chosen source's catalog: keep the tab when the source
-            // supplies it, otherwise open its first kind this page lists.
-            // Plugins are browsed in Apps › Discover, not here.
-            const tabs: readonly RegistryCatalogTab[] = (supplied ?? []).filter(
-              (tab) => tab !== 'plugins',
-            );
-            if (tabs.length > 0 && !tabs.includes(activeTab))
-              selectTab(tabs[0]!, id);
-          }}
-          // A source that only supplies plugins has nothing on these tabs.
-          kinds={REGISTRY_PAGE_SOURCE_KINDS}
+          onSelect={(id) => setSelectedSource(id)}
+          kinds={PAGE_SOURCE_KINDS[activeTab]}
           manage="dialog"
         />
       )}

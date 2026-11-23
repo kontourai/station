@@ -1,21 +1,26 @@
 /**
- * Registry and Plugins are no longer places. Every address either used to
- * resolve lands on the address that now owns it, and that address resolves
- * to a real view; nothing that used to open a page now reads "not found".
+ * Registry and Plugins are no longer places. Every address that used to
+ * resolve lands on the address that now owns it in ONE redirect (the app
+ * applies `getLegacyPathRedirect` once), that address needs no further
+ * redirect, and it resolves to a real view; nothing that used to open a page
+ * now reads "not found".
  */
 import { describe, expect, test } from 'vitest';
 import type { NavigationView } from '../../types';
 import { getLegacyPathRedirect, resolveViewFromPath } from '../routing';
 
-/** Follow redirects the way the navigation store does, then resolve. */
-function land(address: string): { path: string; view: NavigationView } {
-  let path = address;
-  for (let hop = 0; hop < 5; hop += 1) {
-    const next = getLegacyPathRedirect(path);
-    if (next === null) break;
-    path = next;
-  }
-  return { path, view: resolveViewFromPath(path) };
+/** One redirect, as the app applies it, then resolve. */
+function land(address: string): {
+  path: string;
+  again: string | null;
+  view: NavigationView;
+} {
+  const path = getLegacyPathRedirect(address) ?? address;
+  return {
+    path,
+    again: getLegacyPathRedirect(path),
+    view: resolveViewFromPath(path),
+  };
 }
 
 describe('retired Registry and Plugins addresses', () => {
@@ -36,6 +41,13 @@ describe('retired Registry and Plugins addresses', () => {
       '/apps/discover',
       { type: 'apps', tab: 'discover' },
     ],
+    ['/registry/foo/bar', '/apps/discover', { type: 'apps', tab: 'discover' }],
+    ['/registry/Skills', '/apps/discover', { type: 'apps', tab: 'discover' }],
+    // The agent catalogue is gone: agents arrive inside apps.
+    ['/registry/agents', '/agents', { type: 'agents' }],
+    ['/registry/agents/', '/agents', { type: 'agents' }],
+    ['/registry/agents?q=x', '/agents?q=x', { type: 'agents' }],
+    ['/registry/agents/planner', '/agents', { type: 'agents' }],
     // Plugins: Apps › Library, keeping an installed plugin's name and a
     // proposal's id.
     ['/plugins', '/apps/library', { type: 'apps', tab: 'library' }],
@@ -51,6 +63,7 @@ describe('retired Registry and Plugins addresses', () => {
       { type: 'apps', tab: 'library' },
     ],
     ['/manage/plugins', '/apps/library', { type: 'apps', tab: 'library' }],
+    ['/manage/plugins/', '/apps/library', { type: 'apps', tab: 'library' }],
     [
       '/manage/plugins/example',
       '/apps/library/example',
@@ -65,17 +78,18 @@ describe('retired Registry and Plugins addresses', () => {
       '/apps/library?proposal=p-1',
       { type: 'apps', tab: 'library' },
     ],
-  ] as const)('%s lands on %s', (address, canonical, view) => {
+  ] as const)('%s lands on %s in one redirect', (address, canonical, view) => {
     const landed = land(address);
     expect(landed.path).toBe(canonical);
+    expect(landed.again).toBeNull();
     expect(landed.view).toEqual(view);
   });
 
   // Each remaining catalogue is a page of its own, entered from where its
   // kind is used, until its owner's own screen replaces it.
   test.each([
-    ['/registry/agents', 'agents'],
     ['/registry/skills', 'skills'],
+    ['/registry/skills/foo', 'skills'],
     ['/registry/skills/', 'skills'],
     ['/registry/integrations', 'integrations'],
     ['/registry/layouts', 'layouts'],
@@ -83,5 +97,16 @@ describe('retired Registry and Plugins addresses', () => {
   ] as const)('%s keeps its catalogue page', (address, tab) => {
     expect(getLegacyPathRedirect(address)).toBeNull();
     expect(resolveViewFromPath(address)).toEqual({ type: 'registry', tab });
+  });
+});
+
+describe('a registry view that names no catalogue page', () => {
+  test.each([
+    '/registry',
+    '/registry/foo/bar',
+    '/registry/agents',
+    '/registry/plugins',
+  ])('%s never resolves to a catalogue view, even unredirected', (path) => {
+    expect(resolveViewFromPath(path).type).not.toBe('registry');
   });
 });

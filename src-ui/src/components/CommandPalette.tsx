@@ -752,7 +752,7 @@ export function CommandPalette() {
       list.push({
         id: command.paletteId,
         label: command.contribution.title,
-        group: 'Apps',
+        group: 'Plugins',
         keywords: [
           command.pluginName,
           ...(command.contribution.keywords ?? []),
