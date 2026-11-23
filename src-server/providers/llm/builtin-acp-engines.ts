@@ -75,7 +75,8 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     description: "Kiro's coding agent, run from its kiro-cli command.",
     command: 'kiro-cli',
     // The id predates the KAS entries below; a saved `kiro` connection keeps
-    // its own arguments, and v2 is also kiro-cli's default engine.
+    // its own arguments. Pin v2 here so changes to the CLI default do not
+    // switch engines for new connections using this entry.
     args: ['acp', '--agent-engine', 'v2'],
     icon: 'brand:kiro',
     tags: ['acp', 'kiro'],
@@ -301,7 +302,7 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     description: "xAI's Grok Build coding agent CLI.",
     command: 'grok',
     args: ['agent', 'stdio'],
-    icon: 'GK',
+    icon: 'brand:grok-build',
     tags: ['acp', 'grok'],
     homepageUrl: 'https://docs.x.ai/build/cli/headless-scripting',
     install: {
@@ -380,7 +381,7 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
     // Station's own tools need. Station runs one process per session anyway.
     command: 'agy',
     args: ['acp', '--process-per-session'],
-    icon: 'AG',
+    icon: 'brand:antigravity',
     tags: ['acp', 'antigravity', 'google'],
     homepageUrl: 'https://antigravity.google/docs/cli/acp',
     install: {

@@ -1,0 +1,9 @@
+{
+  "revision": "f83e30ca59d3f25b15c613f657f07ec47fe349c8",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked generic remote-work guidance against Station's streamable HTTP setup. The instructions cover read-only consent and routing by environment identifier when the remote tools offer it. Station uses the configured endpoint and keeps remote credentials in its proxy.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Confirmed the wording continues to distinguish remote tool grants from Station Device, peer, SSH, and Project access in the machine-relationships guide.","inputs":["docs/guides/connections.md"]}
+  ]
+}

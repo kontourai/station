@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Linked from api.md only for unrelated terminal routes; the scheduler API edit changes nothing this design states.","inputs":["docs/design/terminal.md","docs/reference/api.md"]}
+  ]
+}

@@ -398,11 +398,12 @@ describe('#2312 discarding Drafts from the inbox', () => {
     );
     const staleTitle = titleOf(rows, STALE.threadId);
     expect(screen.getByText(staleTitle)).toBeTruthy();
-    const details = screen.getByRole('button', {
-      name: `Details for ${staleTitle}`,
-    });
+    const details = screen
+      .getByText(staleTitle, { exact: true })
+      .closest('button')!;
     details.focus();
-    fireEvent.click(details);
+    fireEvent.contextMenu(details);
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     const sheet = await screen.findByRole('dialog', {
       name: `Details for ${staleTitle}`,
     });
@@ -433,11 +434,12 @@ describe('#2312 discarding Drafts from the inbox', () => {
       accept = resolve;
     });
     dispatch.mockImplementationOnce(() => response);
-    const freshDetails = screen.getByRole('button', {
-      name: `Details for ${freshTitle}`,
-    });
+    const freshDetails = screen
+      .getByText(freshTitle, { exact: true })
+      .closest('button')!;
     freshDetails.focus();
-    fireEvent.click(freshDetails);
+    fireEvent.contextMenu(freshDetails);
+    fireEvent.click(screen.getByRole('button', { name: 'Details' }));
     const freshSheet = await screen.findByRole('dialog', {
       name: `Details for ${freshTitle}`,
     });

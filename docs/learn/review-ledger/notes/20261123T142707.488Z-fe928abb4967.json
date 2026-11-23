@@ -1,0 +1,77 @@
+{
+  "revision": "69d3474bc4391bb367ddb81f76a7caa7a04da03a",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Traced the authorized detail read through discovery to summary construction. Public detail still observes attachment and provider registration at read time. Internal instruction and locked lifecycle reads consume the facts they use and leave answerability to summary construction.","inputs":["docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Traced the foreground chat sequence from target routing through continuation, instruction reads and the turn-start gate. Provider discovery, auth, engine invocation and event publication retain the documented order and ownership.","inputs":["docs/architecture.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the command and lifecycle ownership rows. The chronological read feeds the existing completion check inside the turn-start coordinator. Session command results and lifecycle transition ownership still follow the documented modules.","inputs":["docs/architecture/abstraction-review.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Rechecked the continuation, instruction and turn-start owners. The dispatch reads select session metadata, warning codes and turn markers, and retain refreshed discovery and recovery, activity and child-work effects. The locked coordinator folds chronological lifecycle facts including stamps on other methods. Full detail and continuation retain their recorded event stream. The route controls cover late close and passive settlement.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Traced provider dispatch and EventStore replay at the final locked admission. The new read selects durable lifecycle inputs in sequence while the existing invocation boundary and uncertain-effect custody keep their original owners.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Checked the server-ordered approval flow through the foreground send seam. The indexed reads supply provider and instruction facts and the final completion check. Approval decision intake, normalized input and provider option resolution retain the same order.","inputs":["docs/design/approval-posture-server-ordered.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked the shared foreground command seam. Discovery and persisted tenant admission remain in the thread read. Channel routing, principal derivation and Task or Room authority keep their documented owner checks.","inputs":["docs/design/channel-home-authority.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Checked engine selection and discovery at the changed pre-lock read and the materialization refresh. Connection setup, provider identity and credential onboarding retain the documented behavior.","inputs":["docs/design/connections-onboarding.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Checked the instruction and lifecycle reads against the existing SQLite indexes, append paths and migration. Instruction reads select metadata, warning codes and turn markers in sequence, including a JavaScript parse for deeply nested legacy JSON. The writes, schema and migration are unchanged.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked EventStore ingress and receipt ownership against the new read. The send projection consumes lifecycle facts only. Host article claims about MCP admission, tool-result provenance and replay still describe the unchanged ingress owners.","inputs":["docs/design/mcp-ui-host.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Checked the send boundary and detail projection against notification ownership. Request and turn settlement facts keep their persisted events. Full summary reads continue to supply the documented observation, and notification triggers and callbacks retain their original paths.","inputs":["docs/design/notification-delivery.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Reviewed the historical seam map against the changed point-read and locked completion paths. Session discovery and projection are still read-side work. The transition, stop, request, event and turn owners retain their seams. The map retains its dated source references.","inputs":["docs/design/orchestration-decomposition-map.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the placement dependencies on persisted event selection, attribution and detail. Tool and project evidence still goes through the existing reads. The chronological projection is used at the backend send boundary.","inputs":["docs/design/placement.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked EventStore reads against project identity paths. Persisted project resolution, attached attribution and stored identities retain the documented ownership. Send instruction selection keeps its ordered project metadata.","inputs":["docs/design/portable-project-identity.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Checked the EventStore runtime and history replay dependencies. Worker writer, event append ownership and Task or Room history reads retain their existing interfaces. The new query handles a separate thread-local send decision.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reviewed evidence receipt custody and EventStore composition. Revision binding, recovery and close still use the same read and write owners. The new lifecycle query neither introduces a receipt nor changes the existing evidence sequence.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked the send instruction and provider reads against agent configuration. The current binding still precedes dispatch. Instruction metadata selection retains ordering and the fresh engine refresh, including the first-turn decision.","inputs":["docs/guides/agent-configuration.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the connection lookup and ready-to-send sequence. Discovery still refreshes before instructions, after materialization and in the final guard. Provider identity and connection-visible behavior retain the documented authority.","inputs":["docs/guides/connections.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the affected EventStore reads against monitoring. Telemetry and usage continue to consume their existing committed event paths. The backend send benchmark uses an isolated synthetic account and supplies no monitoring deployment evidence.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the dispatch and read seams that underpin Station Control examples. Request permissions, tool availability, Task binding and the distinction between a route acknowledgement and provider acceptance retain their established checks.","inputs":["docs/guides/self-configuring-agent.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the request inspection and foreground walkthrough dependencies. Session detail still carries read-time observations and existing request events. Historical captures keep their original evidence and revision.","inputs":["docs/learn/walkthroughs.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Traced the real foreground route and service send boundary cited by the smoke reference. The chronological projection is in the internal completed check. This local backend run retains the existing scripted-adapter evidence boundary.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the session detail, request and foreground send API dependencies. Response shapes, read scopes, discovery and the existing ended-session refusal retain their documented behavior.","inputs":["docs/reference/api.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked ordered delivery metadata and provider fallback before dispatch and after materialization. The send reads retain usage-limit recovery, activity and child-work effects as applicable. User-facing configuration storage and settings keep their existing owners.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the own-lifecycle distinction for active owned work and the EventStore provenance contract. The final gate still uses the thread own lifecycle. Published owned-work summaries and tool or request provenance use their original projections.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Verified that the new EventStore query uses the ordinary read statement seam. The cache environment flag, environment admission and durable storage behavior keep their documented meaning.","inputs":["docs/reference/env-vars.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked SDK foreground messages, durable turn receipt behavior and detail read dependencies. The public SDK contract and exact accepted input retain their behavior. The route witness for a late terminal observation reaches the existing refusal.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Traced foreground send and continuation through authorized session lookup, instruction input and the locked completed-state check. The public detail and continuation contracts keep their full event reads and detail retains read-time answerability.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Traced first-turn Task brief, authored prompt and Station instruction delivery through the indexed inputs. Session metadata, a fresh-context warning code and the turn marker retain their order. The read after engine materialization sees newly committed delivery facts.","inputs":["docs/reference/station-docs.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the timing change against runtime and event-based usage evidence. Event persistence and usage projection keep their existing owners. Synthetic backend timing supplies no live usage or telemetry qualification.","inputs":["docs/reference/usage-telemetry.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked foreground send and request inspection dependencies. Thread admission, current connection discovery, public details and request facts retain their existing behavior. Captured request media remains historical.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked the workspace gate relative to the revised lifecycle check. Workspace authorization, checkpoint ownership and the later turn-start workspace gates keep their established behavior.","inputs":["docs/user/workspace-checkpoints.md","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked the foreground path against the durable dedup and boundary descriptions. The existing completion refusal still precedes adapter invocation. The new read changes no Monument state, receipts or claim ownership.","inputs":["packages/monument/CONTEXT.md","src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked host EventStore and send receipt callers against Monument contracts. The instruction and lifecycle queries use host event indexes. Canonical request keys, turn boundaries, dedup and settlement use their existing durability interfaces.","inputs":["packages/monument/README.md","src-server/routes/orchestration/__tests__/turn-delivery.routes.test.ts","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Source review covered the request detail and answerability paths cited by the historical capture. The changed completion check is internal to a send. The image retains its original capture revision and scope.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Source review covered the request inspector read path and its separation from send admission. The recording retains its original capture revision, request inspection contents and evidence scope.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

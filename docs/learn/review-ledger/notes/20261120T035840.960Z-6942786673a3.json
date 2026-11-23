@@ -1,0 +1,7 @@
+{
+  "revision": "4934efe4c1867e04ad885251f713c6d3972b8948",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Traced the Inbox pull and actions-menu refresh to the shared ListRefresh status. The Chromium test waits for the pill entrance before checking its existing clearance bounds and still exercises the pull and menu through success and failure. The guide accurately describes the visible refresh flow.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-swipe.browser.test.tsx"]}
+  ]
+}

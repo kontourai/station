@@ -32,12 +32,14 @@ import type {
 } from '@kontourai/station-contracts/external-monitor';
 import {
   AUTOMATION_RUN_POLICY,
+  SCHEDULER_RECENT_OUTCOMES_LIMIT,
   type SchedulerAutomationCreator,
   type SchedulerAutomationTarget,
   type SchedulerJob,
   type SchedulerLogEntry,
   type SchedulerProviderStats,
   type SchedulerRowIssue,
+  type SchedulerRunOutcome,
 } from '@kontourai/station-contracts/scheduler';
 import {
   exactProcessIdentity,
@@ -77,6 +79,8 @@ const { DatabaseSync } = require('node:sqlite') as {
 
 export interface StoredSchedulerJob {
   name: string;
+  /** What a person calls it; `name` stays the identity. */
+  displayName?: string;
   cron?: string;
   schedule?: Schedule;
   prompt: string;
@@ -148,6 +152,16 @@ export function countConsecutiveFailures(
   }
   return count;
 }
+
+/** How a finished run row ended, for the list read's outcome strip. */
+function runOutcome(run: SchedulerLogEntry): SchedulerRunOutcome {
+  if (run.skipped) return 'skipped';
+  if (run.state === 'indeterminate') return 'unknown';
+  return run.success ? 'worked' : 'failed';
+}
+
+/** Run rows read per page while collecting a job's recent outcomes. */
+const RECENT_OUTCOME_PAGE_ROWS = 64;
 
 /** A fatigue disable whose one notification is durably owed or delivered. */
 export type FatigueAnnouncement = Readonly<{
@@ -1354,6 +1368,8 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         const job = freezeJob(parseStoredJob(row.data));
         if (
           job.name !== row.name ||
+          (job.displayName !== undefined &&
+            typeof job.displayName !== 'string') ||
           typeof job.createdAt !== 'string' ||
           typeof job.enabled !== 'boolean' ||
           (job.cron !== undefined && typeof job.cron !== 'string') ||
@@ -1403,6 +1419,9 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         const next = scheduled ? nextOccurrence(scheduled.schedule, now) : null;
         const { createdBy, failureCountResetAt, ...rest } = job;
         const lastSuccessAt = this.lastSuccessUnsafe(jobId);
+        const pausedItself = job.enabled
+          ? undefined
+          : this.pausedItselfUnsafe(jobId, failureCountResetAt);
         return {
           ...rest,
           // Only who created it is public; the replayed actor stays private.
@@ -1420,6 +1439,8 @@ class SqliteSchedulerLedger implements SchedulerLedger {
             failureCountResetAt,
           ),
           ...(lastSuccessAt ? { lastSuccessAt } : {}),
+          recentOutcomes: this.recentOutcomesUnsafe(jobId, job.name),
+          ...(pausedItself ? { pausedItself } : {}),
           provider: 'built-in',
           unattendedPrincipal: {
             kind: 'scheduled-job' as const,
@@ -2076,6 +2097,72 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         ? { ...target, conversationId: bound.conversation_id }
         : target,
     };
+  }
+
+  /**
+   * The job's latest finished occurrences, oldest first. An occurrence that
+   * retried counts once and its newest attempt decides it; attempts of a live
+   * claim and running receipts have not decided theirs yet. Reads one more
+   * than the limit so `more` is observed, not guessed.
+   */
+  private recentOutcomesUnsafe(
+    jobId: string,
+    name: string,
+  ): NonNullable<SchedulerJob['recentOutcomes']> {
+    const pending = new Set(this.runningLogsUnsafe(name).map(runOccurrenceId));
+    const decided = new Set<string>();
+    const newestFirst: SchedulerRunOutcome[] = [];
+    let before = Number.MAX_SAFE_INTEGER;
+    while (newestFirst.length <= SCHEDULER_RECENT_OUTCOMES_LIMIT) {
+      const rows = this.db
+        .prepare(
+          `SELECT job_id, data, sequence FROM scheduler_logs
+            WHERE job_id = ? AND sequence < ?
+            ORDER BY sequence DESC LIMIT ?`,
+        )
+        .all(jobId, before, RECENT_OUTCOME_PAGE_ROWS) as Array<{
+        job_id: string | null;
+        data: string;
+        sequence: number;
+      }>;
+      for (const row of rows) {
+        const run = this.logFromRow(row);
+        if (run.state === 'running') continue;
+        const occurrence = runOccurrenceId(run);
+        if (pending.has(occurrence) || decided.has(occurrence)) continue;
+        decided.add(occurrence);
+        newestFirst.push(runOutcome(run));
+        if (newestFirst.length > SCHEDULER_RECENT_OUTCOMES_LIMIT) break;
+      }
+      if (rows.length < RECENT_OUTCOME_PAGE_ROWS) break;
+      before = rows.at(-1)!.sequence;
+    }
+    return {
+      outcomes: newestFirst.slice(0, SCHEDULER_RECENT_OUTCOMES_LIMIT).reverse(),
+      more: newestFirst.length > SCHEDULER_RECENT_OUTCOMES_LIMIT,
+    };
+  }
+
+  /**
+   * A disabled job that Station turned off for repeated failures, and that
+   * nobody has turned back on since: its latest fatigue disable is newer than
+   * the last re-enable (`failureCountResetAt`).
+   */
+  private pausedItselfUnsafe(
+    jobId: string,
+    resetAt: string | undefined,
+  ): SchedulerJob['pausedItself'] {
+    const row = this.db
+      .prepare(
+        `SELECT failures, created_at FROM scheduler_fatigue_announcements
+          WHERE job_id = ? ORDER BY created_at DESC LIMIT 1`,
+      )
+      .get(jobId) as { failures: number; created_at: string } | undefined;
+    if (!row) return undefined;
+    const resetMs = resetAt === undefined ? Number.NaN : Date.parse(resetAt);
+    if (Number.isFinite(resetMs) && Date.parse(row.created_at) <= resetMs)
+      return undefined;
+    return { failures: row.failures, at: row.created_at };
   }
 
   private lastSuccessUnsafe(jobId: string): string | undefined {

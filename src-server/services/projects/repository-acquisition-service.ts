@@ -86,9 +86,11 @@ function validateSource(
       'Repository source contains control characters.',
     );
   if (isLocalGitSource(source)) {
+    // Anything without a scheme or host reads as a local path here, including
+    // a mistyped URL, so the reason names both accepted forms.
     if (!isAbsolute(source))
       throw new RepositoryAcquisitionInputError(
-        'A local mirror must use an absolute path.',
+        'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.',
       );
   } else if (/^[a-z][a-z0-9+.-]*:\/\//i.test(source)) {
     let url: URL;
@@ -97,24 +99,32 @@ function validateSource(
     } catch {
       throw new RepositoryAcquisitionInputError('Repository URL is malformed.');
     }
+    if (!['https:', 'ssh:'].includes(url.protocol)) {
+      throw new RepositoryAcquisitionInputError(
+        'Use an HTTPS or SSH repository URL. Other URL schemes are not accepted.',
+      );
+    }
     if (
-      !['https:', 'ssh:'].includes(url.protocol) ||
       url.password ||
       url.search ||
       url.hash ||
-      (url.protocol === 'https:' && url.username) ||
-      !url.hostname ||
-      url.pathname === '/'
+      (url.protocol === 'https:' && url.username)
     ) {
       throw new RepositoryAcquisitionInputError(
         'Use an HTTPS or SSH repository URL without embedded credentials, query or fragment.',
+      );
+    }
+    // A special scheme reports an empty path as '/', ssh:// as ''.
+    if (!url.hostname || url.pathname === '/' || url.pathname === '') {
+      throw new RepositoryAcquisitionInputError(
+        'Include the host and the repository path in the URL.',
       );
     }
   } else if (
     !/^(?:[a-zA-Z0-9._-]+@)?[a-zA-Z0-9.-]+:[a-zA-Z0-9._/-]+$/.test(source)
   ) {
     throw new RepositoryAcquisitionInputError(
-      'Use an HTTPS or SSH repository URL, or an absolute local mirror path.',
+      'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.',
     );
   }
   if (
@@ -545,7 +555,7 @@ export class RepositoryAcquisitionService {
           ...acquiring,
           phase: 'failed',
           error:
-            'Repository acquisition failed. Check source access and the requested branch or tag, then retry explicitly.',
+            'Repository acquisition failed. Check source access and the requested branch or tag, then try again.',
           updatedAt: new Date().toISOString(),
         };
         return await this.publish(failed, assertCurrent);

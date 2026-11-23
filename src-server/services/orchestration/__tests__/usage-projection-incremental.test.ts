@@ -564,7 +564,7 @@ describe('lifetime usage projection (#373)', () => {
       (db: DatabaseSync) =>
         db
           .prepare(
-            "UPDATE orchestration_usage_projection_checkpoint SET version = 'usage-projection-v0'",
+            "UPDATE orchestration_usage_projection_checkpoint SET version = 'usage-projection-v1'",
           )
           .run(),
     ],
@@ -618,7 +618,7 @@ describe('lifetime usage projection (#373)', () => {
         10, 20,
       ]);
       expect(h.store.readUsageProjectionCheckpoint()).toEqual({
-        version: 'usage-projection-v1',
+        version: 'usage-projection-v2',
         watermark: h.store.currentGlobalSequence(),
       });
     },
@@ -668,6 +668,8 @@ describe('lifetime usage projection (#373)', () => {
     const pins: Record<string, string> = {
       'usage-projection-v1':
         '355217afdcbc25a5e6e7fc769d5d9d3abb3e1c4a067469f6d8a84922e09465f4',
+      'usage-projection-v2':
+        '86b953f1e731909bfc038a3a84e4345aae85436491b797b330decd31b6202289',
     };
     const source = readFileSync(
       fileURLToPath(

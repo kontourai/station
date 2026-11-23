@@ -33,6 +33,7 @@ import type {
   WorkspaceTarget,
 } from '@kontourai/station-contracts/execution-target';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
+import type { StagedConversationHandoff } from '@kontourai/station-contracts/orchestration';
 import {
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
@@ -150,7 +151,10 @@ import {
   type DelegationStagedFiles,
   materializeDelegationFiles,
 } from '../services/orchestration/delegation-files.js';
-import { assertInheritedDelegationToolPolicy } from '../services/orchestration/delegation-tool-policy.js';
+import {
+  assertInheritedDelegationToolPolicy,
+  captureInheritedDelegationToolContext,
+} from '../services/orchestration/delegation-tool-policy.js';
 import {
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
   type DispatchCwdAdmission,
@@ -426,6 +430,9 @@ interface DelegationEnvironmentSelection {
 }
 
 export interface DelegateTaskInput {
+  appearanceProposal?: boolean;
+  /** Composed from the verified parent at the local route. */
+  delegatedAppearance?: { ownerId: string; parentSessionId: string };
   /** Server-only current-host staging authority, composed by the authenticated route. */
   stagedFiles?: DelegationStagedFiles;
   prompt: string;
@@ -2713,6 +2720,9 @@ function executionResolverDependencies(
         : undefined,
     getProviderAdapter: (provider: EngineId) =>
       orchestrationService.getProviderAdapter(provider),
+    acpApprovalControl: (connectionId: string) =>
+      // A service without ACP connections (or a narrowed test double) answers none.
+      orchestrationService.acpApprovalControlOf?.(connectionId),
   } satisfies Parameters<typeof resolveExecutionTarget>[1];
 }
 
@@ -5720,7 +5730,11 @@ export async function delegateTask(
 ): Promise<DelegatedTaskHandle> {
   assertInheritedDelegationToolPolicy(input.delegation);
   input = snapshotTurnSubmissionFields(
-    { ...input, clientTurnId: input.clientTurnId ?? randomUUID() },
+    {
+      ...input,
+      clientTurnId: input.clientTurnId ?? randomUUID(),
+      delegation: captureInheritedDelegationToolContext(input.delegation),
+    },
     ['target', 'createRequestIntent', 'taskRoomAttachments'],
   );
   if (input.taskRoomAttachments?.length && !input.taskRoomInvocationAdmission)
@@ -5865,6 +5879,13 @@ export async function delegateTask(
     readAuthority,
     orchestrationService,
   );
+  if (
+    input.appearanceProposal &&
+    (selectedTarget.kind !== 'current' || selectedTarget.relayEnvironmentId)
+  )
+    throw new Error(
+      'Appearance proposals can be delegated only on this Station.',
+    );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
     const pinnedTarget = await pinSshDispatchWorkspace(
       selectedTarget,
@@ -5925,6 +5946,7 @@ export async function delegateTask(
               environment: relayEnvironment(selectedTarget),
             },
             ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+            ...(input.appearanceProposal ? { appearanceProposal: true } : {}),
             ...forwarded,
           },
           'The selected Station could not start the delegated task',
@@ -5981,11 +6003,10 @@ export async function delegateTask(
   // an OPT-IN attempt is claimed HERE and nowhere else: never at a
   // forwarding controller. The claim is written BEFORE the admission mint,
   // before `resolveExecutionTarget`, and before any engine preparation —
-  // the only awaits above it are host/handshake selection, which do not
-  // touch the intent. The digest covers the VALIDATED RAW intent only
-  // (prompt + normalized target + parentTaskId): resolved workspaces and
-  // incarnations do not exist yet and are bound separately under the SAME
-  // claim after resolution (`bindAdmitted` below), before any provider
+  // host and handshake selection use the captured request. The digest binds
+  // the validated prompt, target, parent Task, and verified tool restrictions.
+  // Resolved workspaces and incarnations are bound to the same claim after
+  // resolution (`bindAdmitted` below), before any provider
   // effect. No lock and no store handle is held across any of the awaits
   // that follow — the store transaction is the short atomic reserve.
   const attemptClaim:
@@ -6034,11 +6055,14 @@ export async function delegateTask(
       key: claimKey,
       attemptId: input.delegationAttemptId,
       callerDeviceId: attemptCaller.deviceId,
-      intentDigest: delegationAttemptIntentDigest({
-        prompt: input.prompt,
-        target: input.target,
-        ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
-      }),
+      intentDigest: delegationAttemptIntentDigest(
+        {
+          prompt: input.prompt,
+          target: input.target,
+          ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+        },
+        input.delegation,
+      ),
       taskId: reservedTaskId,
     });
     // Same tuple + same validated intent: join the existing claim and name
@@ -6628,8 +6652,20 @@ export async function delegateTask(
       // a second dispatch for the same claim.
       retainFiles = true;
       await markCreateRequestStarting(sessionId);
-      const attemptTurnDispatch =
-        await orchestrationService.dispatchWithReceipt(
+      const initialClientTurnId =
+        attemptClaim?.initialClientTurnId ??
+        (input.stagedFiles ? fileBinding.clientTurnId : undefined) ??
+        input.taskRoomInvocationAdmission?.clientTurnId ??
+        input.clientTurnId ??
+        randomUUID();
+      const revokeAppearance = input.delegatedAppearance
+        ? orchestrationService.grantDelegatedAppearance(sessionId, {
+            ...input.delegatedAppearance,
+            clientTurnId: initialClientTurnId,
+          })
+        : undefined;
+      const attemptTurnDispatch = await orchestrationService
+        .dispatchWithReceipt(
           {
             type: 'sendTurn',
             input: {
@@ -6646,16 +6682,7 @@ export async function delegateTask(
               ...(resolved.modelOptions
                 ? { modelOptions: { ...resolved.modelOptions } }
                 : {}),
-              clientTurnId:
-                input.taskRoomInvocationAdmission?.clientTurnId ??
-                input.clientTurnId ??
-                randomUUID(),
-              ...(input.stagedFiles
-                ? { clientTurnId: fileBinding.clientTurnId }
-                : {}),
-              ...(attemptClaim
-                ? { clientTurnId: attemptClaim.initialClientTurnId }
-                : {}),
+              clientTurnId: initialClientTurnId,
             },
           },
           dispatchContextForAuthority(
@@ -6692,7 +6719,17 @@ export async function delegateTask(
                 }
               : {}),
           },
-        );
+        )
+        .catch((error: unknown) => {
+          revokeAppearance?.();
+          throw error;
+        });
+      if (
+        revokeAppearance &&
+        attemptTurnDispatch.receipt.status !== 'accepted' &&
+        !attemptTurnDispatch.receiptStatus
+      )
+        revokeAppearance();
       input.stagedFiles?.accept(fileBinding);
       // The dispatch returning means the turn was durably accepted by the
       // adapter (the dedup-hit path returns the SAME already-accepted turn
@@ -7089,6 +7126,9 @@ export async function executeExecutionTargetMessage(
         : undefined,
     getProviderAdapter: (provider) =>
       orchestrationService.getProviderAdapter(provider),
+    acpApprovalControl: (connectionId) =>
+      // A service without ACP connections (or a narrowed test double) answers none.
+      orchestrationService.acpApprovalControlOf?.(connectionId),
     ...(admission
       ? {
           admitWorktreeProvisioning: (
@@ -7368,6 +7408,7 @@ export async function executeExecutionTargetMessage(
           ...(handoff.modelId ? { modelId: handoff.modelId } : {}),
           idempotencyKey: handoff.idempotencyKey,
           messageDigest: handoff.messageDigest,
+          stagedHandoff: handoff.stagedHandoff,
         },
       );
       return {
@@ -7576,6 +7617,7 @@ export async function executeExecutionTargetMessage(
           !startInput.metadata?.delegation
             ? { personChatStart: true as const }
             : {}),
+          pendingStartClientTurnId: startContext?.pendingStartClientTurnId,
           resourceAdmissionIntent:
             startContext?.resourceAdmissionIntent ??
             (ephemeral
@@ -7688,6 +7730,9 @@ export async function executeExecutionTargetMessage(
               ...(context?.dispatchOrigin
                 ? { dispatchOrigin: context.dispatchOrigin }
                 : {}),
+              ...(context?.resourceAdmissionIntent
+                ? { resourceAdmissionIntent: context.resourceAdmissionIntent }
+                : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
                 : {}),
@@ -7723,6 +7768,9 @@ export async function executeExecutionTargetMessage(
                 : {}),
               ...(context?.dispatchOrigin
                 ? { dispatchOrigin: context.dispatchOrigin }
+                : {}),
+              ...(context?.resourceAdmissionIntent
+                ? { resourceAdmissionIntent: context.resourceAdmissionIntent }
                 : {}),
               ...(input.skillExperience
                 ? { skillExperience: input.skillExperience }
@@ -7780,7 +7828,10 @@ export async function executeExecutionTargetMessage(
  * foreground chat has no equivalent field or route.
  */
 export async function handoffExecutionTargetMessage(
-  input: AuthorityBearingForegroundMessageInput & { idempotencyKey: string },
+  input: AuthorityBearingForegroundMessageInput & {
+    idempotencyKey: string;
+    stagedHandoff?: StagedConversationHandoff;
+  },
   orchestrationService?: OrchestrationService,
 ): Promise<ForegroundMessageHandle> {
   if (input.target.environment.kind !== 'current') {
@@ -7791,7 +7842,10 @@ export async function handoffExecutionTargetMessage(
   return executeExecutionTargetMessage(
     {
       ...input,
-      handoffIntent: createConversationHandoffIntent(input.idempotencyKey),
+      handoffIntent: createConversationHandoffIntent(
+        input.idempotencyKey,
+        input.stagedHandoff,
+      ),
     },
     orchestrationService,
   );

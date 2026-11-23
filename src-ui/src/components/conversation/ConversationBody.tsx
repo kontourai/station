@@ -4,6 +4,7 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import {
   ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
+  isAcpFamilyEngine,
   isSteerConflictCode,
 } from '@kontourai/station-contracts/provider';
 import { MCP_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider-failure';
@@ -19,9 +20,10 @@ import {
 } from '@kontourai/station-sdk';
 import { listConversationInbox } from '@kontourai/station-sdk/client';
 import {
-  TURN_INTERRUPTED_CONTINUE_PROMPT,
   turnInterruptedContinueClientTurnId,
+  turnInterruptedContinuePrompt,
 } from '@kontourai/station-shared/runtime-event-projection';
+import { StatusBadge } from '@kontourai/ui/react';
 import React, {
   type RefObject,
   useCallback,
@@ -45,6 +47,7 @@ import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useScopedProjectChatDefaultsQuery } from '../../contexts/ProjectsContext';
 import { useWorkObservation } from '../../contexts/work-observation';
 import { BoundBrowserActivityProvider } from '../../float-over-chat/BoundBrowserActivityProvider';
+import { useEngineStartWait } from '../../hooks/orchestration/engineStartWaits';
 import { resyncOrchestrationEventStream } from '../../hooks/orchestration/ensureOrchestrationEventStream';
 import { useStreamCatchingUp } from '../../hooks/orchestration/heldDuringCatchUp';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
@@ -120,6 +123,7 @@ import type {
   MessageResendRequest,
 } from '../chat/fork-turn-source';
 import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
+import { interruptionNoticeReason } from '../chat/message-bubble/visibleContent';
 import { outboxNeedsReview } from '../chat/pendingMessages';
 import type { OutboxRows } from '../chat/QueuedMessages';
 import { SessionRewindProvider } from '../chat/SessionRewind';
@@ -347,6 +351,26 @@ export interface ConversationBodyProps {
   stationApprovalModeDefault?: unknown;
   toolPolicyDelivery?: ToolPolicyDelivery;
   availableModels: SelectableModel[];
+  stagedAgentChange?: Pick<
+    ReturnType<
+      typeof import('../chat-dock/useStagedAgentChange').useStagedAgentChange
+    >,
+    | 'pending'
+    | 'canRetry'
+    | 'canWithdraw'
+    | 'withdraw'
+    | 'changeModel'
+    | 'changeOption'
+    | 'send'
+    | 'undo'
+  > & {
+    selection?: NonNullable<
+      ReturnType<
+        typeof import('../chat-dock/useStagedAgentChange').useStagedAgentChange
+      >['selected']
+    >;
+    models: SelectableModel[];
+  };
   executionModels?: SelectableModel[];
   onExecutionModelSelect?: (model?: SelectableModel) => void;
   modelsLoading?: boolean;
@@ -391,6 +415,11 @@ export interface ConversationBodyProps {
  * message before it, skipping the `[SYSTEM_EVENT]` markers that are themselves
  * stored with a user role (#797).
  *
+ * When the marker and that message both name a turn, they must name the same
+ * one. A failed turn with no prompt of its own (one the engine or an
+ * automation opened) has nothing to send again, and the message before it
+ * belongs to an earlier turn.
+ *
  * Returns the attachments alongside the text: the server now persists the
  * turn's `file` parts, so a resend that carried only the text would silently
  * drop an image the user had attached — a recovery affordance that quietly
@@ -416,6 +445,9 @@ export function findPrecedingUserTurn(
     if (text.startsWith('[SYSTEM_EVENT]')) {
       continue;
     }
+    const markerTurnId = messages[markerIndex]?.turnId;
+    if (markerTurnId && message.turnId && message.turnId !== markerTurnId)
+      return null;
     // Every file part, whether or not this read carried its bytes. Filtering
     // to inline ones here is what made a retry silently text-only once
     // byte-budgeted reads became the steady state (station#3385); resolving
@@ -596,6 +628,7 @@ function LiveConversationBody({
   stationApprovalModeDefault,
   toolPolicyDelivery,
   availableModels,
+  stagedAgentChange,
   executionModels,
   onExecutionModelSelect,
   modelsLoading = false,
@@ -716,9 +749,8 @@ function LiveConversationBody({
           credentialState: mentionCredentialEvidence.credentialState,
         })
       : null;
-  const { data: acpConnections = [] } = useACPConnections(
-    !station || station.routeKind === 'host',
-  );
+  const { data: acpConnections = [], isSuccess: acpConnectionsVerified } =
+    useACPConnections(!station || station.routeKind === 'host');
   const activeAcpConnection = useMemo(
     () =>
       acpConnections.find(
@@ -756,7 +788,15 @@ function LiveConversationBody({
   // #2424: `unverified` refuses writes and shows the same recovery notice, but
   // is a failed check rather than a verdict — only `read-only` may say so.
   const unverifiedOpen = openPhase === 'unverified';
-  const recoveryOpen = openPhase === 'read-only' || unverifiedOpen;
+  const removedEngine =
+    (!station || station.routeKind === 'host') &&
+    acpConnectionsVerified &&
+    isAcpFamilyEngine(activeOrchestrationSession?.provider) &&
+    Boolean(activeSession.agentConnectionId) &&
+    !activeAcpConnection &&
+    !turnInFlight;
+  const recoveryOpen =
+    openPhase === 'read-only' || unverifiedOpen || removedEngine;
   const busyOpen = openPhase === 'busy';
   // A chat reopened mid-turn resolves `busy`: it cannot start a continuation,
   // but its open turn still takes Steer or Queue, as it does in the tab that
@@ -866,11 +906,25 @@ function LiveConversationBody({
   }, [chatInput.textareaRef]);
   const streamCatchingUp = useStreamCatchingUp(apiBase);
   // Live chat status shares the composer rail; replay keeps its recorded rows.
-  const { pill: statusPill, statusInPill } = useChatStatusPill({
+  const {
+    pill: statusPill,
+    statusInPill,
+    stopInPill,
+  } = useChatStatusPill({
     activeSession,
+    sessionSummary:
+      activeOrchestrationSessionRead === 'error'
+        ? null
+        : activeOrchestrationSession,
     streamStatus,
     turnLive: isTurnStreamLive(activeSession),
     enabled: !activeSession.replay,
+    stopControl: turnInFlight && (
+      <ConversationStopControl
+        onCancel={chatInput.handleCancel}
+        stopPending={!!activeSession.stopPending}
+      />
+    ),
     windowRequests,
     observationUnavailable: observationUnavailable || resyncPending,
     resyncPending,
@@ -1217,6 +1271,7 @@ function LiveConversationBody({
     ),
   });
 
+  const stagedSelection = stagedAgentChange?.selection;
   const handleSendWithContext = useCallback(
     (intent?: 'steer'): Promise<void> => {
       // Ambient context travels OUT-OF-BAND (#685): the server composes it into
@@ -1228,6 +1283,7 @@ function LiveConversationBody({
         getComposedContext(),
         chatInput.input,
       );
+      if (stagedAgentChange) return stagedAgentChange.send(ambientContext);
       return chatInput.handleSend(undefined, undefined, {
         ambientContext,
         ...(intent === 'steer'
@@ -1235,7 +1291,7 @@ function LiveConversationBody({
           : { queueOnBusy: true, queueFilesOnBusy: queueTakesFiles }),
       });
     },
-    [getComposedContext, chatInput, queueTakesFiles],
+    [getComposedContext, chatInput, queueTakesFiles, stagedAgentChange],
   );
   const nativeSteering =
     sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
@@ -1258,6 +1314,20 @@ function LiveConversationBody({
   const turnProgressSilence = activeSession.conversationActivity
     ? activeSession.conversationActivity.progressSilence
     : activeOrchestrationSession?.turnProgress?.progressSilence;
+
+  // #4568: Station's record that this chat's engine start is queued behind
+  // another engine start: the Session's summary, or, for a brand-new chat
+  // whose first start has no Session yet, the stream's wait frame for the id
+  // it was sent under. Only while a send is in flight, so a stale read after
+  // the send settled claims nothing; the composer's Stop cancels it.
+  const streamedEngineStartWait = useEngineStartWait(apiBase, [
+    activeSession.currentSessionId,
+    activeSession.conversationId,
+    activeSession.id,
+  ]);
+  const engineStartWait = isTurnInFlight(activeSession)
+    ? (activeOrchestrationSession?.engineStartWait ?? streamedEngineStartWait)
+    : undefined;
 
   // TTS readback when streaming ends
   const prevStatusRef = useRef(isExecutionActive);
@@ -1409,13 +1479,13 @@ function LiveConversationBody({
   sendComposedRef.current = chatInput.sendComposedMessage;
   const continuingInterruptedRef = useRef(new Set<string>());
   const continueInterruptedTurn = useCallback(
-    async (boundaryId: string) => {
+    async (boundaryId: string, prompt: string) => {
       const continuing = continuingInterruptedRef.current;
       if (continuing.has(boundaryId)) return;
       continuing.add(boundaryId);
       try {
         await sendComposedRef.current(
-          TURN_INTERRUPTED_CONTINUE_PROMPT,
+          prompt,
           turnInterruptedContinueClientTurnId(boundaryId),
         );
       } catch (error) {
@@ -1449,7 +1519,15 @@ function LiveConversationBody({
       return boundaryId
         ? {
             label: 'Continue',
-            onClick: () => void continueInterruptedTurn(boundaryId),
+            // The prompt follows the notice's reason: an engine that ended
+            // under a running Station is not a restart.
+            onClick: () =>
+              void continueInterruptedTurn(
+                boundaryId,
+                turnInterruptedContinuePrompt(
+                  interruptionNoticeReason(msg.content),
+                ),
+              ),
           }
         : undefined;
     },
@@ -2800,9 +2878,20 @@ function LiveConversationBody({
             title:
               activeSession.conversationOpenState?.conversation.title ??
               activeSession.title,
-            state: unverifiedOpen
-              ? 'unverified'
-              : activeSession.conversationOpenState?.status,
+            state: removedEngine
+              ? 'engine-disconnected'
+              : unverifiedOpen
+                ? 'unverified'
+                : activeSession.conversationOpenState?.status,
+            onContinue:
+              !unverifiedOpen &&
+              !turnInFlight &&
+              !busyOpen &&
+              !secondaryActions?.handoffDisabled &&
+              callerMayContinue &&
+              (!station || station.routeKind === 'host')
+                ? (onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff)
+                : undefined,
             // Retry re-reads the open (`GET /api/conversations/:id/open`),
             // the read this client already makes to see the chat. Start new
             // chat follows the server's `callerAccess.startChat` (`onNewChat`
@@ -2873,6 +2962,21 @@ function LiveConversationBody({
         `isTurnInFlight` gates it so a stale projection read after the turn
         settled cannot claim a live stall.
       */}
+      {engineStartWait && (
+        <div
+          role="status"
+          data-testid="chat-dock-engine-start-wait"
+          style={{
+            display: 'flex',
+            margin: '0 var(--k-space-3) var(--k-space-2)',
+          }}
+        >
+          <StatusBadge
+            status="Waiting for another engine to start"
+            tone="caution"
+          />
+        </div>
+      )}
       {turnProgressSilence &&
         turnInFlight &&
         activeSession.activityHint?.kind !== 'retrying' && (
@@ -2958,20 +3062,25 @@ function LiveConversationBody({
           )}
           <ConversationComposer
             activity={
-              <>
-                {activeSession.conversationId &&
-                !activeSession.replay &&
-                (!station || station.routeKind === 'host') ? (
+              activeSession.conversationId &&
+              !activeSession.replay &&
+              (!station || station.routeKind === 'host') ? (
+                <>
                   <AgentScheduleNotes
+                    key={activeSession.conversationId}
                     conversationId={activeSession.conversationId}
                     refreshKey={agentScheduleRefreshKey(
                       activeSession.conversationActivity?.openTurn?.turnId,
                       activeSession.streamingMessage?.contentParts,
                     )}
-                  />
-                ) : null}
-                {statusPill}
-              </>
+                  >
+                    {statusInPill ? statusPill : null}
+                  </AgentScheduleNotes>
+                  {!statusInPill && statusPill}
+                </>
+              ) : (
+                statusPill
+              )
             }
             contextMeter={
               showContextMeter && activeSession.conversationId ? (
@@ -2992,6 +3101,33 @@ function LiveConversationBody({
             sessionId={activeSession.id}
             sendFailureNotice={sendFailureNotice}
             composerNotice={settled ? SETTLED_COMPOSER_NOTICE : undefined}
+            stagedAgentNotice={
+              stagedAgentChange
+                ? {
+                    label: stagedAgentChange.pending
+                      ? stagedAgentChange.pending.sending
+                        ? 'Sending Agent change…'
+                        : 'Agent change unconfirmed'
+                      : `Next message: ${stagedSelection?.agent.name} · ${stagedSelection?.executionAgent?.engineDisplayName ?? stagedSelection?.agent.engineDisplayName ?? stagedSelection?.connectionId ?? 'Station'} · ${stagedSelection?.modelId ?? 'Agent default'}`,
+                    onCheck:
+                      stagedAgentChange.pending &&
+                      !stagedAgentChange.pending.sending
+                        ? () =>
+                            void (stagedAgentChange.canWithdraw
+                              ? stagedAgentChange.withdraw()
+                              : stagedAgentChange.send())
+                        : undefined,
+                    checkLabel: stagedAgentChange.canWithdraw
+                      ? 'Withdraw Send'
+                      : stagedAgentChange.canRetry
+                        ? 'Retry Send'
+                        : 'Check status',
+                    onUndo: stagedAgentChange.pending
+                      ? undefined
+                      : stagedAgentChange.undo,
+                  }
+                : undefined
+            }
             queuedRetryNotice={queuedRetryNotice}
             activeConversationId={activeSession.conversationId}
             input={chatInput.input}
@@ -3020,6 +3156,7 @@ function LiveConversationBody({
             }
             sendRefused={!callerMayContinue || workspaceRefusedWithoutNewChat}
             turnInFlight={turnInFlight}
+            stopInActivity={stopInPill}
             busyFollowUp={busyFollowUp}
             busyQueueTakesFiles={queueTakesFiles}
             busySteeringUnavailableReason={steeringUnavailableReason}
@@ -3028,7 +3165,12 @@ function LiveConversationBody({
             stopPending={!!activeSession.stopPending}
             modelSupportsAttachments={modelSupportsAttachments}
             fileAttachmentsSupported={fileAttachmentsSupported}
-            modelProviderLabel={modelProviderLabel}
+            modelProviderLabel={
+              stagedSelection
+                ? (stagedSelection.executionAgent ?? stagedSelection.agent)
+                    .engineDisplayName
+                : modelProviderLabel
+            }
             executionEngineLabel={executionEngineLabel}
             executionEngineId={
               engineIdentity.configurationNamesEngine
@@ -3037,32 +3179,61 @@ function LiveConversationBody({
             }
             agentEngineMove={agentEngineMove}
             modelProviders={modelProviders}
-            currentProviderId={activeSession.providerId}
+            currentProviderId={
+              stagedSelection
+                ? stagedSelection.connectionId
+                : activeSession.providerId
+            }
             fontSize={chatFontSize}
             dockHeight={dockHeight}
-            currentModel={chatInput.currentModel}
+            currentModel={
+              stagedAgentChange
+                ? stagedSelection?.modelId
+                : chatInput.currentModel
+            }
             currentModelSource={
-              activeSession.requestedModel === null
-                ? (activeSession.defaultModelSource ?? 'agent default')
-                : (activeSession.requestedModelSource ??
-                  activeSession.modelSource)
+              stagedSelection
+                ? stagedSelection.modelId
+                  ? 'session override'
+                  : 'agent default'
+                : activeSession.requestedModel === null
+                  ? (activeSession.defaultModelSource ?? 'agent default')
+                  : (activeSession.requestedModelSource ??
+                    activeSession.modelSource)
             }
             canModelSelect={
-              chatInput.canModelSelect || hasExecutionAlternatives
+              stagedAgentChange
+                ? !stagedAgentChange.pending &&
+                  stagedAgentChange.models.length > 0
+                : chatInput.canModelSelect || hasExecutionAlternatives
             }
             modelSelectionReason={chatInput.modelSelectionReason}
             modelsStale={
-              hasExecutionAlternatives ? false : chatInput.modelsStale
+              stagedAgentChange || hasExecutionAlternatives
+                ? false
+                : chatInput.modelsStale
             }
             modelsLoading={modelsLoading}
-            agentDefaultModel={agentDefaultModelId}
+            agentDefaultModel={
+              stagedAgentChange
+                ? ((stagedSelection?.executionAgent ?? stagedSelection?.agent)
+                    ?.execution?.modelId ?? undefined)
+                : (agentDefaultModelId ?? undefined)
+            }
             defaultModelSource={activeSession.defaultModelSource}
-            availableModels={availableModels}
-            pickerModels={pickerModels}
-            currentExecutionAgentId={activeSession.executionAgentId}
+            availableModels={stagedAgentChange?.models ?? availableModels}
+            pickerModels={stagedAgentChange?.models ?? pickerModels}
+            currentExecutionAgentId={
+              stagedAgentChange ? undefined : activeSession.executionAgentId
+            }
             modelQuery={chatInput.modelQuery}
-            agentConnectionId={activeSession.agentConnectionId}
+            agentConnectionId={
+              stagedSelection
+                ? stagedSelection.connectionId
+                : activeSession.agentConnectionId
+            }
             modelRuntimeOptions={
+              stagedSelection?.options ??
               activeSession.requestedProviderOptions ??
               activeSession.providerOptions
             }
@@ -3073,7 +3244,10 @@ function LiveConversationBody({
             }
             agentIcon={agent && <AgentIcon agent={agent} size="small" />}
             agentLabel={
-              agent?.name ?? activeSession.agentName ?? activeSession.agentSlug
+              stagedSelection?.agent.name ??
+              agent?.name ??
+              activeSession.agentName ??
+              activeSession.agentSlug
             }
             agentRoute={
               activeOrchestrationSession?.modelRoute
@@ -3083,10 +3257,15 @@ function LiveConversationBody({
             onOpenAgentHandoff={
               station && station.routeKind !== 'host'
                 ? undefined
-                : (onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff)
+                : stagedAgentChange?.pending
+                  ? undefined
+                  : (onOpenAgentHandoff ?? secondaryActions?.onOpenHandoff)
             }
             agentHandoffTriggerRef={agentHandoffTriggerRef}
-            agentHandoffDisabled={secondaryActions?.handoffDisabled}
+            agentHandoffDisabled={
+              Boolean(stagedAgentChange?.pending) ||
+              secondaryActions?.handoffDisabled
+            }
             agentHandoffDisabledReason={secondaryActions?.handoffDisabledReason}
             executionMode={activeSession.executionMode}
             approvalModeIsNewSession={approvalModeIsNewSession}
@@ -3158,6 +3337,10 @@ function LiveConversationBody({
             onRemoveAttachment={chatInput.handleRemoveAttachment}
             onClearAttachments={chatInput.handleClearAttachments}
             onModelSelect={(model) => {
+              if (stagedAgentChange) {
+                stagedAgentChange.changeModel(model.id);
+                return;
+              }
               if (
                 model.executionAgentId !== activeSession.executionAgentId &&
                 onExecutionModelSelect
@@ -3169,6 +3352,10 @@ function LiveConversationBody({
               }
             }}
             onModelReset={() => {
+              if (stagedAgentChange) {
+                stagedAgentChange.changeModel();
+                return;
+              }
               if (activeSession.executionAgentId) {
                 if (engineResetBlockedReason || !onExecutionModelSelect) return;
                 chatInput.handleModelClose();
@@ -3185,11 +3372,12 @@ function LiveConversationBody({
             }
             onModelClose={chatInput.handleModelClose}
             onModelOpen={
-              hasExecutionAlternatives
+              stagedAgentChange || hasExecutionAlternatives
                 ? chatInput.openModelForExecution
                 : chatInput.handleModelOpen
             }
             onModelRuntimeOptionChange={
+              stagedAgentChange?.changeOption ??
               chatInput.handleModelRuntimeOptionChange
             }
             onApprovalModeChange={chatInput.handleApprovalModeChange}

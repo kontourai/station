@@ -1,0 +1,7 @@
+{
+  "revision": "6bdd4ce6cec2b1f13e88f04c43baf0adb5217a1c",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated shipped topics differ only by the module-map scheduler sentence on jobId versus the slug name and optional displayName; the scheduled-jobs topic claims are unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}

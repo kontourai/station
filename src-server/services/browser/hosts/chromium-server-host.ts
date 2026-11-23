@@ -242,6 +242,22 @@ export const BEST_EFFORT_DENIED_PERMISSIONS = [
 
 const POPUP_URL_GRACE_MS = 3_000;
 
+/**
+ * How long a popup may take to be adopted (attached, admitted, set up)
+ * before it is closed and its tab slot released.
+ */
+const POPUP_ADOPTION_TIMEOUT_MS = 15_000;
+
+/** One popup adoption: how it reports admission, and how it is abandoned. */
+interface PopupAttempt {
+  /** Settles the popup's held document request: continue or fail. */
+  admit(accepted: boolean): void;
+  /** Set once the adoption timed out: it must not admit after that. */
+  abandoned: boolean;
+  /** Releases its in-flight tab slot (`creating`); idempotent. */
+  release(): void;
+}
+
 /** A launch failure recognised from the browser's own stderr. */
 export type ChromiumLaunchFailure = 'sandbox-unavailable';
 
@@ -407,6 +423,8 @@ export interface ChromiumServerHostOptions {
   egress?: { lookup?: EgressLookup };
   launcher?: ChromiumLauncher;
   launchTimeoutMs?: number;
+  /** Test seam: how long a popup adoption may take. */
+  popupAdoptionTimeoutMs?: number;
   /** Diagnostics sink for non-fatal enforcement events. */
   onEvent?: (event: ChromiumHostEvent) => void;
 }
@@ -783,6 +801,16 @@ interface Running {
   created: Set<string>;
   /** Page targets awaiting the untracked-target check. */
   pendingUntracked: Map<string, NodeJS.Timeout>;
+  /**
+   * Targets this host closed, until the browser reports them destroyed:
+   * their late events are neither a new popup nor an untracked page.
+   */
+  closing: Set<string>;
+  /** Each target's current main-frame page-world script context. */
+  mainWorlds: Map<
+    string,
+    { id: number; uniqueId: string; origin: string | undefined }
+  >;
   /** One-shot documents this host serves to its own targets' main frames. */
   served: Map<string, string>;
   /** Recently destroyed targets: a late info event must not re-close them. */
@@ -801,6 +829,23 @@ export const SERVED_DOCUMENT_URL = 'http://station-document.invalid/';
 
 /** Destroyed target ids remembered against late `targetInfoChanged` events. */
 const DESTROYED_TARGET_MEMORY = 256;
+
+/**
+ * Closed-but-not-yet-destroyed ids are bounded the same way, oldest dropped.
+ * An id evicted from `closing` is still ignored while `destroyed` holds it.
+ * One evicted from both (256 other closes with no destroyed report for it
+ * since, which a live browser does not do) would, on a late info event, be
+ * treated as an unknown page again: the popup or untracked-page policy then
+ * decides and closes it, the same as for any page this host never saw.
+ */
+const CLOSING_TARGET_MEMORY = 256;
+
+/** Remember a closed target id, dropping the oldest past the bound. */
+function rememberClosing(closing: Set<string>, targetId: string): void {
+  closing.add(targetId);
+  if (closing.size > CLOSING_TARGET_MEMORY)
+    closing.delete(closing.values().next().value!);
+}
 
 /** Grace before an unknown page target (not ours, not a popup) is closed. */
 const UNTRACKED_TARGET_GRACE_MS = 1_000;
@@ -1050,6 +1095,15 @@ export class ChromiumServerHost implements BrowserHost {
     return this.guarded;
   }
 
+  mainWorld(targetId: string): string | undefined {
+    return this.running?.mainWorlds.get(targetId)?.uniqueId;
+  }
+
+  mainWorldOrigin(targetId: string, uniqueId: string): string | undefined {
+    const world = this.running?.mainWorlds.get(targetId);
+    return world?.uniqueId === uniqueId ? world.origin : undefined;
+  }
+
   async closeTarget(
     targetId: string,
     origin: CloseOrigin = 'owned-close',
@@ -1059,6 +1113,7 @@ export class ChromiumServerHost implements BrowserHost {
     target?.unsubscribe();
     running.targets.delete(targetId);
     running.created.delete(targetId);
+    rememberClosing(running.closing, targetId);
     this.closeDiagnostic(targetId, origin, 'sent');
     try {
       await running.launch.transport.send('Target.closeTarget', { targetId });
@@ -1251,6 +1306,8 @@ export class ChromiumServerHost implements BrowserHost {
       creating: 0,
       created: new Set(),
       pendingUntracked: new Map(),
+      closing: new Set(),
+      mainWorlds: new Map(),
       served: new Map(),
       destroyed: new Set(),
     };
@@ -1614,6 +1671,7 @@ export class ChromiumServerHost implements BrowserHost {
         const targetId = (params as { targetId?: unknown })?.targetId;
         if (typeof targetId !== 'string') return;
         this.closeDiagnostic(targetId, 'unknown', 'destroyed');
+        running.closing.delete(targetId);
         running.destroyed.add(targetId);
         if (running.destroyed.size > DESTROYED_TARGET_MEMORY)
           running.destroyed.delete(running.destroyed.values().next().value!);
@@ -1786,7 +1844,12 @@ export class ChromiumServerHost implements BrowserHost {
       .targetInfo;
     if (info?.type !== 'page' || typeof info.targetId !== 'string') return;
     const targetId = info.targetId;
-    if (running.targets.has(targetId) || running.created.has(targetId)) return;
+    if (
+      running.targets.has(targetId) ||
+      running.created.has(targetId) ||
+      running.closing.has(targetId)
+    )
+      return;
     // Chromium can report a target's info after it was destroyed; it is gone.
     if (running.destroyed.has(targetId)) return;
     const url = typeof info.url === 'string' ? info.url : '';
@@ -1871,16 +1934,32 @@ export class ChromiumServerHost implements BrowserHost {
     popup.folded = true;
     if (popup.timer) clearTimeout(popup.timer);
     if (this.popupListener) {
-      const adoption = this.adoptPopup(
-        running,
-        popupId,
-        popup.openerTargetId,
-        url,
+      // The popup's own document request stays paused until the popup is
+      // admitted or refused (`admitted`), never until its whole setup is
+      // done: Page.enable on the popup is not answered while that request
+      // is held, so waiting on it deadlocked every adoption.
+      let admit!: (accepted: boolean) => void;
+      const admitted = new Promise<boolean>((resolve) => {
+        admit = resolve;
+      });
+      const attempt: PopupAttempt = {
+        admit: (accepted) => admit(accepted),
+        abandoned: false,
+        release: () => {},
+      };
+      const adoption = withTimeout(
+        this.adoptPopup(running, popupId, popup.openerTargetId, url, attempt),
+        this.options.popupAdoptionTimeoutMs ?? POPUP_ADOPTION_TIMEOUT_MS,
+        'popup adoption',
       ).catch(async () => {
+        attempt.abandoned = true;
+        attempt.release();
         await this.closeTarget(popupId, 'popup-fold').catch(() => {});
         return false;
       });
-      running.popupAdoptions.set(popupId, adoption);
+      // A refusal or failure before admission fails the held request.
+      void adoption.then((accepted) => admit(accepted));
+      running.popupAdoptions.set(popupId, admitted);
       void adoption.finally(() => {
         running.popups.delete(popupId);
         running.popupAdoptions.delete(popupId);
@@ -1919,6 +1998,7 @@ export class ChromiumServerHost implements BrowserHost {
     targetId: string,
     openerTargetId: string,
     url: string | undefined,
+    attempt: PopupAttempt,
   ): Promise<boolean> {
     const opener = running.targets.get(openerTargetId);
     if (
@@ -1932,11 +2012,18 @@ export class ChromiumServerHost implements BrowserHost {
     }
     const transport = running.launch.transport;
     running.creating += 1;
+    let holding = true;
+    attempt.release = () => {
+      if (!holding) return;
+      holding = false;
+      running.creating -= 1;
+    };
     try {
       const { sessionId } = await transport.send<{ sessionId: string }>(
         'Target.attachToTarget',
         { targetId, flatten: true },
       );
+      if (attempt.abandoned) return false;
       this.linkDiagnosticTarget(targetId, sessionId);
       const unsubscribe = this.watchTarget(running, targetId, sessionId);
       running.targets.set(targetId, {
@@ -1944,6 +2031,23 @@ export class ChromiumServerHost implements BrowserHost {
         unsubscribe,
         viewport: { ...opener.viewport },
       });
+      if (
+        attempt.abandoned ||
+        this.running !== running ||
+        running.targets.get(openerTargetId) !== opener ||
+        !running.targets.has(targetId) ||
+        !this.popupListener?.(
+          openerTargetId,
+          { targetId, cdpSessionId: sessionId },
+          url,
+        )
+      ) {
+        await this.closeTarget(targetId);
+        return false;
+      }
+      // Admitted: its document request may load now, and the setup below
+      // (which needs that document) is answered.
+      attempt.admit(true);
       await transport.send('Page.enable', {}, sessionId);
       if (this.options.faviconEnabled?.() === true)
         await transport.send(
@@ -1962,22 +2066,9 @@ export class ChromiumServerHost implements BrowserHost {
           { enabled: true },
           sessionId,
         );
-      if (
-        this.running !== running ||
-        running.targets.get(openerTargetId) !== opener ||
-        !running.targets.has(targetId) ||
-        !this.popupListener?.(
-          openerTargetId,
-          { targetId, cdpSessionId: sessionId },
-          url,
-        )
-      ) {
-        await this.closeTarget(targetId);
-        return false;
-      }
-      return true;
+      return !attempt.abandoned;
     } finally {
-      running.creating -= 1;
+      attempt.release();
     }
   }
 
@@ -2190,7 +2281,9 @@ export class ChromiumServerHost implements BrowserHost {
     const offParsed = transport.on('Page.domContentEventFired', readTitle);
     const offLoaded = transport.on('Page.loadEventFired', readTitle);
     const offCommitted = this.watchCommittedUrls(running, targetId, sessionId);
+    const offMainWorld = this.watchMainWorld(running, targetId, sessionId);
     return () => {
+      offMainWorld();
       offIconNavigation();
       offIconResponse();
       offIconFinished();
@@ -2198,6 +2291,77 @@ export class ChromiumServerHost implements BrowserHost {
       offParsed();
       offLoaded();
       offCommitted();
+    };
+  }
+
+  /**
+   * Track the main frame's page-world script context from `Runtime` events.
+   * Subscribed at attach, before anyone can enable `Runtime` on the session,
+   * so the enable's report of existing contexts is never missed. A context
+   * is forgotten when it is destroyed or cleared, so a navigation never
+   * leaves a stale one here for longer than its events take to arrive (and
+   * a stale one names a context the browser no longer runs anything in).
+   */
+  private watchMainWorld(
+    running: Running,
+    targetId: string,
+    sessionId: string,
+  ): () => void {
+    const transport = running.launch.transport;
+    const forget = () => running.mainWorlds.delete(targetId);
+    const offs = [
+      transport.on('Runtime.executionContextCreated', (params, session) => {
+        if (session !== sessionId) return;
+        const context = (
+          params as {
+            context?: {
+              id?: unknown;
+              uniqueId?: unknown;
+              origin?: unknown;
+              auxData?: { isDefault?: unknown; frameId?: unknown };
+            };
+          }
+        )?.context;
+        // A top-level page's main frame id is its target id.
+        if (
+          context?.auxData?.isDefault !== true ||
+          context.auxData.frameId !== targetId ||
+          typeof context.id !== 'number' ||
+          typeof context.uniqueId !== 'string' ||
+          context.uniqueId === ''
+        )
+          return;
+        running.mainWorlds.set(targetId, {
+          id: context.id,
+          uniqueId: context.uniqueId,
+          // The browser's own report of the context's origin, which a page
+          // cannot alter: an opaque origin reads "://".
+          origin:
+            typeof context.origin === 'string' ? context.origin : undefined,
+        });
+      }),
+      transport.on('Runtime.executionContextDestroyed', (params, session) => {
+        if (session !== sessionId) return;
+        const current = running.mainWorlds.get(targetId);
+        const destroyed = params as {
+          executionContextId?: unknown;
+          executionContextUniqueId?: unknown;
+        };
+        if (
+          current &&
+          (destroyed?.executionContextUniqueId === current.uniqueId ||
+            (destroyed?.executionContextUniqueId === undefined &&
+              destroyed?.executionContextId === current.id))
+        )
+          forget();
+      }),
+      transport.on('Runtime.executionContextsCleared', (_params, session) => {
+        if (session === sessionId) forget();
+      }),
+    ];
+    return () => {
+      for (const off of offs) off();
+      forget();
     };
   }
 

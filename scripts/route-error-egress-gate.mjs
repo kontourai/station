@@ -69,6 +69,17 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   // What would make this unsafe: wrapping a caught error's message in either
   // class, or interpolating file contents or host paths into one.
   'src-server/routes/projects/terminal-session-routes.ts :: function createTerminalSessionRoutes :: error.message :: 1',
+  // A refused repository source in New Project. `error` is narrowed by
+  // `instanceof RepositoryAcquisitionInputError`, constructed only in
+  // `repository-acquisition-service.ts`'s `validateSource`, and every one of
+  // its messages is a literal sentence naming the rule the source broke; none
+  // interpolates the source, a path or a caught error.
+  //
+  // What would make this unsafe: interpolating the submitted source or any
+  // caught error's message into that class. Occurrence 2 repeats the same
+  // sentence as the validation reason.
+  'src-server/routes/projects/repository-acquisition-routes.ts :: function failure :: error.message :: 1',
+  'src-server/routes/projects/repository-acquisition-routes.ts :: function failure :: error.message :: 2',
   'src-server/routes/plugins/plugin-config-routes.ts :: route GET /:name/settings :: error.message :: 1',
   'src-server/routes/plugins/plugin-config-routes.ts :: route GET /:name/providers :: error.message :: 1',
   'src-server/routes/plugins/plugin-install-routes.ts :: route POST /preview :: error.message :: 1',
@@ -136,10 +147,10 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
   // peer text, or store content to any of these constructors, or widening
   // a branch's `instanceof` to a supertype that could carry a caught
   // message. A fifth branch is a new identity and gets reviewed.
-  'src-server/routes/orchestration/orchestration.ts :: route POST /delegations :: error.message :: 1',
-  'src-server/routes/orchestration/orchestration.ts :: route POST /delegations :: error.message :: 2',
-  'src-server/routes/orchestration/orchestration.ts :: route POST /delegations :: error.message :: 3',
-  'src-server/routes/orchestration/orchestration.ts :: route POST /delegations :: error.message :: 4',
+  'src-server/routes/orchestration/orchestration.ts :: function dispatchAuthorizedDelegation :: error.message :: 1',
+  'src-server/routes/orchestration/orchestration.ts :: function dispatchAuthorizedDelegation :: error.message :: 2',
+  'src-server/routes/orchestration/orchestration.ts :: function dispatchAuthorizedDelegation :: error.message :: 3',
+  'src-server/routes/orchestration/orchestration.ts :: function dispatchAuthorizedDelegation :: error.message :: 4',
 ]);
 
 const TRANSPORT_AND_DIAGNOSTIC_BOUNDARIES = [

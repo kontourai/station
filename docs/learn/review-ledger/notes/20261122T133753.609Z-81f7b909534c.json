@@ -1,0 +1,7 @@
+{
+  "revision": "02ae529b1412c6e032a2afd6d32caae6451a8bc0",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rechecked work-facts (#5398 delta: a send waiting or not sent in any chat of the row's conversation reads Queued to send): the map names no WorkFacts field or inbox attention rule.","inputs":["docs/architecture/module-map.md","src-ui/src/views/home/work-facts.ts"]}
+  ]
+}

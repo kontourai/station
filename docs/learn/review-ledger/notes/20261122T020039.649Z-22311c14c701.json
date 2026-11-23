@@ -1,0 +1,7 @@
+{
+  "revision": "10d7f69e2990a9cbfdb2486cfffc0c3e696da913",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Added the four handoff refusal codes beside the predecessor-busy refusal: 409 on the handoff routes, and 409 awaiting-target on an ordinary /chat send; verified against the qualification probes.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/conversation-lineage.ts"]}
+  ]
+}

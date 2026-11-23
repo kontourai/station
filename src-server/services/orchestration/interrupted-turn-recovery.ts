@@ -346,6 +346,28 @@ export interface RecoveredInterruptedTurn {
   readonly turnId: string;
 }
 
+/**
+ * How one recovery pass runs. Boot recovery settles turns whose owning
+ * process died; a runtime pass settles a turn start this process held
+ * (`settleHeldTurnStarts`) after its engine was shown gone.
+ */
+interface RecoveryPassOptions {
+  /** The banner's and recovery abort's reason. */
+  readonly reason: string;
+  /**
+   * Boot only: offer a turn with no recorded ending to `recoverDurableTurn`
+   * (which may carry it on) and list it in `recoveredTurns()` for restart
+   * continuation. A runtime pass does neither: it records the interruption
+   * and leaves continuing to the person.
+   */
+  readonly boot: boolean;
+}
+
+const BOOT_PASS: RecoveryPassOptions = {
+  reason: TURN_INTERRUPTED_MESSAGE,
+  boot: true,
+};
+
 export class InterruptedTurnRecovery {
   /** Aborted by `stop()`: no further pass runs and a backoff ends early. */
   private readonly stopSignal = new AbortController();
@@ -366,6 +388,31 @@ export class InterruptedTurnRecovery {
     this.stopSignal.abort();
     for (const timer of this.slowRetries) clearTimeout(timer);
     this.slowRetries.clear();
+  }
+
+  /**
+   * Settles turn starts this process left held on one thread, exactly as
+   * boot recovery settles a dead owner's (the same request settlement,
+   * abort and banner, idempotent by boundary id), with `reason` as the
+   * banner's text. Call only once the thread's engine is shown gone: no turn
+   * from these rows can still be running. Returns the boundary ids settled;
+   * a row whose settlement did not finish stays held.
+   */
+  async settleHeldTurnStarts(
+    records: readonly SessionTurnBoundaryRecord[],
+    reason: string,
+  ): Promise<string[]> {
+    const eventStore = this.deps.eventStore();
+    if (!eventStore || records.length === 0) return [];
+    const failed = new Set(
+      await this.recoverPass(eventStore, records, records, {
+        reason,
+        boot: false,
+      }),
+    );
+    return records
+      .filter((record) => !failed.has(record))
+      .map((record) => record.boundaryId);
   }
 
   /** #4512: the turns `consume` has settled so far, in the order it did. */
@@ -592,6 +639,7 @@ export class InterruptedTurnRecovery {
     eventStore: EventStore,
     interrupted: readonly SessionTurnBoundaryRecord[],
     pending: readonly SessionTurnBoundaryRecord[],
+    pass: RecoveryPassOptions = BOOT_PASS,
   ): Promise<SessionTurnBoundaryRecord[]> {
     const failed: SessionTurnBoundaryRecord[] = [];
     for (const record of pending) {
@@ -773,6 +821,7 @@ export class InterruptedTurnRecovery {
         if (
           ownEnding === undefined &&
           ownTurnId &&
+          pass.boot &&
           this.deps.recoverDurableTurn
         ) {
           const handoff = await this.deps.recoverDurableTurn({
@@ -970,7 +1019,7 @@ export class InterruptedTurnRecovery {
               turnId: providerTurnId,
               createdAt: now,
               method: 'turn.aborted',
-              reason: TURN_INTERRUPTED_MESSAGE,
+              reason: pass.reason,
               // Carries the marker `TurnAbortedEvent.recoveryTerminal`
               // documents: the boundary-retirement machinery must NOT treat
               // this abort as the turn's own terminal fact (which would
@@ -1015,7 +1064,7 @@ export class InterruptedTurnRecovery {
             sessionId: record.threadId,
             from: 'running',
             to: 'awaiting-approval',
-            reason: TURN_INTERRUPTED_MESSAGE,
+            reason: pass.reason,
             sessionState: 'needs_input',
             transitionReason: 'runtime_exit',
             transitionSource: 'system_recovery',
@@ -1056,7 +1105,7 @@ export class InterruptedTurnRecovery {
               parts: [
                 {
                   type: 'text',
-                  text: `[SYSTEM_EVENT] [TURN_INTERRUPTED] ${TURN_INTERRUPTED_MESSAGE}`,
+                  text: `[SYSTEM_EVENT] [TURN_INTERRUPTED] ${pass.reason}`,
                 },
               ],
               metadata: { interruptedTurnBoundaryId: record.boundaryId },
@@ -1071,7 +1120,7 @@ export class InterruptedTurnRecovery {
           ownerId: record.ownerId,
           state: record.state,
         });
-        if (ownTurnId)
+        if (ownTurnId && pass.boot)
           this.recovered.push({
             threadId: record.threadId,
             boundaryId: record.boundaryId,

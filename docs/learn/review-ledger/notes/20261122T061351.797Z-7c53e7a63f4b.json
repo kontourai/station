@@ -1,0 +1,7 @@
+{
+  "revision": "09c82d735e478d29bb920425840278b4321bad34",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#5389: added ConversationStatsResponse.engines (ConversationEngineUsage) and its parser refusal to the runtime row; checked against packages/contracts/src/runtime.ts and its contract test.","inputs":["docs/reference/contracts.md","packages/contracts/src/runtime.ts","src-server/runtime/conversation/conversation-stats-view.ts","src-server/services/orchestration/session-transcript-reads.ts"]}
+  ]
+}

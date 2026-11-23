@@ -19,6 +19,10 @@ import {
   providerReportsContextOccupancyOnly,
   providerUsageScope,
 } from '@kontourai/station-shared/usage-fold';
+import {
+  foldLineageUsageEvents,
+  type LineageUsageAggregate,
+} from '@kontourai/station-shared/usage-lineage-fold';
 import type { OrchestrationSessionUsage } from '../../analytics/usage-aggregator-state.js';
 import {
   CatalogUsagePricingSnapshotReader,
@@ -61,7 +65,7 @@ const CONTEXT_OCCUPANCY_ONLY_REASON =
  * the rows `EventStore.listUsageEventPayloads` selects, or
  * {@link foldThreadUsage}. A checkpoint under another version rebuilds once.
  */
-const USAGE_PROJECTION_VERSION = 'usage-projection-v1';
+const USAGE_PROJECTION_VERSION = 'usage-projection-v2';
 /** How long one synchronous slice of a pass may hold the event loop. */
 const USAGE_PROJECTION_SLICE_MS = 16;
 /** Refolded entries are committed in batches of about this many bytes. */
@@ -171,6 +175,10 @@ export class SessionTranscriptReads {
    * under its own budget, so a long reply must count at its real size. The
    * read check runs first; nothing is listed or resolved for a caller that
    * may not read the Session.
+   *
+   * Ids are the stable, event-derived ones the conversation reader shows, so
+   * a fork's branch point and copied rows name the same messages the person
+   * picked from; a seed renders text only and never reads them.
    */
   readSessionSeedMessages(
     threadId: string,
@@ -181,6 +189,7 @@ export class SessionTranscriptReads {
     }
     return projectRuntimeEventsToMessages(
       this.deps.listResolvedEventPayloads(threadId),
+      { stableIds: true },
     );
   }
 
@@ -246,20 +255,21 @@ export class SessionTranscriptReads {
   }
 
   /**
-   * #3112: one conversation's usage across its execution Sessions, folded in
-   * lineage order as one event stream, so cumulative figures sum and
-   * "latest" figures (context occupancy, model) come from the newest turn.
-   * A Session the authority cannot read contributes nothing, as in the
-   * conversation message read.
+   * #3112: one conversation's usage across its execution Sessions, in
+   * lineage order. #5389: kept per engine (`foldLineageUsageEvents`), so an
+   * engine that reports a running total cannot replace what an earlier engine
+   * counted; "latest" figures (context occupancy, model) still come from the
+   * newest turn. A Session the authority cannot read contributes nothing, as
+   * in the conversation message read.
    */
   readConversationUsage(
     threadIds: readonly string[],
     authority: SessionReadScope,
-  ): SessionUsageAggregate {
-    return foldUsageEvents(
+  ): LineageUsageAggregate {
+    return foldLineageUsageEvents(
       threadIds
         .filter((threadId) => this.deps.canReadSession(threadId, authority))
-        .flatMap((threadId) => this.deps.listUsageEventPayloads(threadId)),
+        .map((threadId) => this.deps.listUsageEventPayloads(threadId)),
       (dropped) => this.deps.reportDroppedUsageFigure(dropped),
     );
   }

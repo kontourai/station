@@ -107,6 +107,7 @@ class ScriptedAdapter implements ProviderAdapterShape {
    */
   nextTurn: 'refuse' | 'fail' | undefined;
   turnGate: Promise<void> | undefined;
+  whenSessionReady?: (threadId: string) => Promise<void>;
   emitInvocation = true;
 
   async sendTurn(input: ProviderSendTurnInput) {
@@ -372,6 +373,87 @@ describe('foreground delivery lookup (GET /conversations/:id/turn-deliveries/:ke
     };
     return { root, store, adapter, service, app, send, lookup };
   }
+
+  test.each(['explicit close', 'stamped warning'] as const)(
+    'refuses a send when %s is observed at readiness before a background settlement',
+    async (closeKind) => {
+      const { adapter, send, service, store } = station();
+      const conversationId = 'conversation:ended-during-send';
+      try {
+        const first = await send(conversationId, 'first');
+        expect(first.status, await first.clone().text()).toBe(200);
+        const {
+          data: { sessionId },
+        } = (await first.json()) as {
+          data: { sessionId: string };
+        };
+        await eventually(() => {
+          expect(
+            store.listEventPayloads(sessionId, ['turn.completed']),
+          ).not.toHaveLength(0);
+        });
+        const before = adapter.turns.length;
+        adapter.whenSessionReady = async (threadId) => {
+          expect(threadId).toBe(sessionId);
+          const fact = {
+            provider: adapter.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+          };
+          adapter.events.push({
+            ...fact,
+            eventId: 'background-question',
+            method: 'request.opened',
+            requestId: 'background',
+            requestType: 'confirmation',
+            title: 'Keep this report?',
+            blocking: false,
+          });
+          adapter.events.push(
+            closeKind === 'explicit close'
+              ? {
+                  ...fact,
+                  eventId: 'close',
+                  method: 'session.state-changed',
+                  sessionId,
+                  from: 'idle',
+                  to: 'completed',
+                  sessionState: 'completed',
+                }
+              : {
+                  ...fact,
+                  eventId: 'close',
+                  method: 'runtime.warning',
+                  severity: 'warning',
+                  message: 'The session has ended.',
+                  sessionState: 'completed',
+                },
+          );
+          adapter.events.push({
+            ...fact,
+            eventId: 'background-settlement',
+            method: 'request.resolved',
+            requestId: 'background',
+            status: 'cancelled',
+            blocking: false,
+          });
+          await eventually(() => {
+            expect(
+              store.listEventPayloads(threadId, ['request.resolved']).at(-1)
+                ?.eventId,
+            ).toBe('background-settlement');
+          });
+        };
+
+        const refused = await send(conversationId, 'second');
+        expect(refused.status).toBe(400);
+        expect(await refused.json()).toMatchObject({ code: 'session_ended' });
+        expect(adapter.turns).toHaveLength(before);
+      } finally {
+        await service.shutdown();
+      }
+    },
+  );
 
   test('a stopped unstarted successor does not make the original conversation delivery ledger unavailable', async () => {
     const { store, service, send } = station();

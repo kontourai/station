@@ -22,6 +22,7 @@ import { CalendarGlyph, TimeGlyph } from '../icons/Glyph';
 import { scheduleText } from './agentScheduleText';
 import './AgentScheduleNotes.css';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
+import { ScheduledCheckBackContext } from '../status/ScheduledCheckBackContext';
 
 const wakeUpKey = (wakeUp: AgentWakeUp) => wakeUp.id;
 const proposalKey = (proposal: AgentJobProposal) => proposal.id;
@@ -39,7 +40,9 @@ const NO_AUTOMATION_PROPOSALS: readonly AutomationProposal[] = [];
 export function AgentScheduleNotes({
   conversationId,
   refreshKey,
+  children,
 }: {
+  children?: ReactNode;
   conversationId: string;
   refreshKey: string;
 }) {
@@ -74,13 +77,6 @@ export function AgentScheduleNotes({
     PRESENCE_FALLBACK_MS,
     loaded,
   );
-  if (
-    wakeUps.list.length === 0 &&
-    proposals.list.length === 0 &&
-    automationProposals.list.length === 0 &&
-    !confirmation
-  )
-    return null;
   const confirmationFailure = automationConfirmationError
     ? describeStationFailure(automationConfirmationError).body
     : undefined;
@@ -88,151 +84,195 @@ export function AgentScheduleNotes({
   const wakeUpBusy = approveWakeUp.isPending || declineWakeUp.isPending;
   const automationBusy =
     confirmAutomationProposal.isPending || declineAutomationProposal.isPending;
-  return (
-    <ul className="agent-schedule-notes" aria-label="Scheduled in this chat">
-      {confirmation ? (
-        <li>
-          <div className="agent-schedule-card" role="status">
-            <p>
-              {confirmation.kind === 'source' ? 'Source' : 'Rule'} saved
-              {confirmation.enabled
-                ? ' and turned on.'
-                : confirmation.kind === 'source'
-                  ? ' and still disabled.'
-                  : ' and still observing.'}
-            </p>
-            {confirmation.requestedEnable && !confirmation.enabled ? (
-              <>
-                {confirmation.message ? <p>{confirmation.message}</p> : null}
-                <p>
-                  Review the saved {confirmation.kind}{' '}
-                  <code className="agent-schedule-card__verbatim">
-                    {confirmation.createdId}
-                  </code>{' '}
-                  with the Station operator.
-                </p>
-              </>
-            ) : null}
+  const renderCheckBack = (item: AgentWakeUp) => (
+    <div className="agent-schedule-notes__note" title={item.note}>
+      <TimeGlyph className="agent-schedule-notes__glyph" />
+      <span className="agent-schedule-notes__text">
+        Checking back at{' '}
+        <time dateTime={item.dueAt}>
+          {clockTime(Date.parse(item.dueAt), now)}
+        </time>
+      </span>
+      <Button
+        size="sm"
+        variant="ghost"
+        pending={cancelWakeUp.isPending && cancelWakeUp.variables === item.id}
+        pendingLabel="Canceling…"
+        disabled={cancelWakeUp.isPending}
+        aria-label={`Cancel check-back at ${clockTime(Date.parse(item.dueAt), now)}`}
+        onClick={() => cancelWakeUp.mutate(item.id)}
+      >
+        Cancel
+      </Button>
+    </div>
+  );
+  const pending =
+    loaded && children
+      ? schedule.wakeUps.filter((item) => item.state === 'pending')
+      : [];
+  const nextDue = Math.min(
+    ...pending.map((item) => Date.parse(item.dueAt)).filter(Number.isFinite),
+  );
+  const inPill = Number.isFinite(nextDue);
+  const visibleWakeUps = inPill
+    ? wakeUps.list.filter(({ item }) => item.state !== 'pending')
+    : wakeUps.list;
+  const scheduleContext = inPill
+    ? {
+        nextTime: clockTime(nextDue, now),
+        notes: (
+          <div className="chat-check-backs">
+            {pending.map((item) => (
+              <div key={item.id}>{renderCheckBack(item)}</div>
+            ))}
           </div>
-        </li>
-      ) : null}
-      {automationProposals.list
-        .filter(({ item }) => item.id !== confirmation?.proposalId)
-        .map(({ item, key, phase }) => (
-          <PresenceRow
-            key={key}
-            phase={phase}
-            onSettled={() => automationProposals.settle(key)}
-          >
-            <AutomationProposalCard
-              proposal={item}
-              busy={automationBusy}
-              confirming={
-                confirmAutomationProposal.isPending &&
-                confirmAutomationProposal.variables?.id === item.id
-              }
-              declining={
-                declineAutomationProposal.isPending &&
-                declineAutomationProposal.variables === item.id
-              }
-              errorMessage={
-                confirmAutomationProposal.variables?.id === item.id
-                  ? confirmationFailure
-                  : declineAutomationProposal.isError &&
-                      declineAutomationProposal.variables === item.id
-                    ? "That didn't go through. Try again."
-                    : undefined
-              }
-              onConfirm={(enable) =>
-                confirmAutomationProposal.mutate({
-                  id: item.id,
-                  kind: item.kind,
-                  enable,
-                })
-              }
-              onDecline={() => declineAutomationProposal.mutate(item.id)}
-            />
-          </PresenceRow>
-        ))}
-      {proposals.list.map(({ item, key, phase }) => (
-        <PresenceRow
-          key={key}
-          phase={phase}
-          onSettled={() => proposals.settle(key)}
+        ),
+      }
+    : null;
+  return (
+    <>
+      {(confirmation ||
+        visibleWakeUps.length > 0 ||
+        proposals.list.length > 0 ||
+        automationProposals.list.length > 0) && (
+        <ul
+          className="agent-schedule-notes"
+          aria-label="Scheduled in this chat"
         >
-          <JobProposalCard
-            proposal={item}
-            now={now}
-            busy={approveProposal.isPending || declineProposal.isPending}
-            approving={
-              approveProposal.isPending &&
-              approveProposal.variables?.id === item.id
-            }
-            declining={
-              declineProposal.isPending && declineProposal.variables === item.id
-            }
-            failed={
-              (approveProposal.isError &&
-                approveProposal.variables?.id === item.id) ||
-              (declineProposal.isError && declineProposal.variables === item.id)
-            }
-            onApprove={() => approveProposal.mutate(item)}
-            onDecline={() => declineProposal.mutate(item.id)}
-          />
-        </PresenceRow>
-      ))}
-      {wakeUps.list.map(({ item, key, phase }) => (
-        <PresenceRow
-          key={key}
-          phase={phase}
-          onSettled={() => wakeUps.settle(key)}
-        >
-          {item.state === 'needs_approval' ? (
-            <CheckBackApprovalCard
-              wakeUp={item}
-              now={now}
-              busy={wakeUpBusy}
-              approving={
-                approveWakeUp.isPending && approveWakeUp.variables === item.id
-              }
-              declining={
-                declineWakeUp.isPending && declineWakeUp.variables === item.id
-              }
-              failed={
-                (approveWakeUp.isError &&
-                  approveWakeUp.variables === item.id) ||
-                (declineWakeUp.isError && declineWakeUp.variables === item.id)
-              }
-              onApprove={() => approveWakeUp.mutate(item.id)}
-              onDecline={() => declineWakeUp.mutate(item.id)}
-            />
-          ) : (
-            <div className="agent-schedule-notes__note" title={item.note}>
-              <TimeGlyph className="agent-schedule-notes__glyph" />
-              <span className="agent-schedule-notes__text">
-                Checking back at{' '}
-                <time dateTime={item.dueAt}>
-                  {clockTime(Date.parse(item.dueAt), now)}
-                </time>
-              </span>
-              <Button
-                size="sm"
-                variant="ghost"
-                pending={
-                  cancelWakeUp.isPending && cancelWakeUp.variables === item.id
-                }
-                pendingLabel="Canceling…"
-                disabled={cancelWakeUp.isPending}
-                aria-label={`Cancel check-back at ${clockTime(Date.parse(item.dueAt), now)}`}
-                onClick={() => cancelWakeUp.mutate(item.id)}
+          {confirmation ? (
+            <li>
+              <div className="agent-schedule-card" role="status">
+                <p>
+                  {confirmation.kind === 'source' ? 'Source' : 'Rule'} saved
+                  {confirmation.enabled
+                    ? ' and turned on.'
+                    : confirmation.kind === 'source'
+                      ? ' and still disabled.'
+                      : ' and still observing.'}
+                </p>
+                {confirmation.requestedEnable && !confirmation.enabled ? (
+                  <>
+                    {confirmation.message ? (
+                      <p>{confirmation.message}</p>
+                    ) : null}
+                    <p>
+                      Review the saved {confirmation.kind}{' '}
+                      <code className="agent-schedule-card__verbatim">
+                        {confirmation.createdId}
+                      </code>{' '}
+                      with the Station operator.
+                    </p>
+                  </>
+                ) : null}
+              </div>
+            </li>
+          ) : null}
+          {automationProposals.list
+            .filter(({ item }) => item.id !== confirmation?.proposalId)
+            .map(({ item, key, phase }) => (
+              <PresenceRow
+                key={key}
+                phase={phase}
+                onSettled={() => automationProposals.settle(key)}
               >
-                Cancel
-              </Button>
-            </div>
-          )}
-        </PresenceRow>
-      ))}
-    </ul>
+                <AutomationProposalCard
+                  proposal={item}
+                  busy={automationBusy}
+                  confirming={
+                    confirmAutomationProposal.isPending &&
+                    confirmAutomationProposal.variables?.id === item.id
+                  }
+                  declining={
+                    declineAutomationProposal.isPending &&
+                    declineAutomationProposal.variables === item.id
+                  }
+                  errorMessage={
+                    confirmAutomationProposal.variables?.id === item.id
+                      ? confirmationFailure
+                      : declineAutomationProposal.isError &&
+                          declineAutomationProposal.variables === item.id
+                        ? "That didn't go through. Try again."
+                        : undefined
+                  }
+                  onConfirm={(enable) =>
+                    confirmAutomationProposal.mutate({
+                      id: item.id,
+                      kind: item.kind,
+                      enable,
+                    })
+                  }
+                  onDecline={() => declineAutomationProposal.mutate(item.id)}
+                />
+              </PresenceRow>
+            ))}
+          {proposals.list.map(({ item, key, phase }) => (
+            <PresenceRow
+              key={key}
+              phase={phase}
+              onSettled={() => proposals.settle(key)}
+            >
+              <JobProposalCard
+                proposal={item}
+                now={now}
+                busy={approveProposal.isPending || declineProposal.isPending}
+                approving={
+                  approveProposal.isPending &&
+                  approveProposal.variables?.id === item.id
+                }
+                declining={
+                  declineProposal.isPending &&
+                  declineProposal.variables === item.id
+                }
+                failed={
+                  (approveProposal.isError &&
+                    approveProposal.variables?.id === item.id) ||
+                  (declineProposal.isError &&
+                    declineProposal.variables === item.id)
+                }
+                onApprove={() => approveProposal.mutate(item)}
+                onDecline={() => declineProposal.mutate(item.id)}
+              />
+            </PresenceRow>
+          ))}
+          {visibleWakeUps.map(({ item, key, phase }) => (
+            <PresenceRow
+              key={key}
+              phase={phase}
+              onSettled={() => wakeUps.settle(key)}
+            >
+              {item.state === 'needs_approval' ? (
+                <CheckBackApprovalCard
+                  wakeUp={item}
+                  now={now}
+                  busy={wakeUpBusy}
+                  approving={
+                    approveWakeUp.isPending &&
+                    approveWakeUp.variables === item.id
+                  }
+                  declining={
+                    declineWakeUp.isPending &&
+                    declineWakeUp.variables === item.id
+                  }
+                  failed={
+                    (approveWakeUp.isError &&
+                      approveWakeUp.variables === item.id) ||
+                    (declineWakeUp.isError &&
+                      declineWakeUp.variables === item.id)
+                  }
+                  onApprove={() => approveWakeUp.mutate(item.id)}
+                  onDecline={() => declineWakeUp.mutate(item.id)}
+                />
+              ) : (
+                renderCheckBack(item)
+              )}
+            </PresenceRow>
+          ))}
+        </ul>
+      )}
+      <ScheduledCheckBackContext.Provider value={scheduleContext}>
+        {children}
+      </ScheduledCheckBackContext.Provider>
+    </>
   );
 }
 

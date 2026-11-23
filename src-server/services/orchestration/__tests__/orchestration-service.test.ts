@@ -13300,7 +13300,7 @@ describe('OrchestrationService', () => {
         input: 'Be terse.\nHello',
         // Transcript-facing text stays the typed text alone.
         displayInput: 'Hello',
-        // Relay-only passthrough is preserved for the station-agent relay.
+        // Raw ambient context accompanies the composed text.
         ambientContext: 'Be terse.',
       }),
     );
@@ -17394,7 +17394,7 @@ describe('OrchestrationService', () => {
     });
 
     // The adapter receives the composed model input, typed display text,
-    // relay-only ambient context, and the server-owned launch plan.
+    // raw ambient context, and the server-owned launch plan.
     expect(claude.sendTurn).toHaveBeenCalledWith(
       expect.objectContaining({
         threadId: 'thread-ambient',
@@ -18733,16 +18733,26 @@ describe('OrchestrationService', () => {
       const reached = new Promise<void>((resolve) => {
         entered = resolve;
       });
-      const read = service.readSession.bind(service);
+      const listSessions = claude.listSessions.bind(claude);
       const spy = vi
-        .spyOn(service, 'readSession')
-        .mockImplementationOnce(async (...args) => {
+        .spyOn(claude, 'listSessions')
+        .mockImplementationOnce(async () => {
+          const sessions = await listSessions();
+          expect(sessions.some((session) => session.threadId === threadId)).toBe(
+            true,
+          );
           entered();
           await held;
-          return read(...args);
+          return sessions;
         });
       const pending = service.dispatch({ type: 'sendTurn', input: original });
-      await reached;
+      await Promise.race([
+        reached,
+        pending.then(() => {
+          throw new Error('Send settled before adapter discovery');
+        }),
+      ]);
+      expect(claude.sendTurn).not.toHaveBeenCalled();
       original.modelOptions!.effort = 'high';
       original.input = 'B';
       original.ambientContext = 'context B';
@@ -23521,20 +23531,26 @@ describe('OrchestrationService', () => {
 
   async function runScriptedSmoke(
     input: Parameters<OrchestrationService['runConnectionSmoke']>[0],
+    advanceAfter: 'turn.completed' | 'turn.started' = 'turn.completed',
   ) {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
-    const terminal = deferred<void>();
+    const published = deferred<void>();
     const unsubscribe = eventBus.subscribe((frame) => {
       if (frame.event !== 'orchestration:event') return;
       const event = frame.data?.event as CanonicalRuntimeEvent | undefined;
-      if (event?.method === 'turn.completed' && event.threadId.startsWith(`station-smoke-${input.provider}-`))
-        terminal.resolve();
+      if (
+        event?.method === advanceAfter &&
+        event.threadId.startsWith(`station-smoke-${input.provider}-`)
+      ) {
+        published.resolve();
+      }
     });
     try {
       const result = service.runConnectionSmoke(input);
-      // Advance the smoke's poll after the fixture's terminal is published.
-      await Promise.race([terminal.promise, result]);
-      await vi.advanceTimersByTimeAsync(100);
+      await Promise.race([published.promise, result]);
+      await vi.advanceTimersByTimeAsync(
+        advanceAfter === 'turn.started' ? input.timeoutMs : 100,
+      );
       return await result;
     } finally {
       unsubscribe();
@@ -24120,13 +24136,16 @@ describe('OrchestrationService', () => {
       });
       return { threadId: input.threadId, turnId: 'silent-smoke-turn' };
     });
-    const result = await service.runConnectionSmoke({
-      connectionId: 'claude',
-      provider: 'claude',
-      modelId: 'claude-sonnet',
-      cwd: tmp,
-      timeoutMs: 20,
-    });
+    const result = await runScriptedSmoke(
+      {
+        connectionId: 'claude',
+        provider: 'claude',
+        modelId: 'claude-sonnet',
+        cwd: tmp,
+        timeoutMs: 20,
+      },
+      'turn.started',
+    );
 
     expect(result).toMatchObject({ ok: false, reasonCode: 'timeout' });
     expect(claude.sessions.size).toBe(0);

@@ -1064,42 +1064,92 @@ describe('ClaudeAdapter', () => {
     },
   );
 
-  test('sendTurn keeps the typed displayInput in turn.started while the SDK prompt queue receives the composed model input (#685)', async () => {
-    mockQuery.mockReturnValue(createMockQuery([]));
-    const adapter = new ClaudeAdapter();
-    const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  test.each([
+    {
+      name: 'exact Unicode composition',
+      input: 'Contexte café  \n  Résumé Δ\t\n\nsecond.  ',
+      ambientContext: 'Contexte café  ',
+      displayInput: '  Résumé Δ\t\n\nsecond.  ',
+      blocks: [
+        { type: 'text', text: 'Contexte café  \n' },
+        { type: 'text', text: '  Résumé Δ\t\n\nsecond.  ' },
+      ],
+    },
+    {
+      name: 'skill enrichment',
+      input: 'Context\nUse the selected skill.\nQuestion',
+      ambientContext: 'Context',
+      displayInput: 'Question',
+    },
+    {
+      name: 'review display summary',
+      input: 'Context\nFull review instructions',
+      ambientContext: 'Context',
+      displayInput: 'Review request',
+    },
+    {
+      name: 'legacy display input without context',
+      input: 'Context\nQuestion',
+      displayInput: 'Question',
+    },
+    { name: 'canonical-only input', input: 'Question' },
+    {
+      name: 'empty input',
+      input: '',
+      ambientContext: 'Context',
+      displayInput: '',
+    },
+    {
+      name: 'blank context',
+      input: '  ',
+      ambientContext: '  ',
+      displayInput: '  ',
+    },
+    {
+      name: 'missing display input',
+      input: 'Context\nQuestion',
+      ambientContext: 'Context',
+    },
+    {
+      name: 'empty display input',
+      input: 'Context\n',
+      ambientContext: 'Context',
+      displayInput: '',
+    },
+  ])(
+    'queues $name while retaining the Station event prompt (#685)',
+    async ({ name: _name, blocks, ...input }) => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      const threadId = 'thread-ambient';
 
-    await adapter.startSession({
-      provider: 'claude',
-      threadId: 'thread-ambient',
-      modelId: 'claude-sonnet-4-6',
-    });
-    await iterator.next(); // session.started
-    await iterator.next(); // session.configured
+      try {
+        await adapter.startSession({ provider: 'claude', threadId });
+        await iterator.next(); // session.started
+        await iterator.next(); // session.configured
+        await adapter.sendTurn({ threadId, ...input });
 
-    await adapter.sendTurn({
-      threadId: 'thread-ambient',
-      input: '[Timezone: Iceland]\nwhat time is it?',
-      displayInput: 'what time is it?',
-    });
+        const turnStarted = await iterator.next();
+        expect(turnStarted.value).toMatchObject({
+          method: 'turn.started',
+          prompt: input.displayInput ?? input.input,
+          ...(input.ambientContext
+            ? { ambientContext: input.ambientContext }
+            : {}),
+        });
 
-    // Transcript-facing event carries the typed text only.
-    const turnStarted = await iterator.next();
-    expect(turnStarted.value).toMatchObject({
-      method: 'turn.started',
-      prompt: 'what time is it?',
-    });
-
-    // Model boundary: the SDK prompt queue receives the composed input.
-    const promptQueue = mockQuery.mock.calls[0][0].prompt;
-    const queued = await promptQueue[Symbol.asyncIterator]().next();
-    expect(queued.value.message).toMatchObject({
-      role: 'user',
-      content: '[Timezone: Iceland]\nwhat time is it?',
-    });
-
-    await adapter.stopSession('thread-ambient');
-  });
+        const promptQueue = mockQuery.mock.calls[0][0].prompt;
+        const queued = await promptQueue[Symbol.asyncIterator]().next();
+        expect(queued.value.message).toEqual({
+          role: 'user',
+          content: blocks ?? input.input,
+        });
+      } finally {
+        await adapter.stopSession(threadId);
+      }
+    },
+  );
 
   test('steerTurn binds to the live SDK streaming-input queue', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
@@ -2474,63 +2524,92 @@ describe('ClaudeAdapter', () => {
     await adapter.stopSession('thread-model-change');
   });
 
-  test('maps validated images and text files to Claude native content blocks', async () => {
-    mockQuery.mockReturnValue(createMockQuery([]));
-    const adapter = new ClaudeAdapter();
+  test.each(['split', 'canonical', 'attachment-only'] as const)(
+    'queues %s text before native image, PDF and text attachments',
+    async (kind) => {
+      mockQuery.mockReturnValue(createMockQuery([]));
+      const adapter = new ClaudeAdapter();
 
-    await adapter.startSession({
-      provider: 'claude',
-      threadId: 'thread-attachments',
-    });
-    await adapter.sendTurn({
-      threadId: 'thread-attachments',
-      input: 'Review these',
-      attachments: [
-        {
-          kind: 'image',
-          name: 'screen.png',
-          mimeType: 'image/png',
-          size: 3,
-          dataUrl: 'data:image/png;base64,YWJj',
-        },
-        {
-          kind: 'file',
-          name: 'notes.txt',
-          mimeType: 'text/plain',
-          size: 5,
-          dataUrl: 'data:text/plain;base64,aGVsbG8=',
-        },
-      ],
-    });
-
-    const promptQueue = mockQuery.mock.calls[0][0].prompt;
-    const queued = await promptQueue[Symbol.asyncIterator]().next();
-    expect(queued.value.message).toEqual({
-      role: 'user',
-      content: [
-        { type: 'text', text: 'Review these' },
-        {
-          type: 'image',
-          source: {
-            type: 'base64',
-            media_type: 'image/png',
-            data: 'YWJj',
+      await adapter.startSession({
+        provider: 'claude',
+        threadId: 'thread-attachments',
+      });
+      await adapter.sendTurn({
+        threadId: 'thread-attachments',
+        input: kind === 'attachment-only' ? '' : 'Context Δ\nReview these',
+        ...(kind === 'split'
+          ? { ambientContext: 'Context Δ', displayInput: 'Review these' }
+          : {}),
+        attachments: [
+          {
+            kind: 'image',
+            name: 'screen.png',
+            mimeType: 'image/png',
+            size: 3,
+            dataUrl: 'data:image/png;base64,YWJj',
           },
-        },
-        {
-          type: 'document',
-          title: 'notes.txt',
-          source: {
-            type: 'text',
-            media_type: 'text/plain',
-            data: 'hello',
+          {
+            kind: 'file',
+            name: 'pages.pdf',
+            mimeType: 'application/pdf',
+            size: 5,
+            dataUrl: 'data:application/pdf;base64,JVBERi0=',
           },
-        },
-      ],
-    });
+          {
+            kind: 'file',
+            name: 'notes.txt',
+            mimeType: 'text/plain',
+            size: 5,
+            dataUrl: 'data:text/plain;base64,aGVsbG8=',
+          },
+        ],
+      });
 
-    await adapter.stopSession('thread-attachments');
-  });
+      const promptQueue = mockQuery.mock.calls[0][0].prompt;
+      const queued = await promptQueue[Symbol.asyncIterator]().next();
+      expect(queued.value.message).toEqual({
+        role: 'user',
+        content: [
+          ...(kind === 'split'
+            ? [
+                { type: 'text', text: 'Context Δ\n' },
+                { type: 'text', text: 'Review these' },
+              ]
+            : kind === 'canonical'
+              ? [{ type: 'text', text: 'Context Δ\nReview these' }]
+              : []),
+          {
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: 'image/png',
+              data: 'YWJj',
+            },
+          },
+          {
+            type: 'document',
+            title: 'pages.pdf',
+            source: {
+              type: 'base64',
+              media_type: 'application/pdf',
+              data: 'JVBERi0=',
+            },
+          },
+          {
+            type: 'document',
+            title: 'notes.txt',
+            source: {
+              type: 'text',
+              media_type: 'text/plain',
+              data: 'hello',
+            },
+          },
+        ],
+      });
+
+      await adapter.stopSession('thread-attachments');
+    },
+  );
 
   test('rejects invalid UTF-8 documents before queuing a Claude prompt', async () => {
     mockQuery.mockReturnValue(createMockQuery([]));
@@ -7570,14 +7649,19 @@ describe('ClaudeAdapter', () => {
       await vi.waitFor(async () =>
         expect((await adapter.listSessions())[0]?.status).toBe('error'),
       );
-      await expect(
-        adapter.sendTurn({
+      // A pre-effect refusal, so orchestration releases the turn-start
+      // claim instead of holding it as a turn that may have started.
+      const refusal = await adapter
+        .sendTurn({
           threadId: 'refused-turn',
           input: 'must not be silently accepted',
-        }),
-      ).rejects.toThrow(
-        'The provider turn ended before the input could be enqueued.',
-      );
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+      expect(refusal).toMatchObject({ kind: 'session_gone' });
       expect(events.some((event) => event.method === 'turn.started')).toBe(
         false,
       );
@@ -7686,7 +7770,7 @@ describe('ClaudeAdapter', () => {
         threadId: 'later-failure',
         input: 'no silent enqueue',
       }),
-    ).rejects.toThrow('The provider turn ended');
+    ).rejects.toThrow('This Claude Session has stopped');
     await adapter.stopAll();
     await drain;
     expect(
@@ -12245,7 +12329,7 @@ echo '{"loggedIn":true}'
         {
           id: 'claude-cli',
           name: 'Claude CLI',
-          description: 'Required to launch the Claude runtime.',
+          description: 'Required to launch the Claude engine.',
           status: 'missing',
           category: 'required',
         },
@@ -12255,7 +12339,7 @@ echo '{"loggedIn":true}'
         readBundledVersion: () => '2.1.224',
       }).getPrerequisites?.();
       expect(readiness?.[0]?.description).toBe(
-        'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; resolving the installed `claude` failed.',
+        'Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; resolving the installed `claude` failed.',
       );
     });
 
@@ -12266,7 +12350,7 @@ echo '{"loggedIn":true}'
         {
           id: 'claude-cli',
           name: 'Claude CLI',
-          description: 'Required to launch the Claude runtime.',
+          description: 'Required to launch the Claude engine.',
           status: 'installed',
           category: 'required',
         },
@@ -12288,7 +12372,7 @@ echo '{"loggedIn":true}'
         (prerequisite) => prerequisite.id === 'claude-cli',
       );
       expect(cli?.description).toBe(
-        `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+        `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
       );
       // The install status and the sentence come from ONE resolution: the
       // findBinary handed to the shared builder must answer with the same
@@ -12309,7 +12393,7 @@ echo '{"loggedIn":true}'
         {
           id: 'claude-cli',
           name: 'Claude CLI',
-          description: 'Required to launch the Claude runtime.',
+          description: 'Required to launch the Claude engine.',
           status: 'missing',
           category: 'required',
         },
@@ -12321,7 +12405,7 @@ echo '{"loggedIn":true}'
       const prerequisites = await adapter.getPrerequisites?.();
 
       expect(prerequisites?.[0]?.description).toBe(
-        'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; no installed `claude` was found.',
+        'Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; no installed `claude` was found.',
       );
       expect(
         mockBuildCliRuntimePrerequisites.mock.calls[0][0].findBinary('claude'),
@@ -12372,7 +12456,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12391,7 +12475,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12405,7 +12489,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.224 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.224 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12419,7 +12503,7 @@ echo '{"loggedIn":true}'
           'pathToClaudeCodeExecutable',
         );
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} is 2.1.200, older than the bundle.`,
+          `Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} is 2.1.200, older than the bundle.`,
         );
       });
 
@@ -12470,7 +12554,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: INSTALLED,
         });
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed executable at ${INSTALLED}; the Claude Code version bundled with the Agent SDK could not be read, so no comparison was made (installed 2.1.100).`,
+          `Required to launch the Claude engine. Station launches the installed executable at ${INSTALLED}; the Claude Code version bundled with the Agent SDK could not be read, so no comparison was made (installed 2.1.100).`,
         );
       });
 
@@ -12488,7 +12572,7 @@ echo '{"loggedIn":true}'
           'pathToClaudeCodeExecutable',
         );
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} ran but reported no version, so Station cannot confirm it is not older than the bundle.`,
+          `Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} ran but reported no version, so Station cannot confirm it is not older than the bundle.`,
         );
       });
 
@@ -12507,7 +12591,7 @@ echo '{"loggedIn":true}'
           'pathToClaudeCodeExecutable',
         );
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} did not report a version, so Station cannot confirm it runs or that it is not older than the bundle.`,
+          `Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK; the installed \`claude\` at ${INSTALLED} did not report a version, so Station cannot confirm it runs or that it is not older than the bundle.`,
         );
       });
 
@@ -12556,7 +12640,7 @@ echo '{"loggedIn":true}'
         );
         // Second inspection re-probes rather than inheriting that failure.
         expect(await readCliDescription(adapter)).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${INSTALLED} (the Agent SDK bundles 2.1.224).`,
         );
         expect(runCommand).toHaveBeenCalledTimes(2);
         // ...and the successful observation IS durable.
@@ -12799,7 +12883,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12814,7 +12898,7 @@ echo '{"loggedIn":true}'
         const prerequisites = await adapter.getPrerequisites?.();
 
         expect(prerequisites?.[0]?.description).toBe(
-          'Required to launch the Claude runtime. Station launches the Claude Code 2.1.224 bundled with the Agent SDK: the `claude` at claude is not an absolute path, and the Agent SDK spawns the executable without PATH resolution.',
+          'Required to launch the Claude engine. Station launches the Claude Code 2.1.224 bundled with the Agent SDK: the `claude` at claude is not an absolute path, and the Agent SDK spawns the executable without PATH resolution.',
         );
         expect(runCommand).not.toHaveBeenCalled();
       });
@@ -12882,7 +12966,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12906,7 +12990,7 @@ echo '{"loggedIn":true}'
         expect(runCommand).toHaveBeenCalledWith(NATIVE, ['--version']);
         expect(runCommand).not.toHaveBeenCalledWith(SHIM, ['--version']);
         expect(prerequisites?.[0]?.description).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${NATIVE} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${NATIVE} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12925,7 +13009,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12959,7 +13043,7 @@ echo '{"loggedIn":true}'
           pathToClaudeCodeExecutable: CLIJS,
         });
         expect(prerequisites?.[0]?.description).toBe(
-          `Required to launch the Claude runtime. Station launches the installed Claude Code 2.1.261 at ${CLIJS} (the Agent SDK bundles 2.1.224).`,
+          `Required to launch the Claude engine. Station launches the installed Claude Code 2.1.261 at ${CLIJS} (the Agent SDK bundles 2.1.224).`,
         );
       });
 
@@ -12969,7 +13053,7 @@ echo '{"loggedIn":true}'
           {
             id: 'claude-cli',
             name: 'Claude CLI',
-            description: 'Required to launch the Claude runtime.',
+            description: 'Required to launch the Claude engine.',
             status: 'installed',
             category: 'required',
           },
@@ -12983,7 +13067,7 @@ echo '{"loggedIn":true}'
         const prerequisites = await adapter.getPrerequisites?.();
 
         expect(prerequisites?.[0]?.description).toBe(
-          `Required to launch the Claude runtime. Station launches the Claude Code CLI bundled with the Agent SDK: the \`claude\` at ${SHIM} is a launcher the Agent SDK cannot spawn directly.`,
+          `Required to launch the Claude engine. Station launches the Claude Code CLI bundled with the Agent SDK: the \`claude\` at ${SHIM} is a launcher the Agent SDK cannot spawn directly.`,
         );
         // Install status still reflects the resolver's own answer: a `claude`
         // IS on PATH, Station just cannot hand that entry to the SDK.
@@ -14095,6 +14179,101 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     ]);
     expect(settled, 'no settle after the engine died').not.toBeNull();
     expect(childSettles(seen)).toEqual(['unresolved:engine-exit']);
+  });
+
+  // The owner's case: a long-lived engine SIGTERMed while idle. Its stream
+  // fails with the exit, which publishes the failure and keeps the record
+  // (`status: 'error'`); the observed exit must still end the session, or
+  // every later message is sent back to this dead record.
+  test.each(['the exit first', 'the stream failure first'])(
+    'an engine SIGTERMed while idle ends its session (%s): one failure, then session.exited',
+    async (order) => {
+      const threadId = `thread-engine-exited-143-${order.length}`;
+      const { adapter, query, until, seen } = await runningChild(threadId, {
+        engineExitStreamGraceMs: 20,
+      });
+      const engine = spawnEngine();
+      expect(adapter.engineEnded(threadId)).toBe(false);
+      const crash = () =>
+        query.crash(new Error('Claude Code process exited with code 143'));
+      if (order === 'the stream failure first') crash();
+      engine.exit(143, null);
+      engine.closeStderr();
+      if (order === 'the exit first') crash();
+      const exited = await until((event) => event.method === 'session.exited');
+      expect(exited).toMatchObject({ reason: 'process-exit', exitCode: 143 });
+      expect(
+        seen.filter((event) => event.method === 'runtime.error'),
+      ).toHaveLength(1);
+      expect(await adapter.hasSession(threadId)).toBe(false);
+      expect(adapter.engineEnded(threadId)).toBe(true);
+    },
+  );
+
+  // Between the observed exit and the session's end (it waits for the
+  // scope's workload outcome) the record still exists; only the process's
+  // own exit says no turn can run on it.
+  test('engineEnded answers from the observed exit while the record still exists', async () => {
+    const threadId = 'thread-engine-exit-pending-outcome';
+    let resolveOutcome: (value: undefined) => void = () => {};
+    const outcome = vi
+      .spyOn(childWorkload, 'childWorkloadOutcome')
+      .mockReturnValue(
+        new Promise<undefined>((resolve) => {
+          resolveOutcome = resolve;
+        }),
+      );
+    try {
+      const { adapter, until } = await runningChild(threadId, {
+        engineExitStreamGraceMs: 20,
+      });
+      const engine = spawnEngine();
+      expect(adapter.engineEnded(threadId)).toBe(false);
+      engine.exit(null, 'SIGTERM');
+      engine.closeStderr();
+      await vi.waitFor(() => expect(adapter.engineEnded(threadId)).toBe(true));
+      expect(await adapter.hasSession(threadId)).toBe(true);
+      resolveOutcome(undefined);
+      await until((event) => event.method === 'session.exited');
+      expect(adapter.engineEnded(threadId)).toBe(true);
+    } finally {
+      outcome.mockRestore();
+    }
+  });
+
+  test('a send to a Session whose stream already failed is refused before any effect', async () => {
+    const threadId = 'thread-stream-failed-refusal';
+    const { adapter, query, until } = await runningChild(threadId);
+    const engine = spawnEngine();
+    query.crash(new Error('Unexpected token in JSON at position 0'));
+    await until((event) => event.method === 'runtime.error');
+    const refusal = await adapter
+      .sendTurn({ threadId, input: 'after the failure' })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+    expect(refusal).toMatchObject({ kind: 'session_gone' });
+    const stopped = adapter.stopSession(threadId);
+    engine.exit(null, 'SIGTERM');
+    engine.closeStderr();
+    await stopped;
+  });
+
+  test('a stream failure with the engine process alive is not engineEnded', async () => {
+    const threadId = 'thread-engine-alive-stream-failed';
+    const { adapter, query, until } = await runningChild(threadId);
+    const engine = spawnEngine();
+    query.crash(new Error('Unexpected token in JSON at position 0'));
+    await until((event) => event.method === 'runtime.error');
+    expect(adapter.engineEnded(threadId)).toBe(false);
+    const stopped = adapter.stopSession(threadId);
+    engine.exit(null, 'SIGTERM');
+    engine.closeStderr();
+    await stopped;
+    // A stop awaits the process, then drops the record.
+    expect(adapter.engineEnded(threadId)).toBe(true);
   });
 
   test('a stream failure with the engine process still running is no interruption (#4266)', async () => {

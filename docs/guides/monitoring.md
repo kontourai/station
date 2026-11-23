@@ -949,6 +949,12 @@ which consumers drive its rate (#4992). Each read records:
   thread again or reused it: `projection_refolded`, `projection_reused`,
   `count_refreshed` and `count_reused`.
 
+The projection and count cache keeps up to 2,048 marked threads. A wider
+read holds reusable entries until it assembles its response. It refreshes
+existing cache entries and fills spare slots. Other results from that
+request stay request-local. Expect some refolds for a set larger than the
+cache even when the event log is idle.
+
 A purpose outside the vocabulary is recorded as `invalid`. No session, user or
 thread identity is ever a dimension. Without a collector, the diagnostics
 bundle's `sessionReadModel` field carries the same per-purpose totals since the
@@ -1069,6 +1075,7 @@ is attribution, never a grant or a claim of personal lifetime totals.
 | Bedrock and Ollama adapters | Tokens reported for each model call | Absent usage stays absent; cost estimates need an eligible pricing snapshot |
 | Muse serve | Model-call input/output/cache figures, emitted as per-turn usage; the session's USD cost from `cumulative.cost` when Muse priced every call; context occupancy and window from `session/contextUsage` | Tokens use the wire `usage` object rather than `cumulative`; a `partial` cost is a lower bound and is not published; live 1.4.20 sent both a priced cost and the context window (1.4.18 on the probed provider sent no cost); child-work usage stays a separate projection |
 | Muse stdio | Completed work and other reported lifecycle facts | Its envelope supplies no token-usage event |
+| GitHub Copilot (SDK) engine (Feature Preview) | Input/output tokens of each model call, a subagent's calls included, plus cache read/write and reasoning tokens when reported, from `assistant.usage`, summed as per-turn usage | No cost figure: the SDK's `cost` is an experimental billing multiplier, not spend |
 | ACP, including ACP-backed engines | Reported context occupancy/window, an engine's own context percentage, costs in the engine's own unit, and per-turn tokens from the prompt answer's `usage` for an engine recorded reporting them (Antigravity) | Occupancy is not consumed tokens; a reported cost (an ISO currency or a vendor unit such as credits) is shown in conversation statistics as reported, one total per unit, never converted to USD, and usage receipts do not include it |
 | Station agent / direct model-provider chat | Saved messages and their recorded usage/estimates | Canonical relay joins use saved messages as primary; overlapping engine activity is separately disclosed |
 
@@ -1514,11 +1521,20 @@ a confirmed deferral.
 | `station.runtime.event_loop_lag` | How late a 10-second runtime timer woke | None | ms |
 | `station.json_store.write_bytes` | Bytes one durable JSON store write puts on disk. Only stores that name themselves record (currently the notification feeds and the notification dedupe tombstones); `previous` is the retained prior copy each durable write also rewrites | `store`: `notifications`, `notification-tombstones`, `principal-notifications`; `artifact`: `primary`, `previous` | By |
 
-The lag histogram only sees a stall that overlaps a timer wake, and it is
-exported only with an OTel endpoint. Independently of OTel, a window whose
-event-loop delay reached one second writes an `Event loop stalled` warning to
-the server log (`<STATION_HOME>/logs/server/`). The warning carries
-`maxDelayMs` and `p99DelayMs`, plus what the process did during `elapsedMs`:
+The exported lag metric samples the wake of the 10-second reporting timer and
+requires an OTel endpoint. Independently of OTel, Node's native event-loop
+delay histogram samples at a nominal 100 ms cadence and resets at each
+10-second report. A window with a sampled maximum of one second or more writes
+an `Event loop stalled` warning to the server log (`<STATION_HOME>/logs/server/`).
+The warning carries `sampleResolutionMs` and the histogram's `maxDelayMs` and
+`p99DelayMs`, rounded to milliseconds. These values describe intervals between
+samples. Even when idle, intervals are typically around the sample cadence.
+Compared with 20 ms sampling, 100 ms sampling reduces idle timer wakeups and
+uses fewer observations per window. A block slightly shorter than one second
+can trigger a warning because its sample includes time before the block. Sample
+timing and window resets can also leave a block unreported.
+
+The warning also shows what the process did during `elapsedMs`:
 `cpuUserMs`, `cpuSystemMs`, `majorPageFaults`, and `gcCount`, `gcTotalMs`,
 `gcMaxMs`, with `rssMb` and `heapUsedMb` at the end of the window. Read them as
 leads. CPU time is the whole process's, across all of its threads, not only

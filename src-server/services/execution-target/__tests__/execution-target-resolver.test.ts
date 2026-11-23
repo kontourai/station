@@ -1069,6 +1069,57 @@ describe('resolveExecutionTarget', () => {
       ),
     ).rejects.toThrow('override-unsupported');
   });
+
+  // #3290: an ACP Agent takes a per-invocation approval mode only where
+  // Station answers the connection's approvals. The expected outcomes are
+  // literals, not derived from the resolver.
+  const acpApprovalTable: ReadonlyArray<
+    readonly [
+      control: 'station' | 'requests' | 'engine' | undefined,
+      mode: string,
+      accepted: boolean,
+    ]
+  > = [
+    ['station', 'ask', true],
+    ['station', 'auto', true],
+    ['station', 'never', true],
+    ['station', 'connection-default', true],
+    ['requests', 'ask', true],
+    ['requests', 'auto', true],
+    ['requests', 'never', true],
+    ['requests', 'connection-default', true],
+    ['engine', 'ask', false],
+    ['engine', 'auto', false],
+    ['engine', 'never', false],
+    ['engine', 'connection-default', false],
+    [undefined, 'ask', false],
+    [undefined, 'auto', false],
+    [undefined, 'never', false],
+    [undefined, 'connection-default', false],
+  ];
+  test.each(acpApprovalTable)(
+    'an ACP connection with acpApprovalControl %s and approvalMode %s is accepted: %s',
+    async (control, mode, accepted) => {
+      const resolve = resolveExecutionTarget(
+        {
+          environment: { kind: 'current' },
+          agent: agentId('kiro'),
+          model: { options: { approvalMode: mode } },
+        },
+        dependencies({
+          getAgent: async () => ({
+            slug: 'kiro',
+            execution: { agentConnectionId: engineConnectionId('kiro') },
+          }),
+          getConnection: async () => connection('kiro', 'acp'),
+          acpApprovalControl: (connectionId) =>
+            connectionId === 'kiro' ? control : undefined,
+        }),
+      );
+      if (accepted) await expect(resolve).resolves.toBeDefined();
+      else await expect(resolve).rejects.toThrow('approvalMode');
+    },
+  );
 });
 
 // archive#3406: an Agent that declares `execution.modelId` had that model

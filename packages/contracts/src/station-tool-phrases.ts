@@ -6,15 +6,11 @@
  * is named by a title the reader supplies, otherwise "a Session".
  */
 
-/** The MCP servers whose tools are Station's own. */
-export const STATION_TOOL_SERVERS = [
-  'station-control',
-  'station-knowledge',
-  'station-browser',
-  'station-docs',
-] as const;
-
-export type StationToolServer = (typeof STATION_TOOL_SERVERS)[number];
+export {
+  STATION_TOOL_SERVERS,
+  type StationToolServer,
+  stationToolOf,
+} from './station-tool-identity.js';
 
 /** How far the call has got, which decides the verb's form. */
 export type StationToolPhase = 'done' | 'running' | 'pending';
@@ -665,7 +661,7 @@ const STATION_TOOL_PHRASES: Readonly<Record<string, PhraseEntry>> = {
   ),
   task_record: entry('Recorded', 'Recording', 'Record', ({ args }) => {
     const kind = text(args, 'kind');
-    return kind ? `a ${kind.replaceAll('_', ' ')} on the Task` : 'a Task note';
+    return kind ? `a ${kind.replace(/_/g, ' ')} on the Task` : 'a Task note';
   }),
   task_thread_list: listed('review threads'),
   task_thread_reply: entry(
@@ -797,38 +793,6 @@ export function stationToolPhraseNames(): string[] {
   return Object.keys(STATION_TOOL_PHRASES);
 }
 
-const QUALIFIED_NAME = new RegExp(
-  `^(?:mcp__(${STATION_TOOL_SERVERS.join('|')})__|(${STATION_TOOL_SERVERS.join('|')})[_/.]|Tool: (${STATION_TOOL_SERVERS.join('|')})/)([A-Za-z0-9_-]+)$`,
-);
-
-/**
- * The Station tool a call is, by its name as any engine spells it
- * (`mcp__station-control__x`, `station-control/x`, …) or by a bare name plus
- * the engine's `server` field. A bare name alone is never claimed.
- */
-export function stationToolOf(
-  toolName: string | undefined,
-  server?: string,
-): { server: StationToolServer; tool: string } | undefined {
-  if (typeof toolName !== 'string') return undefined;
-  const name = toolName.trim();
-  const qualified = QUALIFIED_NAME.exec(name);
-  if (qualified) {
-    const found = (qualified[1] ?? qualified[2] ?? qualified[3]) as
-      | StationToolServer
-      | undefined;
-    const tool = qualified[4];
-    return found && tool ? { server: found, tool } : undefined;
-  }
-  if (
-    typeof server === 'string' &&
-    (STATION_TOOL_SERVERS as readonly string[]).includes(server) &&
-    /^[A-Za-z0-9_-]+$/u.test(name)
-  )
-    return { server: server as StationToolServer, tool: name };
-  return undefined;
-}
-
 function argumentsOf(args: unknown): Args {
   if (typeof args === 'string') {
     try {
@@ -848,7 +812,7 @@ export function stationToolPhrase(
   phase: StationToolPhase,
   input: StationToolPhraseInput = {},
 ): string | undefined {
-  const phrase = Object.hasOwn(STATION_TOOL_PHRASES, tool)
+  const phrase = Object.getOwnPropertyDescriptor(STATION_TOOL_PHRASES, tool)
     ? STATION_TOOL_PHRASES[tool]
     : undefined;
   if (!phrase) return undefined;

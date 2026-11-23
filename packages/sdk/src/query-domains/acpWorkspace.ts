@@ -51,11 +51,14 @@ export interface FileSystemBrowseResult {
 
 export interface ACPConnectionInfo {
   id: string;
+  registryId?: string;
   installerId?: string;
   installerDetected?: boolean;
   name: string;
   icon?: string;
   command?: string;
+  /** The host supports applying approval modes to this engine's ACP asks. */
+  stationApprovalRequests?: true;
   args?: string[];
   cwd?: string;
   enabled: boolean;

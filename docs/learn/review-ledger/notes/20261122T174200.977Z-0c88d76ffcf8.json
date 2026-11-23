@@ -1,0 +1,15 @@
+{
+  "revision": "fbefd43834d3a9ca94e47e8d232b0edfdb82668f",
+
+  "notes": [
+    {"path":"README.md","note":"cli.md's schedule section gained one sentence: create needs a prompt and a name, a displayName or both, and add_job takes the same fields. README, abstraction-review, cli-triage, integrating-station and the CLI package README link to the CLI reference for invocation, distribution and other commands and say nothing about schedule create bodies, so they stay accurate.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"cli.md's schedule section gained one sentence: create needs a prompt and a name, a displayName or both, and add_job takes the same fields. README, abstraction-review, cli-triage, integrating-station and the CLI package README link to the CLI reference for invocation, distribution and other commands and say nothing about schedule create bodies, so they stay accurate.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"cli.md's schedule section gained one sentence: create needs a prompt and a name, a displayName or both, and add_job takes the same fields. README, abstraction-review, cli-triage, integrating-station and the CLI package README link to the CLI reference for invocation, distribution and other commands and say nothing about schedule create bodies, so they stay accurate.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"cli.md's schedule section gained one sentence: create needs a prompt and a name, a displayName or both, and add_job takes the same fields. README, abstraction-review, cli-triage, integrating-station and the CLI package README link to the CLI reference for invocation, distribution and other commands and say nothing about schedule create bodies, so they stay accurate.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"cli.md's schedule section gained one sentence: create needs a prompt and a name, a displayName or both, and add_job takes the same fields. README, abstraction-review, cli-triage, integrating-station and the CLI package README link to the CLI reference for invocation, distribution and other commands and say nothing about schedule create bodies, so they stay accurate.","inputs":["docs/reference/cli.md"]}
+  ]
+}

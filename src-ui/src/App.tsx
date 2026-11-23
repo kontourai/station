@@ -130,6 +130,7 @@ const loadServerEventsMount = () =>
     default: module.ServerEventsMount,
   }));
 
+import { useActiveStationName } from './hooks/useActiveStationName';
 import { useFeatureSettings } from './hooks/useFeatureSettings';
 import { useFocusReporter } from './hooks/useFocusReporter';
 import { useFoldSplit } from './hooks/useFoldSplit';
@@ -191,7 +192,7 @@ function App({
   // `connectionFailureCopy`'s contract wants the short name the user saved,
   // with the URL as the address it actually tried (archive#3713).
   const { activeConnection } = useConnections();
-  const activeConnectionName = activeConnection?.name;
+  const activeConnectionName = useActiveStationName();
   const activeConnectionUrl = activeConnection?.url;
   const availableModels = useModels();
   const agents = useAgents();
@@ -525,12 +526,8 @@ function App({
     (displayCurrentView.type !== 'layout' ||
       (!selectedLayoutUnknown && !isChatWorkspaceLayout));
   /**
-   * A full-screen mobile dock owns the whole viewport (archive#4460: any
-   * occupant, not just Chat — `ChatDockMobileHeader` already carries the app
-   * chrome for the docked case, and the shared `DockShell` behaves
-   * identically regardless of occupant). A project layout owns the visible
-   * view instead, even while a persisted dock snap is being restored on
-   * navigation.
+   * A maximized dock owns the workspace below the toolbar. Layouts that
+   * occupy the workspace themselves do not acquire the ambient dock state.
    */
   const isAmbientMobileDockFullscreen =
     !isPanePopOut &&

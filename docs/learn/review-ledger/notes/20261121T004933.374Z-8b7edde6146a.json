@@ -1,0 +1,13 @@
+{
+  "revision": "7f4bc475babab7fee4ed41cd805094f16a620269",
+
+  "notes": [
+    {"path":"docs/learn/media/new-chat-start-before.png","note":"Inspected the retained before/after start-composer capture. It documents the original start layout at its recorded revision. The managed-folder info tip is a later change and is not demonstrated by this image.","inputs":["docs/learn/media/new-chat-start-before.png","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/new-chat-start-after.png","note":"Inspected the retained before/after start-composer capture. It documents the original start layout at its recorded revision. The managed-folder info tip is a later change and is not demonstrated by this image.","inputs":["docs/learn/media/new-chat-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/modals/NewChatModal.tsx"]},
+
+    {"path":"docs/learn/media/project-start-before.png","note":"Inspected the retained before/after start-composer capture. It documents the original start layout at its recorded revision. The managed-folder info tip is a later change and is not demonstrated by this image.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/HomeStartComposer.tsx"]},
+
+    {"path":"docs/learn/media/project-start-after.png","note":"Inspected the retained before/after start-composer capture. It documents the original start layout at its recorded revision. The managed-folder info tip is a later change and is not demonstrated by this image.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/chat-start/StartComposer.tsx","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}

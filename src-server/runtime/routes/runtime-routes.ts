@@ -7,6 +7,7 @@ import {
   APPLICATION_SESSION_NATIVE_PROOF_HEADER,
   APPLICATION_SESSION_PROOF_HEADER,
 } from '@kontourai/station-contracts/application-session';
+import type { AutomationConfiguration } from '@kontourai/station-contracts/automation';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { isPersonalTokenScope } from '@kontourai/station-contracts/personal-tokens';
 import { humanPrincipal as deploymentHumanPrincipal } from '@kontourai/station-contracts/principal';
@@ -376,6 +377,7 @@ import {
 } from '@kontourai/station-contracts/managed-policy';
 import type { LaunchableModelInventory } from '@kontourai/station-contracts/model-inventory';
 import type { TerminalProcessSummary } from '@kontourai/station-contracts/orchestration';
+import { STAGED_CONVERSATION_HANDOFF_PREVIEW } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
@@ -822,7 +824,10 @@ import {
   FileStationSurveyReviewSessionStore,
   SurveyFlowReviewService,
 } from '../../services/flow/survey-flow-review-service.js';
-import { connectedAccountOwnerId } from '../../services/identity/connected-account-owner.js';
+import {
+  connectedAccountOwnerId,
+  connectedAccountOwnerIdForTurnAccount,
+} from '../../services/identity/connected-account-owner.js';
 import { identifyIngress } from '../../services/identity/identity-source.js';
 import type { OperatorPasskeyEnrollmentService } from '../../services/identity/operator-passkey-enrollment.js';
 import {
@@ -903,6 +908,7 @@ import {
   ACTIVE_TURN_FOLD_METHODS,
   projectSessionLifecycle,
 } from '../../services/orchestration/session-lifecycle-service.js';
+import { notificationChatTitle } from '../../services/orchestration/session-sender-identity.js';
 import { createSessionWorkItemModule } from '../../services/orchestration/session-work-item-module.js';
 import {
   createTaskLeadReader,
@@ -2770,6 +2776,10 @@ export function configureRuntimeRoutes(
             context.orchestrationService.resolveSessionActingPrincipal(
               threadId,
             ),
+          delegatedAppearanceOwner: (threadId) =>
+            context.orchestrationService.delegatedAppearanceOwner?.(threadId),
+          stationControlOwnTaskGrant: (threadId) =>
+            context.orchestrationService.stationControlOwnTaskGrant(threadId),
           firstStartedMetadataOfThread: (threadId) =>
             context.orchestrationService.firstStartedMetadataOfThread(threadId),
         },
@@ -5569,6 +5579,7 @@ export function configureRuntimeRoutes(
     createSearchRoutes(context.runtimeSearch, {
       readAuthorityForRequest: conversationReadAuthorityForRequest,
       isRequestPrincipalCurrent,
+      projects: context.projectService,
     }),
   );
   const sessionInventoryAppRead = createSessionInventoryAppReadModule({
@@ -7552,6 +7563,8 @@ export function configureRuntimeRoutes(
             // so this instance and the runtime's never disagree.
             automations: new AutomationStore(
               context.configLoader.getProjectHomeDir(),
+              undefined,
+              context.projectService,
             ),
             projectSlugForId: (projectId: string) =>
               context.projectService
@@ -7845,6 +7858,11 @@ export function configureRuntimeRoutes(
     conversationIdOf: conversationIdForResolution,
     logger: context.logger,
   });
+  const stagedHandoffPreview = context.featurePreviews.bind({
+    id: 'staged-agent-changes',
+    label: STAGED_CONVERSATION_HANDOFF_PREVIEW.label,
+    description: STAGED_CONVERSATION_HANDOFF_PREVIEW.description,
+  });
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
@@ -8086,6 +8104,11 @@ export function configureRuntimeRoutes(
           references,
           binding,
         ),
+      stagedHandoffEnabled: () =>
+        stagedHandoffPreview.select({
+          enabled: () => true,
+          disabled: () => false,
+        }),
       handoffConversation: stationServerEntry((input) =>
         handoffExecutionTargetMessage(
           { ...input, readAuthority: readAuthorityForExecution(input.userId) },
@@ -10374,6 +10397,13 @@ export function configureRuntimeRoutes(
           enabled: () => true,
           disabled: () => false,
         }),
+      resolveDelegatedAppearanceOwner: (request) =>
+        connectedAccountOwnerIdForTurnAccount(
+          resolveStationControlCallerForRequest(
+            request,
+            resolveStationControlCallerRecord,
+          )?.appearanceOwnerId,
+        ),
       resolveProposalSourceSessionId: (c) =>
         resolveStationControlCallerForRequest(
           c.req.raw,
@@ -12955,6 +12985,8 @@ export function configureRuntimeRoutes(
     '/api/html-replies',
     createHtmlReplyRoutes({
       pages: runtimeContext.orchestrationEventStore.htmlReplyPages(),
+      capturePublisher: (sessionId) =>
+        context.orchestrationService.captureAcpHtmlReplyPublisher(sessionId),
       frameOrigin: clientReachableFrameOrigin(context.getMcpUiFrameOrigin),
       isInternalRequest: isStationInternalRequest,
       resolveCaller: (request) =>
@@ -13625,15 +13657,34 @@ export function configureRuntimeRoutes(
           ? {}
           : {
               store: automationStore,
-              listOpenEpisodes: (limit: number) =>
-                automationLedger
+              listOpenEpisodes: (limit: number) => {
+                // The episodes stay readable while the policy is not; only
+                // the rule-change hint needs it.
+                let configuration: AutomationConfiguration | undefined;
+                try {
+                  configuration = automationStore.read();
+                } catch {
+                  configuration = undefined;
+                }
+                return automationLedger
                   .get()
                   .listOpenEpisodes(limit)
-                  .map(projectAutomationEpisode),
+                  .map((record) =>
+                    projectAutomationEpisode(
+                      record,
+                      configuration,
+                      (taskId) =>
+                        context.taskGraphService.readTaskView(taskId)?.status,
+                    ),
+                  );
+              },
+              actionsUnavailable: () => automationActions?.unavailable(),
               retryEpisode: (ruleId: string, episodeId: string) =>
                 retryAutomationEpisode({
                   ledger: automationLedger.get(),
                   read: () => automationStore.read(),
+                  taskStatus: (taskId) =>
+                    context.taskGraphService.readTaskView(taskId)?.status,
                   ruleId,
                   episodeId,
                   now: Date.now(),
@@ -13706,12 +13757,18 @@ export function configureRuntimeRoutes(
         isHosted: () =>
           hostedTenantRegistry !== undefined ||
           isHostedTenantExecutionRequired(),
-        sessionContext: (sessionId) =>
-          agentNotificationSessionContext(
+        sessionContext: (sessionId) => {
+          const identity = agentNotificationSessionContext(
             context.orchestrationService.firstStartedMetadataOfThread(
               sessionId,
             ),
-          ),
+          );
+          const chatTitle = notificationChatTitle(
+            context.orchestrationEventStore,
+            sessionId,
+          );
+          return chatTitle ? { ...identity, chatTitle } : identity;
+        },
         logger: context.logger,
       }),
     }),

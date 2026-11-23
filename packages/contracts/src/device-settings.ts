@@ -1253,7 +1253,7 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Region arrangement',
     help: 'Each region of this device’s window reopens with the surface, size, and visibility you left it with.',
     description:
-      "Which surfaces occupy the main, left, right, and bottom regions on this device, with each region's size, visibility, and whether it is maximized.",
+      "Which surfaces occupy the main, left, right, and bottom regions on this device, with each region's size and visibility.",
     // #928 slice D: new device setting; the arrangement was previously seeded
     // from the chat dock's own keys on every load and nothing else survived.
     defaultValue: DEFAULT_REGION_ARRANGEMENT_RECORD,

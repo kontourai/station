@@ -4,18 +4,46 @@ An automation is work Station runs for you on a schedule: every weekday at
 9:00, every hour, or once at a set time. Open **Automations** in the sidebar
 (it was called Schedule; old `/schedule` links still work).
 
-## Review the week and its executions
+## The list
 
-**Calendar** shows the current Monday-first week. Change **Display time zone**
-to see scheduled times in another zone. The automation keeps its stored
-schedule and time zone. Frequent jobs can have more occurrences than the
-calendar displays.
+**Next 7 days** shows what runs from now to the end of the sixth day after
+today, in your time zone. A day lists its first three runs, then how many
+more. Paused automations are left out. On a phone it is **Next up**: the next
+three runs.
 
-**Executions** shows the recorded runs. Choose **View run** to see a run's
-status and attempt, and **Load result** when that receipt has a saved result.
+Below it, **All automations** has one row per automation: its name, the agent
+and where results go, the schedule as a sentence ("Weekdays at 8:00 AM", with
+the zone named when it is not yours), the next run, and a strip of its last 12
+runs. A filled square worked, a red square with a dot failed, an outline was
+skipped because it was too late, and a dashed outline means Station cannot
+tell how it ended. The status reads **Active**, **Paused** or **Running**, or
+**Done** for a one-time automation that has had its run (it lists last, says
+when it ran, and has no Pause or Resume; **Run now** still runs it again), or
+**Missed** when its time came while Station was off and it was more than 6
+hours late, so it never ran. A
+row can carry a flag: **Last 2 runs didn't work**, or **Paused itself after 5
+runs that didn't work** when Station turned it off. "Didn't work" covers runs
+that failed and runs whose outcome Station cannot tell. Open **⋯** on a row
+for **Run now**, **Pause** or **Resume**, **Edit**, **Duplicate** and
+**Delete**; if one of them fails, the page says so. Select the name to see its
+instructions and run history, or select a run in **Next 7 days** to go to its
+automation.
+
+A filter appears once you have more than 15 automations. If the scheduler is
+stopped, or has stopped checking for due runs on time, the page says so above
+the list; otherwise it says nothing about the scheduler.
 
 A job whose stored record needs repair appears separately for the Station
 operator, with a job ID for recovery. Healthy automations remain available.
+
+## Name and one-time runs
+
+Give an automation a name in plain words, such as "Daily briefing". You can
+rename it later in **Edit**; its runs and history stay with it.
+
+**One time** runs an automation once, at 9:00 AM tomorrow unless you pick
+another time. **Remove it after it runs** starts unticked, so the automation
+stays in the list with its run.
 
 ## Where an automation runs
 
@@ -112,9 +140,11 @@ read each card before confirming. The fix is tracked in
 
 - A run that fails is listed as failed and notifies you. The notice is generic;
   open Automations to see the jobs and runs you can access.
-- After **5 failed runs in a row**, Station turns the automation off and
-  notifies you once. A run that retried counts once. A successful run resets
-  the count, and so does turning the automation back on.
+- After **5 runs in a row that didn't work** (failed, or ended with an
+  outcome Station cannot tell), Station pauses the automation and notifies you
+  once. Its row reads **Paused** with the flag **Paused itself after 5 runs
+  that didn't work** until you resume it. A run that retried counts once.
+  A successful run resets the count, and so does resuming the automation.
 - If Station was not running when a chat automation was due and it is more
   than **6 hours** late, that run is recorded as missed instead of running
   late.
@@ -124,9 +154,12 @@ read each card before confirming. The fix is tracked in
 
 ## Templates
 
-New automations can start from a template: **Daily repo digest**, **Check
+With no automations yet, the page says what one is and offers four
+templates, each with what it does and when: **Daily repo digest**, **Check
 back on open work**, **Weekly dependency check** and **Stale pull requests**.
-Templates only ask for work an agent can do with its workspace and tools.
+Templates only ask for work an agent can do with its workspace and tools. You
+can also ask in any chat ("Every morning, tell me which tests failed
+overnight"): the agent proposes an automation for you to approve.
 
 ## Limits
 

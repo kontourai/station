@@ -35,6 +35,15 @@ export interface ProviderContinuityCapabilities {
   resumeIdentity?: 'require-match';
   /** Resume a prior Session only within its recorded engine-home/profile binding. */
   nativeReturn?: 'same-binding';
+  /**
+   * Opt-in: this adapter refuses a resume without the binding key its start
+   * recorded, so restart recovery and a credential retry that keeps its
+   * profile pass that key as `ProviderSessionStartInput.nativeResumeBindingKey`.
+   * Absent: recovery passes none and the adapter keeps its own resume rules
+   * (a recorded key can legitimately change with the engine home, a profile
+   * switch or an older key scheme).
+   */
+  recoveryBinding?: 'required';
 }
 
 /** Current delivery fidelity, not a promise that an interrupted effect is replayable. */
@@ -691,6 +700,9 @@ export function readApprovalMode(
 export const PROVIDER_ACP = 'acp';
 export const PROVIDER_OLLAMA = 'ollama';
 export const PROVIDER_MUSE = 'muse';
+/** GitHub Copilot through the Copilot SDK (Feature Preview `copilot-sdk-engine`). */
+export const PROVIDER_COPILOT_SDK = 'copilot-sdk';
+
 /**
  * OpenCode as its own engine: it runs saved ACP connection records, over
  * OpenCode 2's own server where verified and over ACP otherwise
@@ -800,6 +812,9 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
     // identity; a value outside that set is refused, never coerced. Nothing
     // else in `modelOptions` is read, so nothing else is listed.
     [PROVIDER_MUSE]: ['approvalMode', 'effort'],
+    // `copilot-sdk-adapter.ts` reads `approvalMode` at session start and
+    // answers each permission request with it (`copilot-sdk-approval.ts`).
+    [PROVIDER_COPILOT_SDK]: ['approvalMode'],
   };
 
 /**
@@ -1641,12 +1656,11 @@ export interface ProviderSendTurnInput {
    */
   displayInput?: string;
   /**
-   * Relay-only passthrough of the raw ambient context. `input` already
-   * carries the composed text, so adapters that talk to a model directly
-   * MUST ignore this. Only adapters that re-enter a server pipeline with
-   * its own composition choke point (station-agent → /chat) forward
-   * `displayInput` + this field instead of the pre-composed `input`, so the
-   * downstream pipeline persists typed text and composes exactly once.
+   * Raw ambient context already composed into `input`. Claude can use it
+   * with `displayInput` to preserve the text block boundary when the blocks
+   * reproduce `input` exactly. The station-agent relay forwards the separate
+   * fields so the downstream chat route composes them once and persists typed
+   * text.
    */
   ambientContext?: string;
   attachments?: ChatAttachmentInput[];

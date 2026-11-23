@@ -438,7 +438,7 @@ Live motivation — this is a user-visible bug fix, not hygiene.
 callback**: in ACP mode Kiro asks the *client* for a fresh access token
 instead of re-reading its own still-valid on-disk credential
 (kirodotdev/Kiro#10416). Under `--agent-engine v3` it asks eagerly, before
-answering `initialize`; under the default engine it asks lazily, **on
+answering `initialize`; in the v2 release tested below it asks lazily, **on
 expiry** — so a long Station chat previously received `{}` *as its refreshed
 token* and then failed downstream in a confusing way.
 
@@ -475,7 +475,7 @@ the client answering each way:
 
 | engine | inbound ext requests | old `{}` | `-32601` refusal |
 |---|---|---|---|
-| default (`v2`) | **none** | initialize OK, session/new OK | initialize OK, **session/new OK** |
+| v2 (the default in 2.16.0) | **none** | initialize OK, session/new OK | initialize OK, **session/new OK** |
 | `--agent-engine v3` | auth callback + `_kiro/terminal/shell_type` | initialize OK, session/new OK | initialize OK, **session/new FAILS** |
 
 Two things follow, and both matter more than the intuition they replace:
@@ -491,9 +491,8 @@ Two things follow, and both matter more than the intuition they replace:
   remove. Tracked as a follow-up, where a reviewed allowlist entry is the
   correct home for it once the shape is known.
 
-The default path is unaffected. `--agent-engine v3` is opt-in and cannot
-start a session under this policy; that is disclosed rather than papered
-over, and the probe and the chat path now agree — both fail, which is true.
+The v2 path was unaffected on 2.16.0. On that release, the v3 engine
+failed in both the probe and the chat path under this policy.
 
 **Superseded on kiro-cli 2.35.0 (live, 2026-11-13).** `_kiro/terminal/shell_type`
 is a request with params `{sessionId}`, sent during `session/new`. Answered
@@ -1001,6 +1000,23 @@ and `modeId` ([acp-agent-projection.ts](../../src-server/providers/adapters/acp-
   first turn, and sending it here would deliver it twice.
 - The list holds at most 50 entries. A longer list is refused, not cut.
 
+Station reads KAS tool identity and consent metadata when KAS asks for approval.
+Interactive and delegated KAS sessions can automatically read files, list
+directories, search for files, and grep using KAS's built-in tools. Station
+checks its tool policy first and verifies that the requested path and its
+resolved target are within the session workspace and outside sensitive paths.
+Directory requests can target the workspace root. Station checks the requested
+directory itself without scanning its descendants.
+
+Writes and commands can use an authored auto-approval rule or an approval
+guardian allow. Calls that still need approval can prompt in interactive
+sessions. Delegated sessions with approvals disabled decline those calls and
+send Station's reason when KAS offers a one-time deny option.
+
+Interactive session grants stay in Station and each allowed call receives a
+one-time ACP response. Station can enforce its policy on calls that KAS sends
+through the permission gate.
+
 The session must report the mode as `_meta.kiro.resource.source.origin`
 `client`. If the engine started in a mode of that id with another origin (for
 example `bundled`), the start is refused. If the engine did not take the
@@ -1065,6 +1081,18 @@ and the scripted profile
   cancel, `session/resume` (whose answer re-advertises modes and options)
   and `session/load` are core ACP and take the generic paths above. Its permission requests use string
   ids, which the SDK answers as sent.
+- **Approvals.** Antigravity's own settings decide which actions run and which
+  ask. With **Full access** granted for the chat, Station answers ordinary
+  permission requests automatically. Questions, plan exits and policy
+  approvals still reach the person. Selecting **Ask first** takes effect on
+  the next turn. Station keeps the same Antigravity process.
+- **Delegation.** For an appearance handoff, `delegate_task` can request
+  `appearanceProposal: true` on a new local child. A chat acting for the person
+  can grant that child a read and proposal for the first turn. The person still
+  previews and keeps the proposal. Use a child that can call Station Control
+  without an engine permission prompt. If the child cannot call it, it can
+  return the design so the parent can propose it. The result carries the
+  child's reply, including any blocker.
 - **Steering** is a mid-turn prompt (`prompt-handoff`, above; capture
   `mid-turn-steer`). Station's composer queues follow-ups for ACP engines,
   so the hand-off runs through Station's steer command. While the engine
@@ -1192,7 +1220,11 @@ When the runtime needs permission before running a tool, it calls back via `requ
 
 #### Which side decides which calls ask
 
-ACP standardizes how a client answers `session/request_permission`, not which calls must reach it: each engine decides that from its own configuration. So Station's approval mode governs an ACP engine only where Station can set that configuration. Which side decides is a property of the connection (`acpApprovalControl` in `@kontourai/station-contracts/engine-capability-matrix`), read from the command it launches.
+ACP standardizes how a client answers `session/request_permission`. An
+engine's rules decide which calls ask. Station uses the same approval picker to
+answer those requests, and configures OpenCode's launch rules when supported.
+The connection reports which path it uses through `acpApprovalControl` in the
+engine capability matrix.
 
 **OpenCode (`station`).** A connection whose command is the `opencode` executable (any directory; a wrapper such as `npx opencode-ai` is not recognized) is governed by Station once Station applies an approval mode to the chat. Until then it is left on its own configuration, as Claude Code and Codex are: while a chat is at Default with no Agent or Station default and Station has set no mode on it, the server sends none, OpenCode launches without Station's rules, and your OpenCode permission settings decide (including `"permission": "allow"`). The approval sheet says so ("Uses OpenCode's own permission settings until you pick a mode here"), and the chip reports no applied mode.
 
@@ -1287,7 +1319,14 @@ Station reads the binary's `--version` to tell the two apart
   [the OpenCode native transport decision](../decisions/opencode-native-transport.md).
   #4435 stays open until this ships.
 
-**Every other ACP engine (`engine`).** Station has no channel into its permission rules. It answers the requests the engine chooses to send, but it cannot make the engine ask for others. Such a connection gets no approval mode: the server sends none, a `setApprovalMode` is refused with "This engine has no approval control.", a carried `approvalMode` is refused as an unsupported option, and the composer's approval control reads "Set by engine" and explains that the engine decides. An engine whose own modes are approval levels (claude-code-acp advertises `default`, `acceptEdits`, `plan`, `auto` and, when allowed, `bypassPermissions`) is changed through its Mode picker; Station does not map those modes onto its own, and a full-access mode is withheld outside a `host` session (#2569).
+**Other ACP engines (`requests`).** A confirmed connection can use the same
+approval modes for its standard ACP requests. Ask first leaves ordinary
+requests for the person, Auto answers ordinary edit requests, and granted
+Full access answers ordinary requests of any kind. Engine allow and deny
+rules still apply, and questions, plan exits, network-host requests and
+required Station policy decisions can still ask. Older Stations report
+`Set by engine`. The separate Mode control still shows the engine's own
+advertised modes, including any engine-native permission levels.
 
 A permission request belongs to the prompt that raised it. When `session/prompt` settles while one is still open — the turn completed or failed without waiting for the answer — the adapter settles it as `cancelled` (`request.resolved`) before the turn's terminal, the same way an interrupt does, so no approval surface keeps offering a decision nothing will read.
 

@@ -438,12 +438,13 @@ export function registerOperationsTools(
     SCHEDULER_OPERATOR_SURFACE.create.mcp,
     'Create a cron, interval, or one-shot agent wake-up',
     {
-      name: z.string(),
-      cron: z.string().optional().describe('Cron expression'),
-      schedule: schedulerScheduleSchema
-        .optional()
-        .describe('Cron, fixed interval, or one-shot schedule'),
-      prompt: z.string().describe('Prompt to run'),
+      // At least one of `name` and `displayName`: the route refuses neither,
+      // and derives an unused slug from `displayName` when `name` is omitted.
+      name: z.string().optional().describe('Slug'),
+      displayName: z.string().optional().describe('Readable name'),
+      cron: z.string().optional(),
+      schedule: schedulerScheduleSchema.optional().describe('Instead of cron'),
+      prompt: z.string(),
       agent: z.string().optional().describe('Agent slug (default: default)'),
       provider: z.string().optional(),
       notifyStart: z.boolean().optional(),
@@ -1003,7 +1004,7 @@ export function registerOperationsTools(
 
   server.tool(
     'delegate_task',
-    'Start a resumable task here or on a verified SSH Station. Local tasks default to your Project folder, if set, and stay in your Project or global space.',
+    'Start a task here or on verified SSH. Defaults to your Project.',
     {
       prompt: z.string().min(1).describe('Work to delegate'),
       clientTurnId: z
@@ -1020,9 +1021,7 @@ export function registerOperationsTools(
         .string()
         .min(1)
         .optional()
-        .describe(
-          'Project slug. Omit it and the path to use your own Project.',
-        ),
+        .describe('Defaults to your Project.'),
       projectPath: z
         .string()
         .min(1)
@@ -1041,6 +1040,10 @@ export function registerOperationsTools(
         .optional()
         .describe('Parent task for worker or subagent topology'),
       navigate: z.boolean().optional(),
+      appearanceProposal: z
+        .boolean()
+        .optional()
+        .describe('Allow a local appearance proposal.'),
       _delegation: delegationContextSchema.optional(),
       _delegationAttestation: z.string().optional(),
       _userId: z.string().optional(),
@@ -1080,6 +1083,7 @@ export function registerOperationsTools(
           target,
           ...(input.sessionId ? { sessionId: input.sessionId } : {}),
           ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+          ...(input.appearanceProposal ? { appearanceProposal: true } : {}),
           // #2601: a claim only, like `send_message`'s.
           delegation: _delegation,
           ...(_delegation && _delegationAttestation

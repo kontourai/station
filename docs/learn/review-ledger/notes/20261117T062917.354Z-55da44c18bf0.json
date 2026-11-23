@@ -1,0 +1,7 @@
+{
+  "revision": "18dbda046a417be580e90a0c0a87e8820fa79a82",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"session-api.md's held-start paragraph changed; the ADR's claims about managed chat routing are unchanged.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

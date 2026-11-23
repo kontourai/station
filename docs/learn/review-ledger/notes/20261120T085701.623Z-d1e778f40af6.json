@@ -1,0 +1,7 @@
+{
+  "revision": "e5b70abdc6bc003d26798c18a79ae5675e6d863b",
+
+  "notes": [
+    {"path":"docs/learn/README.md","note":"Reviewed lazy search and the rendered skill title and outline. Atlas now runs an existing query after loading its manifest, so a query entered earlier reaches the same search index without a second edit. The real-manifest browser probe reproduced no results on the old reader.","inputs":["docs/learn/README.md","docs/learn/atlas.js"]}
+  ]
+}

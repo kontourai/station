@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import { vi as vitestConfigVi } from 'vitest';
+import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
 import { CreateRequestCapacityError } from '../../../services/orchestration/create-request-claims.js';
 
 // This file exercises REAL SQLite EventStores per test (one writes 401
@@ -561,6 +562,7 @@ function makeResumeTestService(
     listSessionReadModel: vi.fn().mockResolvedValue([]),
     canUserReadSession: vi.fn().mockReturnValue(true),
     dispatch: vi.fn(),
+    readableEngineStartWaits: () => [],
     readEventStreamHead: () => eventStore.headGlobalSequence(),
     retainSessionDeletionReader: () => () => {},
     conversationStreamBinding: () => undefined,
@@ -1069,11 +1071,14 @@ describe('Orchestration Routes', () => {
   });
 
   test('child steer command reaches the real service and durable receipt over HTTP', async () => {
+    const screenshot =
+      'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAI0lEQVR4nGOUq/BmIAUwkaSaYVQDcYCJSHVwMKqBGEByKAEA408BAa+t6k4AAAAASUVORK5CYII=';
     const directory = makeTempDir('child-steer-http-');
     const eventStore = new EventStore(join(directory, 'orchestration.sqlite'));
     steerFixtureStores.push(eventStore);
     const eventBus = new EventBus();
     class ChildAdapter extends GateTestAdapter {
+      readonly childSteerImages = true;
       private loaded = false;
       readonly steerChildWork = vi.fn(
         async (_threadId: string, _childId: string, turnId: string) => ({
@@ -1145,7 +1150,29 @@ describe('Orchestration Routes', () => {
         },
       },
     });
+    const stages = new AttachmentStagingService();
+    const owner = { principalId: ROUTE_TEST_USER_ID };
+    const desc = {
+      clientAttachmentId: 'image-id',
+      name: 'screen.png',
+      kind: 'image' as const,
+      mimeType: 'image/png' as const,
+      size: 92,
+    };
+    const prepared = stages.prepare(owner, desc);
+    const ref = stages.upload(
+      prepared.stageId,
+      prepared.uploadGrant,
+      screenshot,
+    );
+    const hydrate = vi.fn(stages.bindAndHydrate.bind(stages));
     const app = createOrchestrationRoutes(service, {
+      hydrateStagedAttachments: (principal, refs, binding) =>
+        hydrate({ principalId: principal.id }, refs, binding),
+      acceptStagedAttachments: (principal, refs, binding) =>
+        stages.acceptBinding({ principalId: principal.id }, refs, binding),
+      releaseStagedAttachments: (principal, refs, binding) =>
+        stages.releaseBinding({ principalId: principal.id }, refs, binding),
       eventBus,
       logger: { debug: vi.fn() },
       getUserId: () => ROUTE_TEST_USER_ID,
@@ -1228,6 +1255,72 @@ describe('Orchestration Routes', () => {
         ],
       },
     });
+    const imageCommand = {
+      ...command,
+      clientInputId: 'image-key',
+      input: { text: '', attachmentRefs: [ref] },
+    };
+    const peerStage = stages.prepare({ principalId: 'another-person' }, desc);
+    const peerRef = stages.upload(
+      peerStage.stageId,
+      peerStage.uploadGrant,
+      screenshot,
+    );
+    expect(
+      await (
+        await send({
+          ...imageCommand,
+          input: { text: '', attachmentRefs: [peerRef] },
+        })
+      ).json(),
+    ).toMatchObject({ data: { outcome: 'attachments-unavailable' } });
+    expect(adapter.steerChildWork).toHaveBeenCalledTimes(1);
+    expect(await (await send(imageCommand)).json()).toMatchObject({
+      data: { outcome: 'steered' },
+    });
+    expect(adapter.steerChildWork).toHaveBeenLastCalledWith(
+      threadId,
+      'child',
+      'child-turn',
+      '',
+      [
+        {
+          kind: 'image',
+          name: 'screen.png',
+          mimeType: 'image/png',
+          size: 92,
+          dataUrl: screenshot,
+        },
+      ],
+    );
+    expect(stages.reconcile(owner, [ref.stageId])[0].state).toBe('accepted');
+    expect(await (await send(imageCommand)).json()).toMatchObject({
+      data: { outcome: 'steered' },
+    });
+    expect(
+      await (
+        await send({
+          ...imageCommand,
+          input: {
+            text: '',
+            attachmentRefs: [{ ...ref, digest: 'sha256-' + '0'.repeat(64) }],
+          },
+        })
+      ).json(),
+    ).toMatchObject({ code: 'client_turn_input_conflict' });
+    expect(hydrate).toHaveBeenCalledTimes(2);
+    expect(adapter.steerChildWork).toHaveBeenCalledTimes(2);
+    const history = await (await read('child')).json();
+    expect(history).toMatchObject({
+      data: {
+        entries: [
+          {},
+          { text: '', attachments: [{ name: ref.name, digest: ref.digest }] },
+        ],
+      },
+    });
+    expect(JSON.stringify(history)).not.toContain('data:image');
+    stages.dispose();
     expect((await read('other')).status).toBe(404);
     expect(
       (
@@ -1851,8 +1944,11 @@ describe('Orchestration Routes', () => {
       failurePhase: 'indeterminate',
       retryable: false,
       success: false,
-      error:
-        'Foreground Agent message may have started. Do not retry automatically.',
+      error: expect.stringMatching(
+        // Never "later messages are refused": when the engine died during
+        // the start its exit retires the claim and the conversation goes on.
+        /^Foreground Agent message may have started\. Do not retry automatically: check the conversation for that turn\. If Station still cannot tell whether it started when you send again, that message is refused and the refusal says what will clear it\.$/,
+      ),
       code: 'foreground_message_indeterminate',
       outcome: 'indeterminate',
       receipt,
@@ -2469,8 +2565,9 @@ describe('Orchestration Routes', () => {
       failurePhase: 'indeterminate',
       retryable: false,
       success: false,
-      error:
-        'Foreground Agent continuation may have started. Do not retry automatically.',
+      error: expect.stringMatching(
+        /^Foreground Agent continuation may have started\. Do not retry automatically: check the conversation for that turn\./,
+      ),
       code: 'foreground_message_indeterminate',
       outcome: 'indeterminate',
     });
@@ -2566,8 +2663,9 @@ describe('Orchestration Routes', () => {
       failurePhase: 'indeterminate',
       retryable: false,
       success: false,
-      error:
-        'Foreground Agent continuation may have started. Do not retry automatically.',
+      error: expect.stringMatching(
+        /^Foreground Agent continuation may have started\. Do not retry automatically: check the conversation for that turn\./,
+      ),
       code: 'foreground_message_indeterminate',
       outcome: 'indeterminate',
       receipt,
@@ -5510,6 +5608,7 @@ describe('Orchestration Routes', () => {
       ]),
       canUserReadSession: vi.fn().mockReturnValue(true),
       dispatch: vi.fn(),
+      readableEngineStartWaits: () => [],
       readEventStreamHead: vi.fn().mockReturnValue(0),
       retainSessionDeletionReader: () => () => {},
       conversationStreamBinding: () => undefined,
@@ -5579,6 +5678,7 @@ describe('Orchestration Routes', () => {
           authority.tenantExecutionContext?.tenantId === 'tenant-alpha' &&
           threadId === 'thread-a',
       ),
+      readableEngineStartWaits: () => [],
       readEventStreamHead: vi.fn().mockReturnValue(1),
       retainSessionDeletionReader: () => () => {},
       conversationStreamBinding: () => undefined,
@@ -5728,6 +5828,7 @@ describe('Orchestration Routes', () => {
       listSessionReadModel: vi.fn().mockResolvedValue([decorated]),
       canUserReadSession: vi.fn().mockReturnValue(true),
       dispatch: vi.fn(),
+      readableEngineStartWaits: () => [],
       readEventStreamHead: vi.fn().mockReturnValue(0),
       retainSessionDeletionReader: () => () => {},
       conversationStreamBinding: () => undefined,
@@ -5778,6 +5879,7 @@ describe('Orchestration Routes', () => {
       listSessionReadModel: vi.fn().mockResolvedValue([]),
       canUserReadSession: vi.fn().mockReturnValue(true),
       dispatch: vi.fn(),
+      readableEngineStartWaits: () => [],
       readEventStreamHead: vi.fn().mockReturnValue(0),
       retainSessionDeletionReader: () => () => {},
       conversationStreamBinding: () => undefined,

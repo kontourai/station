@@ -1,0 +1,7 @@
+{
+  "revision": "fa92f2845f50b4d1c818cc765c5d05bc92e27881",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"The Automations row now also names the name disclosure's Enter and Space keys, which schedule-runs.spec.ts asserts.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/schedule-runs.spec.ts"]}
+  ]
+}

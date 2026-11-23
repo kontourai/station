@@ -1,5 +1,12 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AgentData } from '../../contexts/AgentsContext';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
+import { chatBelongsToStation } from '../../connections/station-state';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useOutboundQueueSnapshot } from '../../hooks/useOutboundQueueSnapshot';
 import type { ChatSession, FileAttachment } from '../../types';
 import {
@@ -7,12 +14,16 @@ import {
   isSessionExecutionActive,
 } from '../../utils/execution';
 import type { SelectableModel } from '../../utils/modelCapabilities';
-import { agentRunnability } from '../agent-runnability';
 import {
   type ContextBoundaryAuthority,
   observeContextBoundary,
   useContextBoundaryRecovery,
 } from './conversationContextBoundaryUiState';
+
+interface ForkSourceView {
+  id: string;
+  conversationId?: string;
+}
 
 export interface ForkFollowUp {
   mode: 'regenerate' | 'edit';
@@ -30,22 +41,23 @@ export interface ForkFollowUp {
  * and the fork attempt's abort/generation bookkeeping all read the same
  * active session.
  *
- * `ConversationBoundaryDialogs` renders the handoff and context-reset
- * dialogs from this object; the fork members are consumed by the dock's
- * `ChatDockModalStack` and its transcript fork affordance.
+ * `ConversationBoundaryDialogs` renders the handoff, fork and context-reset
+ * dialogs from this object; the dock's `runFork` drives the fork members.
  */
 export function useConversationBoundaryDialogs({
-  agents,
   apiBase,
   activeSession,
   allSessions,
   contextBoundaryAuthority,
+  forkScope,
+  forkViewId,
 }: {
-  agents: AgentData[];
   apiBase: string;
   activeSession: ChatSession | null;
   allSessions: ChatSession[];
   contextBoundaryAuthority?: ContextBoundaryAuthority;
+  forkScope?: string;
+  forkViewId?: string;
 }) {
   const handoffReturnFocusRef = useRef<HTMLButtonElement | null>(null);
   const [handoffSource, setHandoffSource] = useState<{
@@ -73,12 +85,16 @@ export function useConversationBoundaryDialogs({
     providerId?: string;
     providerType?: string;
     sourceSessionId?: string;
-    idempotencyKey: string;
     /**
      * #4406: what the fork does once open — Regenerate sends the message
      * again, Edit and resend puts it in the composer.
      */
     followUp?: ForkFollowUp;
+    /**
+     * Regenerate / Edit and resend with a runnable Agent: the fork runs
+     * without the dialog, which appears only if it fails.
+     */
+    quiet?: boolean;
   } | null>(null);
   const [forkOperation, setForkOperation] = useState<{
     pending: boolean;
@@ -86,23 +102,72 @@ export function useConversationBoundaryDialogs({
   }>({ pending: false, error: null });
   const forkAbortRef = useRef<AbortController | null>(null);
   const forkGenerationRef = useRef(0);
-  const cancelFork = useCallback(() => {
+  const forkIntentRef = useRef<{
+    view: ForkSourceView;
+    scope: string | undefined;
+    isAuthorityCurrent: () => boolean;
+    selectingDestination: boolean;
+    unsubscribe: () => void;
+  } | null>(null);
+  const retireFork = useCallback(() => {
     forkGenerationRef.current += 1;
+    forkIntentRef.current?.unsubscribe();
+    forkIntentRef.current = null;
     forkAbortRef.current?.abort();
     forkAbortRef.current = null;
+  }, []);
+  useLayoutEffect(() => retireFork, [retireFork]);
+  const cancelFork = useCallback(() => {
+    retireFork();
     setForkOperation({ pending: false, error: null });
     setForkSource(null);
+  }, [retireFork]);
+  const isForkIntentCurrent = useCallback(() => {
+    const intent = forkIntentRef.current;
+    if (!intent?.isAuthorityCurrent()) return false;
+    const chat = activeChatsStore.getSnapshot()[intent.view.id];
+    return Boolean(
+      chat &&
+        chatBelongsToStation(chat) &&
+        chat.conversationId === intent.view.conversationId,
+    );
   }, []);
-  const forkEligibleAgents = useMemo(() => {
-    if (!forkSource) return agents;
-    return agents
-      .filter((agent) => agentRunnability(agent).runnable)
-      .sort((left, right) => {
-        if (left.slug === forkSource.agentSlug) return -1;
-        if (right.slug === forkSource.agentSlug) return 1;
-        return 0;
-      });
-  }, [agents, forkSource]);
+  useLayoutEffect(() => {
+    const intent = forkIntentRef.current;
+    if (
+      intent &&
+      (!isForkIntentCurrent() ||
+        (!intent.selectingDestination &&
+          (intent.scope !== forkScope ||
+            (forkViewId && forkViewId !== intent.view.id))))
+    ) {
+      cancelFork();
+    }
+  }, [cancelFork, forkScope, forkViewId, isForkIntentCurrent]);
+  const beginForkIntent = (
+    view: ForkSourceView,
+    isAuthorityCurrent: () => boolean,
+  ) => {
+    cancelFork();
+    forkIntentRef.current = {
+      view,
+      scope: forkScope,
+      isAuthorityCurrent,
+      selectingDestination: false,
+      // Observe removal before a close/reopen can reuse the same local ID.
+      unsubscribe: activeChatsStore.subscribe(() => {
+        if (!isForkIntentCurrent()) cancelFork();
+      }),
+    };
+    return forkGenerationRef.current;
+  };
+  const moveForkIntentToLiveView = (view: ForkSourceView) => {
+    if (forkIntentRef.current) forkIntentRef.current.view = view;
+  };
+  const selectForkDestination = () => {
+    if (forkIntentRef.current)
+      forkIntentRef.current.selectingDestination = true;
+  };
   const [contextResetSource, setContextResetSource] = useState<{
     id: string;
   } | null>(null);
@@ -248,7 +313,10 @@ export function useConversationBoundaryDialogs({
     forkAbortRef,
     forkGenerationRef,
     cancelFork,
-    forkEligibleAgents,
+    beginForkIntent,
+    isForkIntentCurrent,
+    moveForkIntentToLiveView,
+    selectForkDestination,
     contextResetSource,
     setContextResetSource,
     contextBoundaryAuthority,

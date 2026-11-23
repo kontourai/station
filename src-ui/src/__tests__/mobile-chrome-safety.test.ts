@@ -91,85 +91,16 @@ describe('shell chrome shares one mobile breakpoint', () => {
   });
 });
 
-describe('the toolbar replacement carries the inset the toolbar owned', () => {
+describe('the persistent toolbar owns the top safe area above a maximized dock', () => {
   const css = read('index.css');
-
-  it('still hides the app toolbar in full-screen mobile dock', () => {
-    // The premise of the assertion below. If this stops being true, the
-    // requirement changes rather than disappears.
-    expect(css).toMatch(
+  it('reserves the measured toolbar height and never adds the safe inset twice', () => {
+    const [maximized] = ruleBodies(css, '.app__main > .chat-dock.is-maximized');
+    expect(maximized).toMatch(/top:\s*calc\([^;]*--app-toolbar-total-height/);
+    expect(css).not.toMatch(
       /\.app__main--mobile-dock-fullscreen\s*>\s*\.app-toolbar\s*\{[^}]*display:\s*none/,
     );
-  });
-
-  it('counts the top safe area once for the full-screen mobile dock', () => {
-    // The toolbar is the only element that carries padding-top: var(--safe-top).
-    // Hiding it must not put the eyebrow and title under the status bar on
-    // edge-to-edge Android (archive#2287) — and it must not count the inset
-    // twice either. The dock itself starts below the inset (its `top` adds
-    // `--app-toolbar-total-height`, reduced to `--safe-top` in this mode), so
-    // a header that ALSO pads by it leaves a status-bar-tall empty band. The
-    // geometry is proven by the browser journey in
-    // tests/mobile-chat-composer.spec.ts; this pins the two declarations it
-    // measures.
-    expect(css).toMatch(
-      /\.app__main--mobile-dock-fullscreen\s*\{[^}]*--app-toolbar-total-height:\s*var\(--safe-top\)/,
-    );
-    const [maximized] = ruleBodies(css, '.app__main > .chat-dock.is-maximized');
-    expect(maximized, 'mobile maximized dock rule not found').toBeDefined();
-    expect(maximized).toMatch(/top:\s*calc\([^;]*--app-toolbar-total-height/);
-
-    const [body] = ruleBodies(css, '.chat-dock__mobile-header');
-    expect(body, '.chat-dock__mobile-header rule not found').toBeDefined();
-    const padding = /(^|[;{\s])padding:\s*([^;]+);/.exec(body)?.[2];
-    expect(padding, 'the header must declare its own padding').toBeDefined();
-    expect(padding).not.toContain('--safe-top');
-    expect(
-      ruleBodies(
-        css,
-        '.app__main--mobile-dock-fullscreen > .chat-dock .chat-dock__mobile-header',
-      ).join(''),
-    ).not.toContain('--safe-top');
-  });
-
-  it('pads a workspace tab strip if fullscreen chrome is ever applied to it', () => {
-    const [body] = ruleBodies(
-      css,
-      '.app__main--mobile-dock-fullscreen .workspace-tabs__header',
-    );
-    expect(body).toMatch(/padding-top:\s*var\(--safe-top\)/);
-  });
-
-  it('pads a PageFrame route header the same way (station#541)', () => {
-    // A framed route (Connections, Settings, ...) publishes its eyebrow/
-    // title through `.page-frame__header`, not `.workspace-tabs__header` —
-    // a different route family, the same missing-inset defect: with the
-    // toolbar hidden nothing else accounts for the status-bar inset before
-    // it. Layered on top of the header's own padding, not a replacement —
-    // `padding-top` alone, so the base horizontal/bottom padding survives.
-    //
-    // Review round 2: this rule now lives IN page-frame.css itself (a
-    // mobile-css-ratchet PRIMITIVE_ALLOWLIST entry — it renders every page
-    // header, so it already owns this header's one mobile treatment),
-    // beside the base padding it layers onto, rather than in index.css.
-    const pageFrameCss = read('components/page-frame/page-frame.css');
-    const bodies = ruleBodies(
-      pageFrameCss,
-      '.app__main--mobile-dock-fullscreen .page-frame__header',
-    );
-    expect(
-      bodies.length,
-      '.page-frame__header fullscreen rule (both breakpoints) not found',
-    ).toBe(2);
-    // The 641-768px rule adds the inset to page-frame.css's 2rem base...
-    expect(bodies[0]).toMatch(
-      /padding-top:\s*calc\(var\(--safe-top\)\s*\+\s*2rem\)/,
-    );
-    // ...and the <=640px rule (declared AFTER it, so the tie between two
-    // identical-specificity selectors resolves by source order) adds it to
-    // page-frame.css's narrower 1.5rem base instead.
-    expect(bodies[1]).toMatch(
-      /padding-top:\s*calc\(var\(--safe-top\)\s*\+\s*1\.5rem\)/,
+    expect(ruleBodies(css, '.chat-dock__mobile-header').join('')).not.toMatch(
+      /padding[^;]*--safe-top/,
     );
   });
 
@@ -356,14 +287,10 @@ describe('dock-owned view classification (#2636, station#4460)', () => {
     expect(isDockOwnedViewType('activity')).toBe(true);
   });
 
-  it('both isDockOwnedView call sites derive through the one shared predicate', () => {
-    // If either caller re-derives ad hoc, the two toggles drift — the exact
-    // double/zero drawer-toggle failure mobile-chrome.ts documents.
-    const app = read('App.tsx');
-    const dock = read('components/chat-dock/ChatDock.tsx');
-    expect(app).toMatch(/isDockOwnedView:\s*isDockOwnedViewType\(/);
-    expect(dock).toMatch(
-      /isDockOwnedView:[\s\S]*?isDockOwnedViewType\(resolveViewFromPath\(pathname\)\.type\)/,
+  it('the app shell owns the dock classification for toolbar clearance', () => {
+    expect(read('App.tsx')).toMatch(/isDockOwnedView:\s*isDockOwnedViewType\(/);
+    expect(read('components/chat-dock/ChatDock.tsx')).not.toContain(
+      'isDockOwnedViewType',
     );
   });
 });

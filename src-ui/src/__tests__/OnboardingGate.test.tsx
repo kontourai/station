@@ -125,7 +125,10 @@ vi.mock('../components/UsageTelemetryDisclosure', async (importOriginal) => {
     >();
   return {
     ...actual,
-    UsageTelemetryDisclosure: (props: { firstRun?: boolean }) =>
+    UsageTelemetryDisclosure: (props: {
+      firstRun?: boolean;
+      offerOnHome?: boolean;
+    }) =>
       realTelemetryDisclosure ? (
         <actual.UsageTelemetryDisclosure {...props} />
       ) : null,
@@ -481,7 +484,10 @@ vi.mock('@kontourai/station-sdk', () => ({
 
 import { MobileWelcomeBoundary } from '../components/MobileWelcomeBoundary';
 import { OnboardingGate } from '../components/OnboardingGate';
-import { resetUsageTelemetryDisclosureDismissal } from '../components/UsageTelemetryDisclosure';
+import {
+  resetUsageTelemetryDisclosureDismissal,
+  UsageTelemetryDisclosure,
+} from '../components/UsageTelemetryDisclosure';
 import { onboardingSetupStore } from '../contexts/onboarding-setup-store';
 import { RecoveryQueryBoundary } from '../contexts/RecoveryQueryBoundary';
 import {
@@ -591,7 +597,7 @@ describe('OnboardingGate', () => {
   }
 
   test.each(['off', 'lite', 'full'] as const)(
-    'the app-wide DNT Save closes across remounts and re-prompts only pending Full: %s',
+    'the optional Home DNT choice returns only for pending Full or a new revision: %s',
     async (tier) => {
       realTelemetryDisclosure = true;
       currentStatus = chatReadyStatus();
@@ -660,6 +666,7 @@ describe('OnboardingGate', () => {
           <RecoveryQueryBoundary>
             <OnboardingGate>
               <div>App</div>
+              <UsageTelemetryDisclosure firstRun offerOnHome />
             </OnboardingGate>
             <PendingReads />
           </RecoveryQueryBoundary>,
@@ -669,6 +676,9 @@ describe('OnboardingGate', () => {
         reads.mock.calls.filter(([url]) => String(url).includes('/disclosure'))
           .length;
       let view = mount();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Review choices' }),
+      );
       fireEvent.click(await screen.findByRole('radio', { name: label }));
       fireEvent.click(
         screen.getByRole('button', {
@@ -710,18 +720,24 @@ describe('OnboardingGate', () => {
         ).toBe('0'),
       );
       if (tier === 'full') {
-        expect(screen.getByRole('dialog')).toBeTruthy();
+        expect(screen.queryByRole('dialog')).toBeNull();
         expect(
-          screen.getByRole('button', { name: 'Save choice' }),
+          screen.getByRole('button', { name: 'Review choices' }),
         ).toBeTruthy();
       } else {
         expect(screen.queryByRole('dialog')).toBeNull();
+        expect(
+          screen.queryByRole('button', { name: 'Review choices' }),
+        ).toBeNull();
       }
       expect(writes).toHaveBeenCalledTimes(1);
       view.unmount();
       dnt = true;
       inventoryRevision = 'next-dnt-gate-revision';
       view = mount();
+      fireEvent.click(
+        await screen.findByRole('button', { name: 'Review choices' }),
+      );
       expect(await screen.findByRole('radio', { name: label })).toBeTruthy();
       view.unmount();
     },

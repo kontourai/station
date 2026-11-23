@@ -51,7 +51,7 @@ describe('enveloped delivery toast (#2587)', () => {
     expect(duration).toBe(5000);
     expect(metadata).toEqual({
       envelope,
-      detail: 'from planner · session session-1',
+      attribution: 'from planner',
     });
     expect(actions).toHaveLength(1);
     expect(actions[0].label).toBe('Open');

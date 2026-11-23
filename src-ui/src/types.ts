@@ -161,6 +161,8 @@ export interface ComposerAttachmentStageSnapshot {
 }
 
 export interface ChatMessage {
+  /** This view loaded the row from history without observing its arrival. */
+  historyEntry?: true;
   /** Stable server/event identity when the projection can provide one. */
   id?: string;
   /** Stable client identity while an optimistic user row awaits persistence. */
@@ -352,6 +354,8 @@ export interface ChatMessage {
   turnEndedReason?: string;
   /** Who stopped that turn, when Station recorded it. */
   turnStoppedBy?: 'person' | 'stall' | 'restart';
+  /** The turn stopped at the engine's output limit; the reply is incomplete. */
+  turnCutOff?: 'max-tokens';
   /**
    * archive#1410: the turn's provenance envelope exactly as the server sent
    * it. Untyped on purpose — see `TurnProvenanceCard`, which narrows it

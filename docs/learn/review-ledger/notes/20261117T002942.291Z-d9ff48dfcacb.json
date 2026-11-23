@@ -1,0 +1,15 @@
+{
+  "revision": "6959ff2d3dc94434d27f416f8e550cd58382324a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked for claims about agent-configuration staleness, the pre-tool runtime-generation stage, the external pre-tool policy wiring and conversation successor reasons. The change scopes stale_generation for external engine sessions to the session's own Agent definition and adds a policy successor on the next turn; no other claim on this page depends on the changed lines.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked for claims about agent-configuration staleness, the pre-tool runtime-generation stage, the external pre-tool policy wiring and conversation successor reasons. The change scopes stale_generation for external engine sessions to the session's own Agent definition and adds a policy successor on the next turn; no other claim on this page depends on the changed lines.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked for claims about agent-configuration staleness, the pre-tool runtime-generation stage, the external pre-tool policy wiring and conversation successor reasons. The change scopes stale_generation for external engine sessions to the session's own Agent definition and adds a policy successor on the next turn; no other claim on this page depends on the changed lines.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked for claims about agent-configuration staleness, the pre-tool runtime-generation stage, the external pre-tool policy wiring and conversation successor reasons. The change scopes stale_generation for external engine sessions to the session's own Agent definition and adds a policy successor on the next turn; no other claim on this page depends on the changed lines.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked for claims about agent-configuration staleness, the pre-tool runtime-generation stage, the external pre-tool policy wiring and conversation successor reasons. The change scopes stale_generation for external engine sessions to the session's own Agent definition and adds a policy successor on the next turn; no other claim on this page depends on the changed lines.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]}
+  ]
+}

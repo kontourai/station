@@ -603,33 +603,20 @@ test.describe('Connection Manager Modal', () => {
     expect(after.width).toBeCloseTo(before.width, 1);
   });
 
-  test('keeps one Station chooser on the page and one manager action in fullscreen chat at 390px (#1048)', async ({
+  test('keeps one operable Station chooser above the collapsed and maximized phone dock', async ({
     page,
   }) => {
     await page.setViewportSize({ width: 390, height: 844 });
-
-    // Default mobile state: the ambient chat dock is present but collapsed,
-    // NOT full-screen (`chat-dock is-collapsed`, not
-    // `app__main--mobile-dock-fullscreen`) — this is the state every phone
-    // user lands in on a fresh load, not an edge case. Before #1048 the app
-    // toolbar's `app-toolbar-connection` and the dock header's
-    // `chat-dock-mobile-connection` both rendered here and both matched.
-    await expect(page.getByTestId('app-toolbar-connection')).toHaveCount(1);
-
-    // Fullscreen keeps message context primary. Station management moves into
-    // the mobile chat actions sheet, where exactly one control remains reachable.
+    const chooser = page.getByTestId('app-toolbar-connection');
+    await expect(chooser).toHaveCount(1);
+    await expect(chooser).toBeVisible();
     await page.goto('/?dock=open&maximize=true');
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
-    await page
-      .getByTestId('chat-dock-mobile-header')
-      .getByRole('button', { name: 'Chat actions', exact: true })
-      .click();
-    const survivor = page.getByRole('button', { name: /^Manage Stations/ });
-    await expect(survivor).toHaveCount(1);
-    await expect(survivor).toHaveAttribute(
-      'data-testid',
-      'chat-dock-mobile-connection',
+    await expect(chooser).toHaveCount(1);
+    await expect(page.getByTestId('chat-dock-mobile-connection')).toHaveCount(
+      0,
     );
+    await openStationManager(page);
   });
 
   test('can switch between approved Device connections', async ({ page }) => {

@@ -221,8 +221,16 @@ function disclosure(input: {
   return lines.join('\n');
 }
 
+/**
+ * Closes the transcript. Engines receive the seed directly before the new
+ * request (`composeAmbientTurnText`), so without it the request reads as the
+ * tail of the last carried message, often an assistant reply.
+ */
+export const TRANSCRIPT_SEED_END =
+  'End of the earlier transcript. The new request follows.';
+
 function render(heading: string, head: string, body: string[]): string {
-  return [`${heading}\n${head}`, ...body].join('\n\n');
+  return [`${heading}\n${head}`, ...body, TRANSCRIPT_SEED_END].join('\n\n');
 }
 
 /**
@@ -342,7 +350,7 @@ export function buildTranscriptSeed(input: {
   // notice, plus slack for singular/plural wording) so the real one can never
   // push the seed over the budget.
   const reserve = approxInjectedTokens(
-    `${input.heading}\n${disclosure({ total, included: total, omitted: total, nonText, shortened: true, upstreamShortened, quotedImports })}${' '.repeat(16)}\n\n`,
+    `${input.heading}\n${disclosure({ total, included: total, omitted: total, nonText, shortened: true, upstreamShortened, quotedImports })}${' '.repeat(16)}\n\n${TRANSCRIPT_SEED_END}\n\n`,
   );
   if (reserve > budget) {
     throw new RangeError(

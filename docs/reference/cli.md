@@ -1236,7 +1236,9 @@ guaranteed retention window. The CLI never resends automatically.
 `--approval-mode`/`--effort`/`--thinking`/`--model-option` (station#978) set
 per-invocation settings on an Agent whose resolved engine supports them. The
 server validates option keys after resolving the target; Station's engine does
-not support this engine-options bag. `--approval-mode` accepts exactly
+not support this engine-options bag. Claude and Codex accept `--approval-mode`;
+an ACP Agent accepts it when Station answers its approvals; other Agents refuse
+it. `--approval-mode` accepts exactly
 `ask`, `auto`, `never`, or `connection-default` (an invalid value is a usage
 error, exit 1, before any request); `--effort` and `--thinking` are
 otherwise engine-specific. `--model-option=key=value` is a repeatable
@@ -1761,7 +1763,7 @@ engine reports afterwards is shown separately as `lastDecision` on
 | `awaiting-acknowledgement` | The engine acknowledges decisions and has not yet. Codex normally does within a second. |
 | `acknowledged` | The engine closed the request after Station's well-formed reply. This is not proof it applied the decision as given; `engineStatus` carries the engine's own outcome when it reports one (Muse). |
 | `unacknowledged` | `reason: no-acknowledgement`: nothing arrived within the adapter's window (30 s for Codex), or the session ended first. Station has not re-sent the decision. A late acknowledgement replaces this with `acknowledged`. `reason: invalid-reply`: Station refused to send a reply the engine would not accept, so the engine is still waiting. |
-| `in-process` | Station's own engine consumed the decision. |
+| `in-process` | Station's own engine, or the GitHub Copilot (SDK) engine's in-process permission callback, consumed the decision. |
 | `closed-by-engine` | Codex closed the request on its own (for example when a turn is interrupted) before Station answered. Station made no decision (`status` is `cancelled`), and a decision sent afterwards is refused, since Codex would never read it. Printed as `Request req-1: closed by the engine before Station answered`. |
 | `not-reported` | The engine's protocol reports no delivery (Claude Code, ACP connections), or the decision predates delivery reporting. This is a capability, not a warning. |
 
@@ -2382,11 +2384,16 @@ station schedule disable <job> [--api-base=<url>]
 station schedule delete <job> [--api-base=<url>]
 ```
 
-`create` and `update` accept either the compatible `cron` field or a canonical
+`create` needs a `prompt` and a slug `name`, a `displayName`, or both; with
+only `displayName` the host picks an unused slug, and the host judges what a
+display name may contain. The Station Control `add_job` tool takes the same
+fields. `create` and `update` accept either the compatible `cron` field or a canonical
 schedule object: `{kind:"cron",expr,timezone?}`,
 `{kind:"every",everyMs}`, or `{kind:"at",timeMs,deleteAfterRun?}`, and an
 optional `target` that runs each time in a conversation (see
-[Automations](../user/automations.md)). There is no `station automations`
+[Automations](../user/automations.md)). `create` prints the create answer,
+`output` and `name` (the slug the job was stored under), and the Station
+Control `add_job` tool returns the same `data`. There is no `station automations`
 alias for these verbs: that name's `enable`, `disable` and `delete` are
 reserved for automation rules (`AUTOMATION_OPERATOR_SURFACE`). The same
 operator lifecycle is exposed by the HTTP API, React-free SDK client, and
@@ -2412,6 +2419,14 @@ station automation disable <rule-id>
 station automation delete <rule-id>
 ```
 
+A rule's `action.projectId` and a source grant's `projectId` accept a
+Project's id or slug (for example `"projectId":"station"`). Station stores the
+id, and refuses a value that names no Project, quoting it. A rule's
+`action.approvalMode` is `ask` (the default when omitted), `auto` or
+`connection-default` (the Agent's own approval settings; nothing is sent).
+An Agent that cannot take the rule's mode, including an omitted one, is
+refused before any Task is created.
+
 Every action takes `--api-base=<url>`. Each is one `AUTOMATION_OPERATOR_SURFACE`
 verb under `/automations` (see
 [Operator surface](../design/automations.md#operator-surface)). Reads need
@@ -2422,9 +2437,10 @@ automation observations** Feature Preview.
 
 `deliveries` prints `deliveries` (default 50) and `polls`: each row's outcome
 (`matched`, `no-match`, `ignored`, `suppressed` or `refused` with a reason,
-`started`, `failed`, `indeterminate` or `duplicate`), its semantic key, and its
-rule and episode ids. A delivery whose action is held by a limit reads
-`suppressed` with that reason. Each row's `decisions` lists every matched
+`started`, `failed`, `stopped`, `indeterminate` or `duplicate`), its
+semantic key, and its rule and episode ids. A delivery whose action is held by
+a limit reads `suppressed` with that reason; `stopped` means a person
+stopped the Agent's turn (any other stop reads `failed`). Each row's `decisions` lists every matched
 `observe` or `live` rule with its mode and outcome: `would-start` or
 `suppressed` (with a reason) for an `observe` rule, `intent-retained` or
 `suppressed` for a `live` one, plus the rule name, action kind, Project, Agent
@@ -2444,7 +2460,8 @@ isolated repair API instead. A source can be deleted only once no rule names
 it.
 
 `episodes` lists unclosed episodes (`open`, `exhausted`, `indeterminate`).
-`retry-episode` gives an exhausted episode exactly one more attempt under the
+`retry-episode` gives an exhausted episode, or an open one marked
+`startFailed` (its Agent never started), exactly one more attempt under the
 rule's current policy; it is refused for an indeterminate episode, one with
 pending or running work, an event older than 72 hours, or a rule that may not
 act now.
@@ -2772,7 +2789,8 @@ SIGTERM starts elsewhere. `service stop` therefore ends the task, waits for
 the launcher to stop Station and exit (up to its 150-second stop budget, after
 which it ends the launcher by pid only if the launcher's start time proves the
 pid is still the launcher's, and otherwise refuses, naming the pid), and then
-stops anything left by record.
+stops anything left by record. For a Windows archive service, `service uninstall`
+completes the same stop sequence before removing the task and its wrapper.
 If the launcher process itself is killed, nothing starts it again until the
 next logon or `service start`.
 `station service status` shows the update (`update` in `--json`), and in this
@@ -4462,6 +4480,43 @@ station plugin install git@github.com:org/my-plugin.git
 station plugin install ./path/to/local-plugin
 station plugin install https://github.com/org/plugin.git --skip=agent:plugin:chat
 ```
+
+When Station saves the plugin but its runtime activation does not finish (a
+`202` whose receipt says `recovery: "required"`), `station plugin install`,
+`station plugin update` and `station registry install` print `⚠️ Installed …,
+but … so it is not active.` (or `Updated …`) and **exit 2**, so a script does
+not continue as if the plugin were active. Station does not retry the
+activation: recover it with `station plugin recover <name>` or **Recover
+plugin** in Plugins; do not install it again. `station plugin install` refuses
+a plugin that already reads Needs recovery, installing nothing, unless you pass
+`--reinstall` to install another copy on purpose. A plugin the server is still
+activating (its row carries `activationInFlight`) is not stopped: `station
+plugin install` and `station plugin recover` say it is still activating, to
+check again shortly, change nothing and exit 0. A change the receipt says
+Station finishes on its own (`recovery: "none"`, such as a legacy git update)
+prints that it finishes in the background and exits 0, and `station plugin
+remove` reports a removal saved this way as removed, exit 0. A receipt from an
+older Station without `recovery` exits 2 and says to check the plugin's row. A
+`202` without the saved marker is still an error.
+
+### `plugin recover <name>`
+
+Recover an installed plugin that reads **Needs recovery**, as **Recover
+plugin** does in Plugins, for example on a headless home server.
+
+```
+station plugin recover <name> [--yes]
+```
+
+It reads the recovery review and prints what it found: the retained contents
+digest, the registry claim, the permissions it requires and the ones awaiting
+approval, and each retained dependency. Then it asks for your decision; a
+non-interactive run is refused unless `--yes` approves what was printed.
+It sends exactly the reviewed revisions. Recovery uses the retained code and
+data and downloads nothing. When it activates the plugin, any trusted
+permissions it still needs are listed for the separate host approval in
+Plugins. When the activation does not finish within the activation limit, it
+says so and exits 2: a retry may work, or remove the plugin.
 
 ### `plugin preview <source>`
 

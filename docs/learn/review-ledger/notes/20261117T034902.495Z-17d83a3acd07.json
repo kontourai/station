@@ -1,0 +1,17 @@
+{
+  "revision": "8d0e4dc3932c3f218a8e946f17af99097c40a6a1",
+
+  "notes": [
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"testing.md gained one clause naming the blank-tab evaluation test among the process-exclusive pinned-Chromium consumers. Routes, anchors and commands that citing pages use are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"docs/guides/code-quality.md","note":"testing.md gained one clause naming the blank-tab evaluation test among the process-exclusive pinned-Chromium consumers. Routes, anchors and commands that citing pages use are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"scripts/AGENTS.md","note":"testing.md gained one clause naming the blank-tab evaluation test among the process-exclusive pinned-Chromium consumers. Routes, anchors and commands that citing pages use are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"testing.md gained one clause naming the blank-tab evaluation test among the process-exclusive pinned-Chromium consumers. Routes, anchors and commands that citing pages use are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"testing.md gained one clause naming the blank-tab evaluation test among the process-exclusive pinned-Chromium consumers. Routes, anchors and commands that citing pages use are unchanged.","inputs":["docs/guides/testing.md"]},
+
+    {"path":"tests/AGENTS.md","note":"testing.md gained one clause naming the blank-tab evaluation test among the process-exclusive pinned-Chromium consumers. Routes, anchors and commands that citing pages use are unchanged.","inputs":["docs/guides/testing.md"]}
+  ]
+}

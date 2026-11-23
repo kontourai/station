@@ -264,6 +264,28 @@
   overflow: hidden;
 }
 
+/* The recorded text behind a translated cause: closed by default. */
+.notification-history__raw {
+  margin-top: var(--k-space-1);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+
+.notification-history__raw > summary {
+  cursor: pointer;
+  /* A tap target on a phone: the shared touch floor (44px there, unset on a
+     desktop), reached by padding the one line rather than a flex box, which
+     would drop the disclosure marker. */
+  min-height: var(--touch-target-min, auto);
+  padding-block: max(0px, calc((var(--touch-target-min, 0px) - 1lh) / 2));
+  box-sizing: border-box;
+}
+
+.notification-history__raw > p {
+  margin: var(--k-space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
 /*
  * The row's footer: quiet controls (snooze, dismiss) bottom-left, the row's
  * actions bottom-right with the primary one last. Present on every row, so

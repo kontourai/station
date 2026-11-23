@@ -881,7 +881,9 @@ principal currentness and the generation are rechecked before publication.
 **Owner-backed exact open reads (#1363).** The same Task reader now supports a
 fresh personal-only Task/project point read, and the same transcript reader
 supports exact Session metadata and indexed-message event point reads. Hosted
-Task authority is rejected before worker admission. Transcript owner/tenant and
+Task authority is rejected before worker admission. The search route first
+resolves a Project filter given as id or slug to the Project's slug (refusing
+one that names no Project). Transcript owner/tenant and
 optional project filtering happen in SQL before the search limit; parent
 SessionAuthorization, principal currentness, cancellation and runtime generation
 still gate returned facts. Indexed messages carry an exact `matchedEventId`
@@ -2248,6 +2250,14 @@ framework's native memory companion retain their separate contracts.
 
 [Saved fork context](../../src-server/services/orchestration/conversation-fork-context.ts)
 is an owner-scoped immutable copy with an independent Conversation identity.
+The fork route reads its source through
+[`readConversationForkSource`](../../src-server/services/orchestration/conversation-lineage.ts),
+the same authorized whole-Session read a handoff's carried history uses
+(including rows an earlier fork copied in), before any stored Agent record,
+and cuts it at the branch-point turn. Its size is read from SQL first (event count and
+stored bytes, out-of-line content included), after authorization, and a history
+past the fork read bound is refused before any payload loads. The copy keeps messages whole within its
+2 MB bound and only their text past it.
 Opening it returns `fork-ready` without inventing a provider Session. First send
 creates the actual Session and carries the saved text projection; canonical
 refresh combines copied parent rows with subsequent runtime turns. Deletion
@@ -2299,7 +2309,11 @@ reserved only when the current session cannot take the turn:
 - it was explicitly closed (terminal `completed`);
 - its engine binding is `closed`, `dead`, or `error`;
 - the engine cannot apply a requested model switch per turn;
-- an explicit handoff or a context boundary asks for one.
+- an explicit handoff or a context boundary asks for one;
+- what an external engine was launched with (its Agent, tool servers or
+  connection) was replaced and the engine cannot resume; the old engine is
+  then stopped. A resumable one is instead parked by the turn's dispatch and
+  restarted in place under the current configuration.
 
 The conversation-open read reports that decision for the next ordinary turn
 without reserving anything (`nextTurnStartsSession`, from
@@ -2703,6 +2717,8 @@ response, before a completion in the same transport chunk can arrive. Unknown
 or reused native IDs remain unattributed on notifications. Teardown terminals
 use the departing record's attribution even after it has been unregistered. Embedded memory uses local event/fence ordinals and the public pure decisions without a restart claim; unavailable linked custody refuses.
 
+**Held turn starts.** A send whose engine call failed after invocation leaves its row `indeterminate` under this live process, and later starts on that Session are refused, because the turn may be running. Before such a refusal answers, the [execution coordinator](../../src-server/services/orchestration/session-execution-coordinator.ts) hands this process's own held rows to the service, which settles them through [interrupted-turn recovery](../../src-server/services/orchestration/interrupted-turn-recovery.ts) once the adapter that dispatched the start reports that its engine has ended. The refusal codes, and what clears each, are in the [Session API](../reference/session-api.md).
+
 Local begun/accepted identity, early-terminal memory, lifecycle anchors and workspace release follow actual invocation disposition. Acknowledged definitive refusal removes only its local invocation; uncertain settlement retains it. Cold and batched activity seeds preserve the selected invocation, and live tool updates select that identity before changing its tool ledger. Untagged non-provider starts remain observed facts while structured identity and its tools persist. Bounded reads retain the latest structured or genuine provider start before selecting terminal/error companions; a newer provider start prevents reviving an older invocation. A matching partial index on canonical events bounds positive-start seeks, including long raw suffixes and legacy-only histories. Malformed start rows remain decode blockers. Migration builds the index atomically; required-name and definition checks refuse absent or replaced indexes rather than falling back to a history scan. A terminal cannot release workspace custody while a durable effect remains. Untagged terminal acknowledgement and new native/sequence result effects require a read-only host disposition proving inactive, genuinely inputless storage: full current records and retained prepared audits must contain no captured input. This deliberately makes untagged legacy acknowledgement unavailable on a thread with retained capture history, even after its active fence is gone; exact positively scoped current/witness proof remains a separate path. Missing or corrupt proof holds, and local busy state alone grants no authority. Wait and delegated-result consumers carry the proved settled invocation into bounded output reads; keyed native-return status reads the retained prepared association and canonical terminal disposition. Untagged start observations cannot consume an exact invocation reservation or receive invocation or Skill credit. A separate bounded legacy routing slot can stamp the principal, client origin and send key after matching the accepted native turn; that routing key is not invocation or terminal authority. Internal result keys use distinct versioned invocation/native/sequence tuples. Retained older rows deduplicate by semantic identity across states without changing their delivery ids; ambiguous old encodings hold rather than granting effect authority. Earliest native-only result rows retain their format provenance and block a new invocation-key delivery when the native association is ambiguous; their pending effects cannot borrow a later invocation's proof. Stop uses the same retained-start identity decision while preserving deferred-retry targeting. Inputless engine-opened turns retain their separate accepted-row and event co-commit protocol, capacity, provider-trigger provenance and legacy retirement. Task-dispatch, lifecycle and passive settlement audits remain outside ordinary terminal cleanup.
 
 **Evidence and limits.** The owning regressions are `session-turn-boundary.test.ts`, `session-execution-coordinator.test.ts`, `session-lifecycle-service.test.ts`, `session-turn-wait.test.ts`, `delegation-result-delivery.test.ts` and the real service/process fixture `prepared-turn-intent-crash.process.test.ts`. Legacy oracle and append owners remain `monument-boundary-host.test.ts` and `monument-boundary-append.test.ts`; session sequence and migration owners remain `session-turn-boundary-sequence.test.ts` and `turn-boundary-sequence-migration.test.ts`. Fixture execution and source review do not qualify installed providers, supported old writers, hosted landing or release. Raw reused-ID native notifications without positive origin remain unattributed and cannot release an identity-aware fence. Neither terminal disposition nor row absence authorizes another adapter call.
@@ -2939,8 +2955,14 @@ and result projection. Cancellation and a deadline come from the optional caller
 the inspector does not start its own timeout. It distinguishes a `TimeoutError` abort
 from other aborts. Built-in adapters declaring awaited abort settlement get a separate
 bounded cleanup wait; arbitrary asynchronous work is not forcibly stopped. The
-launchable-model refresh supplies a signal, while ordinary runtime inventory calls can
-omit one. Command, model-catalog and prerequisite inclusion and discovery policy are
+ordinary engine inventory routes supply a five-second deadline and propagate client
+cancellation through the model and engine reads. A deadline refuses the incomplete
+inventory without publishing fresh rows. An abandoned adapter operation remains owned
+until actual settlement. Later reads report that operation as unavailable. Healthy
+overlapping reads retain separate results. A sibling that fails within budget keeps its own unavailable catalog
+and does not overwrite live observations from other engines.
+ACP rows carry the last measured handshake time and the current probe state. Command,
+model-catalog and prerequisite inclusion and discovery policy are
 explicit inputs. The boot-time built-in agent binding excludes model discovery and
 commands, because either can start an engine's program and readiness comes from
 prerequisites alone.
@@ -5215,13 +5237,52 @@ sample; recent readers reuse it. The sampler computes busy time from two
 `reserveEngineStart()` is a different capability: one in-memory lease per
 controller instance. It does not sample CPU. An interactive start waits FIFO
 for the lease, for at most 60 seconds and up to 32 waiting starts. When the
-caller supplies an abort signal, aborting it removes that start from the queue;
-the person's `/chat` path does not currently supply one. Other starts are refused immediately with
-`resource_engine_start_capacity` while the lease is held, including while it is
-handed to a waiting person. Recovery and credential-profile restarts currently
-use this background behavior: the shared respawn seam does not distinguish a
-person from automated callers, and the credential restart does not pass its
-signal to admission. The composer has no capacity-wait status channel.
+caller supplies an abort signal, aborting it removes that start from the queue.
+Other starts are refused immediately with `resource_engine_start_capacity`
+while the lease is held, including while it is handed to a waiting person.
+
+A start for an existing Session derives its intent on the server. A cold
+Session's respawn for a `sendTurn` waits only when Station classifies the turn
+as a person's (`interactive` dispatch origin); an automatic send
+(`/chat/background`, including automatic inbox delivery), Automation, Task,
+delegation and unclassified turns keep the immediate refusal. A person
+joining an in-flight background respawn that was refused starts again under
+their intent. Their Stop cancels a respawn still waiting for the lease, and no
+provider start follows. A credential-profile restart takes its intent from the
+source turn's recorded `resourceAdmissionIntent`, independently of its actor's
+`dispatchOrigin`. An automatic send can keep interactive source attribution
+while retaining background admission. Legacy events without the policy field
+fall back to origin; unrecognized policy values remain background. The recovery
+owner's signal reaches admission and preparation. A credential restart takes
+the lease before stopping the current provider, so a queued cancellation or
+capacity refusal leaves that provider in place. While a person's
+start for an existing Session is queued, its summary carries
+`engineStartWait`, published through the session-projection update the
+composer refreshes from. The wait clears on admission, cancellation, timeout
+or failure. A brand-new Session's first start publishes the same wait on the
+authorized `orchestration:engine-start-wait` stream, with a pending-start
+identity owned by its authenticated caller and tenant. It grants no Session
+read or successful-start claim. The identity remains cancellable through
+preparation after admission, then clears when the provider start settles.
+The stream rechecks read authority before writing; its unscoped event route
+never forwards these statuses. Reconnection and overflow snapshots replace
+transient status with current owned starts. A `/chat` request's own signal
+never cancels a send Station has accepted.
+
+A pending start binds targeted Stop to its accepted submission key, or to the
+recovery source's recorded turn/key. A delayed Stop naming another target does
+not cancel the current pending start. Untargeted Stop keeps its existing owner
+authorization. Recovered portable starts retain a snapshot of the receiver's
+admitted coordinate and recheck the offer after capacity and workspace
+preparation, immediately before the provider boundary.
+
+[Engine-start preparation](../../src-server/services/orchestration/engine-start-preparation.ts)
+uses the canonical abortable async helper before the provider effect. Stop can
+retire the caller's wait, lease and pending identity while a preparation promise
+remains unresolved; its late continuation is fenced. Once the adapter is
+invoked, cancellation no longer races its result into a pre-start refusal:
+possible provider effects retain their normal outcome and uncertainty custody.
+
 Other Station runtimes have their own controllers; this is not the verification
 coordinator's host-wide scheduler.
 
@@ -5241,6 +5302,13 @@ or that a provider will start successfully.
 [Posture tests](../../src-server/services/infra/__tests__/resource-posture.test.ts)
 and runtime/scheduler composition tests exercise progress at a synthetic
 99-percent CPU reading and preserve the product/verification import boundary.
+[Capacity tests](../../src-server/services/orchestration/__tests__/engine-start-capacity-recovery.test.ts)
+drive first start, respawn, Stop, timeout and credential restart through the
+real service and its published projection. The late-Stop cases hold the
+production workspace reauthorization boundary after admission.
+[Stream route tests](../../src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts)
+exercise principal isolation, reconnect replay, fresh `/chat` production
+composition, accepted-request disconnect and the UI status consumer.
 Keep CPU classification observational; do not make high load a hidden product
 refusal, require an override token or import verification scheduling into the
 application.
@@ -5522,8 +5590,10 @@ executes those claims through a required `ScheduledTurnAdapter` whose result
 is `completed`, `definitely-not-invoked` or `indeterminate`.
 
 **State, retry and authority.** SQLite serializes claims and mutations across
-processes. A stable `jobId` is distinct from the editable name; deleting and
-recreating a job gives it a new scheduled-job principal. The due claim records
+processes. A stable `jobId` is distinct from the job's `name` (a slug that routes and
+runs are keyed by) and from its optional `displayName`, the only name an edit
+can change; deleting and recreating a job gives it a new scheduled-job
+principal. The due claim records
 its occurrence and firing time. Terminal outcomes consume that occurrence;
 manual runs do not advance the recurring cursor. Claim and `beginInvocation`
 persist before their respective effects. A dead initial pre-invocation owner
@@ -5637,7 +5707,10 @@ job after five consecutive failed occurrences (retries of one occurrence count
 once; a re-enable resets the count) through `applyFatigue`, one transaction
 that disables the job and records its owed notification
 (`scheduler_fatigue_announcements`), reconciled at startup, each tick and
-after every failed run. Without an inbox (hosted) no runner is composed and a
+after every failed run. The list read derives `pausedItself` from that record
+(newer than the job's last re-enable) and `recentOutcomes`, the last 12
+finished occurrences counted the same way; the route withholds both with the
+other run-derived fields. Without an inbox (hosted) no runner is composed and a
 targeted run fails before invocation. See the
 [dispatch test](../../src-server/services/scheduling/__tests__/scheduled-conversation-run-dispatch.test.ts)
 and [automation rule tests](../../src-server/services/scheduling/__tests__/automation-targets.test.ts).

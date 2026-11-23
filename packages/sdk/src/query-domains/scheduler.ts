@@ -99,6 +99,27 @@ export function useProjectSchedulesCapability() {
   );
 }
 
+/**
+ * Whether the host stores and renames a job's display name
+ * (`schedulerJobDisplayName`). An older host drops `displayName` and still
+ * answers success, so a client offers renaming only on `true`. `null`: the
+ * handshake could not be read.
+ */
+export function useSchedulerJobDisplayNameCapability() {
+  return useApiQuery(
+    ['scheduler', 'job-display-name-capability'],
+    async () => {
+      const handshake = await readPublicStationCapabilities(
+        await _getApiBase(),
+      );
+      return handshake
+        ? hasCapability(handshake, 'schedulerJobDisplayName')
+        : null;
+    },
+    { staleTime: 10_000, retry: false },
+  );
+}
+
 export function useSchedulerProviders() {
   return useApiQuery(
     ['scheduler', 'providers'],

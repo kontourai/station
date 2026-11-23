@@ -34,6 +34,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
+import { pluginLifecycleUnapplied } from '../../packages/contracts/src/plugin.ts';
 import { APP_DESTINATION_REGISTRY } from '../../src-ui/src/app-shell/destination-registry.ts';
 import {
   DEVELOPER_TABS,
@@ -57,6 +58,7 @@ import {
   countVisibleLoadingMarkers,
   pairBrowser as pairBrowserForInstance,
   poll,
+  recoverPluginOnce,
   runStation as runStationAt,
   SUITE_REQUEST_HEADER,
   settlePageReason,
@@ -377,31 +379,45 @@ async function installBundledPlugin(page, plugin) {
   if (!previewed.contentDigest || !previewed.permissions) {
     throw new Error(`preview for ${plugin.id} returned no basis to approve`);
   }
-  await apiOk(page, 'POST', '/api/plugins/install', {
-    source,
-    consent: {
-      permissions: previewed.permissions.required ?? [],
-      contentDigest: previewed.contentDigest,
-      dependencies: (previewed.dependencies ?? []).map((entry) => entry.id),
-      ...((previewed.dependencies ?? []).some((entry) => entry.consent)
-        ? {
-            dependencyApprovals: (previewed.dependencies ?? []).flatMap(
-              (entry) =>
-                entry.consent
-                  ? [
-                      {
-                        id: entry.id,
-                        permissions: entry.consent.permissions,
-                        contentDigest: entry.consent.contentDigest,
-                        dependencies: entry.consent.dependencies,
-                      },
-                    ]
-                  : [],
-            ),
-          }
-        : {}),
+  const installed = await apiOk(
+    page,
+    'POST',
+    '/api/plugins/install',
+    {
+      source,
+      consent: {
+        permissions: previewed.permissions.required ?? [],
+        contentDigest: previewed.contentDigest,
+        dependencies: (previewed.dependencies ?? []).map((entry) => entry.id),
+        ...((previewed.dependencies ?? []).some((entry) => entry.consent)
+          ? {
+              dependencyApprovals: (previewed.dependencies ?? []).flatMap(
+                (entry) =>
+                  entry.consent
+                    ? [
+                        {
+                          id: entry.id,
+                          permissions: entry.consent.permissions,
+                          contentDigest: entry.consent.contentDigest,
+                          dependencies: entry.consent.dependencies,
+                        },
+                      ]
+                    : [],
+              ),
+            }
+          : {}),
+      },
     },
-  });
+    // A designed 202 (saved, activation not completed) is not an API
+    // failure; the plugin still has to become active (below).
+    { acceptSaved: true },
+  );
+  const unapplied = pluginLifecycleUnapplied(installed);
+  if (unapplied?.kind === 'activation' && unapplied.recovery !== 'none')
+    await recoverPluginOnce(
+      page,
+      installed.plugin?.name ?? previewed.manifest?.name ?? plugin.id,
+    );
 }
 
 async function bundledContentSmoke(page) {

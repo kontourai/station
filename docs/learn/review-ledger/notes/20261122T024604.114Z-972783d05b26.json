@@ -1,0 +1,9 @@
+{
+  "revision": "9a4577dfab0da4bc9e75a6d28e9302ee760338f9",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked citing pages (getting-started fork actions, api read seam): the fork route now checks a stored record's owner only on the fallback read and relies on the selected turn's Session Agent otherwise; api updated, getting-started's fork action claims unchanged.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked citing pages (getting-started fork actions, api read seam): the fork route now checks a stored record's owner only on the fallback read and relies on the selected turn's Session Agent otherwise; api updated, getting-started's fork action claims unchanged.","inputs":["src-server/routes/chat/conversations.ts"]}
+  ]
+}

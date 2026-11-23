@@ -1,0 +1,9 @@
+{
+  "revision": "68d8bc403f08de0c1371a676eb48fbf9a82193c0",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked citing pages (getting-started fork actions, self-configuring-agent fork_conversation scope rules, api read seam): fork reads runtime lineage before a stored record, keeps scope, ownership, completed-turn and idempotency checks, applies the 64-Session bound, and codes every 4xx; api updated, other claims unchanged.","inputs":["src-server/routes/chat/conversations.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked citing pages (getting-started fork actions, self-configuring-agent fork_conversation scope rules, api read seam): fork reads runtime lineage before a stored record, keeps scope, ownership, completed-turn and idempotency checks, applies the 64-Session bound, and codes every 4xx; api updated, other claims unchanged.","inputs":["src-server/routes/chat/conversations.ts"]}
+  ]
+}

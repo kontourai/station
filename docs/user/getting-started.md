@@ -17,8 +17,8 @@ and keeping Station updated. To share a Project with someone, read the
    review a documentation change. Use no tools.” Choose **Start** to open a
    direct chat.
 4. Read the answer in the chat. If an approval or question appears, inspect
-   it before responding. When the answer has a **Basis** chip, open it to
-   inspect the recorded inputs behind that answer.
+   it before responding. To inspect the recorded inputs, choose **Basis** on the
+   answer. On a phone, open the answer’s **⋯** menu to find **Basis**.
 5. Keep talking in the same chat, create a Project for shared context, or
    track a deliverable in a Task. [Choose what fits](concepts.md#choose-a-project-task-or-direct-chat).
 
@@ -111,8 +111,8 @@ then **View details** on an item to read the authored message, attachment
 metadata, or recorded tool result. **Recorded origin** identifies the Session,
 turn and event; **Open session** opens the surrounding work. Output rows keep
 their **Inspect output** action. Items that cannot be read show an unavailable
-state rather than an empty result. The answer's **Basis** chip still opens
-inspection scoped to that answer.
+state rather than an empty result. For a single answer, choose **Basis** from
+its footer on desktop or its **⋯** menu on a phone.
 
 To see how much of the model's context window a chat has used, read the meter
 beside Send under the message box, or choose **⋯** then **Conversation
@@ -492,7 +492,9 @@ New Chat does not run it.
 
 For a credential-free first path, use a supported local model service and then
 return to Connections. Startup can register detected Claude Code, Codex, and
-Muse engines and their default Agents. An engine you explicitly removed is
+Muse engines and their default Agents; with the `copilot-sdk-engine` Feature
+Preview on, it also registers GitHub Copilot (SDK) when `copilot` is on `PATH`,
+from the next start. An engine you explicitly removed is
 not automatically added again. Registration does not prove that the engine is
 signed in or ready. The discovery screen also offers other local suggestions
 that you can choose to configure. The
@@ -662,10 +664,12 @@ not interrupted for that Project's finished turns.
 
 Choosing on a chip starts nothing, and Station remembers it. An Agent is
 remembered only once it can start, and for each project and for **No project** on this browser and
-Station access, and the Model for each Agent. The project is remembered as the
-chat dock's project for new chats, the same setting the dock's project
-switcher changes, so Home and the dock always open on the same choices.
-**No project** clears it.
+Station access, and the Model for each Agent. Home always starts in
+**No project**, and the project you pick on its chip holds in this browser tab,
+for this Station access, until you reload the page; opening a Project elsewhere
+never changes it, and the chat dock does not follow it. Anywhere, the dock's own
+new chat opens on the project last chosen in the dock (its chip, or the Project
+you last opened), and its chip shows which.
 Runtime options such as reasoning effort stay with the Model choice for this
 browser tab only; they are not remembered after it. A choice you make stays on
 both surfaces for this browser tab, even if another chat later runs on a
@@ -699,8 +703,8 @@ the active mode is confirmed after startup.
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If
 the project list cannot be read, the composer says so instead. A
-chat started from Home opens in the chat dock's current project (by default,
-the project you last opened), so that project's default Agent and Model apply.
+chat started from Home opens in the project its chip shows, **No project** until
+you pick one, so that project's default Agent and Model apply.
 With no Agent ready at all, **Start** still works: Station uses working
 defaults, waits for discovery, and carries your original request into the
 conversation. An already-ready engine can be prepared through the existing
@@ -719,8 +723,8 @@ started. If you close the dock's draft instead, the message comes back to Home
 as you left it in the dock, the same way as a draft from setup (below). If no
 chat dock is open to take it, Home keeps the message and says so.
 
-In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed bar),
-**⌘T**, and the phone header's compose icon open the same composer.
+In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed Inbox bar),
+**⌘T**, and the floating button in the phone Inbox open the same composer.
 **Explore agents** remains available for deliberate customization.
 
 Setup from Home continues in the chat dock. When you choose **Connect**,
@@ -741,7 +745,10 @@ shows as a chip above the text box; tap it to leave it out. With no message,
 send. With a message, Station sends your message, a blank line, then the
 context.
 
-**Fork from here** is not a new start: it keeps its own Agent list.
+**Fork from here** is not a new start. It opens a small picker, the same one
+**Continue with another agent** uses: choose the Agent (the current one is
+selected) and model, then **Fork with …** opens a new chat from that answer
+and leaves this chat as it is.
 
 To try a message again, use its actions. On an answer, **Regenerate** forks
 the chat just before the message that asked for it and sends that message
@@ -778,6 +785,12 @@ engine. Those engines run on the computer hosting your Station, including when
 you use a phone.
 An agent's setup warning names that agent; other ready agents can still run.
 
+You can start from Home while setup and usage sharing are still undecided.
+Use **Review choices** to open usage sharing, or find it in **Settings →
+Privacy & sharing**. **Not now** returns you to Home. Recent work shows this
+Station's saved conversations under **Earlier in Station**. Read-only
+conversations discovered from other tools appear under **From other apps**.
+
 At the end of first-run setup, choose **Start your first chat**. Station saves
 any personalization answers you selected, then opens New Chat. Unanswered
 questions add no profile. If saving those answers fails, setup stays open so
@@ -807,19 +820,21 @@ chat bar shrinks it to a peek and **Full screen chat** grows it back or opens it
 directly from the collapsed bar. The menu drawer lists places and Projects.
 The chat bar's Inbox icon returns to the work list; the chat title stays
 as context. Search opens from the magnifier. Your search, list position and
-unsent message stay in place when switching back to a conversation. Collapse
-and reopen restore the last view. Use the compose icon at the right of the
-chat bar for **New chat**. The three-dot menu holds chat actions, including **This chat**:
+unsent message stay in place when switching back to a conversation. Collapsing a conversation keeps its title in the bar. Tap the title to resume it.
+Use the floating **New chat** button in Inbox, the compose icon on the collapsed Inbox bar, or **New chat** in Chat actions. The three-dot menu holds chat actions, including **This chat**:
 the chat's workspace, branch and changed files, status, background tasks and
 linked pull requests, each opening its own view. On a computer, a wide dock
 shows the same panel beside the transcript, and a narrower one puts it behind
-a chip in the dock header. Connection health remains in the app header. In fullscreen chat, where that header is hidden, Station
-management remains in the chat actions menu. **Projects** has the same add control
+a chip in the dock header. The app header keeps connection health, the drawer, and the Station switcher above the dock in full screen. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
 On a phone, pull down from the top of Inbox, Home’s **Recent work**, or the
-Project **Tasks** list. Release when the ring fills. The actions menu offers
-the same refresh. A floating status pill shows what’s refreshing.
+Project **Tasks** list. Release when the ring fills. Use **Refresh inbox** in Inbox actions or the refresh button beside **Recent work** on Home. A floating status pill shows what’s refreshing.
+
+Each chat appears once in Inbox and on Home, under the group its status puts it
+in. When this device sent a message whose delivery Station can't confirm, the
+row keeps that status and adds **Last message may not have arrived** with **Check**,
+which asks Station once and says what it found. It never sends the message again.
 
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
@@ -835,20 +850,21 @@ explicit choice such as **All work** stays selected as you navigate. If work nee
 you outside the filter, choose **Show all** from the notice; on a computer, a
 count badge on the scope picker does the same. On a computer the scope picker
 sits beside search, **Browse all conversations** is at the end of the list,
-and each row is two lines: its title and time, then the agent's icon, its
-status and its project. Hover the icon to read the agent's name. To browse
+and each card shows the title above its project. Read the status and time on the
+right. Click a task row to open it, or expand its work-chat count to see the linked
+conversations. Hover an agent icon to read its name. To browse
 chats from a side dock, open **More dock actions** and choose **Open chat…**.
 The picker opens over the current dock placement.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss
-from inbox**. On mobile, tap **⋯** or hold a row to open its actions and
-details. With **Sheet gestures preview** enabled in Settings → Advanced →
+from inbox**. On mobile, hold a conversation or choose **Select conversations** from Inbox actions. Choose **Details** for one selected row to open its actions. The bottom tray shows which actions apply to the selection. Use **Filter inbox** for Station, Project and status. On narrow phones, Search and Filter are in Inbox actions. With **Sheet gestures preview** enabled in Settings → Advanced →
 Developer tools, swipe left to reveal labelled actions; the row follows your
 finger and snaps open when released. Only one row's actions stay revealed.
 **Snooze** opens duration choices, and **Dismiss** hides the conversation.
 Swiping itself never runs an action. Dismissal leaves running work and history intact.
-Choose **Undo** in the toast, press **⌘Z** / **Ctrl+Z** outside an editor,
-or search the inbox, find matching **Dismissed** results, and choose
+Choose **Undo** in the toast, or press **⌘Z** / **Ctrl+Z** outside an editor
+while the toast is shown. After the toast has gone, search the inbox for the
+conversation, find it under **Dismissed** in the results, and choose
 **Restore to inbox**.
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
@@ -1006,7 +1022,8 @@ other integrations retain their own authorization instructions.
 
 If New Chat offers **Connect**, **Set up**, **Edit agent**, or **Set up
 Connections**, use that action to open the owning setup page. The picker steps
-aside while keeping your chosen workspace, Agent, Model, and selected context.
+aside and collapses the chat dock while keeping your chosen workspace, Agent,
+Model, and selected context.
 Use **Return to New Chat** in the inline setup notice when finished, **Cancel
 return** to stay, or browser Back to return to the page you left. Station rechecks setup before selection;
 that manual return sends no message. For a written Home goal, readiness of the
@@ -1060,11 +1077,11 @@ outcome unresolved rather than declaring success.
 
 For a running Codex subagent that supports direct instructions, expand its
 card and use **Send to** that subagent. Station shows those instructions and
-their delivery status separately from the engine transcript: **Sent**, **Not
-sent**, or **Delivery unconfirmed**. Sending requires permission to continue the
+their delivery status separately from the engine transcript: sent, **Not
+sent**, or **May have reached the agent**. Sending requires permission to continue the
 chat and an operator or device grant that can operate it. If delivery is
-unconfirmed, **Check saved instruction** retries the same instruction and target
-with its original key; Station will not automatically send a new instruction.
+unconfirmed, **Check** looks the saved instruction up in the subagent's history
+and never sends it again; Station will not automatically send a new instruction.
 Once the saved one is resolved, you can submit a new instruction if the
 subagent is still eligible. Some Codex
 subagents cannot accept direct instructions. Older Stations need an update to
@@ -1083,7 +1100,7 @@ on `muse exec` supports Queue only. Each pending row shows its mode.
 For a locally queued message, **Send now** stops the active turn and sends the
 selected message after Station confirms the stop. Messages held by Station can
 be removed when permitted, but cannot be edited or sent now from the list. **Stop** remains separate.
-You can attach files or dictate during a turn. Steer carries text only, so a
+You can attach files or dictate during a turn. In the parent chat, Steer carries text only, so a
 message with files is queued: Station keeps the files with it and sends them
 when the turn ends, and the pending row names them. On a Station that cannot
 hold files yet, they wait in the draft, which says why, until you send it after
@@ -1307,8 +1324,11 @@ then its tool calls and answers. The title becomes **Parent chat / Subagent**;
 choose an ancestor to return to that chat without losing its draft or reading
 position. Escape returns one level. On a phone, the title names the subagent;
 use the back button or swipe from the left edge. The reader opens on the
-latest messages; earlier ones load as you scroll up. Engine transcripts are
-read only and refresh while running.
+latest messages; earlier ones load as you scroll up. A running child that
+accepts instructions has a message composer. When its active turn accepts
+images, use the paperclip or paste a screenshot, then choose **Send**.
+You can send an image on its own. Other child transcripts stay readable and
+refresh while running.
 
 If a tool result has no recorded text, the reader says **Text output unavailable.**
 This does not mean the tool produced no output.

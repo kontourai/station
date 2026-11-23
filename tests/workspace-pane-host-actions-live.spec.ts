@@ -187,18 +187,18 @@ test('retained plugin recovers through responsive UI and its host default Agent 
   await leaveRetainedActivationPending();
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.goto('/plugins');
-  await page
-    .getByRole('button', { name: /Host action proof.*Activation pending/ })
-    .click();
+  // A list row's accessible name is its title; the readiness is its
+  // description (SplitPaneLayout, #2983).
+  const pendingRow = page.getByRole('button', { name: 'Host action proof' });
+  await expect(pendingRow).toHaveAccessibleDescription(/^Needs recovery/);
+  await pendingRow.click();
   const observer = await page.context().newPage();
   await observer.goto('/plugins');
-  await observer
-    .getByRole('button', { name: /Host action proof.*Activation pending/ })
-    .click();
+  await observer.getByRole('button', { name: 'Host action proof' }).click();
   await expect(
     observer
       .locator('.detail-panel')
-      .getByText('Activation pending', { exact: true }),
+      .getByText('Needs recovery', { exact: true }),
   ).toBeVisible();
   const recoveryEvidenceRoot = join(
     process.cwd(),
@@ -212,7 +212,7 @@ test('retained plugin recovers through responsive UI and its host default Agent 
     await expect(
       page
         .locator('.detail-panel')
-        .getByText('Activation pending', { exact: true }),
+        .getByText('Needs recovery', { exact: true }),
     ).toBeVisible();
     expect(
       await page.evaluate(
@@ -230,9 +230,8 @@ test('retained plugin recovers through responsive UI and its host default Agent 
       join(recoveryEvidenceRoot, `recovery-pending-${width}.png`),
     );
   }
-  await page
-    .getByRole('button', { name: 'Review recovery', exact: true })
-    .click();
+  // The review loads with the row: nothing resumes the activation, so the
+  // way to recover it is offered directly.
   const review = page.getByRole('region', { name: 'Recovery review' });
   await expect(review).toBeVisible();
   await page.screenshot({
@@ -275,12 +274,10 @@ test('retained plugin recovers through responsive UI and its host default Agent 
   await expect(
     observer
       .locator('.detail-panel')
-      .getByText('Activation pending', { exact: true }),
+      .getByText('Needs recovery', { exact: true }),
   ).toHaveCount(0, { timeout: 30_000 });
   await expect(
-    page
-      .locator('.detail-panel')
-      .getByText('Activation pending', { exact: true }),
+    page.locator('.detail-panel').getByText('Needs recovery', { exact: true }),
   ).toHaveCount(0, { timeout: 30_000 });
   await expect
     .poll(async () => {

@@ -1,0 +1,7 @@
+{
+  "revision": "5c4dce776c4401e9e671a3ed5f9029f025b4bc41",
+
+  "notes": [
+    {"path":"docs/design/agent-interaction-capabilities.md","note":"Round 2 changed the Browser guide's blank-tab paragraph and the agent-actions decision (context binding, html reply tools, popup admission). Grepped this page: it makes no claim about blank-tab evaluation, the evaluate check's world or popup adoption timing; its browser_evaluate and popup mentions are scope lists and stay accurate.","inputs":["docs/design/agent-interaction-capabilities.md","docs/guides/browser-workspace.md"]}
+  ]
+}

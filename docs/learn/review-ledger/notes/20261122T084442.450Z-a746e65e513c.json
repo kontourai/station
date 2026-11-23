@@ -1,0 +1,9 @@
+{
+  "revision": "faed86953d1729e2b258bd9575746bc7c40dd95b",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked repository acquisition claims: a refused source now returns its specific reason with validation reasons in details; status codes and recording are unchanged.","inputs":["src-server/routes/projects/repository-acquisition-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked repository acquisition claims: a refused source now returns its specific reason with validation reasons in details; status codes and recording are unchanged.","inputs":["src-server/routes/projects/repository-acquisition-routes.ts"]}
+  ]
+}

@@ -2,10 +2,7 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
-import {
-  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
-  type ConversationHandoffEffectStatus,
-} from '@kontourai/station-contracts/orchestration';
+import type { ConversationHandoffEffectStatus } from '@kontourai/station-contracts/orchestration';
 import {
   type ConversationHandoffReceipt,
   getConversationHandoffStatus,
@@ -15,30 +12,8 @@ import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
-import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
-import type { FileAttachment } from '../../types';
-import { agentEngineDescriptor } from '../../utils/engine';
-import {
-  sanitizeRuntimeOptionsForModel,
-  updateModelRuntimeOption,
-} from '../../utils/modelCapabilities';
-import { selectChatReadyAgents } from '../agent-selection-policy';
-import { Button } from '../Button';
-import { engineChipLabel } from '../badges/EngineChip';
-import { normalizedDisplayLabel } from '../chat/message-bubble/MessageAttribution';
-import { StartModelPicker } from '../chat-start/StartMenus';
-import { DisclosureToggle } from '../DisclosureToggle';
-import { AgentIcon } from '../icons/AgentIcon';
-import { ArrowDownGlyph } from '../icons/Glyph';
-import { GLOBAL_CONTEXT } from '../modals/new-chat-modal-utils';
-import {
-  ResponsiveDialogCloseButton,
-  ResponsiveDialogSurface,
-  ResponsiveSurfaceActions,
-} from '../ResponsiveDialogSurface';
-import { Empty } from '../state';
-import '../chat/ConversationHandoff.css';
 import type { PreparedOutgoingText } from '../../hooks/useChatInput';
+import type { FileAttachment } from '../../types';
 import {
   type DraftQuote,
   draftQuoteKeys,
@@ -46,11 +21,30 @@ import {
 } from '../../utils/answer-quotes';
 import { userFacingErrorMessage } from '../../utils/errorText';
 import {
+  sanitizeRuntimeOptionsForModel,
+  updateModelRuntimeOption,
+} from '../../utils/modelCapabilities';
+import { Button } from '../Button';
+import { DisclosureToggle } from '../DisclosureToggle';
+import {
+  ResponsiveDialogCloseButton,
+  ResponsiveDialogSurface,
+  ResponsiveSurfaceActions,
+} from '../ResponsiveDialogSurface';
+import { Empty } from '../state';
+import {
+  AgentChoiceList,
+  ModelChoiceField,
+  settledModelId,
+  useChatReadyAgentChoice,
+} from './AgentModelChoice';
+import {
   type ContinuedOnStation,
   ConversationStationChoice,
   ConversationStationHandoff,
   readPendingStationHandoff,
 } from './ConversationStationHandoff';
+import { conversationRefusalMessage } from './conversationRefusalCopy';
 
 export interface AcceptedConversationHandoff {
   receipt: ConversationHandoffReceipt;
@@ -115,6 +109,12 @@ interface ConversationHandoffDialogProps {
   onContinuedOnStation?: (result: ContinuedOnStation) => void;
   onDispatchStarted: (input: { message: string; clientTurnId: string }) => void;
   onDefiniteFailure: (clientTurnId: string) => void;
+  onStage?: (
+    agent: AgentData,
+    executionAgent?: AgentData,
+    modelId?: string,
+    resetEngine?: boolean,
+  ) => void;
   onClose: () => void;
 }
 
@@ -246,14 +246,7 @@ const NO_QUOTES: readonly DraftQuote[] = [];
  * where Station says which refusal it is.
  */
 function handoffRefusalFeedback(error: unknown): string {
-  if (
-    typeof error === 'object' &&
-    error !== null &&
-    (error as { code?: unknown }).code ===
-      CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE
-  )
-    return 'The current agent is still working. Wait for it to finish, then try again.';
-  return error instanceof Error ? userFacingErrorMessage(error) : String(error);
+  return conversationRefusalMessage(error);
 }
 
 /**
@@ -286,6 +279,7 @@ export function ConversationHandoffDialog({
   onContinuedOnStation,
   onDispatchStarted,
   onDefiniteFailure,
+  onStage,
   onClose,
 }: ConversationHandoffDialogProps) {
   const restoredIntent = useRef(
@@ -310,32 +304,19 @@ export function ConversationHandoffDialog({
       : executionPreset
         ? 'Switch engine'
         : 'Switch agent';
-  const selectedContext = projectSlug ?? GLOBAL_CONTEXT;
-  const selection = useNewChatSelectionModel({
+  const { selection, chatReady } = useChatReadyAgentChoice({
     agents,
     projects,
-    selectedContext,
+    projectSlug,
   });
   const candidates = useMemo(
     () =>
-      selectChatReadyAgents({
-        agents,
-        agentConnections: selection.agentConnections,
-        selectedProjectSlug: projectSlug,
-        selectedProjectAgentFilter: selection.selectedProjectConfig?.agents,
-      }).filter((agent) =>
+      chatReady.filter((agent) =>
         executionPreset
           ? agent.slug === currentAgentId
-          : agent.slug !== currentAgentId,
+          : Boolean(onStage) || agent.slug !== currentAgentId,
       ),
-    [
-      agents,
-      currentAgentId,
-      executionPreset,
-      projectSlug,
-      selection.agentConnections,
-      selection.selectedProjectConfig?.agents,
-    ],
+    [chatReady, currentAgentId, executionPreset, onStage],
   );
   const [targetId, setTargetId] = useState<string | undefined>(
     restoredIntent?.targetId ?? (executionPreset ? currentAgentId : undefined),
@@ -372,8 +353,6 @@ export function ConversationHandoffDialog({
     restoredIntent?.modelOptions ?? {},
   );
   const [disclosureOpen, setDisclosureOpen] = useState(false);
-  const [modelPickerOpen, setModelPickerOpen] = useState(false);
-  const modelTriggerRef = useRef<HTMLButtonElement>(null);
   // No field edits this: the composer's draft is the first turn, and an empty draft means the catch-up request.
   // A retained uncertain request is retried exactly as it was sent; a newer
   // draft is not part of it and stays in the composer.
@@ -442,8 +421,8 @@ export function ConversationHandoffDialog({
   );
   const effectiveBlockedReason = ownTurnBusy ? undefined : blockedReason;
   const preconditionReason =
-    effectiveBlockedReason ??
-    (attachments.length > 0 && !retained
+    (onStage && !retained ? undefined : effectiveBlockedReason) ??
+    (!onStage && attachments.length > 0 && !retained
       ? `Send or remove attachments before ${changeLabel}.`
       : state === 'indeterminate' && !retryEligible
         ? 'This request’s agent, engine or model isn’t available here. Restore that setup to retry.'
@@ -452,8 +431,6 @@ export function ConversationHandoffDialog({
     executionTarget?.engineDisplayName ??
     (executionAgentId ? executionTarget?.name : undefined);
   const fieldId = useId();
-  const modelFieldId = `${fieldId}-model`;
-  const modelValueId = `${fieldId}-model-value`;
   const preconditionId = `${fieldId}-precondition`;
   const disclosureId = `${fieldId}-carries`;
 
@@ -468,13 +445,8 @@ export function ConversationHandoffDialog({
       setModelId(undefined);
       return;
     }
-    const allowed = targetModels.some((model) => model.id === defaultModel);
     setModelId((current) =>
-      current && targetModels.some((model) => model.id === current)
-        ? current
-        : allowed
-          ? (defaultModel ?? undefined)
-          : targetModels[0]?.id,
+      settledModelId(current, targetModels, defaultModel),
     );
   }, [
     defaultModel,
@@ -486,6 +458,18 @@ export function ConversationHandoffDialog({
 
   const runHandoff = async () => {
     if (!targetId || state === 'pending' || starting.current) return;
+    if (onStage && !retainedIntent.current) {
+      if (target && executionTarget && retryEligible) {
+        onStage(
+          target,
+          executionAgentId ? executionTarget : undefined,
+          executionPreset?.modelId,
+          Boolean(executionPreset && !executionAgentId),
+        );
+        onClose();
+      }
+      return;
+    }
     if (effectiveBlockedReason) {
       setState('error');
       setFeedback(effectiveBlockedReason);
@@ -733,7 +717,6 @@ export function ConversationHandoffDialog({
     }
   };
 
-  const targetModel = targetModels.find((model) => model.id === modelId);
   const primaryDisabled =
     state === 'pending' || !retryEligible || Boolean(preconditionReason);
 
@@ -810,104 +793,56 @@ export function ConversationHandoffDialog({
           description="Connect another agent in this chat's environment to continue."
         />
       ) : (
-        <div
-          className="conversation-handoff-dialog__agents"
-          role="radiogroup"
-          aria-label="Agent"
-        >
-          {candidates.map((candidate) => {
-            const engineName =
-              engineChipLabel(agentEngineDescriptor(candidate)) ||
-              'Engine unavailable';
-            const repeatsAgent =
-              normalizedDisplayLabel(candidate.name) ===
-              normalizedDisplayLabel(engineName);
-            return (
-              <label
-                key={candidate.slug}
-                className="conversation-handoff-dialog__agent"
-              >
-                <input
-                  type="radio"
-                  name="conversation-handoff-agent"
-                  value={candidate.slug}
-                  checked={candidate.slug === targetId}
-                  disabled={mutationLocked}
-                  onChange={() => {
-                    setTargetId(candidate.slug);
-                    setModelOptions({});
-                  }}
-                />
-                <AgentIcon agent={candidate} size="small" />
-                <span>{candidate.name}</span>
-                {!repeatsAgent && <small>{engineName}</small>}
-              </label>
-            );
-          })}
-        </div>
+        <AgentChoiceList
+          candidates={candidates}
+          value={targetId}
+          disabled={mutationLocked}
+          onChange={(candidate) => {
+            setTargetId(candidate.slug);
+            setModelOptions({});
+          }}
+        />
       )}
 
       {where === 'current' && targetId && (
         <div className="conversation-handoff-dialog__confirmation">
-          {targetModels.length > 0 && (
-            <div className="conversation-handoff-dialog__model">
-              <span className="editor-label" id={modelFieldId}>
-                Model
-              </span>
-              <Button
-                ref={modelTriggerRef}
-                className="choice-trigger"
-                aria-labelledby={`${modelFieldId} ${modelValueId}`}
-                aria-haspopup="dialog"
-                aria-expanded={modelPickerOpen}
-                disabled={mutationLocked}
-                onClick={() => setModelPickerOpen(true)}
-              >
-                <span id={modelValueId}>
-                  {targetModel?.name ?? 'Agent default'}
-                </span>
-                <ArrowDownGlyph className="choice-caret" />
-              </Button>
-              {modelPickerOpen && (
-                <StartModelPicker
-                  anchor={modelTriggerRef.current}
-                  layer="dialog"
-                  models={targetModels}
-                  loading={selection.modelsLoading}
-                  modelConnections={selection.modelConnections ?? []}
-                  choice={{ modelId, providerOptions: modelOptions }}
-                  defaultModel={{ id: defaultModel, source: 'agent default' }}
-                  onSelect={(model) => {
-                    setModelId(model.id);
-                    setModelOptions((current) =>
-                      sanitizeRuntimeOptionsForModel(model, current),
-                    );
-                    setModelPickerOpen(false);
-                  }}
-                  onReset={() => {
-                    setModelId(undefined);
-                    setModelOptions({});
-                    setModelPickerOpen(false);
-                  }}
-                  onRuntimeOptionChange={(key, value) =>
-                    setModelOptions((current) =>
-                      updateModelRuntimeOption(current, key, value),
-                    )
-                  }
-                  onClose={() => setModelPickerOpen(false)}
-                />
-              )}
-            </div>
+          {(!onStage || retained) && targetModels.length > 0 && (
+            <ModelChoiceField
+              models={targetModels}
+              loading={selection.modelsLoading}
+              modelConnections={selection.modelConnections ?? []}
+              modelId={modelId}
+              modelOptions={modelOptions}
+              defaultModel={defaultModel ?? undefined}
+              disabled={mutationLocked}
+              onSelect={(model) => {
+                setModelId(model.id);
+                setModelOptions((current) =>
+                  sanitizeRuntimeOptionsForModel(model, current),
+                );
+              }}
+              onReset={() => {
+                setModelId(undefined);
+                setModelOptions({});
+              }}
+              onRuntimeOptionChange={(key, value) =>
+                setModelOptions((current) =>
+                  updateModelRuntimeOption(current, key, value),
+                )
+              }
+            />
           )}
           <div className="conversation-handoff-dialog__note">
             <span>
-              {displacesDraft
-                ? 'Retries the earlier request. Your new draft stays in the composer.'
-                : retained
-                  ? 'Retries the earlier request.'
-                  : composerHasDraft
-                    ? 'Your draft is sent as the first message.'
-                    : 'Starts with a short catch-up turn.'}
+              {onStage && !retained
+                ? 'Send starts a fresh Session with recent conversation text.'
+                : displacesDraft
+                  ? 'Retries the earlier request. Your new draft stays in the composer.'
+                  : retained
+                    ? 'Retries the earlier request.'
+                    : composerHasDraft
+                      ? 'Your draft is sent as the first message.'
+                      : 'Starts with a short catch-up turn.'}
             </span>
             <DisclosureToggle
               expanded={disclosureOpen}
@@ -922,14 +857,22 @@ export function ConversationHandoffDialog({
               id={disclosureId}
               className="conversation-handoff-dialog__disclosure"
             >
-              <dt>First message</dt>
-              <dd>
-                {retained || !composerHasDraft
-                  ? message
-                  : 'Your draft from the composer'}
-              </dd>
+              {(!onStage || retained) && (
+                <>
+                  <dt>First message</dt>
+                  <dd>
+                    {retained || !composerHasDraft
+                      ? message
+                      : 'Your draft from the composer'}
+                  </dd>
+                </>
+              )}
               <dt>Keeps</dt>
-              <dd>{HANDOFF_KEEPS_SUMMARY}</dd>
+              <dd>
+                {onStage && !retained
+                  ? 'Recent authorized text, the workspace, and the selected Agent and model.'
+                  : HANDOFF_KEEPS_SUMMARY}
+              </dd>
               <dt>Starts fresh</dt>
               <dd>{HANDOFF_STARTS_FRESH_SUMMARY}</dd>
             </dl>
@@ -960,15 +903,19 @@ export function ConversationHandoffDialog({
               aria-describedby={preconditionReason ? preconditionId : undefined}
               onClick={() => void runHandoff()}
             >
-              {state === 'pending'
-                ? executionPreset
-                  ? 'Switching…'
-                  : 'Continuing…'
-                : state === 'indeterminate'
-                  ? 'Retry safely'
-                  : executionPreset
-                    ? `Switch to ${engineLabel ?? 'default engine'}`
-                    : `Continue with ${targetName}`}
+              {onStage && !retained
+                ? targetId === currentAgentId && !executionPreset
+                  ? 'Keep current Agent'
+                  : `Use ${targetName} on Send`
+                : state === 'pending'
+                  ? executionPreset
+                    ? 'Switching…'
+                    : 'Continuing…'
+                  : state === 'indeterminate'
+                    ? 'Retry safely'
+                    : executionPreset
+                      ? `Switch to ${engineLabel ?? 'default engine'}`
+                      : `Continue with ${targetName}`}
             </Button>
           </ResponsiveSurfaceActions>
         </div>

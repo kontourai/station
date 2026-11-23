@@ -1,12 +1,6 @@
-import { readProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import type { StationConnection } from '../../connections/station-connection';
 import { useConversationStartTarget } from '../../hooks/useConversationStartTarget';
 import './TaskChatStart.css';
-import {
-  ENGINE_CAPABILITY_MATRICES,
-  resolveEngineCapabilityMatrix,
-  UNKNOWN_EXTERNAL_ENGINE_MATRIX,
-} from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import type { InstalledSkillExperienceV1 } from '@kontourai/station-contracts/skill-experience';
 import {
@@ -37,12 +31,12 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
+import { resolveStartContextFromProjectSlug } from '../../hooks/startContext';
 import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { useExecutionStations } from '../../hooks/useExecutionStationCatalog';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
-import { resolveStartContextFromProjectSlug } from '../../hooks/useNewChatStartContext';
 import {
   trackContextAgent,
   trackRecentAgent,
@@ -166,16 +160,6 @@ export { ContextPickerOptions };
 
 const NO_PROJECT_ACCENTS: ReadonlyMap<string, string> = new Map();
 
-export interface NewChatModalMode {
-  kind: 'fork';
-  /** The current Agent is the default target; alternates are explicit. */
-  preferredAgentSlug: string;
-  sourceModel?: string;
-  disclosure: string;
-  pending?: boolean;
-  error?: string | null;
-}
-
 interface NewChatModalProps {
   agents: AgentData[];
   projects: ProjectMetadata[];
@@ -222,7 +206,6 @@ interface NewChatModalProps {
     },
   ) => void;
   draftContext?: CodingChatContextDraft | null;
-  mode?: NewChatModalMode;
   requestAuthority?: NewChatSetupAuthority;
   startWithDefault?: boolean;
   initialPrompt?: string;
@@ -285,7 +268,6 @@ export function NewChatModal({
   onTaskStarted,
   onConversationStarted,
   draftContext = null,
-  mode,
   requestAuthority,
   startWithDefault = false,
   initialPrompt,
@@ -311,12 +293,12 @@ export function NewChatModal({
   const [approvalPick, setApprovalPick] = useState<ApprovalMode | undefined>(
     startSelection?.approvalMode,
   );
-  const automaticMode = startWithDefault && !mode && !showChatOptions;
+  const automaticMode = startWithDefault && !showChatOptions;
   // Visual skills are a Feature Preview: off, nothing here offers or fetches them.
   const previewFlags = useSurfaceVisibilityFlags();
   const visualSkillsEnabled = previewFlags.has(VISUAL_SKILLS_PREVIEW_ID);
   const experienceInventory = useSkillExperienceInventoryQuery({
-    enabled: visualSkillsEnabled && !mode && !automaticMode,
+    enabled: visualSkillsEnabled && !automaticMode,
     refetchOnMount: 'always',
   });
   const [skillsOpen, setSkillsOpen] = useState(false);
@@ -382,7 +364,7 @@ export function NewChatModal({
   // The start composer is the dock's whole start surface: drafts with
   // context, visual skills and hand-offs from Home all open in it. Only a
   // fork keeps the Agent list (it forks; it does not start).
-  const composerFirst = startSurface && !mode;
+  const composerFirst = startSurface;
   const showStart = composerFirst && !automaticMode;
   // The Station list (for "on <Station>" and the Station control) is read
   // only while the composer shows; a fork's Agent list does not use it.
@@ -547,12 +529,9 @@ export function NewChatModal({
     (resolvedStartContext === undefined ||
       (selectedContext === GLOBAL_CONTEXT &&
         resolvedStartContext !== GLOBAL_CONTEXT));
-  const preferredAgentSlug = mode?.preferredAgentSlug;
-  const preferredAgentIndex = preferredAgentSlug
-    ? flatList.findIndex((agent) => agent.slug === preferredAgentSlug)
-    : 0;
   const setupReturn = useNewChatSetupReturn({
     authority: requestAuthority,
+    collapseDockForSetup: true,
     readyToResume:
       startWithDefault &&
       !runtimeFetching &&
@@ -579,7 +558,7 @@ export function NewChatModal({
       // Visual skills can show in the composer (opened there, or handed
       // over from Home with a message), so a Registry round trip refetches
       // them whenever this is not a fork.
-      if (!mode && visualSkillsEnabled) await experienceInventory.refetch();
+      if (visualSkillsEnabled) await experienceInventory.refetch();
       if (refreshSetup) await refreshSetup();
       else
         await Promise.all([
@@ -662,12 +641,6 @@ export function NewChatModal({
     setSelectFeedback,
   ]);
 
-  // A fork starts on the current Agent even when recency would normally put
-  // another row first. The user may still choose any other eligible row.
-  useEffect(() => {
-    if (!preferredAgentSlug || agentSearch) return;
-    if (preferredAgentIndex >= 0) setSelectedAgentIndex(preferredAgentIndex);
-  }, [agentSearch, preferredAgentIndex, preferredAgentSlug]);
   // archive#1089: the directory the highlighted agent will actually be
   // launched in. Derived from the agent, not just the project, because an
   // engine connection's own Working Directory outranks `$HOME` for a project
@@ -679,20 +652,6 @@ export function NewChatModal({
     // #4389: a No project chat's own folder on this Station.
     noProjectChatFolder: isGlobal ? noProjectChatFolder : undefined,
   });
-  const forkAgent = flatList[selectedAgentIndex];
-  const forkConnection = agentConnections.find(
-    (connection) => connection.id === forkAgent?.execution?.agentConnectionId,
-  );
-  const forkProfile = forkAgent
-    ? forkAgent.engineId
-      ? (ENGINE_CAPABILITY_MATRICES[forkAgent.engineId] ??
-        UNKNOWN_EXTERNAL_ENGINE_MATRIX)
-      : resolveEngineCapabilityMatrix(
-          forkAgent.execution?.agentConnectionId,
-          forkConnection,
-        )
-    : undefined;
-  const forkDurability = readProviderDurabilityProfile(forkProfile);
   // Where a project with no folder would run with this Agent.
   const folderlessHint = resolveNewChatWorkspaceHint({
     agent: showStart ? draftAgent : flatList[selectedAgentIndex],
@@ -778,7 +737,7 @@ export function NewChatModal({
       setSelectedContext(
         resolveNewChatInitialContext(activeProjectSlug, projects),
       );
-      setSelectedAgentIndex(Math.max(0, preferredAgentIndex));
+      setSelectedAgentIndex(0);
       return;
     }
     if (
@@ -791,7 +750,7 @@ export function NewChatModal({
       );
       if (preferredContext !== GLOBAL_CONTEXT) {
         setSelectedContext(preferredContext);
-        setSelectedAgentIndex(Math.max(0, preferredAgentIndex));
+        setSelectedAgentIndex(0);
       }
     }
   }, [
@@ -802,7 +761,6 @@ export function NewChatModal({
     projectCatalogResolved,
     projectsLoaded,
     startSelection,
-    preferredAgentIndex,
     setSelectFeedback,
   ]);
 
@@ -833,7 +791,7 @@ export function NewChatModal({
       (initialAuthority.current && !initialAuthority.current.isCurrent())
     )
       return;
-    if (mode?.pending || setupReturn.pending) return;
+    if (setupReturn.pending) return;
     if (
       composer &&
       (runtimeError ||
@@ -981,13 +939,8 @@ export function NewChatModal({
       openModelPicker(agent);
       return;
     }
-    const isPreferredForkAgent =
-      mode?.kind === 'fork' && agent.slug === mode.preferredAgentSlug;
     const sessionModel =
-      choice?.modelId ??
-      (isPreferredForkAgent ? mode.sourceModel : undefined) ??
-      defaultEffectiveModel.id ??
-      undefined;
+      choice?.modelId ?? defaultEffectiveModel.id ?? undefined;
     const modelSource = choice?.modelId
       ? ('session override' as const)
       : defaultEffectiveModel.source;
@@ -1120,12 +1073,7 @@ export function NewChatModal({
             submitInFlight.current = false;
             startedRef.current = false;
             setSubmitting(false);
-            console.error(
-              mode?.kind === 'fork'
-                ? 'Conversation fork failed:'
-                : 'New chat start failed:',
-              error,
-            );
+            console.error('New chat start failed:', error);
             setSelectFeedback(
               'Could not start the chat. Try again; if it keeps failing, restart Station.',
             );
@@ -1166,11 +1114,6 @@ export function NewChatModal({
       modelChoiceFor(agent),
       defaultEffectiveModelForAgent(agent),
       modelsForAgent(agent),
-      mode?.kind === 'fork' &&
-        agent.slug === mode.preferredAgentSlug &&
-        !modelChoiceFor(agent)?.modelId
-        ? mode.sourceModel
-        : undefined,
     );
 
   const updateModelChoice = (
@@ -1452,6 +1395,7 @@ export function NewChatModal({
           approvalProjectDefaultUnavailable:
             selectionModel.projectChatDefaultsUnavailable,
           approvalPick,
+          approvalConnections: acpConnections,
           onApprovalPick: setApprovalPick,
         };
   const projectChip: StartProjectChip = targetStart.active
@@ -1482,6 +1426,7 @@ export function NewChatModal({
           accent: isGlobal ? undefined : accents.get(selectedContext),
           icon: isGlobal ? undefined : projectIconBySlug.get(selectedContext),
           folder: workspaceHintText(workspaceHint),
+          folderIsHelp: workspaceHint.kind === 'managed',
           folderTitle:
             'path' in workspaceHint
               ? [
@@ -1528,7 +1473,8 @@ export function NewChatModal({
     setSelectedContext(value);
     setSelectedAgentIndex(0);
     // The project chip is remembered: it rebinds the dock, as the project
-    // switcher does, so Home and the dock open on the same project next.
+    // switcher does, so the dock's next draft opens on it. Home keeps its own
+    // pick and never reads this.
     if (projectBindable) bindProject(value);
   };
   const closeChatRequest = () => {
@@ -1678,15 +1624,7 @@ export function NewChatModal({
 
   return (
     <NewChatDraftSurface
-      ariaLabel={
-        mode?.kind === 'fork'
-          ? 'Fork from here'
-          : showStart
-            ? shaping
-              ? 'New Task'
-              : 'New chat'
-            : 'New Chat'
-      }
+      ariaLabel={showStart ? (shaping ? 'New Task' : 'New chat') : 'New Chat'}
       className={taskShaping ? 'task-chat-start' : undefined}
       // A Task's shaping draft takes focus even on a phone, as it did when
       // it covered the dock; the plain draft focuses on desktop only (the
@@ -1705,27 +1643,8 @@ export function NewChatModal({
       onClose={closeChatRequest}
     >
       <div className="new-chat-modal__header">
-        {mode?.kind === 'fork' && (
-          <div className="new-chat-modal__compat-warning" role="note">
-            <strong>New independent conversation.</strong> {mode.disclosure}{' '}
-            {forkProfile && (
-              <span>
-                {forkDurability?.fork.state === 'native'
-                  ? 'Native engine fork declared'
-                  : forkDurability?.fork.state === 'emulated'
-                    ? 'Engine fork is emulated'
-                    : 'Native engine fork unavailable'}
-              </span>
-            )}{' '}
-            <Button variant="link" onClick={closeChatRequest}>
-              Cancel fork
-            </Button>
-          </div>
-        )}
-
         {visualSkillsEnabled &&
           !showStart &&
-          !mode &&
           !startWithDefault &&
           !initialPrompt && (
             <SkillExperiencePicker
@@ -2243,17 +2162,13 @@ export function NewChatModal({
               <WarningGlyph /> {compatibilityMessage}
             </div>
           )}
-          {(selectFeedback || mode?.error || mode?.pending) && (
+          {selectFeedback && (
             <div
-              key={selectFeedback?.nonce ?? mode?.error ?? 'pending'}
+              key={selectFeedback.nonce}
               className="new-chat-modal__compat-warning new-chat-modal__select-feedback"
-              role={mode?.pending ? 'status' : 'alert'}
-              aria-busy={mode?.pending || undefined}
+              role="alert"
             >
-              <WarningGlyph />{' '}
-              {mode?.pending
-                ? 'Creating the fork…'
-                : (mode?.error ?? selectFeedback?.text)}
+              <WarningGlyph /> {selectFeedback.text}
             </div>
           )}
           {flatList.length === 0 &&
@@ -2364,9 +2279,7 @@ export function NewChatModal({
                 modelsForAgent(agent).length === 0 && !modelsLoading
               }
               onOpenModel={(agent, trigger) => openModelPicker(agent, trigger)}
-              interactionDisabled={
-                mode?.pending || checkingSetup || setupReturn.pending
-              }
+              interactionDisabled={checkingSetup || setupReturn.pending}
               fixDisabledFor={(agent) =>
                 agentFixRoute(agent) === 'enable' &&
                 resolveNewChatAgentEnable(agent)
@@ -2499,15 +2412,9 @@ export function NewChatModal({
                   pickerChoiceFor(modelPickerAgent)?.executionAgentId
                 }
                 defaultModel={modelPickerDefault?.id ?? undefined}
-                // Names what reset restores: a fork's preferred Agent returns
-                // to the source turn's Model, not the Agent default.
-                defaultSourceLabel={
-                  mode?.kind === 'fork' &&
-                  modelPickerAgent.slug === mode.preferredAgentSlug &&
-                  mode.sourceModel
-                    ? 'source turn'
-                    : modelResetSourceLabel(modelPickerDefault?.source)
-                }
+                defaultSourceLabel={modelResetSourceLabel(
+                  modelPickerDefault?.source,
+                )}
                 runtimeOptions={
                   pickerChoiceFor(modelPickerAgent)?.providerOptions
                 }

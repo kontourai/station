@@ -14,9 +14,11 @@ import { listUnconnectedACPRegistryEntries } from '../../routes/connections/acp.
 import { getCachedUser } from '../../routes/system/auth.js';
 import { readBootHistory } from '../../routes/system/boot-history.js';
 import { isManagedEngineRefusal } from '../../security/managed-engine-limits.js';
+import { runAsStationServer } from '../../security/station-server-scope.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import {
   ApprovalInboxNotificationProvider,
+  unattendedSessionTitleResolver,
   wireApprovalInboxNotifications,
 } from '../../services/approvals/approval-inbox.js';
 import {
@@ -57,6 +59,7 @@ import {
   FinishedAlertEpisodes,
 } from '../../services/orchestration/finished-alert-episodes.js';
 import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../services/orchestration/session-owner-attribution.js';
+import { notificationChatTitle } from '../../services/orchestration/session-sender-identity.js';
 import { createTaskLeadReader } from '../../services/orchestration/task-question-wake.js';
 import type { ThreadInboxDelivery } from '../../services/orchestration/thread-inbox.js';
 import {
@@ -88,6 +91,7 @@ import {
   type TaskFollowUpWakePorts,
 } from '../../services/work-item-providers/task-follow-up-wake.js';
 import { stationSetupRequirementProbeOutcomes } from '../../telemetry/metrics.js';
+import { resolveTaskDispatchAgentStart } from '../../tools/station-control-delegation.js';
 import { errorMessage } from '../../utils/error-message.js';
 import { expandTilde } from '../../utils/paths.js';
 import { isExternalEngineBoundAgent } from '../agents/agent-engine-classification.js';
@@ -308,8 +312,8 @@ export function createRuntimeSystemRouteDeps(
     // the SAME call `enriched-agents.ts` uses to decide whether to manufacture
     // a selectable agent, so chat readiness and agent availability cannot
     // disagree (station#1194).
-    listEngineConnectionStates: () =>
-      context.connectionService.listEngineConnectionStates(),
+    listEngineConnectionStates: (signal?: AbortSignal) =>
+      context.connectionService.listEngineConnectionStates(signal),
     listUnconnectedACPRegistryEntries: () =>
       listUnconnectedACPRegistryEntries(context.configLoader),
     eventBus: context.eventBus,
@@ -614,10 +618,17 @@ export function configureRuntimeSupportServices(
   );
   const resolveSessionProjectId = (threadId: string) =>
     resolveSessionRecord(threadId)?.localProjectId;
+  const resolveChatTitle = (threadId: string) =>
+    notificationChatTitle(context.orchestrationEventStore, threadId);
   const approvalInboxProvider = new ApprovalInboxNotificationProvider({
     approvalRegistry: context.approvalRegistry,
     orchestrationService: context.orchestrationService,
     resolveSessionProjectId,
+    unattendedSessionTitle: unattendedSessionTitleResolver({
+      orchestration: context.orchestrationService,
+      store: context.orchestrationEventStore,
+      tasks: context.taskGraphService,
+    }),
   });
   notificationService.addProvider(approvalInboxProvider);
   // An inbound pairing request used to surface only inside the Connections
@@ -673,6 +684,7 @@ export function configureRuntimeSupportServices(
     context.logger,
     {
       resolveProjectId: resolveSessionProjectId,
+      resolveChatTitle,
       readFinishedAlertHold,
       onReplayedDelivery: (notification) =>
         options.coordinatorWakes?.()?.observeNotification(notification),
@@ -692,7 +704,7 @@ export function configureRuntimeSupportServices(
     context.orchestrationService,
     notificationService,
     context.logger,
-    { resolveProjectId: resolveSessionProjectId },
+    { resolveProjectId: resolveSessionProjectId, resolveChatTitle },
   );
   notificationService.dispatch('service-start', () =>
     notificationService.start(),
@@ -718,7 +730,12 @@ export function configureRuntimeSupportServices(
       createAutomationLedger({ directory: join(automationHome, 'automation') }),
     () => existsSync(join(automationHome, 'automation', 'automation.sqlite')),
   );
-  const automationStore = new AutomationStore(automationHome);
+  // Resolves a rule's or grant's Project slug to its id on read and write.
+  const automationStore = new AutomationStore(
+    automationHome,
+    undefined,
+    context.projectService,
+  );
   // #4508: Task tracker follow-ups ride the same tick, behind their own
   // Feature Preview; the store is the runtime's, shared with Task briefs.
   const taskFollowUps = context.taskFollowUps;
@@ -778,10 +795,15 @@ export function configureRuntimeSupportServices(
           hosted: false,
           featurePreviews: context.featurePreviews,
           store: automationStore,
-          isProjectCurrent: (id) =>
-            context.projectService
-              .listProjects()
-              .some((project) => project.id === id),
+          projects: context.projectService,
+          // The dispatch's own start resolution, for a rule's preflight.
+          checkAgentStart: (input) =>
+            runAsStationServer(() =>
+              resolveTaskDispatchAgentStart(
+                input,
+                context.orchestrationService,
+              ),
+            ),
           ledger: () => automationLedger.get(),
           existingLedger: () => automationLedger.getExisting(),
           taskGraph: context.taskGraphService,
@@ -813,6 +835,7 @@ export function configureRuntimeSupportServices(
         policy: automationStore,
         ledger: () => automationLedger.get(),
         tasks: context.taskGraphService,
+        projects: context.projectService,
         projectRoot: (id) => {
           const project = context.projectService
             .listProjects()
@@ -873,7 +896,7 @@ export function configureRuntimeSupportServices(
         const task = await context.taskGraphService.createTaskIdempotent(
           {
             projectId: input.projectId,
-            title: `Review ready: ${input.jobName}`,
+            title: `Review ready: ${input.jobLabel}`,
             description: input.prompt,
             agentId: input.agentId,
             createdBy: 'external-monitor',

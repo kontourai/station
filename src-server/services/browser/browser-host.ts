@@ -66,6 +66,19 @@ export interface BrowserHost {
     fn: (targetId: string, favicon: string | undefined) => void,
   ): () => void;
   onTargetClosed?(fn: (targetId: string) => void): () => void;
+  /**
+   * The target's main-frame page-world script context, as a CDP
+   * `uniqueContextId`, once `Runtime` is enabled on its session and while
+   * that document is current; else undefined. A `Runtime.evaluate` bound to
+   * it runs in that one document or fails, never in a later one.
+   */
+  mainWorld?(targetId: string): string | undefined;
+  /**
+   * The origin the browser itself reported for that context (the
+   * `Runtime.executionContextCreated` event), or undefined once the target's
+   * context is no longer `uniqueId`. A page cannot alter it.
+   */
+  mainWorldOrigin?(targetId: string, uniqueId: string): string | undefined;
   /** Admit an exact popup target as its own session; false closes it. */
   onPopup?(
     fn: (openerTargetId: string, target: BrowserTarget, url: string) => boolean,

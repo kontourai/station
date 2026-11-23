@@ -1,0 +1,195 @@
+{
+  "revision": "04899cb09f2eaaeaef9ec122f060bb6a3cbbeb50",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the composer controls against the actual child turn capability. The browser sent an image-only draft and showed no attachment control on a text-only child.","inputs":["docs/design/chat-composer.md","packages/contracts/src/orchestration.ts","src-server/routes/orchestration/orchestration.ts","src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the optional steer.images capability and the retained text-only compatibility in the child-work normalizer.","inputs":["docs/reference/contracts.md","packages/contracts/src/child-work.ts","packages/contracts/src/orchestration.ts","src-server/providers/adapter-shape.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Verified the SDK preserves the image-reference message shape across the host gate and the target-specific command.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/orchestration.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/components/chat/ChildWorkInstructionPanel.tsx"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked request validation, staged input authorization, receipt replay and the bounded local Codex evidence against the updated command reference.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/codex-adapter-types.ts","src-server/providers/adapters/codex-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the child chat path for picking an image or pasting a screenshot. The parent Queue and Steer instructions still apply to the parent.","inputs":["docs/user/getting-started.md","src-server/services/orchestration/orchestration-service.ts","src-ui/src/components/chat-dock/ChildChatNavigation.tsx","src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed child-work projection consumers. The optional images flag accompanies a running child steer token and disappears with it. Instruction history exposes image names, digests and occurrence IDs.","inputs":["packages/contracts/src/child-work.ts"]},
+
+    {"path":"packages/contracts/README.md","note":"Reviewed child-work projection consumers. The optional images flag accompanies a running child steer token and disappears with it. Instruction history exposes image names, digests and occurrence IDs.","inputs":["packages/contracts/src/child-work.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed the child steer input and reply shapes. Text remains valid. A structured image message requires staged references and may have empty text. Other command payloads retain their existing shape.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the child steer input and reply shapes. Text remains valid. A structured image message requires staged references and may have empty text. Other command payloads retain their existing shape.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the child steer input and reply shapes. Text remains valid. A structured image message requires staged references and may have empty text. Other command payloads retain their existing shape.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the child steer input and reply shapes. Text remains valid. A structured image message requires staged references and may have empty text. Other command payloads retain their existing shape.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the child steer input and reply shapes. Text remains valid. A structured image message requires staged references and may have empty text. Other command payloads retain their existing shape.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The existing SDK method sends the typed child input value intact to the scoped command endpoint. The host capability gate and retry policy are unchanged.","inputs":["packages/sdk/src/client/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the replay-backed child steering and model catalog assertions. The Codex v1 child receives the text and image parts at its own turn ID. The v2 direct-input refusal remains covered.","inputs":["src-server/providers/__tests__/codex-adapter.test.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the replay-backed child steering and model catalog assertions. The Codex v1 child receives the text and image parts at its own turn ID. The v2 direct-input refusal remains covered.","inputs":["src-server/providers/__tests__/codex-adapter.test.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The new optional child image steering capability passes resolved images to the owning adapter. Adapters without the declaration retain the string-input path.","inputs":["src-server/providers/adapter-shape.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The new optional child image steering capability passes resolved images to the owning adapter. Adapters without the declaration retain the string-input path.","inputs":["src-server/providers/adapter-shape.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The session record can consult this Codex adapter’s reported model input modalities when projecting controls for a running child. Session ownership and event routing are unchanged.","inputs":["src-server/providers/adapters/codex-adapter-types.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed mapped model modalities, the shared Codex message encoder and the child turn target. Verified a real codex-cli 0.167.0 child forwarded the sample PNG pixels to a local model endpoint. No hosted inference claim.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed mapped model modalities, the shared Codex message encoder and the child turn target. Verified a real codex-cli 0.167.0 child forwarded the sample PNG pixels to a local model endpoint. No hosted inference claim.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed mapped model modalities, the shared Codex message encoder and the child turn target. Verified a real codex-cli 0.167.0 child forwarded the sample PNG pixels to a local model endpoint. No hosted inference claim.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed mapped model modalities, the shared Codex message encoder and the child turn target. Verified a real codex-cli 0.167.0 child forwarded the sample PNG pixels to a local model endpoint. No hosted inference claim.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed mapped model modalities, the shared Codex message encoder and the child turn target. Verified a real codex-cli 0.167.0 child forwarded the sample PNG pixels to a local model endpoint. No hosted inference claim.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed mapped model modalities, the shared Codex message encoder and the child turn target. Verified a real codex-cli 0.167.0 child forwarded the sample PNG pixels to a local model endpoint. No hosted inference claim.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed mapped model modalities, the shared Codex message encoder and the child turn target. Verified a real codex-cli 0.167.0 child forwarded the sample PNG pixels to a local model endpoint. No hosted inference claim.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed mapped model modalities, the shared Codex message encoder and the child turn target. Verified a real codex-cli 0.167.0 child forwarded the sample PNG pixels to a local model endpoint. No hosted inference claim.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed mapped model modalities, the shared Codex message encoder and the child turn target. Verified a real codex-cli 0.167.0 child forwarded the sample PNG pixels to a local model endpoint. No hosted inference claim.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed mapped model modalities, the shared Codex message encoder and the child turn target. Verified a real codex-cli 0.167.0 child forwarded the sample PNG pixels to a local model endpoint. No hosted inference claim.","inputs":["src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The HTTP test exercises image staging, wrong-owner refusal, child-only dispatch, history metadata and byte-free confirmed replay over the existing command route.","inputs":["src-server/routes/orchestration/__tests__/orchestration.routes.test.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked child image input at the HTTP boundary. The route validates image-only references and hydrates through the current principal. The limits and other command/foreground paths retain their existing behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Text-only child receipt digests keep their previous encoding. Rich receipts bind ordered stage identities; the instruction page retains the image descriptors without raw bytes or upload grants.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Text-only child receipt digests keep their previous encoding. Rich receipts bind ordered stage identities; the instruction page retains the image descriptors without raw bytes or upload grants.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Text-only child receipt digests keep their previous encoding. Rich receipts bind ordered stage identities; the instruction page retains the image descriptors without raw bytes or upload grants.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Text-only child receipt digests keep their previous encoding. Rich receipts bind ordered stage identities; the instruction page retains the image descriptors without raw bytes or upload grants.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Text-only child receipt digests keep their previous encoding. Rich receipts bind ordered stage identities; the instruction page retains the image descriptors without raw bytes or upload grants.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Text-only child receipt digests keep their previous encoding. Rich receipts bind ordered stage identities; the instruction page retains the image descriptors without raw bytes or upload grants.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Text-only child receipt digests keep their previous encoding. Rich receipts bind ordered stage identities; the instruction page retains the image descriptors without raw bytes or upload grants.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Text-only child receipt digests keep their previous encoding. Rich receipts bind ordered stage identities; the instruction page retains the image descriptors without raw bytes or upload grants.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Text-only child receipt digests keep their previous encoding. Rich receipts bind ordered stage identities; the instruction page retains the image descriptors without raw bytes or upload grants.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Text-only child receipt digests keep their previous encoding. Rich receipts bind ordered stage identities; the instruction page retains the image descriptors without raw bytes or upload grants.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"The child command looks up prior delivery before resolving image stages, checks adapter capability and applies existing authorization and confinement guards. The parent turn, approval, SSE resume, monitoring and request-inspection paths keep their existing owners.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The reader passes the selected child turn’s published image capability into its existing writable composer. Navigation, read-only records and parent links use their existing boundaries.","inputs":["src-ui/src/components/chat-dock/ChildChatNavigation.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"The child now uses the shared picker, paste, preview and Send controls for supported images. The paperclip and its idle explanation are absent on text-only children.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"The child now uses the shared picker, paste, preview and Send controls for supported images. The paperclip and its idle explanation are absent on text-only children.","inputs":["src-ui/src/components/chat/ChatInputArea.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Image drafts use the same staging queue and retain child turn identity. Pending local commands store scoped references rather than image bytes. A receipt must match the sent images and turn.","inputs":["src-ui/src/components/chat/ChildWorkInstructionPanel.tsx"]}
+  ]
+}

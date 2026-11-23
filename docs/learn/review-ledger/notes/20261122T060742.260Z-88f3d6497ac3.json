@@ -1,0 +1,7 @@
+{
+  "revision": "6e5db01edeac4b13532a43f6d6247b5c4061615a",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Added the scanner's no-camera path: onUnavailable prop, the capture errors treated as no camera, and the pairing panel opening on code entry with focus in the first empty field. Other pairing claims unchanged.","inputs":["docs/reference/connect.md","packages/connect/src/react/DevicePairingPanel.tsx","packages/connect/src/react/QRScanner.tsx"]}
+  ]
+}

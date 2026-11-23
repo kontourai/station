@@ -33,6 +33,7 @@ import {
 import type { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import type { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import type { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
+import type { CopilotSdkAdapter } from '../../providers/adapters/copilot-sdk-adapter.js';
 import type { MuseAdapter } from '../../providers/adapters/muse-adapter.js';
 import type { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
 import { OpenCodeAdapter } from '../../providers/adapters/opencode-adapter.js';
@@ -323,6 +324,8 @@ export interface InitializeRuntimeDeps {
   resolveAcpPreToolPolicy?: (
     input: ProviderSessionStartInput,
   ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
+  /** Whether an external session's own Agent changed after its policy was bound. */
+  preToolPolicyReplaced?: (threadId: string) => Promise<boolean>;
   /** #3994: an ACP agent's terminals as command terminal sessions. */
   acpAgentTerminals?: AcpAdapterOptions['agentTerminals'];
   modelCatalog?: BedrockModelCatalog;
@@ -333,6 +336,7 @@ export interface InitializeRuntimeDeps {
   claudeAdapter: ClaudeAdapter;
   codexAdapter: CodexAdapter;
   museAdapter: MuseAdapter;
+  copilotSdkAdapter: CopilotSdkAdapter;
   ollamaAdapter: OllamaAdapter;
   createVoltAgentInstance: (slug: string) => Promise<Agent>;
   configureRoutes: (app: any) => void;
@@ -453,6 +457,7 @@ export async function initializeRuntime(
     claudeAdapter,
     codexAdapter,
     museAdapter,
+    copilotSdkAdapter,
     ollamaAdapter,
     createVoltAgentInstance,
     configureRoutes,
@@ -633,11 +638,15 @@ export async function initializeRuntime(
       ? { stationControlCallerRecords: deps.stationControlCallerRecords }
       : {}),
   });
+  // `copilotSdkAdapter` is always registered; it selects the
+  // `copilot-sdk-engine` preview at every entry point that starts work
+  // (copilot-sdk-adapter.ts).
   registerProviderAdapters(
     [
       claudeAdapter,
       codexAdapter,
       museAdapter,
+      copilotSdkAdapter,
       acpAdapter,
       openCodeAdapter,
       stationAgentAdapter,
@@ -743,6 +752,9 @@ export async function initializeRuntime(
   );
   const orchestrationService = new OrchestrationService({
     recoverDurableTurn: (input) => durableOwner.recover(input),
+    ...(deps.preToolPolicyReplaced
+      ? { preToolPolicyReplaced: deps.preToolPolicyReplaced }
+      : {}),
     nativeForkStoredReadVerifier: nativeForkStoredReadDomain.verifyForService,
     ...(deps.hostImagesPreview
       ? { hostImagesPreview: deps.hostImagesPreview }
@@ -800,6 +812,10 @@ export async function initializeRuntime(
     // approval rules Station sets at launch.
     acpApprovalControl: (connectionId) =>
       acpBridge.approvalControl(connectionId),
+    isAcpConnectionConfigured: async (connectionId) =>
+      (await getAcpConnections()).some(
+        (connection) => connection.id === connectionId,
+      ),
     adoptionLedger,
     credentialProfileRecoveryAdapter: deps.credentialProfileRecoveryAdapter,
     requireTenantExecutionContext: isHostedTenantExecutionRequired,

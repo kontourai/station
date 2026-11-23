@@ -56,7 +56,16 @@ settings from a check that actually reached the provider:
 - **Unreachable** — configured, but Station cannot reach it.
 
 The engine page's Status, its **Ready** step and its readiness notice show the
-same state as its row. A section tab carries an attention mark when an engine
+same state as its row. If a saved ACP engine is still checking access, wait for
+the check to finish and retry. The current list describes the latest observation.
+Starting a Session checks readiness again. A live model catalog alone does not
+verify a completed turn.
+
+If the Engine inventory cannot finish in time, try Connections again shortly.
+A CLI shown in system diagnostics is a separate PATH observation. An unavailable
+check retains the last observed presence or reports it as unknown.
+
+A section tab carries an attention mark when an engine
 cannot run agents for a reason you can fix, a model connection
 is turned off, is missing a required key or sign-in, was refused by its last
 check, or cannot be reached after retrying; a tool server's last check
@@ -336,7 +345,8 @@ Choose **Manage Stations**, then **Connect a Station**; a phone with no saved
 Station also offers **Enter Station address** on its welcome screen, beside
 **Enter a pairing code**, with **Find nearby Stations** and **Manage Stations**
 under **More ways to connect**. Enter its address, a pairing code,
-or scan a QR code. Return in the address field continues. Without a controlling
+or scan a QR code. Scanning is offered only where the browser has a camera
+API, which a plain HTTP page lacks. Return in the address field continues. Without a controlling
 Station there is no peer option to weigh, so the destination goes straight to
 its one Device request instead of a second **Request selected access** step.
 When that request is handed to the application shell, the dialog's status line
@@ -887,6 +897,7 @@ on this computer's `PATH`; detection does not mean it is signed in or ready.
 | Goose | `goose acp` | Agent Client Protocol |
 | Qwen Code | `qwen --acp` | Agent Client Protocol |
 | GitHub Copilot | `copilot --acp` | Agent Client Protocol |
+| GitHub Copilot (SDK) | `copilot` | Native adapter through the Copilot SDK; only with the `copilot-sdk-engine` [Feature Preview](../user/settings.md#feature-previews) on, adopted at startup |
 | Grok Build | `grok agent stdio` | Agent Client Protocol |
 | Mistral Vibe | `vibe-acp` | Agent Client Protocol |
 | Google Antigravity | `agy acp --process-per-session` | Agent Client Protocol; needs Antigravity CLI 1.5.0 or later, and Station names an older install and says to run `agy update` |
@@ -994,7 +1005,12 @@ engine, which opens the sign-in described in [Sign an engine in](#sign-an-engine
 
 Discovery reports a possible local engine; it does not guarantee readiness.
 Separately, startup can register detected Claude Code, Codex, and Muse CLIs and
-persist their default Agents. Automatic adoption respects an engine's recorded
+persist their default Agents. With the `copilot-sdk-engine` Feature Preview on,
+it also registers the GitHub Copilot (SDK) engine when `copilot` is on `PATH`;
+turning the preview on takes effect at the next start. That engine runs your
+own Copilot CLI and its sign-in, and is separate from the ACP `copilot`
+connection; see [the decision](../decisions/copilot-sdk-engine.md) for what it
+binds and what it does not. Automatic adoption respects an engine's recorded
 removal and refuses an identity already bound to another connection. It does
 not sign the engine in. During shutdown, adoption stops waiting for a
 contended registry or Agent lock. Committed connections stay registered, and
@@ -1003,6 +1019,17 @@ See [startup adoption](../../src-server/runtime/bootstrap/native-engine-adoption
 and the [Agent registry](../../src-server/domain/agent-registry.ts).
 The UI names the concrete engine, such as
 OpenCode or Kiro, rather than exposing its transport as a user category.
+
+Saved command connections that match a built-in launch appear under their
+existing IDs with the built-in marks. For example, a saved Antigravity
+connection called `agy` satisfies the Antigravity catalog card.
+
+To remove a saved ACP engine, open its management menu and choose **Remove
+engine**. On a phone, swipe the row to reveal **Remove** and then confirm.
+The dialog lists affected Agents when Station has their bindings. Removing
+the connection clears its saved setup and Station credentials. Existing
+conversations are readable. Use **Continue with another agent** to resume
+the conversation with a connected engine.
 
 The first-run Engines chapter shows the detected, not-yet-connected local Engine subset. Selecting
 one there explicitly connects the Engine and creates its default Agent binding.
@@ -1725,7 +1752,7 @@ anything there that should stay private.
 Many hosted and self-hosted inference servers expose an OpenAI-compatible API (`/v1/chat/completions`, `/v1/models`). Station connects to these as an **OpenAI-compatible** Model connection.
 
 1. On **Connections → Models**, select **Add model connection** and choose a named service such as **LiteLLM** or **OpenRouter**, or choose **Other OpenAI-compatible**.
-2. Confirm the **server URL** for the service's API root (for example, the URL that serves `/chat/completions` and `/models`).
+2. Confirm the **server URL** for the service's API root (for example, the URL that serves `/chat/completions` and `/models`). The server URL is required: **Create** and **Save** stay unavailable while it is blank, and the server refuses such a save, so a connection with no address is never created. The one exception is a saved connection that is turned off: with **Enabled** cleared, **Save** works without a server URL, so a connection saved before this rule can be turned off. Turning it on again needs the server URL.
 3. Provide an **API key** if the endpoint requires one. Endpoints that need no auth can leave it blank.
 4. Verify the connection, then pick a model when editing a Station agent.
 
@@ -1817,6 +1844,9 @@ preserves them and asks you to reacquire or deliberately choose the folder.
 Acquisition uses this host's Git credentials and currently requires the Station
 operator. URLs containing HTTPS user information, passwords, query strings or
 fragments are refused. An absolute local mirror path is also supported.
+If Station refuses the source or the clone fails, the form stays open with the
+reason under the URL. Correct the source and choose **Acquire repository**
+again; each attempt is a new acquisition.
 Station verifies the clone's origin, resolves its commit and checks it out in
 detached state. For a monorepo, the selected subdirectory becomes the Project
 working directory while the receipt retains the repository root and exact commit.
@@ -2171,6 +2201,17 @@ OAuth and the Station host must be able to reach that address.
    **Claude Code** or **Codex** engine and start a new session. The remote
    server's tools are available within the access you granted.
 
+### Read work from another environment
+
+Choose read-only access when the remote server offers it. In a new Station
+Session, ask the Agent to list projects or conversations using the tools
+the server supplies. A loopback URL reaches a server on the Station host.
+For a server on a different host, use an HTTPS address Station can reach.
+
+When the remote server offers environment discovery, use the environment
+ID it returns when calling tools that accept that selector. Manage access
+and links on the remote server that issued them.
+
 A custom integration uses the shared Station account by default. For sources
 configured for personal accounts, Station selects the session owner's Project account first, then their personal
 account. A shared account is used for a personal integration only when its
@@ -2182,6 +2223,8 @@ integration has a usable account. A missing token or an OAuth grant/client rejec
 during a required refresh refuses launch with **needs sign-in** and the deterministic
 `mcp_sign_in_required` code. No engine session has started for that refusal.
 The chat offers **Sign in to tool**, which opens **Connections → Tools**.
+When a server issues an access token without a refresh token, Station uses it
+until it expires or the server rejects it, then asks you to sign in again.
 
 Station gives the engine a loopback MCP proxy URL carrying a Station credential,
 scoped to that session and integration. The agent can read this proxy credential
@@ -2658,6 +2701,15 @@ takes more than 3 seconds. The selected address
 stays visible and an explicit edit takes precedence over a suggestion. No
 Tailscale configuration or listener binding is changed.
 
+
+## Share a Project summary with a browser assistant
+
+In a browser that supports WebMCP, open **Overview** for a Project you operate.
+Under **Browser assistant**, choose **Share summary**. The assistant can read
+the displayed Project name and description from that tab. Choose **Stop sharing**
+to end access. Leaving Overview, switching Stations, or changing the summary
+also ends the share. Browser support depends on its WebMCP preview configuration.
+[Chrome WebMCP](https://developer.chrome.com/docs/ai/webmcp/imperative-api)
 
 ## Outside-agent OAuth remains inert
 

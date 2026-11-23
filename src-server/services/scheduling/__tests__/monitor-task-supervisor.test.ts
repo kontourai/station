@@ -193,7 +193,7 @@ describe('MonitorTaskTurnSupervisor', () => {
     expect(f.admission()({ threadId: 'session-1' })).toMatchObject({
       allowed: false,
     });
-    expect(f.interrupt).toHaveBeenCalledWith('session-1');
+    expect(f.interrupt).toHaveBeenCalledWith('session-1', 'limit');
   });
 
   test('refuses a successor when the observed Task token total reached its fence', () => {
@@ -215,7 +215,7 @@ describe('MonitorTaskTurnSupervisor', () => {
     f.publish(
       event('session-1', 'token-usage.updated', 'turn-1', { totalTokens: 3 }),
     );
-    expect(f.interrupt).toHaveBeenCalledWith('session-1');
+    expect(f.interrupt).toHaveBeenCalledWith('session-1', 'limit');
   });
 
   test('uses the canonical terminal timestamp, not reconciliation time, for runtime accounting', () => {
@@ -252,7 +252,7 @@ describe('MonitorTaskTurnSupervisor', () => {
     arm(f, { deadlineAt: Date.now() + 1 });
     f.publish(event('session-1', 'turn.started', 'turn-1'));
     vi.advanceTimersByTime(1);
-    expect(f.interrupt).toHaveBeenCalledWith('session-1');
+    expect(f.interrupt).toHaveBeenCalledWith('session-1', 'limit');
   });
 
   test('uses the scheduler stop signal for a live monitor session', () => {
@@ -260,7 +260,7 @@ describe('MonitorTaskTurnSupervisor', () => {
     const controller = new AbortController();
     arm(f, { signal: controller.signal });
     controller.abort(new Error('Scheduler is stopping'));
-    expect(f.interrupt).toHaveBeenCalledWith('session-1');
+    expect(f.interrupt).toHaveBeenCalledWith('session-1', 'limit');
   });
 
   test('re-adopts a persisted observer and fences a successor after restart', () => {

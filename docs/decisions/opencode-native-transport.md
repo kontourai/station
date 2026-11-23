@@ -211,6 +211,8 @@ server, not two.
   resolved the same way. Each is added with
   `PUT /api/experimental/mcp/{name}`
   ([native MCP](../../src-server/providers/adapters/opencode-native-mcp.ts)).
+  Station checks the registered servers for readiness before starting the
+  session and warns if readiness fails or remains unconfirmed after two seconds.
   An added server belongs to the server's location, which every session on
   that server shares. So the pool key includes `openCodeMcpDigest` of the
   session's set, and sessions whose tool servers differ never share a server.
@@ -280,6 +282,10 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   `session.moved` is published, so no check after the event could keep that
   code from running. A wholly denied tool leaves OpenCode's catalog, and
   children inherit the rule.
+- A Station Project session keeps its recorded checkout in every approval
+  mode. Its native session rules disable Code Mode's move tool. Station stops
+  a live Project session moved by another client and refuses native recovery
+  if OpenCode reports a different checkout.
 - **A session that moves anyway** (another client of its server, or a resume
   of a session moved earlier) is followed. In a governed session, a
   `session.moved` for it or a descendant runs the #3924 scan on the new

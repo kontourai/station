@@ -53,6 +53,8 @@ export interface ResponsiveDialogSurfaceProps {
   role?: 'dialog' | 'alertdialog';
   overlayClassName?: string;
   panelClassName?: string;
+  /** Minimum visible height for an inset phone sheet above the keyboard. */
+  insetSheetMinHeight?: number;
   overlayStyle?: CSSProperties;
   panelStyle?: CSSProperties;
   initialFocusRef?: RefObject<HTMLElement | null>;
@@ -200,6 +202,7 @@ export function ResponsiveDialogSurface({
   ariaLabelledBy,
   overlayClassName = '',
   panelClassName = '',
+  insetSheetMinHeight,
   overlayStyle,
   panelStyle,
   initialFocusRef,
@@ -476,6 +479,13 @@ export function ResponsiveDialogSurface({
       }}
       aria-hidden={!open || undefined}
       data-responsive-layer={resolvedLayer}
+      data-inset-sheet={
+        isMobile &&
+        insetSheetMinHeight !== undefined &&
+        visualViewport.height >= insetSheetMinHeight
+          ? ''
+          : undefined
+      }
       /**
        * #1638: a modal or popover surface is not part of the dock's resize
        * gesture, whether or not it happens to be a DOM descendant of it. This

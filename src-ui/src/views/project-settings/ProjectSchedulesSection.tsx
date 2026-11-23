@@ -14,8 +14,10 @@ import {
   localTime,
   scheduleForJob,
 } from '../../components/scheduler';
+import { jobLabel } from '../../components/scheduler/jobName';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { userFacingErrorMessage } from '../../utils/errorText';
+import { automationStatus } from '../schedule/automationRow';
 
 /** The scheduled jobs that belong to one Project (#5070). */
 export function projectJobs(
@@ -33,6 +35,20 @@ function scheduleLabel(job: SchedulerJob): string {
       cronToHuman(schedule.expr, { timezone: schedule.timezone })) ||
     formatSchedule(schedule)
   );
+}
+
+/**
+ * The same state words as Automations (Paused, Done), then what an active
+ * schedule does next: it waits while the Project is held.
+ */
+function projectScheduleStatus(
+  job: SchedulerJob,
+  held: boolean,
+): string | undefined {
+  const status = automationStatus(job, false, Date.now());
+  if (status !== 'Active') return status;
+  if (held) return 'Waiting';
+  return job.nextRun ? `Next ${localTime(job.nextRun)}` : undefined;
 }
 
 export function ProjectSchedulesSection({
@@ -93,17 +109,9 @@ export function ProjectSchedulesSection({
         jobs.map((job) => (
           <PageRow
             key={job.name}
-            label={job.name}
+            label={jobLabel(job)}
             description={scheduleLabel(job)}
-            status={
-              !job.enabled
-                ? 'Off'
-                : held
-                  ? 'Waiting'
-                  : job.nextRun
-                    ? `Next ${localTime(job.nextRun)}`
-                    : undefined
-            }
+            status={projectScheduleStatus(job, held)}
           />
         ))
       )}

@@ -303,7 +303,7 @@ test('copying a message where no clipboard exists says it was not copied', async
     fireEvent.click(screen.getByRole('button', { name: 'Copy answer' }));
     await waitFor(() =>
       expect(toastStore.getSnapshot().map((toast) => toast.message)).toContain(
-        "Couldn't copy — this browser refused clipboard access",
+        "Couldn't copy to the clipboard",
       ),
     );
   } finally {

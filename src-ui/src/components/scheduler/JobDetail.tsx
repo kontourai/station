@@ -19,6 +19,7 @@ import {
   WarningGlyph,
 } from '../icons/Glyph';
 import { Empty, SkeletonBlock } from '../state';
+import { jobLabel } from './jobName';
 
 /**
  * `RunStatus` is a 7-member tri-state, not a boolean: only `completed` is a
@@ -100,31 +101,6 @@ export function localTime(iso: string | null) {
   });
 }
 
-function rateColor(rate: number) {
-  if (rate >= 90) return 'high';
-  if (rate >= 50) return 'mid';
-  return 'low';
-}
-
-export function RateCell({ rate }: { rate: number | undefined }) {
-  if (rate == null || rate < 0)
-    return <span className="schedule__td--muted">—</span>;
-  const tier = rateColor(rate);
-  return (
-    <span className="schedule__rate">
-      <span className={`schedule__rate-value schedule__rate-value--${tier}`}>
-        {rate}%
-      </span>
-      <span className="schedule__rate-bar">
-        <span
-          className={`schedule__rate-fill schedule__rate-fill--${tier}`}
-          style={{ width: `${rate}%` }}
-        />
-      </span>
-    </span>
-  );
-}
-
 export function JobDetail({
   name,
   autoOpenRun,
@@ -160,8 +136,9 @@ export function JobDetail({
     () => [...scheduleRuns].reverse(),
     [scheduleRuns],
   );
-  const monitor = jobs.find((job) => job.name === name)?.monitor;
-  const monitorState = jobs.find((job) => job.name === name)?.monitorState;
+  const thisJob = jobs.find((job) => job.name === name);
+  const monitor = thisJob?.monitor;
+  const monitorState = thisJob?.monitorState;
   const taskHref = monitorState?.triggeredTaskId
     ? `/tasks/${encodeURIComponent(monitorState.triggeredTaskId)}`
     : null;
@@ -418,7 +395,7 @@ export function JobDetail({
         // gets all three, plus the one dialog chrome (SHELL-02).
         <Dialog
           eyebrow="Automations"
-          title={`${name} — Run Output`}
+          title={`${thisJob ? jobLabel(thisJob) : name} — Run Output`}
           closeLabel="Close run output"
           onClose={() => setViewIdx(null)}
           size="lg"

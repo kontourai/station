@@ -94,6 +94,10 @@ in the panel that reported the error.
 | **Couldn't load project knowledge**, **Couldn't load project rules**, **Could not load stores**, **Could not load records** | Select **Retry** in the affected knowledge panel. |
 | **Could not load document categories** | Select **Retry categories**. |
 | **Could not load indexing status** | Select **Retry indexing status**. |
+| **Could not load documents** | Select **Retry** in Project knowledge. |
+| **Migration failed** | Check the reported error and the current knowledge store before retrying migration. |
+| **Knowledge action failed** | Check the reported directory or named files, then retry the index or upload action that failed. |
+| **Could not remove document** or **Could not remove documents** | Reopen Project knowledge and check which documents are still listed before confirming another removal. |
 | **Couldn't index the working directory** | Read the reason shown, correct it, then choose **Index Files** again. |
 | **Unable to load document content** | Close the knowledge document and reopen it from the Project. |
 | **Unable to check Task sharing** | Select **Retry** in Task sharing. |
@@ -319,8 +323,9 @@ interrupted. This does not mean the Agent resumed. If a send lost its reply,
 the browser checks its original message key before retrying. A queued answer
 keeps those checks running; a started answer confirms delivery and removes the
 retry notice. After three consecutive failed delivery reads, automatic checks
-pause. The message stays saved and is labeled **Delivery unconfirmed** instead
-of **Queued to send**. **Check** asks once and shows the result; it
+pause. The message stays saved and reads **May have reached the agent**. Its
+inbox row keeps the status its conversation gives it and adds **Last message
+may not have arrived** with **Check**. **Check** asks once and shows the result; it
 does not resend. If Station confirms it never received the message, **Retry**
 sends it using the same key. **More delivery actions → Copy message** preserves its text for recovery.
 Uncertain delivery remains fenced to prevent duplicate work.

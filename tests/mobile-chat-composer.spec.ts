@@ -1538,6 +1538,309 @@ test('stages a current-host attachment before dispatching only its opaque refere
   expect(JSON.stringify(dispatched[0])).not.toContain('c3RhZ2UgbWU=');
 });
 
+// #4568: a person's follow-up whose engine start is queued behind another
+// engine start. Station publishes the wait on the Session's summary and says
+// so through the session-projection update; the dock shows it while the send
+// is in flight and drops it when Station clears it.
+test('shows the engine-start capacity wait while Station holds a send, and clears it with Station', async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installMockOrchestrationSse(page);
+  await mockChatShell(page);
+  const renderRoot = join(
+    process.cwd(),
+    '.kontourai',
+    'engine-start-capacity-4644',
+  );
+  await mkdir(renderRoot, { recursive: true });
+  const sessionId = 'claude:1760000000000';
+  await page.route(
+    `**/api/orchestration/sessions/${encodeURIComponent(sessionId)}/inventory**`,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({
+            status: 404,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: false,
+              error: 'Session inventory unavailable',
+            }),
+          })
+        : rejectUnexpectedFixtureRequest(route),
+  );
+  let waiting = false;
+  await page.route('**/api/orchestration/coordinator', (route) =>
+    route.request().method() === 'GET'
+      ? route.fulfill(json({ success: true, data: { designation: null } }))
+      : rejectUnexpectedFixtureRequest(route),
+  );
+  await page.route('**/api/orchestration/sessions/read-model', (route) =>
+    route.fulfill(
+      json({
+        success: true,
+        data: [
+          {
+            threadId: sessionId,
+            provider: 'claude',
+            model: 'model-selected',
+            status: 'ready',
+            lifecycleState: 'idle',
+            controlMode: 'station-owned',
+            answerability: { answerable: true },
+            createdAt: '2026-11-06T12:00:00.000Z',
+            updatedAt: '2026-11-06T12:00:00.000Z',
+            isLoaded: true,
+            isPersisted: true,
+            eventCount: 1,
+            ...(waiting
+              ? { engineStartWait: { since: '2026-11-06T12:00:01.000Z' } }
+              : {}),
+          },
+        ],
+      }),
+    ),
+  );
+  await page.route(
+    `**/api/orchestration/conversations/${encodeURIComponent(sessionId)}/**`,
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: false,
+          error: 'This capacity fixture does not emit provider events',
+        }),
+      }),
+  );
+  await page.route(
+    `**/api/orchestration/sessions/${encodeURIComponent(sessionId)}/event-window**`,
+    (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill({
+            status: 503,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: false,
+              error: 'This capacity fixture does not emit provider events',
+            }),
+          })
+        : rejectUnexpectedFixtureRequest(route),
+  );
+  let releaseSend!: () => void;
+  const sendHeld = new Promise<void>((resolve) => {
+    releaseSend = resolve;
+  });
+  const dispatched: unknown[] = [];
+  await page.route('**/api/orchestration/chat', async (route) => {
+    dispatched.push(route.request().postDataJSON());
+    await sendHeld;
+    await route
+      .fulfill(
+        json(
+          foregroundMessageReceiptEnvelope({
+            conversationId: sessionId,
+            agent: 'agent:claude',
+          }),
+        ),
+      )
+      .catch(() => undefined);
+  });
+
+  const textarea = await openComposer(page);
+  await textarea.fill('Continue the review.');
+  waiting = true;
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(() => expect(dispatched).toHaveLength(1)).toPass({
+    timeout: 10_000,
+  });
+  await emitMockOrchestrationEvent(
+    page,
+    'orchestration:session-projection-updated',
+    { threadId: sessionId },
+  );
+  const badge = page.getByTestId('chat-dock-engine-start-wait');
+  await expect(badge).toContainText('Waiting for another engine to start', {
+    timeout: 10_000,
+  });
+
+  for (const [width, height] of [
+    [390, 844],
+    [1440, 900],
+  ] as const) {
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.setViewportSize({ width, height });
+      await page.emulateMedia({ colorScheme });
+      await expect(badge).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `engine-start-wait-${width}-${colorScheme}.png`,
+        ),
+        animations: 'disabled',
+      });
+      await copyFile(
+        testInfo.outputPath(`engine-start-wait-${width}-${colorScheme}.png`),
+        join(renderRoot, `engine-start-wait-${width}-${colorScheme}.png`),
+      );
+    }
+  }
+
+  waiting = false;
+  await emitMockOrchestrationEvent(
+    page,
+    'orchestration:session-projection-updated',
+    { threadId: sessionId },
+  );
+  await expect(badge).toHaveCount(0, { timeout: 10_000 });
+  releaseSend();
+});
+
+// #4568: a brand-new chat's first start has no Session summary yet. Station
+// reports its queued start on the orchestration stream, for the id the chat
+// sent; Stop cancels it through the ordinary interrupt command.
+for (const [width, height] of [
+  [390, 844],
+  [1440, 900],
+] as const) {
+  test(`shows a brand-new chat's first-start wait from the stream, and Stop cancels it at ${width}px`, async ({
+    page,
+  }, testInfo) => {
+    test.setTimeout(60_000);
+    await page.setViewportSize({ width, height });
+    await installMockOrchestrationSse(page);
+    await mockChatShell(page);
+    const renderRoot = join(
+      process.cwd(),
+      '.kontourai',
+      'engine-start-capacity-4644',
+    );
+    await mkdir(renderRoot, { recursive: true });
+    const sessionId = 'claude:1760000000000';
+    await page.route(
+      `**/api/orchestration/sessions/${encodeURIComponent(sessionId)}/inventory**`,
+      (route) =>
+        route.request().method() === 'GET'
+          ? route.fulfill({
+              status: 404,
+              contentType: 'application/json',
+              body: JSON.stringify({
+                success: false,
+                error: 'Session inventory unavailable',
+              }),
+            })
+          : rejectUnexpectedFixtureRequest(route),
+    );
+    await page.route('**/api/orchestration/coordinator', (route) =>
+      route.request().method() === 'GET'
+        ? route.fulfill(json({ success: true, data: { designation: null } }))
+        : rejectUnexpectedFixtureRequest(route),
+    );
+    await page.route(
+      `**/api/orchestration/conversations/${encodeURIComponent(sessionId)}/**`,
+      (route) =>
+        route.fulfill({
+          status: 503,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: false,
+            error: 'This capacity fixture does not emit provider events',
+          }),
+        }),
+    );
+    const commands: Array<Record<string, unknown>> = [];
+    await page.route('**/api/orchestration/commands', async (route) => {
+      commands.push(route.request().postDataJSON() as Record<string, unknown>);
+      await route.fulfill(
+        json({
+          success: true,
+          data: { outcome: 'pending-turn-start', threadId: sessionId },
+        }),
+      );
+    });
+    let releaseSend!: () => void;
+    const sendHeld = new Promise<void>((resolve) => {
+      releaseSend = resolve;
+    });
+    const dispatched: Array<Record<string, unknown>> = [];
+    await page.route('**/api/orchestration/chat', async (route) => {
+      dispatched.push(
+        route.request().postDataJSON() as Record<string, unknown>,
+      );
+      await sendHeld;
+      await route
+        .fulfill({
+          status: 400,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            success: false,
+            code: 'resource_engine_start_cancelled',
+            error: 'The engine start was cancelled before it began.',
+          }),
+        })
+        .catch(() => undefined);
+    });
+
+    const textarea = await openComposer(page);
+    await textarea.fill('Start the review.');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await expect(() => expect(dispatched).toHaveLength(1)).toPass({
+      timeout: 10_000,
+    });
+    // The brand-new chat names itself; Station's frame answers for that id.
+    expect(dispatched[0]).toMatchObject({ conversationId: sessionId });
+    await page.emulateMedia({ colorScheme: 'light' });
+    const before = `engine-start-wait-new-chat-${width}-before-light.png`;
+    await page.screenshot({
+      path: testInfo.outputPath(before),
+      animations: 'disabled',
+    });
+    await copyFile(testInfo.outputPath(before), join(renderRoot, before));
+    await emitMockOrchestrationEvent(page, 'orchestration:engine-start-wait', {
+      threadId: sessionId,
+      wait: { since: '2026-11-06T12:00:01.000Z' },
+      pendingStart: true,
+    });
+    const badge = page.getByTestId('chat-dock-engine-start-wait');
+    await expect(badge).toContainText('Waiting for another engine to start', {
+      timeout: 10_000,
+    });
+
+    for (const colorScheme of ['light', 'dark'] as const) {
+      await page.emulateMedia({ colorScheme });
+      await expect(badge).toBeVisible();
+      await page.screenshot({
+        path: testInfo.outputPath(
+          `engine-start-wait-new-chat-${width}-${colorScheme}.png`,
+        ),
+        animations: 'disabled',
+      });
+      await copyFile(
+        testInfo.outputPath(
+          `engine-start-wait-new-chat-${width}-${colorScheme}.png`,
+        ),
+        join(
+          renderRoot,
+          `engine-start-wait-new-chat-${width}-${colorScheme}.png`,
+        ),
+      );
+    }
+
+    await page.getByRole('button', { name: 'Stop the current turn' }).click();
+    await expect(() =>
+      expect(commands).toContainEqual(
+        expect.objectContaining({ type: 'interruptTurn', threadId: sessionId }),
+      ),
+    ).toPass({ timeout: 10_000 });
+    await emitMockOrchestrationEvent(page, 'orchestration:engine-start-wait', {
+      threadId: sessionId,
+      wait: null,
+    });
+    releaseSend();
+    await expect(badge).toHaveCount(0, { timeout: 10_000 });
+  });
+}
+
 /**
  * The staging fixture for an upload whose PUT is held until the test settles
  * it, so Send can be pressed while the file is still uploading.
@@ -1870,10 +2173,7 @@ test('a Task inventory outage does not block the mobile inbox or New chat', asyn
   await expect(
     menu.getByRole('button', { name: /^Station Chat.*Default/i }).first(),
   ).toBeVisible();
-  await page
-    .getByTestId('chat-dock-mobile-header')
-    .getByRole('button', { name: 'New chat', exact: true })
-    .click();
+  await menu.getByRole('button', { name: 'New chat', exact: true }).click();
   const newChat = page.getByRole('region', { name: 'New chat', exact: true });
   await expect(newChat).toBeVisible();
 });
@@ -1943,7 +2243,10 @@ test('switches between mobile tasks and restores the exact active chat context',
     },
   );
   await switcher.click();
-  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Inbox actions' }).click();
+  await page
+    .getByRole('menuitem', { name: 'Back to chat', exact: true })
+    .click();
   await expect(menu).toBeHidden();
   await expect(switcher).toBeFocused();
 
@@ -2006,7 +2309,10 @@ test('switches between mobile tasks and restores the exact active chat context',
       .getByRole('button', { name: /^Station Chat.*Default/i })
       .filter({ hasText: 'Waiting on you' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Inbox actions' }).click();
+  await page
+    .getByRole('menuitem', { name: 'Back to chat', exact: true })
+    .click();
   await expect(menu).toBeHidden();
   await expect(
     await runSetupControl(page, (panel) =>
@@ -2055,18 +2361,15 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect((compactBox?.x ?? 0) + (compactBox?.width ?? 0)).toBeLessThanOrEqual(
     320,
   );
-  const compactClose = page.getByRole('button', {
+  const actions = page.getByRole('button', { name: 'Inbox actions' });
+  await actions.focus();
+  await page.keyboard.press('Enter');
+  const compactClose = page.getByRole('menuitem', {
     name: 'Back to chat',
     exact: true,
   });
-  await compactDialog.getByRole('combobox', { name: 'Inbox scope' }).focus();
-  await page.keyboard.press('Shift+Tab');
-  await expect(
-    page
-      .getByTestId('chat-dock-mobile-header')
-      .getByRole('button', { name: 'New chat', exact: true }),
-  ).toBeFocused();
-  await compactClose.click();
+  await compactClose.focus();
+  await page.keyboard.press('Enter');
   await expect(compactDialog).toBeHidden();
   await expect(switcher).toBeFocused();
 
@@ -2075,8 +2378,8 @@ test('switches between mobile tasks and restores the exact active chat context',
   await page.setViewportSize({ width: 800, height: 800 });
   await expect(compactDialog).toBeHidden();
   await page.setViewportSize({ width: 390, height: 844 });
-  await page
-    .getByTestId('chat-dock-mobile-header')
+  if (!(await compactDialog.isVisible())) await switcher.click();
+  await compactDialog
     .getByRole('button', { name: 'New chat', exact: true })
     .click();
   await expect(
@@ -2243,7 +2546,9 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   await expect(page.locator('#station-main')).toHaveAttribute('inert', '');
   const header = page.getByTestId('chat-dock-mobile-header');
   await expect(
-    header.getByRole('button', { name: 'New chat', exact: true }),
+    header.getByRole('button', {
+      name: /^(Restore chat size|Full screen chat)$/,
+    }),
   ).toBeVisible();
   await expect(
     header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
@@ -2433,7 +2738,8 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
   }
-  await expect(page.getByTestId('chat-dock-mobile-connection')).toBeVisible();
+  await expect(page.locator('.app-toolbar')).toBeVisible();
+  await expect(page.getByTestId('chat-dock-mobile-connection')).toHaveCount(0);
   await page.getByRole('button', { name: 'Close actions menu' }).click();
 
   // A Station label too long to share the row: the chips keep every
@@ -2937,7 +3243,9 @@ test('the 320px header reserves title space and exposes secondary actions in its
   await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
   const header = page.getByTestId('chat-dock-mobile-header');
   await expect(
-    header.getByRole('button', { name: 'New chat', exact: true }),
+    header.getByRole('button', {
+      name: /^(Restore chat size|Full screen chat)$/,
+    }),
   ).toBeVisible();
   await expect(
     header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
@@ -2959,8 +3267,55 @@ test('the 320px header reserves title space and exposes secondary actions in its
       page.getByRole('menuitem', { name, exact: true }),
     ).toBeVisible();
   }
-  await expect(page.getByTestId('chat-dock-mobile-connection')).toBeVisible();
+  await expect(page.locator('.app-toolbar')).toBeVisible();
+  await expect(page.getByTestId('chat-dock-mobile-connection')).toHaveCount(0);
   await page.getByRole('button', { name: 'Close actions menu' }).click();
+
+  const dock = page.locator('#chat-dock');
+  const title = await identity.textContent();
+  const resize = dock.getByRole('separator', { name: /resize/i });
+  await resize.press('ArrowDown');
+  await resize.press('ArrowDown');
+  await expect(dock).toHaveClass(/is-collapsed/);
+  await expect(identity).toHaveText(title!);
+  await header
+    .getByRole('button', { name: 'Chat actions', exact: true })
+    .click();
+  await expect(dock).not.toHaveClass(/is-collapsed/);
+  await expect(page.getByRole('menu', { name: 'Chat actions' })).toBeVisible();
+  await page.getByRole('button', { name: 'Close actions menu' }).click();
+  await resize.press('ArrowDown');
+  await expect(dock).toHaveClass(/is-collapsed/);
+  await header.getByRole('button', { name: /^Open chat:/ }).click();
+  await expect(
+    dock.locator('textarea[placeholder*="Type a message"]'),
+  ).toBeVisible();
+});
+
+test('desktop chat settings opens the collapsed conversation dock', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await mockChatShell(page);
+  await openComposer(page, true);
+  const dock = page.locator('#chat-dock');
+  await dock.getByRole('button', { name: 'Hide Chat', exact: true }).click();
+  await expect(dock).toHaveClass(/is-collapsed/);
+  await dock.getByRole('button', { name: /^More dock actions/ }).press('Enter');
+  await expect(dock).not.toHaveClass(/is-collapsed/);
+  await expect(
+    page.getByRole('menu', { name: 'More dock actions' }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+  await dock.getByRole('button', { name: 'Hide Chat', exact: true }).click();
+  await expect(dock).toHaveClass(/is-collapsed/);
+  await dock
+    .getByRole('button', { name: 'Chat settings', exact: true })
+    .click();
+  await expect(dock).not.toHaveClass(/is-collapsed/);
+  await expect(
+    page.getByRole('dialog', { name: /chat settings/i }),
+  ).toBeVisible();
 });
 
 for (const width of [361, 375, 390, 431, 481]) {
@@ -2978,10 +3333,9 @@ for (const width of [361, 375, 390, 431, 481]) {
       .getByRole('menuitem', { name: /^Full screen/ })
       .click();
     await expect(page.locator('.chat-dock')).toHaveClass(/is-maximized/);
-    // This is the configuration under test: the app toolbar is gone and this
-    // bar carries the drawer toggle.
+    // Global navigation stays above the maximized conversation.
     await expect(
-      page.getByRole('button', { name: 'Toggle menu' }),
+      page.locator('.app-toolbar').getByRole('button', { name: 'Toggle menu' }),
     ).toBeVisible();
 
     const header = page.locator('.chat-dock__mobile-header');
@@ -2997,7 +3351,9 @@ for (const width of [361, 375, 390, 431, 481]) {
     }
 
     await expect(
-      header.getByRole('button', { name: 'New chat', exact: true }),
+      header.getByRole('button', {
+        name: /^(Restore chat size|Full screen chat)$/,
+      }),
     ).toBeVisible();
     await expect(
       header.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
@@ -3081,6 +3437,7 @@ test('the maximized phone dock header clears the status bar once, not twice', as
     const box = (selector: string) =>
       document.querySelector(selector)!.getBoundingClientRect();
     return {
+      toolbarBottom: box('.app-toolbar').bottom,
       dockTop: box('.chat-dock').top,
       headerTop: box('.chat-dock__mobile-header').top,
       headerHeight: box('.chat-dock__mobile-header').height,
@@ -3111,18 +3468,16 @@ test('the maximized phone dock header clears the status bar once, not twice', as
   const identity = (await header
     .locator('.chat-dock__mobile-identity')
     .boundingBox())!;
-  const headerBox = (await header.boundingBox())!;
   expect(identity.width).toBeGreaterThanOrEqual(180);
-  expect(
-    Math.abs(
-      identity.x + identity.width / 2 - (headerBox.x + headerBox.width / 2),
-    ),
-  ).toBeLessThanOrEqual(1);
-  const menu = (await header
-    .getByRole('button', { name: 'Toggle menu', exact: true })
+  const back = (await header
+    .getByRole('button', { name: 'Inbox', exact: true })
     .boundingBox())!;
-  expect(menu.width).toBeGreaterThanOrEqual(44);
-  expect(menu.x + menu.width).toBeLessThanOrEqual(identity.x + 1);
+  expect(back.width).toBeGreaterThanOrEqual(44);
+  expect(back.x + back.width).toBeLessThanOrEqual(identity.x + 1);
+  const appToolbar = (await page.locator('.app-toolbar').boundingBox())!;
+  expect(
+    Math.abs(geometry.dockTop - appToolbar.y - appToolbar.height),
+  ).toBeLessThanOrEqual(5);
 });
 
 /**
@@ -3174,6 +3529,7 @@ const chatGeometry = (page: Page) =>
     return {
       vw: innerWidth,
       vh: innerHeight,
+      toolbarBottom: box('.app-toolbar').bottom,
       dockTop: box('.chat-dock').top,
       headerTop: box('.chat-dock__mobile-header').top,
       headerHeight: box('.chat-dock__mobile-header').height,
@@ -3196,7 +3552,8 @@ test('an iPhone 15 portrait inset is honoured once by the maximized chat', async
   const g = await chatGeometry(page);
   // Top: the sheet clears the Dynamic Island (plus its 4px toolbar
   // clearance) and its header starts right there, not a second inset lower.
-  expect(g.dockTop).toBe(59 + 4);
+  expect(g.toolbarBottom).toBeGreaterThanOrEqual(59 + 44);
+  expect(Math.abs(g.dockTop - g.toolbarBottom)).toBeLessThanOrEqual(4);
   expect(g.headerTop - g.dockTop, JSON.stringify(g)).toBeLessThanOrEqual(2);
   expect(g.headerHeight).toBeLessThan(59);
   // Bottom: the composer ends exactly one home-indicator inset above the edge.
@@ -3418,7 +3775,9 @@ for (const viewport of [
     await expect(moreActions).toBeVisible();
     const mobileHeader = page.locator('.chat-dock__mobile-header');
     await expect(
-      mobileHeader.getByRole('button', { name: 'New chat', exact: true }),
+      mobileHeader.getByRole('button', {
+        name: /^(Restore chat size|Full screen chat)$/,
+      }),
     ).toBeVisible();
     await expect(
       mobileHeader.getByRole('button', { name: /^(Inbox|Back to chat)$/ }),
@@ -4610,7 +4969,11 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
     )
     .toBeGreaterThan(15);
 
-  const close = page.getByRole('button', { name: 'Back to chat', exact: true });
+  await page.getByRole('button', { name: 'Inbox actions' }).click();
+  const close = page.getByRole('menuitem', {
+    name: 'Back to chat',
+    exact: true,
+  });
   await expect(close).toBeVisible();
   // The real assertion: the Close control must actually receive the tap —
   // Playwright refuses the click if another element (the app toolbar)
@@ -4685,7 +5048,7 @@ test('keeps primary context controls draggable and navigation actions tap-only (
   const header = page.getByTestId('chat-dock-mobile-header');
   await expect(header).toBeVisible({ timeout: 15_000 });
   await expect(
-    header.getByRole('button', { name: 'Toggle menu' }),
+    page.locator('.app-toolbar').getByRole('button', { name: 'Toggle menu' }),
   ).toBeVisible();
 
   await expect(header.locator('.chat-dock__mobile-identity')).toHaveAttribute(
@@ -4693,7 +5056,7 @@ test('keeps primary context controls draggable and navigation actions tap-only (
     '',
   );
   const navigation = header.getByRole('button');
-  expect(await navigation.count()).toBeGreaterThanOrEqual(4);
+  expect(await navigation.count()).toBeGreaterThanOrEqual(3);
   for (const control of await navigation.all()) {
     await expect(control).toHaveAttribute('data-no-dock-drag', '');
   }
@@ -4929,6 +5292,11 @@ test('the mobile Inbox lists chats beyond the first rows', async ({ page }) => {
   await expect(navigation).toBeVisible();
   await navigation.getByRole('button', { name: 'Close navigation' }).click();
   await expect(navigation).toBeHidden();
+  const chatActions = page.getByRole('button', {
+    name: 'Chat actions',
+    exact: true,
+  });
+  const menu = page.getByRole('menu', { name: 'Chat actions' });
   await page.getByRole('button', { name: 'Inbox', exact: true }).click();
   const sheet = page.getByRole('region', { name: 'Inbox', exact: true });
   await expect(sheet).toBeVisible();
@@ -4936,25 +5304,43 @@ test('the mobile Inbox lists chats beyond the first rows', async ({ page }) => {
   await expect(
     sheet.getByText('Overflow conversation 0', { exact: true }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Back to chat', exact: true }).click();
+  await page.getByRole('button', { name: 'Inbox actions' }).click();
+  await page
+    .getByRole('menuitem', { name: 'Back to chat', exact: true })
+    .click();
   await expect(sheet).not.toBeVisible();
+
+  await chatActions.click();
+  await menu
+    .getByRole('menuitem', { name: 'Browse all conversations' })
+    .click();
+  const closeHistory = page
+    .locator('.conversation-history')
+    .getByRole('button', { name: 'Close history' });
+  await expect(closeHistory).toBeVisible();
+  await closeHistory.click();
+  await expect(closeHistory).toBeHidden();
 });
 
 for (const width of [320, 431]) {
-  test(`chat layout audit centers its title and keeps slash commands usable at ${width}px`, async ({
+  test(`chat layout audit reserves the space between navigation and actions for its title and keeps slash commands usable at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await mockChatShell(page);
     const input = await openComposer(page);
     const header = page.getByTestId('chat-dock-mobile-header');
-    const outer = (await header.boundingBox())!;
+    const back = (await header
+      .getByRole('button', { name: 'Inbox', exact: true })
+      .boundingBox())!;
+    const actions = (await header
+      .locator('.chat-dock__mobile-actions')
+      .boundingBox())!;
     const identity = (await header
       .locator('.chat-dock__mobile-identity')
       .boundingBox())!;
-    expect(
-      Math.abs(identity.x + identity.width / 2 - (outer.x + outer.width / 2)),
-    ).toBeLessThanOrEqual(1);
+    expect(identity.x).toBeGreaterThanOrEqual(back.x + back.width);
+    expect(identity.x + identity.width).toBeLessThanOrEqual(actions.x + 1);
     const title = (await header
       .locator('.chat-dock__mobile-title-text')
       .boundingBox())!;

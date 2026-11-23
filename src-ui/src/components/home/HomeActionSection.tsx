@@ -4,6 +4,7 @@ import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useGitLocationByThreadId } from '../../hooks/useGitLocationByThreadId';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { useProjectIcons } from '../../hooks/useProjectIcons';
+import { useProjectNames } from '../../hooks/useProjectNames';
 import { hasLocalStationForProfile } from '../../platform/client-origin-surface';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import type { NavigationView } from '../../types';
@@ -213,6 +214,7 @@ export function HomeContinueCard({
   // The lanes' own row inputs, so the row reads exactly as theirs do.
   const gitLocationByThreadId = useGitLocationByThreadId();
   const projectAccentBySlug = useProjectAccents();
+  const projectNames = useProjectNames();
   const projectIconBySlug = useProjectIcons();
   const listRef = useRef<HTMLDivElement>(null);
   const refresh = offerRefresh ? model.refreshWork : undefined;
@@ -231,6 +233,7 @@ export function HomeContinueCard({
         <h2 id="home-continue-label">Continue</h2>
         {refresh && (
           <ListRefreshActions
+            direct
             label="Recent work actions"
             refreshLabel="Refresh recent work"
             refresh={refresh}
@@ -258,6 +261,7 @@ export function HomeContinueCard({
                 gitLocationByThreadId,
                 projectAccentBySlug,
                 projectIconBySlug,
+                projectNames,
               },
             })}
           </ul>

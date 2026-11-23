@@ -75,7 +75,13 @@ export type PreToolPolicyDecision =
        */
       toolGrant?: true;
     }
-  | { behavior: 'deny'; denial: ToolCallDenial; staleGeneration?: true }
+  | {
+      behavior: 'deny';
+      denial: ToolCallDenial;
+      staleGeneration?: true;
+      /** A change is still being applied: the text says to retry. */
+      generationSettling?: true;
+    }
   | { behavior: 'ask'; required?: true; guardianReason?: string }
   | { behavior: 'defer' };
 
@@ -102,6 +108,8 @@ export type StagedPreToolPolicyEvaluator = (
      * an untrusted-content ask is not raised. Refusals still apply.
      */
     fullAccess?: boolean;
+    /** The adapter can answer a proved workspace read after Station's policy checks. */
+    engineWorkspaceRead?: true;
   },
 ) => Promise<PreToolPolicyDecision>;
 
@@ -130,7 +138,14 @@ interface StagedPreToolPolicyDeps {
   approvalGuardian?: ApprovalGuardianService;
   /** #4827: defaults to the ledger shared by every Agent's evaluator. */
   guardianDenialLedger?: GuardianDenialLedger;
-  isCurrentRuntimeGeneration?: () => boolean;
+  /**
+   * Whether the hooks deciding this call belong to the Agent generation in
+   * force now. `'settling'`: a configuration change is being applied or
+   * re-read, so the same call may pass shortly. `false`: what this session
+   * was launched with was replaced, and only a restarted engine session runs
+   * under the new configuration.
+   */
+  isCurrentRuntimeGeneration?: () => boolean | 'settling';
   resolveUnattendedGrant?: (
     tool: ToolCallContext,
     invocation: InvocationContext,
@@ -527,20 +542,30 @@ export function createStagedPreToolPolicyEvaluator(
       delegationToolName: tool.toolName,
       configProtectionToolName: tool.toolName,
     };
-    if (deps.isCurrentRuntimeGeneration && !deps.isCurrentRuntimeGeneration()) {
+    const generation = deps.isCurrentRuntimeGeneration?.() ?? true;
+    if (generation !== true) {
       deps.logger.warn('Stale agent generation blocked tool execution', {
         toolName: identity.delegationToolName,
         agentSlug: invocation.agentSlug,
         conversationId: invocation.conversationId,
+        generation: generation === 'settling' ? 'settling' : 'replaced',
       });
-      return {
-        ...deny(
-          'stale_generation',
-          tool.toolName,
-          "was blocked because the agent's runtime configuration changed mid-run. Start a new chat.",
-        ),
-        staleGeneration: true,
-      };
+      // The text tells the model what will work. A replaced Agent is never
+      // re-bound inside the running turn, so retrying there only repeats the
+      // refusal; the next message runs under the current configuration (a
+      // restarted or successor engine session for an external engine, the
+      // rebuilt Agent here). `staleGeneration` lets an adapter end the turn
+      // there (ACP); a change still being applied is retried instead.
+      const denial = deny(
+        'stale_generation',
+        tool.toolName,
+        generation === 'settling'
+          ? "was blocked while Station re-reads this agent's configuration after a change. Retry it in a moment."
+          : "was blocked because this agent's configuration changed after this session started. Retrying in this turn will be refused again: stop, and tell the person that the agent's configuration changed. Their next message continues the conversation under the current configuration.",
+      );
+      return generation === 'settling'
+        ? { ...denial, generationSettling: true }
+        : { ...denial, staleGeneration: true };
     }
 
     if (
@@ -813,6 +838,9 @@ export function createStagedPreToolPolicyEvaluator(
         return { behavior: 'allow' };
       }
     }
+
+    if (options.interaction === 'external' && options.engineWorkspaceRead)
+      return { behavior: 'defer' };
 
     if (invocation.delegation?.denyApprovals) {
       deps.logger.warn('Delegated child agent denied approval-bound tool', {

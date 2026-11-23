@@ -28,6 +28,7 @@ import type { DraftQuote } from '../../utils/answer-quotes';
 import {
   type ApprovalMode,
   approvalModeKnobSupported,
+  nonAcpApprovalEngine,
   type SessionApprovalOverride,
 } from '../../utils/approvalMode';
 import { filesFromDataTransfer } from '../../utils/attachment-file-transfer';
@@ -53,13 +54,17 @@ import {
   ComposerActionsMenu,
   type ComposerActionsMenuProps,
 } from '../chat-dock/ComposerActionsMenu';
+import type { StartComposerVoice } from '../chat-start/StartComposer';
 import { ConversationStopControl } from '../conversation/ConversationStopControl';
+import { AgentIcon } from '../icons/AgentIcon';
 import { BrandIcon } from '../icons/BrandIcon';
 import { AgentGlyph, ArrowDownGlyph, EngineGlyph } from '../icons/Glyph';
 import { ModelIcon } from '../icons/ModelIcon';
 import { ResponsiveDialogSurface } from '../ResponsiveDialogSurface';
 import { VoiceOrb } from '../voice/VoiceOrb';
+import type { ChildReplyRun } from './ChildWorkInstructionPanel';
 import { ComposerIconAction } from './ComposerIconAction';
+import { ComposerMessageField } from './ComposerMessageField';
 import {
   appendComposerSessionReference,
   composerDisplayValue,
@@ -199,6 +204,7 @@ interface ChatInputAreaProps {
    * stopped being true seconds into a turn that ran for minutes.
    */
   turnInFlight: boolean;
+  stopInActivity?: boolean;
   /**
    * Whether the running turn offers an explicit steer. A follow-up queues
    * by default, including when the engine can steer.
@@ -330,6 +336,12 @@ interface ChatInputAreaProps {
   sendFailureNotice?: string;
   /** A quiet line above the draft about what the next send also does. */
   composerNotice?: string;
+  stagedAgentNotice?: {
+    label: string;
+    onUndo?: () => void;
+    onCheck?: () => void;
+    checkLabel?: string;
+  };
   /**
    * A send queued to retry by itself, with its Discard. The controls row shows
    * the button only when the dock is too short to show the transcript that
@@ -431,6 +443,75 @@ interface ChatInputAreaProps {
 }
 
 /**
+ * The least transcript height that floats the status row over the
+ * transcript's end. The end keeps room for the row (chat.css), and below this
+ * that room would cost a short dock's last message its header line.
+ */
+const STATUS_FLOAT_MIN_TRANSCRIPT_PX = 240;
+
+/**
+ * What keeps the status row in the composer however much room there is: text
+ * with no surface of its own, and Scroll to bottom (chat.css names the same).
+ */
+const STATUS_ROW_STAYS =
+  '.chat-input__next-turn-notice, .chat-input__composer-notice, .agent-schedule-notes, .chat-check-backs, .chat-scroll-to-bottom';
+
+/**
+ * The status row floats over the transcript's end (`data-status-floats` on
+ * the dock body) only when that end is directly above the composer: a
+ * transcript with rows, nothing that takes room between it and the composer
+ * (a notice card, the pending list, a banner), and room to spare. Anywhere
+ * else the row keeps its line in the composer, so the pill never covers a
+ * card or its controls.
+ *
+ * The end keeps the row's room (`data-status-room`) wherever the row could
+ * float, including while what it holds keeps it in the composer: Scroll to
+ * bottom appears as the reader leaves the end, and taking the room away then
+ * would move the rows under them (a phone moved them by the room's height).
+ */
+function placeStatusRow(body: HTMLElement, composer: HTMLElement) {
+  const transcript = body.querySelector<HTMLElement>(
+    ':scope > .chat-messages[data-surface="transcript"]',
+  );
+  let floats =
+    transcript !== null && !body.hasAttribute('data-composer-priority');
+  for (
+    let node = transcript?.nextElementSibling;
+    floats && node && node !== composer;
+    node = node.nextElementSibling
+  ) {
+    const style = getComputedStyle(node);
+    if (
+      style.display !== 'none' &&
+      style.position !== 'absolute' &&
+      style.position !== 'fixed' &&
+      node.getBoundingClientRect().height > 0
+    )
+      floats = false;
+  }
+  const row = composer.querySelector<HTMLElement>(':scope > .chat-input__meta');
+  if (floats && transcript) {
+    // Measured the same way floating or not, so the decision cannot flip
+    // itself: a row in the composer's flow would be the transcript's if it
+    // floated.
+    const rowInFlow =
+      row && getComputedStyle(row).position !== 'absolute'
+        ? row.getBoundingClientRect().height
+        : 0;
+    floats =
+      transcript.clientHeight + rowInFlow >= STATUS_FLOAT_MIN_TRANSCRIPT_PX;
+  }
+  const room = floats;
+  // A row that stays in the composer does not float, and the turn rail's
+  // steps (keyed to `data-status-floats`) come down with it.
+  if (row?.querySelector(STATUS_ROW_STAYS)) floats = false;
+  if (room !== body.hasAttribute('data-status-room'))
+    body.toggleAttribute('data-status-room', room);
+  if (floats !== body.hasAttribute('data-status-floats'))
+    body.toggleAttribute('data-status-floats', floats);
+}
+
+/**
  * The textarea's auto-height, clamped to the viewport, and the draft's floor:
  * two lines (or its whole content, when shorter). In a short dock the draft
  * may shrink to the floor and scroll, never below it.
@@ -486,7 +567,61 @@ function sizeDraft(
   return floor;
 }
 
+export type ChildImageControls = Pick<
+  ChatInputAreaProps,
+  | 'fileAttachmentsSupported'
+  | 'sessionId'
+  | 'attachments'
+  | 'attachmentStages'
+  | 'selectAttachmentFiles'
+  | 'modelSupportsAttachments'
+  | 'attachmentError'
+  | 'onRetryAttachmentStage'
+  | 'onCancelAttachmentStage'
+  | 'onReplaceAttachmentFile'
+  | 'onRemoveAttachment'
+  | 'onClearAttachments'
+  | 'sendBlockedReason'
+  | 'removalUnblocksSend'
+>;
+
+type ChildReplyProps = Pick<
+  ChatInputAreaProps,
+  | 'input'
+  | 'textareaRef'
+  | 'disabled'
+  | 'onInputChange'
+  | 'onSend'
+  | 'onClearInput'
+  | 'fontSize'
+  | 'dockHeight'
+  | 'voiceState'
+  | 'voiceSupported'
+  | 'voiceUnsupportedReason'
+  | 'voiceError'
+  | 'onVoiceStart'
+  | 'onVoiceStop'
+  | 'turnInFlight'
+  | 'allowDraftWhileDisabled'
+  | 'onRestorePortableDraft'
+  | 'agentLabel'
+  | 'currentModel'
+  | 'executionEngineId'
+  | 'agentIcon'
+> &
+  Partial<ChildImageControls> & { childReply: true };
+
+type ComposerProps =
+  | (ChatInputAreaProps & { childReply?: false })
+  | (ChildReplyProps &
+      Partial<
+        Record<Exclude<keyof ChatInputAreaProps, keyof ChildReplyProps>, never>
+      >);
+
+export function ChatInputArea(props: ChildReplyProps): React.ReactElement;
+export function ChatInputArea(props: ChatInputAreaProps): React.ReactElement;
 export function ChatInputArea({
+  childReply,
   activity,
   activityRef,
   contextMeter,
@@ -500,19 +635,20 @@ export function ChatInputArea({
   hasQuotedContext = false,
   draftText,
   quoteContext,
-  attachments,
+  attachments = [],
   textareaRef,
   onEnabledChange,
   disabled,
   allowDraftWhileDisabled = false,
   turnInFlight,
+  stopInActivity = false,
   busySteeringKind = 'native',
   busyQueueTakesFiles = false,
   busySteeringUnavailableReason,
   busyFollowUp = 'queue',
   onQueueFollowUp,
   stopPending = false,
-  modelSupportsAttachments,
+  modelSupportsAttachments = false,
   fileAttachmentsSupported = modelSupportsAttachments,
   modelProviderLabel,
   executionEngineLabel,
@@ -528,12 +664,12 @@ export function ChatInputArea({
   modelsLoading = false,
   agentDefaultModel,
   defaultModelSource,
-  availableModels,
+  availableModels = [],
   pickerModels,
   modelProviders,
   currentProviderId,
   currentExecutionAgentId,
-  modelQuery,
+  modelQuery = null,
   agentConnectionId,
   modelRuntimeOptions,
   executionMode,
@@ -550,8 +686,8 @@ export function ChatInputArea({
   acpApproval,
   acpCurrentModeId,
   acpRequestedModeId,
-  commandQuery,
-  slashCommands,
+  commandQuery = null,
+  slashCommands = [],
   onInputChange,
   onSend,
   onCancel,
@@ -561,6 +697,7 @@ export function ChatInputArea({
   attachmentNotice,
   sendFailureNotice,
   composerNotice,
+  stagedAgentNotice,
   queuedRetryNotice,
   attachUnavailableReason,
   onAttachUnavailable,
@@ -608,7 +745,7 @@ export function ChatInputArea({
   submitAction,
   loadingConversation = false,
   onStartNewChat,
-}: ChatInputAreaProps) {
+}: ComposerProps) {
   const textareaDisabled = disabled && !allowDraftWhileDisabled;
   useEffect(() => {
     onEnabledChange?.(textareaDisabled ? null : textareaRef.current);
@@ -621,11 +758,11 @@ export function ChatInputArea({
   const selectModel = (model: SelectableModel) => {
     if (isMobile && model.executionAgentId !== currentExecutionAgentId)
       runSetupClose.current?.();
-    onModelSelect(model);
+    onModelSelect?.(model);
   };
   const resetModel = () => {
     if (isMobile && currentExecutionAgentId) runSetupClose.current?.();
-    onModelReset();
+    onModelReset?.();
   };
   const hasSendableDraft = Boolean(
     input.trim() || hasQuotedContext || attachments.length,
@@ -644,7 +781,7 @@ export function ChatInputArea({
   // command, never the connection id.
   const approvalEngineId = acpApproval
     ? acpApproval.engineId
-    : (agentConnectionId ?? null);
+    : nonAcpApprovalEngine(agentConnectionId);
   // Steering takes text only (`steerTurn` carries an input string). A host
   // with `followUpAttachments` queues a draft's files with it; on any other
   // the mid-turn queue holds text only, so a draft with files cannot join a
@@ -653,6 +790,7 @@ export function ChatInputArea({
   const busyAttachmentReason =
     turnInFlight &&
     !busyQueueTakesFiles &&
+    !(childReply && modelSupportsAttachments) &&
     (attachments.length > 0 || attachmentStages.length > 0)
       ? 'Files can’t be added to a running turn: Steer and Queue carry text only. Send when this turn ends, or remove them.'
       : undefined;
@@ -722,7 +860,7 @@ export function ChatInputArea({
   ]);
   const removeAttachment = (id: string) => {
     setSendAfterUploads(false);
-    onRemoveAttachment(id);
+    onRemoveAttachment?.(id);
   };
   const [portableDraftsOpen, setPortableDraftsOpen] = useState(false);
   const [sessionReferencesOpen, setSessionReferencesOpen] = useState(false);
@@ -796,7 +934,9 @@ export function ChatInputArea({
   // phone, beside a caption that already names the engine.
   const modelLabel = effectiveModelId
     ? modelIdentityLabel(effectiveModelId, availableModels)
-    : 'Model';
+    : childReply
+      ? 'Model not reported'
+      : 'Model';
   // Only an effort this chat requests is named; otherwise the engine's own
   // default applies and the pill does not guess it.
   const effortLabel =
@@ -869,6 +1009,7 @@ export function ChatInputArea({
   // A composer whose sending the server refused invites no typing: its
   // reason, under the draft, says why.
   const placeholder =
+    (childReply ? 'Type a message…' : undefined) ??
     submitAction?.placeholder ??
     (sendRefused
       ? ''
@@ -891,8 +1032,11 @@ export function ChatInputArea({
               : mentionLocation && mentionRequestScope
                 ? 'Type a message — @ files, / for commands…'
                 : 'Type a message — / for commands…');
-  const composerTokens = parseComposerTokens(input);
-  const displayInput = composerDisplayValue(input, composerTokens);
+  const modelPickerOpen = modelQuery !== null && !input.startsWith('/model ');
+  const composerTokens = childReply ? [] : parseComposerTokens(input);
+  const displayInput = childReply
+    ? input
+    : composerDisplayValue(input, composerTokens);
 
   // archive#2807: the draft's size against the same limit every server
   // turn-starting schema derives from (chatSchema AND the orchestration
@@ -900,9 +1044,11 @@ export function ChatInputArea({
   // server is the authority — but it lets the composer say exactly how
   // much to remove instead of letting the turn fail as a provider error.
   const overLimitBy =
-    (draftText === undefined
-      ? composerMentionWireLength(input, composerTokens)
-      : composerMentionWireLength(draftText)) - CHAT_INPUT_MAX_CHARS;
+    (childReply
+      ? input.length
+      : draftText === undefined
+        ? composerMentionWireLength(input, composerTokens)
+        : composerMentionWireLength(draftText)) - CHAT_INPUT_MAX_CHARS;
   const isOverLimit = overLimitBy > 0;
   // A blocked Send is disabled; it must not keep the active accent that reads
   // as "ready". The send-mode segment takes the same accent when Send is ready
@@ -976,7 +1122,13 @@ export function ChatInputArea({
       // transcript pinned to its newest message to the taller box. Restoring
       // the textarea does not restore the scroll position, so the frame
       // painted with a one-line gap under the newest message.
+      // With transitions off: reduced motion leaves every property a 0.01ms
+      // transition, and a transition read in the same task still holds its
+      // starting value, so the old reservation measured as the natural height
+      // and the composer could grow but never shrink back.
       const measure = () => {
+        const transition = root.style.transition;
+        root.style.transition = 'none';
         root.style.minHeight = '';
         root.style.flexShrink = '0';
         root.style.maxHeight = 'none';
@@ -987,6 +1139,7 @@ export function ChatInputArea({
         );
         root.style.flexShrink = saved[1];
         root.style.maxHeight = saved[2];
+        root.style.transition = transition;
         return height;
       };
       if (!body?.classList.contains('chat-dock__body')) {
@@ -1063,6 +1216,7 @@ export function ChatInputArea({
       textarea.style.minHeight = `${Math.max(0, floor - (needed - granted))}px`;
       const next = `${granted}px`;
       root.style.minHeight = saved[0] === next ? saved[0] : next;
+      placeStatusRow(body, root);
     };
     reserve();
 
@@ -1086,6 +1240,8 @@ export function ChatInputArea({
       // `.chat-dock__body`, which outlives this composer (replay mounts
       // none): do not leave it behind.
       body?.removeAttribute('data-composer-priority');
+      body?.removeAttribute('data-status-floats');
+      body?.removeAttribute('data-status-room');
       root.style.minHeight = '';
       textarea.style.minHeight = '';
     };
@@ -1094,7 +1250,17 @@ export function ChatInputArea({
     if (typeof ResizeObserver === 'undefined') return cleanup;
     const observed =
       '.chat-input__meta, .chat-controls-row, .chat-input__textarea-wrapper > :not(textarea)';
-    const observer = new ResizeObserver(scheduleReserve);
+    // A card that appears, or grows from nothing, above the composer takes
+    // the status row back into the composer before that frame paints (the
+    // reservation waits a frame).
+    const placeNow = () => {
+      if (body?.classList.contains('chat-dock__body'))
+        placeStatusRow(body, root);
+    };
+    const observer = new ResizeObserver(() => {
+      placeNow();
+      scheduleReserve();
+    });
     const observeRows = () => {
       observer.disconnect();
       if (body) {
@@ -1117,6 +1283,7 @@ export function ChatInputArea({
     observeRows();
     const mutations = new MutationObserver(() => {
       observeRows();
+      placeNow();
       scheduleReserve();
     });
     mutations.observe(root, { childList: true, subtree: true });
@@ -1174,7 +1341,7 @@ export function ChatInputArea({
       data-popover-boundary=""
       ref={composerRootRef}
     >
-      {modelQuery !== null && !input.startsWith('/model ') && (
+      {!childReply && modelPickerOpen && (
         <ResponsiveDialogSurface
           layer="popover"
           ariaLabel="Model"
@@ -1250,7 +1417,7 @@ export function ChatInputArea({
 
       {/* Destination notices and conversation status stay above the draft. */}
       <div className="chat-input__meta">
-        {agentEngineMove?.nextTurn && (
+        {!stagedAgentNotice && agentEngineMove?.nextTurn && (
           // The closed Run setup trigger has no room for a destination name,
           // so the one fact that changes what the next send does gets its own
           // line at every width (the open panel's caption repeats it).
@@ -1259,6 +1426,19 @@ export function ChatInputArea({
             <span className="chat-input__next-turn-destination">
               {agentEngineMove.to}
             </span>
+          </p>
+        )}
+        {stagedAgentNotice && (
+          <p className="chat-input__next-turn-notice">
+            {stagedAgentNotice.label}{' '}
+            {stagedAgentNotice.onCheck && (
+              <Button onClick={stagedAgentNotice.onCheck}>
+                {stagedAgentNotice.checkLabel}
+              </Button>
+            )}
+            {stagedAgentNotice.onUndo && (
+              <Button onClick={stagedAgentNotice.onUndo}>Undo</Button>
+            )}
           </p>
         )}
         {composerNotice && (
@@ -1270,11 +1450,7 @@ export function ChatInputArea({
       </div>
 
       <div className="chat-input__capsule">
-        <fieldset
-          className="chat-input__textarea-wrapper"
-          aria-label="Message composer"
-          tabIndex={-1}
-        >
+        <ComposerMessageField>
           {(attachments.length > 0 || attachmentStages.length > 0) && (
             <React.Suspense
               fallback={<SkeletonBlock label="Attachment controls" />}
@@ -1362,7 +1538,7 @@ export function ChatInputArea({
                 value={input}
                 onChange={(next) => {
                   onInputChange(next);
-                  updateFromInput(next);
+                  updateFromInput?.(next);
                 }}
                 onFocusInput={() => textareaRef.current?.focus()}
                 tokens={composerTokens}
@@ -1394,7 +1570,7 @@ export function ChatInputArea({
                     },
                   );
                   onInputChange(next);
-                  updateFromInput(next);
+                  updateFromInput?.(next);
                   setMentionQuery(null);
                   requestAnimationFrame(() => {
                     if (mentionGeneration.current !== generation) return;
@@ -1408,25 +1584,27 @@ export function ChatInputArea({
               />
             </React.Suspense>
           )}
-          {modelQuery !== null && input.startsWith('/model ') && (
-            <React.Suspense fallback={null}>
-              <ModelSelectorAutocomplete
-                query={modelQuery}
-                models={(pickerModels ?? availableModels).map((m) => ({
-                  ...m,
-                  originalId: m.originalId || m.id,
-                }))}
-                currentModel={currentModel}
-                agentDefaultModel={agentDefaultModel}
-                anchorRef={textareaRef}
-                onSelect={onModelSelect}
-                onClose={onModelClose}
-              />
-            </React.Suspense>
-          )}
+          {!childReply &&
+            modelQuery !== null &&
+            input.startsWith('/model ') && (
+              <React.Suspense fallback={null}>
+                <ModelSelectorAutocomplete
+                  query={modelQuery}
+                  models={(pickerModels ?? availableModels).map((m) => ({
+                    ...m,
+                    originalId: m.originalId || m.id,
+                  }))}
+                  currentModel={currentModel}
+                  agentDefaultModel={agentDefaultModel}
+                  anchorRef={textareaRef}
+                  onSelect={onModelSelect}
+                  onClose={onModelClose}
+                />
+              </React.Suspense>
+            )}
           {/* A command runs on select, so a draft-only composer (busy wait,
               conversation still opening) opens no selector. */}
-          {commandQuery !== null && !disabled && (
+          {!childReply && commandQuery !== null && !disabled && (
             <React.Suspense fallback={null}>
               <SlashCommandSelector
                 query={commandQuery}
@@ -1438,6 +1616,7 @@ export function ChatInputArea({
             </React.Suspense>
           )}
           <textarea
+            maxLength={childReply ? CHAT_INPUT_MAX_CHARS : undefined}
             ref={textareaRef}
             data-native-image-paste={
               selectAttachmentFiles && modelSupportsAttachments
@@ -1467,7 +1646,7 @@ export function ChatInputArea({
             tabIndex={0}
             onFocus={(e) => {
               setShortcutContext('composerFocused', true);
-              updateFromInput(input);
+              updateFromInput?.(input);
               // Blur closes the file picker; refocusing inside an `@` query brings it
               // back, as it does for the other pickers. Read the caret a frame later: a
               // click focuses on mousedown, before the caret moves to the click point.
@@ -1487,15 +1666,17 @@ export function ChatInputArea({
             }}
             onBlur={() => {
               setShortcutContext('composerFocused', false);
-              closeAll();
+              closeAll?.();
               // The file picker is portaled out of the composer, so it no
               // longer hides with it; close it like the other pickers.
               setMentionQuery(null);
             }}
             onChange={(e) => {
-              const next = reconcileComposerDisplay(input, e.target.value);
+              const next = childReply
+                ? e.target.value
+                : reconcileComposerDisplay(input, e.target.value);
               onInputChange(next);
-              updateFromInput(next);
+              updateFromInput?.(next);
               syncMentionQuery(
                 next,
                 e.target.selectionStart ?? e.target.value.length,
@@ -1504,6 +1685,11 @@ export function ChatInputArea({
             onPaste={(event) => {
               const files = filesFromDataTransfer(event.clipboardData);
               if (files.length === 0) return;
+              if (childReply && !selectAttachmentFiles) {
+                if (!event.clipboardData.getData('text/plain'))
+                  event.preventDefault();
+                return;
+              }
               event.preventDefault();
               void selectAttachmentFiles?.(files);
             }}
@@ -1573,7 +1759,7 @@ export function ChatInputArea({
                 authority: mentionAuthority!,
               });
               onInputChange(next);
-              updateFromInput(next);
+              updateFromInput?.(next);
               setSessionReferencesOpen(false);
               textareaRef.current?.focus();
             }}
@@ -1630,7 +1816,7 @@ export function ChatInputArea({
                   if (e.key === 'Backspace' || e.key === 'Delete') {
                     const next = `${input.slice(0, adjacentMention.canonicalStart)}${input.slice(adjacentMention.canonicalEnd)}`;
                     onInputChange(next);
-                    updateFromInput(next);
+                    updateFromInput?.(next);
                   }
                   const nextCursor =
                     e.key === 'ArrowRight'
@@ -1653,20 +1839,24 @@ export function ChatInputArea({
                   mentionQuery !== null)
               ) {
                 e.preventDefault();
-                closeAll();
+                closeAll?.();
                 setMentionQuery(null);
                 return;
               }
 
               if (e.key === 'Tab' && !e.shiftKey) return;
 
-              if (e.key === 'ArrowUp' && !input.includes('\n')) {
+              if (onHistoryUp && e.key === 'ArrowUp' && !input.includes('\n')) {
                 e.preventDefault();
                 onHistoryUp();
                 return;
               }
 
-              if (e.key === 'ArrowDown' && !input.includes('\n')) {
+              if (
+                onHistoryDown &&
+                e.key === 'ArrowDown' &&
+                !input.includes('\n')
+              ) {
                 e.preventDefault();
                 onHistoryDown();
                 return;
@@ -1682,7 +1872,9 @@ export function ChatInputArea({
                 if (workspaceRefused && !isOverLimit) {
                   await onStartNewChat?.(input, attachments);
                 } else if (
-                  (input.trim() || hasQuotedContext) &&
+                  (input.trim() ||
+                    hasQuotedContext ||
+                    attachments.length > 0) &&
                   !isOverLimit &&
                   !sendBlockedReason &&
                   !disabled
@@ -1715,26 +1907,30 @@ export function ChatInputArea({
               {voiceError}
             </div>
           )}
-        </fieldset>
+        </ComposerMessageField>
         <div className="chat-controls-row">
-          <React.Suspense fallback={null}>
-            <FileAttachmentInput
-              attachments={attachments}
-              onFilesSelected={selectAttachmentFiles ?? (async () => {})}
-              // A running turn does not disable the paperclip: files join the
-              // draft for the next message (`busyAttachmentReason` says why
-              // they cannot steer or queue). Only a composer that cannot
-              // take input at all, or a model that takes nothing, refuses.
-              disabled={
-                disabled ||
-                (!modelSupportsAttachments && !fileAttachmentsSupported)
-              }
-              supportsImages={modelSupportsAttachments}
-              supportsFiles={fileAttachmentsSupported}
-              unavailableReason={disabled ? undefined : attachUnavailableReason}
-              onUnavailable={onAttachUnavailable}
-            />
-          </React.Suspense>
+          {(!childReply || modelSupportsAttachments) && (
+            <React.Suspense fallback={null}>
+              <FileAttachmentInput
+                attachments={attachments}
+                onFilesSelected={selectAttachmentFiles ?? (async () => {})}
+                // A running turn does not disable the paperclip: files join the
+                // draft for the next message (`busyAttachmentReason` says why
+                // they cannot steer or queue). Only a composer that cannot
+                // take input at all, or a model that takes nothing, refuses.
+                disabled={
+                  disabled ||
+                  (!modelSupportsAttachments && !fileAttachmentsSupported)
+                }
+                supportsImages={modelSupportsAttachments}
+                supportsFiles={fileAttachmentsSupported}
+                unavailableReason={
+                  disabled ? undefined : attachUnavailableReason
+                }
+                onUnavailable={onAttachUnavailable}
+              />
+            </React.Suspense>
+          )}
           {voiceState !== undefined && onVoiceStart && onVoiceStop && (
             <VoiceOrb
               state={voiceState}
@@ -1759,6 +1955,7 @@ export function ChatInputArea({
           )}
           <React.Suspense fallback={null}>
             <PortableDraftsMenu
+              textOnly={!!childReply}
               hideTrigger={isMobile}
               input={input}
               quotes={quoteContext}
@@ -2073,8 +2270,12 @@ export function ChatInputArea({
                   engineHasModes={acpSessionModes.length > 0}
                 />
               ) : (
+                !childReply &&
                 executionMode === EXECUTION_MODE.EXTERNAL &&
-                approvalModeKnobSupported(approvalEngineId) && (
+                approvalModeKnobSupported(
+                  approvalEngineId,
+                  acpApproval?.control,
+                ) && (
                   <ApprovalModeChip
                     // Structural reset (not blur-dependent) for the chip's local
                     // confirm state when the active session changes — this
@@ -2082,6 +2283,7 @@ export function ChatInputArea({
                     // remount otherwise (archive#727 3).
                     key={sessionId}
                     engineConnectionId={approvalEngineId}
+                    acpControl={acpApproval?.control}
                     toolPolicyDelivery={toolPolicyDelivery}
                     sessionOverride={approvalModeOverride?.mode}
                     sessionOverrideState={approvalModeOverride?.state}
@@ -2113,7 +2315,7 @@ export function ChatInputArea({
             className="chat-input__send-group"
             data-stop-placement={isMobile ? 'trailing' : undefined}
           >
-            {turnInFlight && !isMobile && (
+            {turnInFlight && onCancel && !stopInActivity && !isMobile && (
               <ConversationStopControl
                 onCancel={onCancel}
                 stopPending={stopPending}
@@ -2231,7 +2433,7 @@ export function ChatInputArea({
                 </button>
               )}
             </div>
-            {turnInFlight && isMobile && (
+            {turnInFlight && onCancel && !stopInActivity && isMobile && (
               <ConversationStopControl
                 onCancel={onCancel}
                 stopPending={stopPending}
@@ -2314,7 +2516,7 @@ export function ChatInputArea({
               requestScope={mentionRequestScope}
               onChange={(next) => {
                 onInputChange(next);
-                updateFromInput(next);
+                updateFromInput?.(next);
               }}
               onClose={() => setSessionReferencesOpen(false)}
               onCandidateDragged={(candidate) =>
@@ -2327,5 +2529,92 @@ export function ChatInputArea({
         )}
       </div>
     </div>
+  );
+}
+
+/** Child instructions are addressed to a specific live turn. Their
+ * delivery owner supplies the submission; the editor shares the chat capsule. */
+export function ChildInstructionForm({
+  name,
+  editorId,
+  run,
+  images,
+  voice,
+  text,
+  onChange,
+  sending,
+  onSubmit,
+}: {
+  name: string;
+  editorId: string;
+  run?: ChildReplyRun;
+  images?: ChildImageControls;
+  voice?: StartComposerVoice;
+  text: string;
+  onChange(value: string): void;
+  sending: boolean;
+  onSubmit?: () => Promise<void>;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const { chatFontSize } = useDeviceSettings();
+  if (run)
+    return (
+      <ChatInputArea
+        childReply
+        agentLabel={run.engineLabel ?? 'Subagent'}
+        agentIcon={<AgentIcon agent={{ name }} size={18} />}
+        executionEngineId={run.engineId}
+        currentModel={run.model}
+        textareaRef={textareaRef}
+        input={text}
+        onInputChange={onChange}
+        onClearInput={() => onChange('')}
+        onRestorePortableDraft={onChange}
+        {...images}
+        fileAttachmentsSupported={false}
+        onSend={async () => {
+          await onSubmit?.();
+        }}
+        disabled={sending || !onSubmit}
+        allowDraftWhileDisabled={!sending && !onSubmit}
+        turnInFlight
+        fontSize={chatFontSize ?? 14}
+        dockHeight={window.innerHeight}
+        voiceState={voice?.state}
+        voiceSupported={voice?.supported}
+        voiceUnsupportedReason={voice?.unsupportedReason}
+        voiceError={voice?.error}
+        onVoiceStart={voice?.onStart}
+        onVoiceStop={voice?.onStop}
+      />
+    );
+  const ready = !!text.trim() && !!onSubmit && !sending;
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (ready) void onSubmit?.();
+      }}
+    >
+      <label htmlFor={editorId}>Send to {name}</label>
+      <textarea
+        id={editorId}
+        aria-label={`Send to ${name}`}
+        className="editor-textarea"
+        rows={3}
+        value={text}
+        disabled={sending}
+        onChange={(event) => onChange(event.target.value)}
+        maxLength={CHAT_INPUT_MAX_CHARS}
+      />
+      <Button
+        type="submit"
+        className="tap-target"
+        disabled={!ready}
+        pending={sending}
+      >
+        Send
+      </Button>
+    </form>
   );
 }

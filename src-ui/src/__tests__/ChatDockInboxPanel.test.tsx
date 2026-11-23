@@ -131,7 +131,9 @@ describe('ChatDockInboxPanel', () => {
     const rowName = /^ready title.*ready project/;
     const idle = screen.getByRole('region', { name: 'Open' });
     const row = within(idle).getByRole('button', { name: rowName });
-    expect(within(row).getAllByText('30m', { exact: true })).toHaveLength(1);
+    expect(within(row).getAllByText('30m ago', { exact: true })).toHaveLength(
+      1,
+    );
     expect(within(row).queryByText(/last activity/i)).toBeNull();
     const running = screen.getByRole('region', { name: 'Working' });
     expect(within(running).queryByRole('button', { name: rowName })).toBeNull();
@@ -1190,25 +1192,11 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
     });
   });
 
-  it('a row reads what, then its state, then who: title and time lead', () => {
+  it('shows the project beside the title and one recency beside the status', () => {
     renderPanel();
-    const row = screen
-      .getByRole('button', { name: /^active title/ })
-      .closest('.inbox-row__open') as HTMLElement;
-    const lines = Array.from(row.children).map((child) => child.className);
-    // Two lines on a hover row: what, then state and where.
-    expect(lines.slice(0, 2)).toEqual([
-      'inbox-row__headline',
-      'inbox-row__state',
-    ]);
-    const headline = row.querySelector('.inbox-row__headline')!;
-    expect(headline.querySelector('.inbox-row__title')?.textContent).toBe(
-      'active title',
-    );
-    expect(headline.querySelector('.inbox-row__time')?.textContent).toBe('1m');
-    expect(row.querySelector('.inbox-row__state .inbox-row__time')).toBeNull();
-    expect(row.querySelector('.inbox-row__agent')?.textContent).toBe(
-      'active agent',
-    );
+    const row = screen.getByRole('button', { name: /^active title/ });
+    expect(within(row).getByText('active project')).toBeTruthy();
+    expect(within(row).getByText('active agent')).toBeTruthy();
+    expect(within(row).getAllByText('1m ago')).toHaveLength(1);
   });
 });

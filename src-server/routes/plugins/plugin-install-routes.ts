@@ -331,6 +331,7 @@ export function registerPluginInstallRoutes(
             version: manifest.version,
             description: manifest.description,
             installationReadiness: catalog.readiness,
+            ...(catalog.activationInFlight ? { activationInFlight: true } : {}),
             // The persisted receipt of the generation this observation bound;
             // a legacy or journal-less installation has no verified claim.
             registryTrust: pluginRegistryTrust(

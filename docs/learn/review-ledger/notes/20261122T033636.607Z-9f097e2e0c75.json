@@ -1,0 +1,7 @@
+{
+  "revision": "13483c4f23ed6cc521785732b1b65a8da58be452",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Fork read bound: the history's event count and stored bytes (events plus out-of-line content) are read from SQL after authorization; past 32,000 events or 16 MiB the fork is refused with conversation_fork_history_too_large before any payload loads. api also now names the schema refusal code and the uncoded non-JSON/too-large envelopes, and the turn-ownership rule. Other claims unchanged.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/conversation-lineage.ts","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

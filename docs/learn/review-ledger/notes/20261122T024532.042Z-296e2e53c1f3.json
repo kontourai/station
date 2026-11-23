@@ -1,0 +1,7 @@
+{
+  "revision": "9a4577dfab0da4bc9e75a6d28e9302ee760338f9",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Added the fork ownership rule: the selected turn's Session Agent must be the source Agent; a stored record's owner decides only on the fallback read. Verified by the continued Station-agent chat matrix cases.","inputs":["docs/reference/api.md","src-server/routes/chat/conversations.ts"]}
+  ]
+}

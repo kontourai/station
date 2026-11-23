@@ -1,0 +1,7 @@
+{
+  "revision": "0a5417f6fb34bd71554fc9b2257ab4ad4fc44ae3",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Checked the changed Connections OAuth and T3 setup against this guide. T3 tool calls use a separate app grant and T3-managed links, which grant no Station Device, SSH, Station peer or Project authority. The machine relationship descriptions remain accurate.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

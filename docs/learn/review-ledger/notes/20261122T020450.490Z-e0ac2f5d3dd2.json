@@ -1,0 +1,7 @@
+{
+  "revision": "8d861da1494bb0518bd049acf9b2c419a87383ef",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Checked ADR 0010, which cites session-api for managed chat routing: the edit adds handoff refusal codes only; the ADR's claims are unaffected.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

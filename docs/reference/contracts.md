@@ -64,6 +64,16 @@ incoming claims, and uses it only to retain bounded App envelopes in history
 windows. It grants no resource or execution authority. Older readers ignore the
 field; see [transcript previews](../design/mcp-ui-host.md#transcript-previews).
 
+### Turn admission policy
+
+`TurnStartedEvent.resourceAdmissionIntent` records an explicit Station engine-start policy
+separately from `dispatchOrigin` source attribution. Station replaces an
+adapter-supplied policy when correlating the accepted send. Recovery reads the
+recorded policy and the source turn/submission identifiers; these fields do not
+become client input or grant execution authority. Older turns without the field
+retain origin-based fallback, while an unrecognized present policy fails closed
+to background admission.
+
 ### Delegated execution ownership
 
 `AgentDelegationContext.parentSessionId` identifies the initiating execution
@@ -372,7 +382,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/secret-binding` | Metadata-only AuthRef bindings, instance/person ownership, distinct exact MCP environment, MCP OAuth client-secret, ACP header and instance telemetry destination grants; raw material is server-only |
 | `@kontourai/station-contracts/telemetry-delivery` | Current-process product acknowledgement/queue/failure and OTLP callback/probe status; host prerequisites, build-only artifact evidence and archive-byte preparation receipts. Preparation receipts never grant installation authority; collector acceptance does not prove downstream storage |
 | `@kontourai/station-contracts/authority-observation` | Closed credential-bound authority observation: current home identity, resolved principal echo (kind+id only), and verified grant tier; authorization-neutral, grants nothing |
-| `@kontourai/station-contracts/automation` | Automation sources (GitHub poll and webhook), the source-safe projection without the webhook secret, source grants, exact-equality string matchers (event fields are strings; numbers arrive as canonical decimal strings; an empty `where` is refused), rules, episodes, the closed delivery outcomes and the subset that takes part in semantic dedupe, `AUTOMATION_EXECUTION_LIMITS`, the GitHub event allow-list and the `AUTOMATION_OPERATOR_SURFACE` parity table, whose mutations have no MCP verb, the agent proposal shapes (#4830: `AutomationProposal`, the narrower `AutomationSourceProposalInput` and `AutomationRuleProposalInput`, Station's `AutomationProposalDescription`, `AutomationProposalConfirmation`, `AUTOMATION_PROPOSAL_LIMITS`, the refusal codes, the display-time `untrustedContentNow` and confirm-time `untrustedContentAtConfirm` marks, and the two untrusted-content copies `AUTOMATION_PROPOSAL_UNTRUSTED_COPY` and `AUTOMATION_PROPOSAL_UNTRUSTED_SINCE_COPY`), and `AutomationDeliveryPage`, whose bounded `deliveries` and source `polls` retain partial coverage, timestamps and failure outcomes. It also holds the operator request shapes (`AutomationPollSourceInput`, `AutomationDispatchRuleInput`, rule/source lists with their configuration fingerprint, `AutomationEpisodeRecord`, `AutomationEpisodeRetry`) and the read-only `AutomationTaskProjection`/`AutomationTaskMandate` a Task read carries (#4511). There is no `notify` action and no `received` outcome (#4513) |
+| `@kontourai/station-contracts/automation` | Automation sources (GitHub poll and webhook), the source-safe projection without the webhook secret, source grants, exact-equality string matchers (event fields are strings; numbers arrive as canonical decimal strings; an empty `where` is refused), rules, episodes, the closed delivery outcomes (`stopped`, with the intent state of that name, is a turn a person stopped) and the subset that takes part in semantic dedupe, `AUTOMATION_EXECUTION_LIMITS`, the GitHub event allow-list and the `AUTOMATION_OPERATOR_SURFACE` parity table, whose mutations have no MCP verb, the agent proposal shapes (#4830: `AutomationProposal`, the narrower `AutomationSourceProposalInput` and `AutomationRuleProposalInput`, Station's `AutomationProposalDescription`, `AutomationProposalConfirmation`, `AUTOMATION_PROPOSAL_LIMITS`, the refusal codes, the display-time `untrustedContentNow` and confirm-time `untrustedContentAtConfirm` marks, and the two untrusted-content copies `AUTOMATION_PROPOSAL_UNTRUSTED_COPY` and `AUTOMATION_PROPOSAL_UNTRUSTED_SINCE_COPY`), and `AutomationDeliveryPage`, whose bounded `deliveries` and source `polls` retain partial coverage, timestamps and failure outcomes. It also holds the operator request shapes (`AutomationPollSourceInput`, `AutomationDispatchRuleInput`, rule/source lists with their configuration fingerprint, `AutomationEpisodeRecord`, `AutomationEpisodeRetry`) and the read-only `AutomationTaskProjection`/`AutomationTaskMandate` a Task read carries (#4511). There is no `notify` action and no `received` outcome (#4513) |
 | `@kontourai/station-contracts/application-session` | Device-bound account continuations, explicit capabilities, public proof keys and challenge/credential projections; no Device or Project grant |
 | `@kontourai/station-contracts/native-device-proof` | Native Device request-proof version, header, approved binding, exact one-use claims and the host-proposed binding candidate (provisional canonical UUIDv4 ID, approved Device ID, full surface and Device public JWK; no secret); `NativeDeviceProofBindingReadbackV1` projects operator-only historical binding data and separate current Device-binding status; `NativeDeviceProofSelfReceiptV1` reuses that public tuple for the owning current Device bearer through a distinct protected read; `NativeDeviceProofSelfReceiptErrorV1` versions its closed lookup/refusal codes so an unrelated HTTP error cannot establish binding absence; protocol data grants no Device, account or Project authority and supplies no runtime admission |
 | `@kontourai/station-contracts/relay-enrollment` | Fresh relay-only account enrollment, finalize-delivery and signed-activation bindings; a pending identity receives no active Device authority before the exact delivered bundle is acknowledged |
@@ -411,9 +421,9 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/custom-appearance` | A person's custom appearance (palette over `APPEARANCE_ROLE_PROPERTIES`, accent and CSS), its typed visual settings and bounded raster backgrounds, document, proposal and render report, saved library and strict portable theme packs; exact proposal references retained for inline chat; `parseCustomAppearance`, `createCustomAppearanceThemePack`, `parseCustomAppearanceThemePack`, the CSS text check (`customCssTextViolations`, `fetchingValueKind`), contrast rules rated with a caller-supplied ratio (`rateAppearancePalette`), the stable hook selectors (`APPEARANCE_HOOKS`) and the agent guide. See the [decision](../decisions/custom-appearance.md) |
 | `@kontourai/station-contracts/local-accounts` | Operator-only account projections, sign-in/session actions, one-time recovery results and the Project sharing setting |
 | `@kontourai/station-contracts/notification` | Notification payloads and actions |
-| `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. `turnStartDetached: true` marks a capped newest page whose oldest event is its oldest turn's `turn.started`, re-added across events the page left out; its `nextCursor` reads that gap first. Absent means the page is contiguous, or the host predates the field. Conversation windows may include `memoryContinuation: { eligible, turnId? }`, the server's current person-continuation decision; an absent field does not authorize a stored-event Continue action. Submission still checks the sender's permission and current state. |
+| `@kontourai/station-contracts/orchestration` | Connected-agent/orchestration request and response shapes. A session event window may carry `latestTool: { turnId, name }` independently of its transcript caps, bounded to a 256-byte UTF-8 name and 4096-byte turn ID at the snapshot watermark. `null` means no usable current-turn tool; only an absent field permits older-server event fallback. A new turn clears the fact; steering the same turn preserves it. No arguments or inferred tool-running state are included. `turnStartDetached: true` marks a capped newest page whose oldest event is its oldest turn's `turn.started`, re-added across events the page left out; its `nextCursor` reads that gap first. Absent means the page is contiguous, or the host predates the field. Conversation windows may include `memoryContinuation: { eligible, turnId? }`, the server's current person-continuation decision; an absent field does not authorize a stored-event Continue action. Submission still checks the sender's permission and current state. `CONVERSATION_HANDOFF_REFUSAL_CODES` names the codes of a handoff refused against the conversation's state (idempotency conflict, a handoff awaiting its target, a changed staged Session, a pending context change). `CONVERSATION_FORK_REFUSAL_CODES` names the closed codes a refused conversation fork answers with (invalid request, source not found, target unavailable, caller unresolved, history unavailable, history too large, turn incomplete, source Agent mismatch, idempotency conflict); each is mapped in `PROVIDER_FAILURE_KINDS`. |
 | `@kontourai/station-contracts/required-slots` | Required Home and shared Inbox/Chat default identities, non-empty assignment parser, default mutation refusal and pure override/default/safe-mode resolution; declarations grant no execution or role authority. See [required slots](../guides/plugins.md#required-home-and-inboxchat-slots) |
-| `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status |
+| `@kontourai/station-contracts/plugin` | Plugin manifests, previews, overrides, conflicts, install outcomes and current permission status. `readPluginLifecycleResponse(status, body)` reads an install, registry install, update, removal or recovery response as `applied`, `saved` or `refused`. `pluginLifecycleUnapplied(body)` names the designed `202` (`success: false` with `configurationActivation.status: 'pending'`, or `lifecycle.status: 'pending'`) as `activation` or `projection`: saved, not applied. An `activation` carries the receipt's `recovery`: `required` (a plugin activation that nothing resumes; the plugin is not active until a person recovers it), `none` (the runtime finishes on its own, as for a removal or a legacy git update) or `unknown` (a server before the field; defer to the plugin's `installationReadiness`), plus `deadlineMs` when the pass was stopped at its deadline. Readers branch on `recovery`, never the reason text. `PluginInstallationReadiness` is `ready`, `pending` (not active) or `unavailable`; an installed-plugin row carries `activationInFlight: true` while this server still holds the plugin's activation, so no recovery is offered |
 | `@kontourai/station-contracts/plugin-foreground-work` | Bounded foreground-work declarations, start intents, effect depth, run states, and safe public outcomes. Published ahead of a server implementation: Station does not admit or list plugin foreground runs yet |
 | `@kontourai/station-contracts/project` | Project config and metadata, and `projectIconProblem`: the one rule for a stored project icon (a short glyph, or a PNG/JPEG/WebP/ICO data URL of at most 128 KiB whose bytes match its type) that the create and update routes, the icon pickers and the renderer share |
 | `@kontourai/station-contracts/project-checkout-freshness` | How far a Project's checkout is behind its upstream, from local git refs: the `GET /api/projects/:slug/checkout-freshness` view (`stale`, `not-stale` or `unknown` with a reason), the default thresholds, `resolveProjectCheckoutStaleThresholds` and `projectCheckoutStaleReasons` |
@@ -422,7 +432,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
 | `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions including Commenter (view and discuss), invitations, administration projections, sharing enablement and refusal details |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types, including `PROVIDER_OPENCODE` and `isAcpFamilyEngine` (`ACP_FAMILY_ENGINE_IDS`: `acp` and `opencode`, the engines that run saved ACP connection records). Read it where a behaviour belongs to the ACP connection a session runs on, never to tell the engines apart. See [the OpenCode native transport decision](../decisions/opencode-native-transport.md) |
-| `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses. `ConversationStatsResponse.engineMcp` is the folded engine MCP status (`foldEngineMcpStatus`, also the live chat's reducer); the stats parser drops a server entry that does not parse and keeps the first 64 of the rest, and refuses an `engineMcp` of the wrong shape |
+| `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses. `ConversationStatsResponse.engineMcp` is the folded engine MCP status (`foldEngineMcpStatus`, also the live chat's reducer); the stats parser drops a server entry that does not parse and keeps the first 64 of the rest, and refuses an `engineMcp` of the wrong shape. `ConversationStatsResponse.engines` (`ConversationEngineUsage`) is each engine's own usage, one row per engine on every engine-events view (one row for a single-engine conversation); `reportsEngineTokens` says whether a row reported any token figure, cache figures included; the parser refuses a malformed entry, an engine listed twice and a list longer than `CONVERSATION_STATS_ENGINES_MAX` |
 | `@kontourai/station-contracts/runtime-events` | Runtime event stream payloads; `engine-mcp.status` bounds (`ENGINE_MCP_STATUS_MAX_SERVERS` 64, `ENGINE_MCP_SERVER_NAME_MAX_CHARS` 128, `ENGINE_MCP_ERROR_MAX_CHARS` 512) |
 | `@kontourai/station-contracts/session-inventory` | Closed Session inventory rows, gaps, and current-answer Basis projection |
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
@@ -810,6 +820,16 @@ response identity. A match emits server-owned `nativeResumeIdentity: matched`
 metadata. A queued prompt, requested cursor, or process start does not establish
 a match. An exact-resume identity mismatch stops that activation; it does not
 silently claim a fresh thread has continued the original one.
+`ProviderContinuityCapabilities.recoveryBinding: 'required'` is an adapter
+opt-in for an adapter that refuses a resume without its recorded binding (the
+Copilot SDK engine). For it alone, restart recovery
+(`startRecoveredOrchestrationSession`) and a credential retry that keeps its
+credential profile pass the key the session's start recorded on
+`session.started` as `ProviderSessionStartInput.nativeResumeBindingKey`. A
+retry that moves to another profile passes none, since the profile is part of
+the binding. Adapters without the opt-in (Claude, Codex) keep their own resume
+rules, because their recorded key can change legitimately: another engine
+home, a deliberate profile switch, or a key an older build computed.
 `nativeReturn: 'same-binding'` additionally permits an explicit Agent handoff
 back to an earlier native thread in this Conversation. Station requires the
 same Agent, Environment, connection, working directory and opaque configuration
@@ -912,6 +932,13 @@ reason. A later successful terminal clears them. `lastRuntimeErrorUsageLimit`
 is `true` when that terminal error carried an engine adapter's
 `UsageLimitFailureDetails` (a Claude Code or Codex usage limit); clients hold
 queued follow-ups on it until a turn starts or the user sends one.
+`lastTurnCutOff` (`'max-tokens'`) is set while the latest turn completed with
+`finishReason: 'max-tokens'` and no turn is open after it: the reply is
+incomplete, and `sessionLadderWord` answers "Cut off" instead of "Done".
+Engines that report no finish reason are never marked. Claude Code, ACP
+agents, the Station agent, Ollama and Bedrock report an output-limit stop.
+Codex, Muse Code, OpenCode and Copilot never do (their adapters report only
+`stop`, `cancelled` or `other`), so their cut-off replies still read "Done".
 
 `ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
 not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
@@ -947,6 +974,17 @@ untargeted run; absent for older records),
 `AUTOMATION_RUN_POLICY` (fatigue threshold, lateness cutoff, turn deadline),
 `automationRunClientTurnId`, and `SCHEDULER_EXECUTION_LIMITS.maxConcurrentConversationHandoffs`
 (the separate pool a targeted run holds only until its turn is queued).
+It also owns a job's name: `SchedulerJob.name` is the internal slug, and the
+optional `displayName` (at most `SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS`,
+checked by `isSchedulerJobDisplayName`) is what people read and rename.
+`schedulerJobSlug` and `schedulerJobSlugCandidates` derive the slugs a
+display name suggests, up to `SCHEDULER_JOB_SLUG_ATTEMPTS`, and
+`SCHEDULER_JOB_NAME_TAKEN` is the refusal code for a taken slug.
+`SchedulerCreateResponse` is the create answer, with the stored slug as
+`name`. The list read's run summaries are `SchedulerJob.recentOutcomes` (the
+last `SCHEDULER_RECENT_OUTCOMES_LIMIT` finished runs, each a
+`SchedulerRunOutcome`) and `SchedulerJob.pausedItself`; both are absent when
+unknown to the reader.
 
 `@kontourai/station-contracts/coordinator` owns a person's coordinator Session
 (#3628): `CoordinatorDesignation`, the route bodies
@@ -1118,7 +1156,21 @@ non-retryable.
 | `continuation_workspace_unbound` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_gone` | `input_unsupported` | `false` |
 | `continuation_workspace_worktree_moved` | `input_unsupported` | `false` |
+| `conversation_fork_caller_unresolved` | `auth` | `false` |
+| `conversation_fork_history_too_large` | `input_unsupported` | `false` |
+| `conversation_fork_history_unavailable` | `unavailable` | `true` |
+| `conversation_fork_idempotency_conflict` | `conflict` | `false` |
+| `conversation_fork_invalid_request` | `input_unsupported` | `false` |
+| `conversation_fork_source_agent_mismatch` | `conflict` | `false` |
+| `conversation_fork_source_not_found` | `session_gone` | `false` |
+| `conversation_fork_target_unavailable` | `input_unsupported` | `false` |
+| `conversation_fork_turn_incomplete` | `input_unsupported` | `false` |
+| `conversation_handoff_awaiting_target` | `conflict` | `false` |
+| `conversation_handoff_context_change_pending` | `conflict` | `false` |
+| `conversation_handoff_idempotency_conflict` | `conflict` | `false` |
 | `conversation_handoff_predecessor_busy` | `busy` | `true` |
+| `conversation_handoff_session_changed` | `conflict` | `false` |
+| `conversation_predecessor_engine_live` | `busy` | `true` |
 | `conversation-context-unavailable` | `conflict` | `false` |
 | `engine-credential-profile-unsupported` | `input_unsupported` | `false` |
 | `engine-decision-not-sent` | `warning` | `false` |
@@ -1128,6 +1180,7 @@ non-retryable.
 | `engine-sign-in-required` | `auth` | `false` |
 | `engine-turn-failed` | `provider_error` | `false` |
 | `execution_engine_changed` | `conflict` | `false` |
+| `feature_preview_disabled` | `unavailable` | `true` |
 | `foreground_message_indeterminate` | `indeterminate` | `false` |
 | `managed-policy-capability-disabled` | `permission_denied` | `false` |
 | `managed-policy-remote-clients` | `permission_denied` | `false` |
@@ -1164,12 +1217,16 @@ non-retryable.
 | `provider_turn_in_progress` | `busy` | `true` |
 | `provider-plan-quota-exhausted` | `quota_exhausted` | `false` |
 | `resource_engine_start_capacity` | `busy` | `true` |
+| `resource_engine_start_cancelled` | `cancelled` | `false` |
 | `session_ended` | `session_gone` | `false` |
 | `session_recovery_failed` | `unavailable` | `true` |
 | `session_start_in_flight` | `busy` | `true` |
 | `SESSION_START_INDETERMINATE` | `indeterminate` | `false` |
 | `session-reattach-conflict` | `conflict` | `false` |
 | `transcript-line-skipped` | `warning` | `false` |
+| `turn_start_busy` | `busy` | `true` |
+| `turn_start_held` | `busy` | `true` |
+| `turn_start_held_until_restart` | `conflict` | `false` |
 | `workload-command-oom-killed` | `warning` | `false` |
 | `workload-memory-pressure` | `warning` | `false` |
 | `workload-memory-pressure-cleared` | `warning` | `false` |
@@ -1539,6 +1596,20 @@ next poll of the wait for a retry already waiting. Another Station process
 sharing the store cannot see that the attempt gave up, so there the retry is
 treated as for a held key. When the client's
 automatic re-sends run out, the message stays queued with a reason and Retry.
+A send with a new key to a Session whose earlier turn start blocks it is
+refused, and nothing is sent (codes in `@kontourai/station-contracts/orchestration`;
+the failure-kind table above gives each one's kind: `busy` and retryable, except
+`turn_start_held_until_restart`, which is `conflict`). `turn_start_held`: an
+earlier start by this Station process may have reached the engine; the next
+send settles it once the Session's engine is observed to have ended.
+`turn_start_held_until_restart`: the same, on an engine that does not report
+its process ending, so it stays held until that turn reports its end; to
+send now, restart Station. `turn_start_busy`: another start on the Session (another
+request or Station process, or the engine's own start) has not finished.
+`conversation_predecessor_engine_live` (`CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE`):
+a continuation was refused because the conversation's current Session failed
+while its engine process still runs, and a successor would resume the same
+native conversation beside it; it clears once that process has stopped.
 A follow-up sent with `whenBusy: 'queue'` is held by Station instead, in the
 conversation's durable inbox (#3568): `POST /chat` answers `202` with a
 `ConversationInboxQueuedReceipt`, its `ConversationInboxEntry` says where the
@@ -1899,8 +1970,10 @@ On a serve session:
   re-attaches it on a fresh host with `session/resume`, never `session/start`
   and never the exec fallback. Muse answering `sessionNotFound`, or with
   another session, publishes `engine-session-binding-dead`, which recovery does
-  not retry; any other failure refuses the start and keeps the cursor. Exec
-  sessions do not resume.
+  not retry; any other failure refuses the start and keeps the cursor. On
+  cold resume and host restart, Station checks any reported workspace root
+  against the recorded directory before sending another turn. Exec sessions
+  do not resume.
 - **Goals.** Read, `goal/pause` and `goal/clear` (`tokenBudget:
   'unsupported'`). A read reports the goal Muse last stated
   (`session/goalChanged`): none on a fresh session, unknown after a resume
@@ -2175,7 +2248,7 @@ and the [inventory projection](../../src-server/services/orchestration/conversat
 
 Child-work items may expose `controls.steer.turnId` only for a running child
 with a bounded valid turn identity; settlement or a missing snapshot removes the
-steer control. The distinct `steerChildWork` command carries the parent Session,
+steer control. Optional `controls.steer.images` advertises image input for that child turn. The distinct `steerChildWork` command carries the parent Session,
 child, turn, input and required client input ID. `ChildWorkInstructionPage`
 contains Station-owned instructions and their delivery states, separately from
 the provider transcript. The optional `childWorkSteering` host flag advertises

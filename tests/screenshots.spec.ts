@@ -1999,13 +1999,16 @@ function telemetryConsentScreens(): Screen[] {
         mode === 'dialog-dnt' ||
         mode === 'settings-dnt-after-fix' ||
         mode === 'settings-detailed-expanded';
+      const additionalEndpoint = endpoint
+        ? new URL('https://counts.example.test/events')
+        : undefined;
       const routes: Array<[RegExp, (route: Route) => Promise<void>]> = [];
       let ownPage: Page;
       const device = viewport === MOBILE ? 'mobile' : 'desktop';
       return {
         name: `telemetry-${mode}-${device}`,
         title: `Usage sharing — ${mode} (${device})`,
-        path: '/settings?view=telemetry',
+        path: dialogVisible ? '/' : '/settings?view=telemetry',
         viewport,
         beforeGoto: async (page) => {
           ownPage = page;
@@ -2063,9 +2066,8 @@ function telemetryConsentScreens(): Screen[] {
               async (route) => {
                 const body = structuredClone(configSnapshot);
                 body.data.telemetryTier = choices;
-                body.data.productTelemetryEndpoint = endpoint
-                  ? 'https://counts.example.test/events'
-                  : '';
+                body.data.productTelemetryEndpoint =
+                  additionalEndpoint?.href ?? '';
                 delete body.data.telemetryEnabled;
                 delete body.data.firstRun;
                 await route.fulfill({ json: body });
@@ -2079,6 +2081,7 @@ function telemetryConsentScreens(): Screen[] {
                   acknowledged: !dialogVisible,
                   telemetryEnabled: false,
                   endpointConfigured: endpoint,
+                  additionalHost: additionalEndpoint?.host,
                   publishers,
                 });
                 await route.fulfill({ json: body });
@@ -2154,6 +2157,9 @@ function telemetryConsentScreens(): Screen[] {
         },
         afterGoto: async (page) => {
           if (dialogVisible) {
+            await page
+              .getByRole('button', { name: 'Review choices', exact: true })
+              .click();
             const dialog = page.getByRole('dialog', {
               name: 'Usage sharing',
             });
@@ -2255,15 +2261,6 @@ function telemetryConsentScreens(): Screen[] {
               await button.click({ trial: true });
             }
             return;
-          }
-          if (dnt && endpoint) {
-            const dialog = page.getByRole('dialog', {
-              name: 'Usage sharing',
-            });
-            await dialog
-              .getByRole('button', { name: 'Not now', exact: true })
-              .click();
-            await expect(dialog).toHaveCount(0);
           }
           const choice = page
             .getByRole('region', { name: 'Usage sharing choices' })
@@ -6096,46 +6093,59 @@ function childChatScreens(): Screen[] {
           ).toContainText(
             'Plan the change across the workspace and review every navigation boundary',
           );
-          if (viewport.width < 600)
-            await expect(
-              dock.getByRole('button', { name: 'Chat actions', exact: true }),
-            ).toBeVisible();
           await expect(page.locator('html')).toHaveAttribute(
             'data-theme',
             theme,
           );
           if (viewport.width < 600) {
-            for (const name of ['Chat actions', 'New chat']) {
-              const control = dock.getByRole('button', { name, exact: true });
-              const hittable = await control.evaluate((button) => {
-                const box = button.getBoundingClientRect();
-                const hit = document.elementFromPoint(
-                  box.x + box.width / 2,
-                  box.y + box.height / 2,
-                );
-                return (
-                  box.width >= 44 &&
-                  box.height >= 44 &&
-                  (hit === button || button.contains(hit))
-                );
-              });
-              expect(hittable, `${name} keeps a clear 44px phone target`).toBe(
-                true,
-              );
+            const header = dock.getByTestId('chat-dock-mobile-header');
+            const back = header.getByRole('button', {
+              name: 'Back to parent chat',
+            });
+            const extent = header.getByRole('button', {
+              name: 'Restore chat size',
+            });
+            const actions = header.getByRole('button', {
+              name: 'Chat actions',
+              exact: true,
+            });
+            for (const control of [back, extent, actions]) {
+              await control.click({ trial: true });
+              const box = (await control.boundingBox())!;
+              expect(box.width).toBeGreaterThanOrEqual(44);
+              expect(box.height).toBeGreaterThanOrEqual(44);
             }
-          }
-          if (viewport.width < 600) {
-            const titleBox = await dock
+            const titleBox = (await header
               .locator('[aria-current="page"]')
-              .boundingBox();
-            const actionsBox = await dock
-              .getByRole('button', { name: 'Chat actions', exact: true })
-              .boundingBox();
-            // Phone chat actions lead the title (chat-inventory-drilldown-mobile).
-            expect(
-              (actionsBox?.x ?? 0) + (actionsBox?.width ?? 0),
-              'chat actions stay before the breadcrumb',
-            ).toBeLessThanOrEqual((titleBox?.x ?? 0) + 0.5);
+              .boundingBox())!;
+            const backBox = (await back.boundingBox())!;
+            const extentBox = (await extent.boundingBox())!;
+            const actionsBox = (await actions.boundingBox())!;
+            expect(backBox.x + backBox.width).toBeLessThanOrEqual(
+              titleBox.x + 0.5,
+            );
+            expect(titleBox.x + titleBox.width).toBeLessThanOrEqual(
+              extentBox.x + 0.5,
+            );
+            expect(extentBox.x + extentBox.width).toBeLessThanOrEqual(
+              actionsBox.x + 0.5,
+            );
+
+            await actions.click();
+            const sheet = page.getByRole('dialog', { name: 'Chat actions' });
+            const newChat = sheet.getByRole('menuitem', {
+              name: 'New chat',
+              exact: true,
+            });
+            await newChat.click({ trial: true });
+            const newChatBox = (await newChat.boundingBox())!;
+            expect(newChatBox.width).toBeGreaterThanOrEqual(44);
+            expect(newChatBox.height).toBeGreaterThanOrEqual(44);
+            await sheet
+              .getByRole('button', { name: 'Close actions menu' })
+              .click();
+            await expect(sheet).toBeHidden();
+            await expect(actions).toBeFocused();
           }
           const overflow = await dock.evaluate(
             (element) => element.scrollWidth > element.clientWidth + 1,

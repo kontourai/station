@@ -1,0 +1,7 @@
+{
+  "revision": "43984b24fef216b82a179674f66432259a25223d",
+
+  "notes": [
+    {"path":"docs/guides/monitoring.md","note":"#5389: readConversationUsage now calls foldLineageUsageEvents (per-engine lineage fold); the per-Session fold, lifetime analytics, observation projection and usage tree are unchanged. Checked this document's usage claims; none describes the conversation-lineage stats fold, so no prose change.","inputs":["docs/guides/monitoring.md","packages/shared/src/usage-fold.ts","src-server/services/orchestration/session-transcript-reads.ts"]}
+  ]
+}

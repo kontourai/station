@@ -770,7 +770,11 @@ button {
   cursor: pointer;
   line-height: 1.4;
 }
-button:hover {
+/* A disabled button has no hover state. This element rule outranks a single
+   variant class such as `.button--primary`, so hovering a disabled primary
+   swapped its fill for this surface and hid its white label. `:where()` keeps
+   the old specificity, so class hover rules still win as before. */
+button:hover:where(:not(:disabled)) {
   background: var(--bg-tertiary);
   border-color: var(--border-secondary);
 }
@@ -5834,6 +5838,21 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     --touch-target-min: 44px;
   }
 
+  /* End the scrollport at the collapsed bar so controls cannot paint under
+     Inbox while the route scrolls. The margin owns the existing reservation. */
+  .app__main:has(> .chat-dock.is-collapsed:not([data-keyboard-hidden]))
+    > .main-content
+    > .content-view {
+    margin-bottom: var(--dock-bottom-clearance);
+    padding-bottom: 0;
+    scroll-padding-bottom: 0;
+  }
+
+  /* The drawer and its backdrop own presses until navigation closes. */
+  .sidebar-backdrop ~ .app__main > .chat-dock.is-collapsed {
+    pointer-events: none;
+  }
+
   /* Mobile Safari zooms the whole page when an editable control below 16px
      receives focus. Keep browser/user pinch zoom enabled and prevent only
      that focus-triggered jump. Attribute/not selectors intentionally outrank
@@ -8664,52 +8683,9 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     padding-inline: var(--safe-left, 0px) var(--safe-right, 0px);
   }
 
-  /* A full-screen mobile chat owns the viewport. ChatDockMobileHeader already
-     carries the drawer, identity, activity and an overflow with the app-level
-     actions, so the app toolbar above it is duplicated chrome.
-
-     Reducing the shared geometry token rather than zeroing it keeps the
-     maximized dock clearing the notch: index.css's
-     `.app__main > .chat-dock.is-maximized` mobile rule positions itself with
-     `--app-toolbar-total-height`, and readToolbarHeight() agrees with this
-     value for the snap math. */
-  .app__main--mobile-dock-fullscreen {
-    --app-toolbar-total-height: var(--safe-top);
-  }
-
-  .app__main--mobile-dock-fullscreen > .app-toolbar {
-    display: none;
-  }
-
-  /* If fullscreen ownership ever leaks onto a workspace layout again, keep its
-     tab strip below Android's status bar while the route-level guard recovers. */
-  .app__main--mobile-dock-fullscreen .workspace-tabs__header {
-    padding-top: var(--safe-top);
-  }
-
-  /* station#541: the `.page-frame__header` safe-area rule that used to live
-     here moved to `page-frame.css` — same selector, same
-     semantics, zero mobile-css-ratchet cost there (page-frame.css is a
-     PRIMITIVE_ALLOWLIST entry: it renders every page header, so it already
-     owns this header's one mobile treatment). See page-frame.css's own
-     responsive breakpoints. */
-
-  /* No top safe-area padding on the full-screen dock's own header. The dock
-     already starts below the status bar: its `top` adds
-     `--app-toolbar-total-height`, which this mode reduces to `--safe-top`
-     (the maximized rule, and the short-window rule, which adds `--safe-top`
-     itself). Padding the header by the inset as well counted it twice and
-     left a status-bar-tall empty band above the project and chat title on
-     every edge-to-edge phone. tests/mobile-chat-composer.spec.ts measures
-     the header's height against the collapsed bar's with a real inset. */
-
-  /* Deliberately NOT animated, reverting an attempt of mine to animate the
-     snap into Full. A maximized dock's height tracks the visual viewport, so
-     any transition here shows up twice as a defect: the composer lags visibly
-     behind the software keyboard (the reason the original rule existed), and
-     the dock is still animating on load, which leaves controls inside it never
-     settling. Half/Collapsed still animate via the base `.chat-dock` rule —
-     that is where a settle is actually visible. */
+  /* The shell toolbar, including its safe-area inset, stays above every dock snap. */
+  /* Full-screen geometry follows viewport resizes immediately. An explicit
+     snap animates its translation in useMobileDockHeaderMotion. */
 
   /* Now that the bar is the primary way to resize the dock, the grip has to
      read as a handle rather than decoration. */

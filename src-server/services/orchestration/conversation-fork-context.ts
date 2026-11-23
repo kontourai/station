@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto';
 import type { TurnDeduplicator } from '@kontourai/monument';
-import { CONVERSATION_CONTEXT_UNAVAILABLE_CODE } from '@kontourai/station-contracts/orchestration';
+import {
+  CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
+  CONVERSATION_FORK_REFUSAL_CODES,
+  type ConversationForkRefusalCode,
+} from '@kontourai/station-contracts/orchestration';
 import type {
   ProviderSendTurnInput,
   ProviderSessionStartInput,
@@ -217,7 +221,22 @@ export interface NativeForkEffectClaim {
 }
 
 export class ConversationForkContextError extends Error {
-  readonly code = CONVERSATION_CONTEXT_UNAVAILABLE_CODE;
+  /**
+   * {@link CONVERSATION_CONTEXT_UNAVAILABLE_CODE} for saved context that needs
+   * reconciling; a fork refusal code when the request itself is refused.
+   */
+  readonly code:
+    | typeof CONVERSATION_CONTEXT_UNAVAILABLE_CODE
+    | ConversationForkRefusalCode;
+  constructor(
+    message: string,
+    code:
+      | typeof CONVERSATION_CONTEXT_UNAVAILABLE_CODE
+      | ConversationForkRefusalCode = CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
+  ) {
+    super(message);
+    this.code = code;
+  }
 }
 
 const snapshotSchema = z
@@ -324,60 +343,77 @@ export function createConversationForkContext(
       nonTextMessages: seed.nonTextMessages,
     },
   });
-  const copied = messages.map((message) => {
-    if (!message.id)
-      throw new ConversationForkContextError(
-        'Selected context has no stable message identity.',
-      );
-    const legacy =
-      'content' in message && typeof message.content === 'string'
-        ? message.content
-        : undefined;
-    const parts = Array.isArray(message.parts)
-      ? message.parts
-      : legacy !== undefined
-        ? [{ type: 'text', text: legacy }]
-        : undefined;
-    if (!parts)
-      throw new ConversationForkContextError(
-        'Selected context has an unsupported message body.',
-      );
-    return {
-      ...message,
-      parts,
-      id: createHash('sha256')
-        .update(`${input.forkEventId}\0${message.id}`)
-        .digest('hex'),
-      metadata: {
-        ...message.metadata,
-        forkSourceMessageId: message.id,
-        // Another Station's claim, not a row this Station recorded. A row the
-        // sender itself imported keeps its origin, naming the sender too.
-        ...(imported
-          ? {
-              importedFrom:
-                typeof message.metadata?.importedFrom === 'string'
-                  ? `${cleanLabel(message.metadata.importedFrom)}, via ${cleanLabel(imported.stationName)}`
-                  : cleanLabel(imported.stationName),
-            }
-          : {}),
-      },
+  const copyMessages = (textOnly: boolean) =>
+    messages.flatMap((message) => {
+      if (!message.id)
+        throw new ConversationForkContextError(
+          'Selected context has no stable message identity.',
+        );
+      const legacy =
+        'content' in message && typeof message.content === 'string'
+          ? message.content
+          : undefined;
+      const parts = Array.isArray(message.parts)
+        ? message.parts
+        : legacy !== undefined
+          ? [{ type: 'text', text: legacy }]
+          : undefined;
+      if (!parts)
+        throw new ConversationForkContextError(
+          'Selected context has an unsupported message body.',
+        );
+      // The text-only copy keeps what every seed and the framework prompt read
+      // (`transcriptSeedSource` renders text parts only); tool calls and other
+      // rich parts are what make a long, tool-heavy history outgrow the bound.
+      const copiedParts = textOnly
+        ? parts.filter((part) => part.type === 'text')
+        : parts;
+      if (copiedParts.length === 0) return [];
+      return [
+        {
+          ...message,
+          parts: copiedParts,
+          id: createHash('sha256')
+            .update(`${input.forkEventId}\0${message.id}`)
+            .digest('hex'),
+          metadata: {
+            ...message.metadata,
+            forkSourceMessageId: message.id,
+            // Another Station's claim, not a row this Station recorded. A row the
+            // sender itself imported keeps its origin, naming the sender too.
+            ...(imported
+              ? {
+                  importedFrom:
+                    typeof message.metadata?.importedFrom === 'string'
+                      ? `${cleanLabel(message.metadata.importedFrom)}, via ${cleanLabel(imported.stationName)}`
+                      : cleanLabel(imported.stationName),
+                }
+              : {}),
+          },
+        },
+      ];
+    });
+  const encode = (textOnly: boolean) => {
+    const body = {
+      ...identity,
+      protocolVersion: 1 as const,
+      title: imported
+        ? `${cleanLabel(sourceTitle) || 'Previous conversation'} (from ${cleanLabel(imported.stationName)})`
+        : `Fork of ${sourceTitle}`,
+      copiedMessagesJson: JSON.stringify(copyMessages(textOnly)),
+      seedPinJson: JSON.stringify(seedPin),
     };
-  });
-  const body = {
-    ...identity,
-    protocolVersion: 1 as const,
-    title: imported
-      ? `${cleanLabel(sourceTitle) || 'Previous conversation'} (from ${cleanLabel(imported.stationName)})`
-      : `Fork of ${sourceTitle}`,
-    copiedMessagesJson: JSON.stringify(copied),
-    seedPinJson: JSON.stringify(seedPin),
+    return JSON.stringify({ ...body, digest: contextDigest(body) });
   };
-  const snapshot = { ...body, digest: contextDigest(body) };
-  const json = JSON.stringify(snapshot);
+  // The seed is budgeted already; only the copied rows can outgrow the
+  // stored bound. Keep them whole when they fit, else keep their text.
+  let json = encode(false);
+  if (Buffer.byteLength(json, 'utf8') > FORK_CONTEXT_MAX_BYTES)
+    json = encode(true);
   if (Buffer.byteLength(json, 'utf8') > FORK_CONTEXT_MAX_BYTES)
     throw new ConversationForkContextError(
-      'Selected fork context exceeds the bounded import size.',
+      'The conversation text up to the selected turn is too large to fork.',
+      CONVERSATION_FORK_REFUSAL_CODES.historyTooLarge,
     );
   return readConversationForkContext(json);
 }

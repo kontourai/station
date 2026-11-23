@@ -1,0 +1,7 @@
+{
+  "revision": "a0b72485028d87716fcf28756ee3000071f677dd",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked: the replaced-configuration notice shows the server text alone and uses the hint only when the server sent none; no documented UI contract changed.","inputs":["src-ui/src/utils/chatErrorTranslation.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "8d908c396441c33d2735dbe78977883515774947",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked against the fix round: held-start settlement asks only the bound, current adapter; refusals are turn_start_held, turn_start_held_until_restart or turn_start_busy with matching text; the indeterminate answer promises nothing engine-specific; the UI leaves a blocked send idle without Retry; Continue after an engine-ended banner sends its own prompt; a late completion of an interrupted turn is logged and noticed; Claude ends the Session on an observed exit. This page's claims about this source do not describe those paths and remain accurate, or were updated in module-map, session-api and contracts.","inputs":["src-server/services/orchestration/session-execution-coordinator.ts"]}
+  ]
+}

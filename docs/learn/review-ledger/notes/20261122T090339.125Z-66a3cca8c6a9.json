@@ -1,0 +1,7 @@
+{
+  "revision": "a46df40a2bef79288a97a4cb4ead44e5325e4b44",
+
+  "notes": [
+    {"path":"docs/learn/media/project-with-task.png","note":"ProjectPage.tsx change removes only the projectId prop to ProjectNavigation; the rail still renders the same Search button for non-member pages, so the captured image is unchanged.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

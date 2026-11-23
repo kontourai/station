@@ -10,6 +10,8 @@ import type { PluginRegistryTrust } from '@kontourai/station-contracts/registry-
 
 export interface ReadyPlugin {
   installationReadiness?: PluginInstallationReadiness;
+  /** The server is still activating this plugin; see `InstalledPluginRecord`. */
+  activationInFlight?: true;
   /** Server-persisted registry verification; absent from an older server. */
   registryTrust?: PluginRegistryTrust;
   retainedOnRemoval?: boolean;
@@ -131,7 +133,7 @@ export interface PreviewData extends PluginPreview {
 export type PluginUpdateSummary = PluginUpdateRecord;
 
 export interface PluginMessage {
-  type: 'success' | 'error';
+  type: 'success' | 'warning' | 'error';
   text: string;
   action?: {
     label: string;

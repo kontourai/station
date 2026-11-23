@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Mentions of one-time refer to pairing and sign-in links, not automations; the automation form changes do not affect any step here.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx","src-ui/src/components/scheduler/JobFormModal.tsx"]}
+  ]
+}

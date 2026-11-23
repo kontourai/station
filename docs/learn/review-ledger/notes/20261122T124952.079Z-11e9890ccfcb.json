@@ -1,0 +1,81 @@
+{
+  "revision": "1f3b0304675f714281a84e8fa1b7aec76bdc1753",
+
+  "notes": [
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Additive optional capability flag schedulerJobDisplayName on StationCapabilityFlags; this page states no flag inventory or behaviour it changes.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/architecture.md","note":"Additive SDK export useSchedulerJobDisplayNameCapability beside the other scheduler capability hooks; this page names no export list or behaviour it changes.","inputs":["docs/architecture.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Scheduler section already states jobId versus slug name versus displayName; checked against host-side slug allocation, notifications and Task titles that now say the display name. No other claim changes.","inputs":["docs/architecture/module-map.md","packages/contracts/src/scheduler.ts","src-server/routes/operations/scheduler.ts","src-server/runtime/routes/runtime-route-support.ts","src-server/services/__tests__/scheduler.test.ts","src-server/services/scheduling/__tests__/builtin-scheduler-execution.test.ts","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Scheduler route and runtime support edits change a refusal code and Task titles; no evidence-governance term changes.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/routes/operations/scheduler.ts","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Operations context names the scheduler surface, not job naming or notification wording; still accurate.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/routes/operations/scheduler.ts","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Additive optional capability flag schedulerJobDisplayName on StationCapabilityFlags; this page states no flag inventory or behaviour it changes.","inputs":["docs/design/answer-share-permalinks.md","packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Design states no job naming or Task title rule; display-name slug allocation and the Review ready title using the display name do not contradict it.","inputs":["docs/design/automations.md","packages/contracts/src/scheduler.ts","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Additive optional capability flag schedulerJobDisplayName on StationCapabilityFlags; this page states no flag inventory or behaviour it changes.","inputs":["docs/design/channel-home-authority.md","packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Additive SDK export useSchedulerJobDisplayNameCapability beside the other scheduler capability hooks; this page names no export list or behaviour it changes.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Additive SDK export useSchedulerJobDisplayNameCapability beside the other scheduler capability hooks; this page names no export list or behaviour it changes.","inputs":["docs/design/pane-host-contract.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Additive optional capability flag schedulerJobDisplayName on StationCapabilityFlags; this page states no flag inventory or behaviour it changes.","inputs":["docs/design/remote-execution-preparation.md","src-server/capabilities/station-capability-flags.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Additive optional capability flag schedulerJobDisplayName on StationCapabilityFlags; this page states no flag inventory or behaviour it changes.","inputs":["docs/design/station-peer-pairing.md","packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Monitor Task title now says the job's display name; dispatch behaviour this design states is unchanged.","inputs":["docs/design/task-dispatcher.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Linked from api.md for unrelated terminal routes; scheduler edits change nothing it states.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"Automation entry (slug name, display name people read and rename) still matches after the contracts reference gained the slug helpers.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"schedule.spec.ts keeps the same journeys; its duplicate step now proves a same-name copy gets a numbered hidden slug, and the empty-catalog step waits for the Its own chat default. No matrix row changes.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/schedule.spec.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Additive optional capability flag schedulerJobDisplayName on StationCapabilityFlags; this page states no flag inventory or behaviour it changes.","inputs":["docs/guides/home-transfer-controller.md","packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Routing guide only; the additive scheduler fields, capability flag and SDK hook change no route or requirement it states.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Additive SDK export useSchedulerJobDisplayNameCapability beside the other scheduler capability hooks; this page names no export list or behaviour it changes.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"propose_job still requires a slug name; the create schema making name optional does not change the proposal body this guide describes.","inputs":["docs/guides/self-configuring-agent.md","src-server/routes/orchestration/agent-schedule.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Starter scheduler intent sets its own slug and no display name; host slug allocation and notification labels do not change its stated behaviour.","inputs":["docs/guides/starter-work.md","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Additive SDK export useSchedulerJobDisplayNameCapability beside the other scheduler capability hooks; this page names no export list or behaviour it changes.","inputs":["docs/guides/theming.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Scheduler failure and fatigue notifications keep their categories, dedupe tags and links; only the title text names the display name, which this guide does not quote.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Additive SDK export useSchedulerJobDisplayNameCapability beside the other scheduler capability hooks; this page names no export list or behaviour it changes.","inputs":["docs/patterns/backend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Additive SDK export useSchedulerJobDisplayNameCapability beside the other scheduler capability hooks; this page names no export list or behaviour it changes.","inputs":["docs/patterns/frontend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Create and Update sections now document displayName validation (isSchedulerJobDisplayName), host slug allocation with schedulerJobSlugCandidates up to SCHEDULER_JOB_SLUG_ATTEMPTS, the 409 job_name_taken code, and the schedulerJobDisplayName flag; checked against the route, schema and BuiltinScheduler.addJob.","inputs":["docs/reference/api.md","packages/contracts/src/environment-security.ts","packages/contracts/src/scheduler.ts","packages/sdk/src/queries.ts","packages/sdk/src/query-domains/scheduler.ts","src-server/routes/operations/scheduler.ts","src-server/routes/schemas/schema-definitions/scheduler.ts","src-server/services/scheduling/builtin-scheduler.ts","src-ui/src/components/scheduler/JobDetail.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Logs and run records still carry the job slug; notification titles now say the display name, which this page does not describe.","inputs":["docs/reference/config.md","src-server/services/scheduling/builtin-scheduler-execution.ts","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Additive optional capability flag schedulerJobDisplayName on StationCapabilityFlags; this page states no flag inventory or behaviour it changes.","inputs":["docs/reference/connect.md","packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Scheduler paragraph names isSchedulerJobDisplayName, schedulerJobSlug, schedulerJobSlugCandidates, SCHEDULER_JOB_SLUG_ATTEMPTS and SCHEDULER_JOB_NAME_TAKEN; matches packages/contracts/src/scheduler.ts. The new optional capability flag is not listed by this page.","inputs":["docs/reference/contracts.md","packages/contracts/src/environment-security.ts","packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Added useSchedulerJobDisplayNameCapability beside useProjectSchedulesCapability; matches packages/sdk/src/query-domains/scheduler.ts. Monitor Review ready title change is server-side only.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts","src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"No shared re-export of the scheduler contract helpers.","inputs":["docs/reference/shared.md","packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Scheduled-jobs topic describes schedule kinds and targets; display names and slug allocation do not change its claims. Failure notification wording is not quoted here.","inputs":["docs/reference/station-docs.md","packages/contracts/src/scheduler.ts","src-server/services/scheduling/builtin-scheduler-execution.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Additive optional capability flag schedulerJobDisplayName on StationCapabilityFlags; this page states no flag inventory or behaviour it changes.","inputs":["docs/security/remote-access-threat-model.md","packages/contracts/src/environment-security.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"No automation form steps here; the Name field, conflict message and read-only state change nothing in this guide.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/SchedulerJobDialogHost.authority.test.tsx","src-ui/src/components/scheduler/JobFormModal.tsx"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Additive SDK export useSchedulerJobDisplayNameCapability beside the other scheduler capability hooks; this page names no export list or behaviour it changes.","inputs":["examples/meeting-transcription/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Routing note; new scheduler helpers are pure contract functions consistent with its rules.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Routing note; the new capability hook follows the existing query-domain pattern.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/README.md","note":"Additive SDK export useSchedulerJobDisplayNameCapability beside the other scheduler capability hooks; this page names no export list or behaviour it changes.","inputs":["packages/sdk/README.md","packages/sdk/src/index.ts"]}
+  ]
+}

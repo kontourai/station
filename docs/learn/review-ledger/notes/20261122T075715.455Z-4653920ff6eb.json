@@ -1,0 +1,7 @@
+{
+  "revision": "0614c050ac70fd71b9f4133bf60a3cec849353ff",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Edited: the live-engine refusal sentence now names an Agent handoff beside a continuation, matching prepareConversationHandoff's new guard and its integration test in claude-engine-exit.integration.test.ts.","inputs":["docs/reference/session-api.md"]}
+  ]
+}

@@ -279,9 +279,14 @@ describe('main qualification failure signal (manifests, never logs)', () => {
         }),
         JSON.stringify(identity),
       ).toEqual(['failure manifest belongs to another run, attempt or source']);
-    expect(reasons({ a: own, b: own })).toEqual([
-      'more than one failure manifest for this job',
-    ]);
+    for (const layouts of [
+      { a: own, b: own },
+      { '.': own, a: own },
+    ]) {
+      expect(reasons(layouts)).toEqual([
+        'more than one failure manifest for this job',
+      ]);
+    }
     // A job that failed in setup, before the driver ran, writes none.
     expect(
       reasons({
@@ -486,7 +491,7 @@ describe('tracker decisions: report mode changes nothing, enforce mode decides',
     }
   }
   const manifests = () =>
-    artifacts({ a: manifest('Exclusive corpora', [group([KNOWN_TEST])]) });
+    artifacts({ '.': manifest('Exclusive corpora', [group([KNOWN_TEST])]) });
 
   async function prepare(mode: string | undefined, trackers: object[]) {
     return api({ trackers }, async (base, writes) => {

@@ -63,6 +63,7 @@ export interface HomeRowContext {
   /** The sidebar's project colours (`useProjectAccents`), by slug. */
   projectAccentBySlug?: ReadonlyMap<string, string>;
   /** The projects' icons (`useProjectIcons`), by slug. */
+  projectNames?: ReadonlyMap<string, string>;
   projectIconBySlug?: ReadonlyMap<string, string>;
 }
 
@@ -121,6 +122,11 @@ export function renderHomeWorkRow({
           >
             <InboxRow
               item={task}
+              projectName={
+                task.projectSlug
+                  ? context.projectNames?.get(task.projectSlug)
+                  : undefined
+              }
               rowKey={task.stableId}
               isCurrent={false}
               isSnoozed={false}
@@ -132,6 +138,7 @@ export function renderHomeWorkRow({
                 context.setDetailsFor(open ? task.id : null)
               }
               size={size}
+              compact={context.chrome === 'touch'}
               chrome={context.chrome}
               agents={agents}
               isWoken={

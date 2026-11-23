@@ -13,14 +13,14 @@ import {
   useScopedProjectRunLocationsQuery,
   useScopedProjectsQuery,
 } from '../../contexts/ProjectsContext';
+import { resolveStartContextFromProjectSlug } from '../../hooks/startContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
 import { effectiveExecutionStationId } from '../../hooks/useExecutionStationCatalog';
 import { useNewChatSelectionModel } from '../../hooks/useNewChatSelectionModel';
-import { useNewChatStartContext } from '../../hooks/useNewChatStartContext';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
 import { useProjectIcons } from '../../hooks/useProjectIcons';
 import {
-  useBindStartProject,
+  useHomeStartProject,
   useStartSelection,
 } from '../../hooks/useStartSelection';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
@@ -170,7 +170,11 @@ export function reloadHeldHomeDraftsForTests() {
 /**
  * Home's start: the same `StartComposer`, chips and memory as the dock's
  * draft (`NewChatModal`), over the same start context
- * (`useNewChatStartContext`, the dock's remembered project).
+ * (`resolveStartContextFromProjectSlug`). Home starts in No project and
+ * changes only when the person picks a project in its chip; the dock's
+ * remembered project (which opening any project rebinds) is neither read
+ * nor written, so the chip is the only thing that decides where a chat from
+ * Home goes, and a pick on Home never moves the dock.
  *
  * Start hands the dock exactly what the chips show (context, Agent, Model
  * and runtime options) and the dock starts it through the same path its own
@@ -218,9 +222,15 @@ export function HomeStartComposer({
     projectsQuery.isSuccess &&
     !projectsQuery.isPlaceholderData &&
     projectsQuery.data !== undefined;
-  // The chip IS the dock's binding (the project chip writes it), so Home and
-  // the dock read one value; a folderless project runs in the home folder.
-  const homeContext = useNewChatStartContext(projects, projectsLoaded);
+  // Home's own pick, not the dock's remembered binding: opening a project
+  // rebinds the dock silently, and a chat from Home must not follow that.
+  // A folderless project runs in the home folder.
+  const [pickedContext, chooseProject] = useHomeStartProject();
+  const homeContext = resolveStartContextFromProjectSlug(
+    pickedContext === GLOBAL_CONTEXT ? null : pickedContext,
+    projects,
+    projectsLoaded,
+  );
   const startContext = projectSlug
     ? projectsLoaded
       ? projectSlug
@@ -274,7 +284,6 @@ export function HomeStartComposer({
       return approvalPick ? { ...chosen, approvalMode: approvalPick } : chosen;
     },
   };
-  const bindProject = useBindStartProject();
   const [prompt, setPromptState] = useState('');
   // The field's current text, readable synchronously by a draft that comes
   // back while a dispatch is still running.
@@ -489,6 +498,7 @@ export function HomeStartComposer({
         approvalProjectDefaultUnavailable:
           selection.projectChatDefaultsUnavailable,
         approvalPick,
+        approvalConnections: acpConnections,
         onApprovalPick: setApprovalPick,
       };
   // The sidebar's colours, from the one project list it shows.
@@ -515,6 +525,7 @@ export function HomeStartComposer({
         accent: isGlobal ? undefined : accents.get(context),
         icon: isGlobal ? undefined : icons.get(context),
         folder: workspaceHintText(workspaceHint),
+        folderIsHelp: workspaceHint.kind === 'managed',
         folderTitle:
           'path' in workspaceHint
             ? [
@@ -587,7 +598,7 @@ export function HomeStartComposer({
           setMenu({ kind: 'agents', trigger });
         }}
         project={projectChip}
-        onClearProject={() => bindProject(GLOBAL_CONTEXT)}
+        onClearProject={() => chooseProject(GLOBAL_CONTEXT)}
         onOpenProject={(trigger) => setMenu({ kind: 'project', trigger })}
         overflowActions={
           visualSkillsEnabled
@@ -786,7 +797,7 @@ export function HomeStartComposer({
             onSetup={() => handOff({ kind: 'connections' })}
             onRepair={repair}
             enablePending={enabler.inFlight}
-            onChooseProject={bindProject}
+            onChooseProject={chooseProject}
             canCreateProject={
               effectiveExecutionStationId(
                 agent ? start.modelChoiceFor(agent)?.environmentId : undefined,

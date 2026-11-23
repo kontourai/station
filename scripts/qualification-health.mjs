@@ -68,6 +68,15 @@ export async function selectRunToClassify(env = process.env) {
 
 const TITLE = 'Main qualification health';
 const HOUR = 60 * 60_000;
+const DELIVERY_LEGS = ['native', 'cli', 'validation'];
+const VALIDATION_JOB_PREFIX = 'delivery-validation / ';
+const VALIDATION_FAMILIES = [
+  'install',
+  'portable',
+  'native',
+  'desktop',
+  'ecosystem',
+];
 const NIGHTLY_LIVE_STATES = new Set([
   'queued',
   'pending',
@@ -121,6 +130,23 @@ function publishedLeg(jobs, leg) {
   );
 }
 
+function passedDeliveryValidation(item) {
+  if (!item.passed || item.run.conclusion !== 'success') return false;
+  const jobs = item.jobs.filter((job) =>
+    job.name.startsWith(VALIDATION_JOB_PREFIX),
+  );
+  return (
+    jobs.every(
+      (job) => job.status === 'completed' && job.conclusion === 'success',
+    ) &&
+    VALIDATION_FAMILIES.every((family) =>
+      jobs.some((job) =>
+        job.name.startsWith(`${VALIDATION_JOB_PREFIX}${family} / `),
+      ),
+    )
+  );
+}
+
 /**
  * Observe qualification without starting a run or retrying a repair.
  * @param {NodeJS.ProcessEnv} [env]
@@ -158,7 +184,7 @@ export async function checkQualificationHealth(
           !Number.isFinite(Date.parse(failure.at)) ||
           !Array.isArray(failure.legs) ||
           !failure.legs.length ||
-          failure.legs.some((leg) => !['native', 'cli'].includes(leg)),
+          failure.legs.some((leg) => !DELIVERY_LEGS.includes(leg)),
       ))
   )
     throw new Error('Invalid retained delivery incident');
@@ -402,6 +428,19 @@ export async function checkQualificationHealth(
       attempt: item.run.run_attempt,
     }),
   );
+  const validationRunIds = new Set(
+    observed
+      .filter(
+        ({ run, jobs }) =>
+          run.event !== 'push' &&
+          jobs.some(
+            (job) =>
+              job.name === 'delivery-validation' ||
+              job.name.startsWith(VALIDATION_JOB_PREFIX),
+          ),
+      )
+      .map(({ run }) => run.id),
+  );
   const failures = [...observed, ...recoveries]
     .filter(
       (item) =>
@@ -418,31 +457,47 @@ export async function checkQualificationHealth(
       return {
         id: item.run.id,
         at: item.run.updated_at,
-        legs: [...(native || !cli ? ['native'] : []), ...(cli ? ['cli'] : [])],
+        legs: validationRunIds.has(item.run.id)
+          ? ['validation']
+          : [...(native || !cli ? ['native'] : []), ...(cli ? ['cli'] : [])],
       };
     });
   if (failures.some((item) => !Number.isFinite(Date.parse(item.at))))
     throw new Error('Invalid failed delivery timestamp');
-  const incidents = [...failures, ...(retained?.failures ?? [])];
-  const successfulDeliveries = [...observed, ...recoveries].filter(
+  // Older markers attributed these runs to publication. Reclassify IDs for
+  // which the canonical qualification run still supplies job evidence.
+  const retainedFailures = (retained?.failures ?? []).map((failure) =>
+    validationRunIds.has(failure.id)
+      ? { ...failure, legs: ['validation'] }
+      : failure,
+  );
+  const incidents = [...failures, ...retainedFailures];
+  const completedDeliveries = [...observed, ...recoveries].filter(
     (item) => item.run.status === 'completed',
   );
   const pending = [];
-  for (const leg of ['native', 'cli']) {
+  for (const leg of DELIVERY_LEGS) {
     const failed = incidents
       .filter((failure) => failure.legs.includes(leg))
       .sort((a, b) => Date.parse(b.at) - Date.parse(a.at))[0];
     if (!failed) continue;
-    const recovered = successfulDeliveries.some(
+    const recovered = completedDeliveries.some(
       (item) =>
         Number.isFinite(Date.parse(item.run.updated_at)) &&
         Date.parse(item.run.updated_at) <= now &&
         Date.parse(item.run.updated_at) > Date.parse(failed.at) &&
-        publishedLeg(item.jobs, leg),
+        (leg === 'validation'
+          ? validationRunIds.has(item.run.id) && passedDeliveryValidation(item)
+          : publishedLeg(item.jobs, leg)),
     );
     if (!recovered) pending.push({ ...failed, legs: [leg] });
   }
-  const pendingDelivery = pending.length ? { failures: pending } : null;
+  const pendingNightly = pending.filter(
+    (failure) => failure.legs[0] !== 'validation',
+  );
+  const pendingValidation = pending.find(
+    (failure) => failure.legs[0] === 'validation',
+  );
   const green = observed
     .filter((item) => item.passed)
     .sort((a, b) => b.completed - a.completed)[0];
@@ -552,13 +607,15 @@ export async function checkQualificationHealth(
     reasons.push(
       `Retained Nightly source attempt ended ${item.run.conclusion} without successful source verification: https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${item.run.id}, source \`${item.run.head_sha}\`, attempt ${item.run.run_attempt}. A later cadence skip does not resolve this failure.`,
     );
-  if (pendingDelivery)
+  if (pendingNightly.length)
     reasons.push(
       'A source gate passed, but its Nightly decision or publication did not complete successfully.',
     );
 
+  if (pendingValidation)
+    reasons.push('Hosted delivery validation did not complete successfully.');
   const nightlyNeedsAttention =
-    pendingDelivery ||
+    pendingNightly.length ||
     !latestScheduled ||
     now - latestScheduled.created > 4 * HOUR ||
     stalled.length > 0;
@@ -585,9 +642,14 @@ export async function checkQualificationHealth(
           ...describeSignal(signal, { mode }),
         ]
       : []),
-    pendingDelivery
-      ? `Unresolved Nightly delivery: ${pendingDelivery.failures.map((failure) => `${failure.legs[0]} https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${failure.id}`).join('; ')}. A later skipped publication does not resolve it.`
+    pendingNightly.length
+      ? `Unresolved Nightly delivery: ${pendingNightly.map((failure) => `${failure.legs[0]} https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${failure.id}`).join('; ')}. A later skipped publication does not resolve it.`
       : 'No failed Nightly delivery run found in the last 48 hours.',
+    ...(pendingValidation
+      ? [
+          `Unresolved hosted delivery validation: https://github.com/${env.GITHUB_REPOSITORY}/actions/runs/${pendingValidation.id}. A later complete delivery-validation run can resolve it.`,
+        ]
+      : []),
     '',
     overdueNightly.length
       ? 'Inspect and resolve the existing Nightly run owner before considering a manual dispatch; this observer neither cancels nor duplicates live work.'
@@ -595,7 +657,7 @@ export async function checkQualificationHealth(
         (nightlyNeedsAttention ? 'nightly.yml' : 'main-qualification.yml') +
         ' --repo ' +
         env.GITHUB_REPOSITORY +
-        (nightlyNeedsAttention
+        (nightlyNeedsAttention || pendingValidation
           ? ' --ref main`.'
           : ' --ref main -F force=true`.'),
     'This watchdog launches no tests, dispatches no runs and changes no publication authority. Nightly requires its exact-source usability gate; Beta and stable require full qualification.',
@@ -603,8 +665,8 @@ export async function checkQualificationHealth(
   if (reasons.length) {
     const body =
       lines.join('\n') +
-      (pendingDelivery || stalled.length
-        ? `\n\n<!-- station-qualification-health:${JSON.stringify({ failures: pendingDelivery?.failures ?? [], ...(stalled.length ? { stalled } : {}) })} -->`
+      (pending.length || stalled.length
+        ? `\n\n<!-- station-qualification-health:${JSON.stringify({ failures: pending, ...(stalled.length ? { stalled } : {}) })} -->`
         : '') +
       (knownOnlySince
         ? `\n\n<!-- station-qualification-known-only:${JSON.stringify(knownOnlySince)} -->`

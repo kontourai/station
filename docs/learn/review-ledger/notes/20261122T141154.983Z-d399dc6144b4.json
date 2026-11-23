@@ -1,0 +1,7 @@
+{
+  "revision": "5598bc766c8f64d2b501c83c0cce06304c25b3ef",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Slice 0.5 fix round reviewed against this document: /clear answered in the dispatcher and never forwarded (ACP still receives every command), /new refusing text and leaving an imported view like the New chat button, Claude Code max_tokens results completing as max-tokens, Send again offered only for the failed turn's own message, and the Cut off rung following Done's resumable-delegation lane rule. A targeted search of this document (slash commands, finish reasons, stop_reason, Send again, Cut off, delegation lanes) found no claim these change, so it remains accurate; not a full re-read.","inputs":["docs/architecture/abstraction-review.md","docs/guides/commands.md"]}
+  ]
+}

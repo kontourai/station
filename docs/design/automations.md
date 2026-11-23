@@ -248,6 +248,21 @@ The retained Task/Session binding keeps this boundary after an action settles
 and after a runtime restart. A missing binding or failed hand-over or approval
 write refuses the turn before provider send; it cannot preserve inherited Auto
 as a fallback. The person can retry once persistence is available.
+For Station Control tools that authority is not lent to the Agent: the
+Session's context began with content nobody on the owner's side wrote, such
+as a failed run's logs. The Session still acts for no one. While the turn
+the person typed is running, it holds one narrow grant: the tools that only
+read or write the Session's own Task (`task_summary_update`, `task_record`,
+`get_task_brief`, `task_thread_list` and `task_thread_reply`, marked
+`ownTask` in the policy table) work on the Task the automation created for
+it. Resolving a review thread stays with a person, so `task_thread_resolve`
+is not in the grant. Everything else stays refused there, including
+automation proposals, Project notes, delegation and messages. The Task brief
+is assembled with the Session's recorded owner's read access, as it was when
+the automation dispatched it. The
+automation's own turns, an engine-opened turn and the time between turns get
+no grant. The Task's records name the Session as their author, not the
+person.
 
 When an action creates its Task it captures an immutable
 `AutomationTaskMandate`: the rule name and id, source, episode (and operator
@@ -285,13 +300,60 @@ retry count in its identity, so it is a new Task) is retained under the rule's
 current policy. It is refused for an indeterminate episode (its earlier effect
 is unknown and never replayed), an episode with pending or running work, an
 event older than 72 hours, or a rule that is not `live` or no longer granted.
+It is also accepted for an `open` episode whose latest intent ended `failed`
+or `refused` before anything was invoked (the Agent never started, so the
+attempt was not used); the open-episode list marks it `startFailed` and
+Settings offers Retry while the rule may act (live, on an enabled source)
+and otherwise says the rule is not live. An invoked or `indeterminate`
+intent never qualifies. A start that fails before anything is invoked
+cancels its Task, so no leftover Task can be started outside the rule's
+authority; the retry creates the episode's next Task.
+
+A rule never runs an Agent under a posture it did not state. `approvalMode`
+is `ask`, `auto` or `connection-default`, and omitted means `ask`. `ask` and
+`auto` are sent to the Agent as stated; before any Task is created the
+dispatch's own start resolution is asked whether the Agent takes it (an ACP
+connection whose approvals Station answers takes `approvalMode`, as at the
+orchestration seam). An Agent that cannot is refused there:
+`agent_option_unsupported` for a stated mode, `agent_own_approval_required`
+when the rule stated none and the Agent cannot be told `ask`, with text that
+the Agent runs under its own approval settings and that the rule must say
+so. `connection-default` sends no per-invocation setting, so the Agent's or
+its connection's own approval settings apply; only a rule that states it
+runs so. The start resolves the Agent again with the same setting, so an
+Agent rebound after the check is refused at the start, never started
+without one. Settings shows each rule's posture ("Asks before acting", "Agent's own
+approval settings"), and an Agent-proposed rule can only be `ask`. Retry is
+not offered for such a refusal until the rule's approval setting or its
+Agent changes. A Task whose cancel fails is named on the open episode, and
+Retry stays hidden only while that Task is live: the episode list reads the
+Task's current status, so it returns once the Task is canceled or done. The
+server refuses the retry itself (`task-live`) while the Task a failed start
+created is live, reading its status in the same ledger transaction as the
+live-work check, so no client can add a second live Task to the episode.
+
+While the Project list cannot be read, or authority cannot be checked, no
+automation Task starts and nothing is refused; the warning is logged when
+that starts or changes, and Settings shows that automation Tasks are paused,
+with what failed (the Project store's message, bounded), until a tick
+succeeds. The list is read as a whole, so one unreadable
+Project record pauses rules for every Project.
+
+Three limits of pinning a stored slug: any read pins it, including a plain
+listing (`station automation rules`), by rewriting the file with the id; on
+a read-only directory the pin fails silently and lands on a later read; and
+between a read and its pin, a Project replaced under the same slug could
+still be named by that read.
 
 A held claim writes its reason to the delivery row as `suppressed(reason)`:
 `rate-limited`, `rule-active-limit`, `concurrency-limit` or `episode-active`
 while the action waits (the row moves on when it starts), and
 `episode-exhausted` or `episode-indeterminate` when it never will. A refused
 intent keeps its own reason on the row (`policy_changed`, `stale_event`,
-`admission_refused`), never a generic `policy_unavailable`.
+`admission_refused`), never a generic `policy_unavailable`. A pending intent
+whose rule names a Project that no longer exists is refused as
+`project_unavailable` (the row's decision keeps the Project value), and the
+runtime logs it once for that intent.
 
 There is no `notify` action: it was validated but never executed, so #4513
 removed it. A stored grant that lists it drops it on read; a stored `notify`
@@ -307,8 +369,60 @@ MonitorTaskTurnSupervisor owns
 turn, token and wall limits; full-access grants remain absent. Token enforcement
 depends on canonical provider usage arriving; missing usage is unknown, not a
 hard billing reservation. A completed action records the first turn terminal,
-not Task acceptance or successful repair. A green run closes
+not Task acceptance or successful repair. When that turn ends, completed or
+failed, a Task still `in_progress` moves to `review` so a person sees the
+result; nothing else would move it, since the Session acts for no person. A
+Task in any other status (blocked, done, canceled, or set by a person or the
+Agent) keeps it. A person's takeover does not change this: once the
+automation's dispatched turn has ended, the Task reads `review` whether or not
+a person has since continued the Session, and a person who continues afterwards
+works in a Task that already awaits review. A green run closes
 the episode and prevents later placement for it.
+
+A first turn a person stops reads `stopped` on the intent and the
+delivery, not `failed`; Settings shows "stopped by a person".
+Station knows it was a person from the Stop request itself: the
+orchestration command route applies Station's person check
+(`personCredentialRequest`: an operator credential or session, or a paired
+person's device, never a delegation-kind device such as a remote parent
+Station, and never a request an Agent may have made). It records the result
+as `byPerson` on that turn's `session.stop-settled`. The budget, a
+revocation, an engine failure, a restart, or a Stop sent by an Agent never
+record it, so they still read `failed`. Either way the Agent ran: the attempt
+is used, the episode moves on exactly as after a failure (with one attempt it
+reads `exhausted`), and the failed-start Retry is not offered. Two stops by a
+person still read `failed`: a Stop that reaches the turn through the owned
+cascade (a Session with delegated children), and a person ending the whole
+Session (`stopSession`), which writes no Station stop record for the turn.
+
+The wall budget (`maxWallRuntimeMs`) counts time the Agent could be working.
+While the Session waits on a person (a blocking approval or input request is
+open) the clock is paused. It resumes when the request is answered or the
+turn ends. The waits are folded from the Session's persisted
+`request.opened`/`request.resolved` events, so nothing else is stored: after a
+restart with a request still open, the remaining budget is what it was.
+Approval requests have no expiry of their own, and the idle sweep never parks
+a Session with a running turn. So an automation Task may wait for a person
+for at most `AUTOMATION_PERSON_WAIT_CEILING_MS` (12 hours) in total, long
+enough for an approval raised overnight to be answered in the morning. After
+that its turn is interrupted with the intent reason `person_wait_ceiling`
+and the Session is marked blocked, saying no one answered within 12 hours.
+`maxTurns` and `maxTokens` are unchanged.
+
+What the pause costs: while a Task waits on a person it still holds its rule
+(`maxActivePerRule` 1) and one of the Station's concurrent action slots
+(`maxConcurrentActions`), for up to its wall budget plus 12 hours. Two
+unanswered approvals can hold every automation on the Station for that long.
+An Agent can lengthen its wall time up to the ceiling by asking blocking
+questions, while its turns and tokens stay capped. An engine that never
+reports a request as resolved leaves the clock paused until the ceiling.
+
+An unanswered request notifies the way any approval does: the approval card
+reaches the owner's devices. For a Session that acts for no person and runs
+a Task an automation rule created, the card's body starts with that Task's
+title ("Automation: <rule name>", at most 80 characters), so it says which
+Task is waiting. The Session's own title is not used: it is derived from the framed
+prompt, which quotes untrusted source data.
 
 These Tasks can diagnose the normalized failing run. The quoted `head_sha` is
 source evidence, not proof that the execution workspace is that exact checkout.
@@ -496,6 +610,18 @@ directory under [`src-server/services/`](../../src-server/services/).
 - `AutomationGrant` is `{ projectId; agentId; actions: readonly
   AutomationActionKind[] }`. Omitted means no authority, the same rule as
   `starts` on an inbound webhook token.
+- A grant's or an action's `projectId` accepts a Project's id or its slug.
+  The [store](../../src-server/services/automation/automation-store.ts)
+  resolves it to the id on every read and stores the id on every write, so
+  each reader compares ids. A rule or grant stored with a slug keeps working:
+  the first read that resolves it writes the id back through the normal
+  mutation path, so a later Project created with the same slug never
+  inherits it. A value that is one Project's id and another's slug names the
+  Project with that id. Creating or editing a rule or grant that names no
+  Project is refused with the value quoted; if the Project list cannot be
+  read the write is refused as unavailable (503). The action runtime holds
+  the id and creates the Task with that Project's slug, the identity
+  TaskGraph and the Agent start resolve a Project by.
 - `AutomationEvent` is `{ schemaVersion: 1; eventId; sourceId; sourceKind;
   type (for example `'github.workflow_run.completed'`); deliveryId?;
   semanticKey; occurredAt; receivedAt; fields: Readonly<Record<string,
@@ -665,7 +791,9 @@ text. The agent fetches logs itself with `gh`.
   unauthenticated budget; per rule `maxStartsPerHour` (default 2) and
   `maxActive` 1; a global `AUTOMATION_EXECUTION_LIMITS.maxConcurrentActions`;
   and a per-action budget (`maxTurns`, `maxTokens`, `maxWallRuntimeMs`)
-  enforced by `MonitorTaskTurnSupervisor`.
+  enforced by `MonitorTaskTurnSupervisor`; the wall clock is paused while a
+  person is awaited, up to a 12-hour waiting ceiling (see
+  [Operator surface](#operator-surface)).
 - **Approval.** `fullAccessGrant` is always null. A rule may pin `ask` or
   `auto`, never wider than the agent's own mode. `ask` routes to the inbox
   (phone push). Station-engine tools still need `unattendedAutoApprove` or a
@@ -718,7 +846,8 @@ episode.
 - **Ledger rows per delivery:** `duplicate`, `refused(reason)`,
   `ignored`, `no-match`, `matched`, `suppressed(reason)` (see
   [Operator surface](#operator-surface)), `started(taskId, sessionId)`, and
-  `failed` or `indeterminate`. There is no `received` row: intake records a
+  `failed`, `stopped` (a person stopped the turn) or `indeterminate`.
+  There is no `received` row: intake records a
   delivery and its evaluation in one transaction. Rows hold a bounded projection only: no payloads, no
   secrets, and no GUIDs in clear.
 - **Per-rule decisions per delivery:** `would-start`, `suppressed(reason)` or

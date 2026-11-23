@@ -16,6 +16,8 @@ import { createPortal } from 'react-dom';
  */
 export function useAnchoredPopup(
   anchorRef: RefObject<HTMLElement | null> | undefined,
+  centeredOn?: RefObject<HTMLElement | null>,
+  maxWidth = Infinity,
 ): {
   popupStyle: CSSProperties | undefined;
   renderPopup: (content: ReactNode) => ReactNode;
@@ -44,14 +46,22 @@ export function useAnchoredPopup(
       const above = Math.max(0, rect.top - top - 16);
       const below = Math.max(0, top + height - rect.bottom - 16);
       const placeAbove = above >= 160 || above >= below;
-      const popupWidth = Math.min(rect.width, Math.max(0, width - 16));
+      const popupWidth = Math.min(
+        rect.width,
+        Math.max(0, width - 16),
+        maxWidth,
+      );
+      const center = centeredOn?.current?.getBoundingClientRect();
+      const preferredLeft = center
+        ? center.left + (center.width - popupWidth) / 2
+        : rect.left;
       setPopupStyle({
         position: 'fixed',
         zIndex: 'calc(var(--layer-dock, 9200) + 1)',
         top: placeAbove ? rect.top - 8 : rect.bottom + 8,
         left: Math.max(
           left + 8,
-          Math.min(rect.left, left + width - popupWidth - 8),
+          Math.min(preferredLeft, left + width - popupWidth - 8),
         ),
         width: popupWidth,
         right: 'auto',
@@ -65,6 +75,7 @@ export function useAnchoredPopup(
     const observer =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
     observer?.observe(surface);
+    if (centeredOn?.current) observer?.observe(centeredOn.current);
     window.addEventListener('resize', place);
     window.addEventListener('scroll', place, true);
     viewport?.addEventListener('resize', place);
@@ -76,7 +87,7 @@ export function useAnchoredPopup(
       viewport?.removeEventListener('resize', place);
       viewport?.removeEventListener('scroll', place);
     };
-  }, [anchorRef]);
+  }, [anchorRef, centeredOn, maxWidth]);
   const renderPopup = (content: ReactNode) =>
     anchorRef
       ? popupStyle

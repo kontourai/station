@@ -2,11 +2,12 @@
  * Scheduler Routes — scheduled job management
  */
 
-import type {
-  SchedulerAutomationCreator,
-  SchedulerAutomationTarget,
-  SchedulerJob,
-  SchedulerManualRunReceipt,
+import {
+  SCHEDULER_JOB_NAME_TAKEN,
+  type SchedulerAutomationCreator,
+  type SchedulerAutomationTarget,
+  type SchedulerJob,
+  type SchedulerManualRunReceipt,
 } from '@kontourai/station-contracts/scheduler';
 import {
   isHostedSessionReadAuthority,
@@ -228,6 +229,8 @@ export function createSchedulerReadProjection(
         lastRunMs,
         lastSuccessAt,
         consecutiveFailures,
+        recentOutcomes,
+        pausedItself,
         ...redacted
       } = job;
       return redacted;
@@ -675,7 +678,7 @@ export function createSchedulerRoutes(
         approval?.revert();
         return admitted.refused;
       }
-      let output: Awaited<ReturnType<SchedulerService['addJob']>>;
+      let created: Awaited<ReturnType<SchedulerService['createJob']>>;
       try {
         // #2377 slice D: an untargeted job records its owner too.
         const owner = body.target ? undefined : options.jobOwner?.(c);
@@ -688,7 +691,7 @@ export function createSchedulerRoutes(
           return projectJobNotFound(c);
         }
         observeSchedulerManagement('create_job');
-        output = await schedulerService.addJob({
+        created = await schedulerService.createJob({
           ...body,
           ...(projectId === undefined ? {} : { projectId }),
           ...admitted,
@@ -699,11 +702,22 @@ export function createSchedulerRoutes(
         throw error;
       }
       approval?.commit();
-      return c.json({ success: true, data: { output } });
+      // `name` is the slug the job was stored under, which the scheduler may
+      // have picked from the display name.
+      return c.json({
+        success: true,
+        data: { output: created.output, name: created.name },
+      });
     } catch (error: unknown) {
       logger.error('Failed to add job', { error });
       return c.json(
-        { success: false, error: errorMessage(error) },
+        {
+          success: false,
+          error: errorMessage(error),
+          ...(error instanceof SchedulerJobConflictError
+            ? { code: SCHEDULER_JOB_NAME_TAKEN }
+            : {}),
+        },
         schedulerErrorStatus(error),
       );
     }

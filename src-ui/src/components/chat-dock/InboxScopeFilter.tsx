@@ -6,7 +6,7 @@ import {
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
 import { navigationStore } from '../../contexts/navigation-store';
-import { useProjects } from '../../contexts/ProjectsContext';
+import { useProjectNames } from '../../hooks/useProjectNames';
 import {
   readSnoozes,
   snoozesVersion,
@@ -29,7 +29,7 @@ export function useInboxScope(
     snoozesVersion,
     snoozesVersion,
   );
-  const { projects } = useProjects();
+  const projectNames = useProjectNames();
   const { inboxScope } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
   // #4405 (A36): the project page on screen, for the default scope.
@@ -51,7 +51,7 @@ export function useInboxScope(
                   !facts?.get(item.id)?.station &&
                   item.projectSlug === routeProject,
               )?.projectLabel ??
-              projects.find((project) => project.slug === routeProject)?.name ??
+              projectNames.get(routeProject) ??
               'Current project'
             }`
           : 'All work',
@@ -77,16 +77,26 @@ export function useInboxScope(
       items.map((item) => [item.id, stationKey(item)]),
     );
     const projectKey = (item: HomeWorkItem) =>
-      item.projectSlug
-        ? `project:${JSON.stringify([stationById.get(item.id), item.projectSlug])}`
+      item.projectSlug || item.projectLabel === 'No project'
+        ? `project:${JSON.stringify([stationById.get(item.id), item.projectSlug ?? null])}`
         : null;
+    const projectChoices = new Map<
+      string,
+      { key: string; station: string; label: string }
+    >();
     for (const item of items) {
       const key = projectKey(item);
-      if (key)
-        options.set(
-          key,
-          `Always ${item.projectLabel ?? projects.find((project) => project.slug === item.projectSlug)?.name ?? item.projectSlug} · ${options.get(stationById.get(item.id)!)}`,
-        );
+      if (!key) continue;
+      const station = stationById.get(item.id)!;
+      const label = item.projectSlug
+        ? ((station === 'station:local'
+            ? projectNames.get(item.projectSlug)
+            : undefined) ??
+          item.projectLabel ??
+          item.projectSlug)
+        : 'No project';
+      projectChoices.set(key, { key, station, label });
+      options.set(key, `Always ${label} · ${options.get(station)}`);
     }
     // A saved scope absent from this snapshot stays selected: an outage must
     // not silently change the user's filter or pretend another Station is it.
@@ -107,14 +117,17 @@ export function useInboxScope(
         : stationById.get(item.id) === scope);
     const filtered = items.filter(matches);
     const snoozed = readSnoozes(now, namespace);
-    const hiddenAttention = visible.filter(
+    const attention = visible.filter(
       (item) =>
-        !matches(item) &&
         !(snoozed[item.id] > now) &&
-        workStatus(item, now).lane === 'needsYou',
-    ).length;
+        workStatus(item, now, facts?.get(item.id)).lane === 'needsYou',
+    );
+    const hiddenAttention = attention.filter((item) => !matches(item)).length;
     return {
       items: filtered,
+      projectChoices,
+      projectNames,
+      stationCount: new Set(stationById.values()).size,
       options,
       value: inboxScope,
       // Keep the unchosen default as a display-only option on Home. The
@@ -122,11 +135,12 @@ export function useInboxScope(
       followPageHidden: !routeProject,
       effectiveValue: scope,
       hiddenAttention,
+      visibleAttention: attention.length - hiddenAttention,
       onChange: (value: string) => setDeviceSetting('inboxScope', value),
     };
   }, [
     items,
-    projects,
+    projectNames,
     visible,
     now,
     facts,

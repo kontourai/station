@@ -1,0 +1,35 @@
+{
+  "revision": "8468ad98c8dbb57fc7ff2d0d83bbdf87f1329836",
+
+  "notes": [
+    {"path":"README.md","note":"The CLI reference gained one sentence: schedule create prints output and name, and Station Control add_job returns the same data. This page does not describe scheduler create output, so nothing here changes.","inputs":["README.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The CLI reference gained one sentence: schedule create prints output and name, and Station Control add_job returns the same data. This page does not describe scheduler create output, so nothing here changes.","inputs":["docs/architecture/abstraction-review.md","docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Scheduler section unchanged in meaning; the name rule and storeNewJob comment change no stated ownership.","inputs":["docs/architecture/module-map.md","packages/contracts/src/scheduler.ts","src-server/services/__tests__/scheduler.test.ts","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/design/automations.md","note":"No naming rule here; the wider invisible-character refusal does not contradict it.","inputs":["docs/design/automations.md","packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"The CLI reference gained one sentence: schedule create prints output and name, and Station Control add_job returns the same data. This page does not describe scheduler create output, so nothing here changes.","inputs":["docs/design/cli-triage.md","docs/reference/cli.md"]},
+
+    {"path":"docs/design/terminal.md","note":"Linked from api.md for unrelated routes; nothing changes.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Routing guide; the scheduler name rule and the create output line change no route or requirement it states.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/cli.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Starter intent unchanged; only the storeNewJob comment changed.","inputs":["docs/guides/starter-work.md","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Create now lists the display-name rule as the schema and isSchedulerJobDisplayName apply it (refused characters, blank glyphs not counted, accepted joiners and direction marks) and the separate length sentence; checked against the route tests for create and edit.","inputs":["docs/reference/api.md","packages/contracts/src/scheduler.ts","src-server/routes/schemas/schema-definitions/scheduler.ts","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"schedule create prints the create answer (output and name), and add_job returns the same envelope data; checked against packages/cli surfaces.ts printFetched and the add_job handler.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/reference/config.md","note":"No config claim changes; only a comment in the scheduler changed.","inputs":["docs/reference/config.md","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Names isSchedulerJobDisplayName without restating its character list; still accurate.","inputs":["docs/reference/contracts.md","packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"No shared re-export of the scheduler contract.","inputs":["docs/reference/shared.md","packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Scheduled-jobs topic does not describe naming; still accurate.","inputs":["docs/reference/station-docs.md","packages/contracts/src/scheduler.ts"]},
+
+    {"path":"packages/cli/README.md","note":"The CLI reference gained one sentence: schedule create prints output and name, and Station Control add_job returns the same data. This page does not describe scheduler create output, so nothing here changes.","inputs":["packages/cli/README.md","docs/reference/cli.md"]}
+  ]
+}

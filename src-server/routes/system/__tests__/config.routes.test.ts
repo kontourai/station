@@ -780,6 +780,31 @@ describe('Config Routes', () => {
     expect(loader.updateAppConfig).toHaveBeenCalledOnce();
   });
 
+  test('usage sharing can be turned off while Agent configuration is unavailable', async () => {
+    const loader = createMockConfigLoader({
+      telemetryTier: { operator: 'lite' },
+    });
+    const applyConfigurationMutation = vi.fn(async () => {
+      throw new Error('Agent configuration is unavailable');
+    });
+    const app = createConfigRoutes(
+      loader as any,
+      mockLogger,
+      undefined,
+      applyConfigurationMutation,
+    );
+    const response = await app.request('/app', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ telemetryTier: { operator: 'off' } }),
+    });
+    expect(response.status).toBe(200);
+    expect(applyConfigurationMutation).not.toHaveBeenCalled();
+    expect(loader.updateAppConfig).toHaveBeenCalledWith({
+      telemetryTier: { operator: 'off' },
+    });
+  });
+
   test('GET /app includes provenance, with source "env" for injected runtime-derived keys', async () => {
     const loader = createMockConfigLoader();
     const app = createConfigRoutes(

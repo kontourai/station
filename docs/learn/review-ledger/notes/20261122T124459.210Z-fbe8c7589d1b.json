@@ -1,0 +1,11 @@
+{
+  "revision": "00552ef071b1030a5bb498d32789001d4eda94cd",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"contracts.md changed one sentence: the turn-start refusal codes now have failure kinds (the table lists them). The glossary, the integration guide and packages/contracts/AGENTS.md cite the page but none mentions those codes or failure kinds, so nothing in them changes.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md changed one sentence: the turn-start refusal codes now have failure kinds (the table lists them). The glossary, the integration guide and packages/contracts/AGENTS.md cite the page but none mentions those codes or failure kinds, so nothing in them changes.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md changed one sentence: the turn-start refusal codes now have failure kinds (the table lists them). The glossary, the integration guide and packages/contracts/AGENTS.md cite the page but none mentions those codes or failure kinds, so nothing in them changes.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

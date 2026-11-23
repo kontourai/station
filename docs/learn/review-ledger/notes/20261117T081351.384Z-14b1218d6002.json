@@ -1,0 +1,7 @@
+{
+  "revision": "c4d2a3b194c956cad05394f9ea11c53070594ccd",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Re-read against round three: overdue trackers close only on a scheduled green; trackers close only after a day-long hold and reopen quietly within a day; the overdue clock restarts only on a cron change; per-schedule isolation and the Main: Health could-not-run tracker; duplicates and non-tracker bodies excluded; the write-checkout rule scoped to two files.","inputs":["docs/guides/testing.md","scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}

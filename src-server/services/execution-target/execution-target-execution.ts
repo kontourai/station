@@ -20,10 +20,12 @@ import type {
   ResolvedWorkspaceTarget,
 } from '@kontourai/station-contracts/execution-target';
 import {
+  type ConversationHandoffEffectStatus,
   type ConversationInboxEntry,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
   type ForegroundMessageIndeterminate,
   type SetApprovalModeResult,
+  type StagedConversationHandoff,
 } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type {
@@ -44,6 +46,7 @@ import type {
   WorktreeSessionMetadata,
 } from '@kontourai/station-contracts/workspace-isolation';
 import { ClientTurnInputConflictError } from '../../providers/adapter-shape.js';
+import { assertProviderChatAttachments } from '../../providers/sessions/chat-attachments.js';
 import {
   type FullAccessGrant,
   FullAccessNotGrantedError,
@@ -55,7 +58,11 @@ import { canonicalPath } from '../../utils/path-containment.js';
 import type { InitialConversationForkContext } from '../orchestration/conversation-fork-context.js';
 import type { ConversationContextSeedPin } from '../orchestration/conversation-handoff-module.js';
 import { markCreateRequestStarting } from '../orchestration/create-request-claims.js';
-import { assertInheritedDelegationToolPolicy } from '../orchestration/delegation-tool-policy.js';
+import {
+  assertInheritedDelegationToolBinding,
+  assertInheritedDelegationToolPolicy,
+  captureInheritedDelegationToolContext,
+} from '../orchestration/delegation-tool-policy.js';
 import type { DispatchCwdAdmission } from '../orchestration/dispatch-cwd-admission.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
 import { ConversationTurnQueuedError } from '../orchestration/thread-inbox.js';
@@ -276,13 +283,18 @@ function createConversationHandoffLaunchCapability(
 const conversationHandoffIntentBrand = Symbol('conversationHandoffIntent');
 type ConversationHandoffIntent = Readonly<{
   idempotencyKey: string;
+  stagedHandoff?: StagedConversationHandoff;
   [conversationHandoffIntentBrand]: true;
 }>;
 export function createConversationHandoffIntent(
   idempotencyKey: string,
+  stagedHandoff?: StagedConversationHandoff,
 ): ConversationHandoffIntent {
   return Object.freeze({
     idempotencyKey,
+    ...(stagedHandoff
+      ? { stagedHandoff: Object.freeze({ ...stagedHandoff }) }
+      : {}),
     [conversationHandoffIntentBrand]: true as const,
   });
 }
@@ -463,6 +475,7 @@ export interface ExecutionTargetExecutionDependencies
     input: ProviderSessionStartInput,
     context?: {
       resourceAdmissionIntent?: 'queued_background';
+      pendingStartClientTurnId?: string;
     },
   ) => Promise<{ commandId: string; sessionId: string } | undefined>;
   sendTurn: (
@@ -474,6 +487,11 @@ export interface ExecutionTargetExecutionDependencies
       submissionDigest?: string | null;
       mcpPromptOrigin?: import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin;
       dispatchOrigin?: TurnDispatchOrigin;
+      /**
+       * #4568: an automatic send's respawn of a cold Session keeps background
+       * admission even when it carries a person's recorded origin.
+       */
+      resourceAdmissionIntent?: 'queued_background';
       personAuthored?: true;
     },
   ) => Promise<{ turnId: string }>;
@@ -650,6 +668,7 @@ export interface ExecutionTargetExecutionDependencies
       modelId?: string;
       idempotencyKey: string;
       messageDigest: string;
+      stagedHandoff?: StagedConversationHandoff;
     },
   ) => Promise<{
     marker: {
@@ -678,6 +697,7 @@ export interface ExecutionTargetExecutionDependencies
     },
   ) => Promise<{
     providerTurnId?: string;
+    status?: ConversationHandoffEffectStatus;
     marker?: { sessionId: string };
   } | null>;
   /** Private captured caller guard at the existing provisioning effect. */
@@ -758,7 +778,17 @@ export async function executeForegroundMessage(
   }
 
   assertInheritedDelegationToolPolicy(input.delegation);
-  let resolved = await resolveExecutionTarget(input.target, deps);
+  input = {
+    ...input,
+    delegation: captureInheritedDelegationToolContext(input.delegation),
+  };
+  let resolved = await resolveExecutionTarget(
+    input.target,
+    deps,
+    input.handoffIntent?.stagedHandoff
+      ? { stagedAgentChange: true }
+      : undefined,
+  );
   if (input.mcpPromptOrigin && resolved.access.kind !== 'current')
     throw new Error(
       'MCP prompt origin cannot be safely carried to another Station.',
@@ -787,7 +817,8 @@ export async function executeForegroundMessage(
     (!binding || !deps.resolveConversationSession)
   )
     throw new Error('The conversation changed while this message was waiting.');
-  resolved = keepConversationProvider(resolved, binding);
+  if (!input.handoffIntent?.stagedHandoff)
+    resolved = keepConversationProvider(resolved, binding);
   const initialContext = binding
     ? undefined
     : await deps.readInitialConversationContext(resolved.access, {
@@ -803,6 +834,9 @@ export async function executeForegroundMessage(
   const handoffPayloadDigest = requestedHandoff
     ? canonicalHandoffEffectDigest({
         message,
+        ...(input.handoffIntent!.stagedHandoff
+          ? { stagedHandoff: input.handoffIntent!.stagedHandoff }
+          : {}),
         attachments: input.attachments ?? [],
         ambientContext: input.ambientContext ?? '',
         provider: resolved.provider,
@@ -914,6 +948,11 @@ export async function executeForegroundMessage(
       inputDigest: submissionDigest,
     });
   }
+  if (input.handoffIntent?.stagedHandoff && !priorHandoff?.marker) {
+    const adapter = deps.getProviderAdapter(resolved.provider);
+    if (!adapter) throw new Error('The selected engine is unavailable.');
+    assertProviderChatAttachments(adapter.metadata, input.attachments ?? []);
+  }
   const preparedHandoff = requestedHandoff
     ? await deps.prepareConversationHandoff?.(resolved.access, {
         conversationId,
@@ -928,6 +967,9 @@ export async function executeForegroundMessage(
         ...(resolved.modelId ? { modelId: resolved.modelId } : {}),
         idempotencyKey: input.handoffIntent!.idempotencyKey,
         messageDigest: handoffPayloadDigest!,
+        ...(input.handoffIntent!.stagedHandoff
+          ? { stagedHandoff: input.handoffIntent!.stagedHandoff }
+          : {}),
       })
     : undefined;
   if (requestedHandoff && !preparedHandoff) {
@@ -999,6 +1041,14 @@ export async function executeForegroundMessage(
         inputDigest: submissionDigest,
       },
     );
+    if (
+      input.handoffIntent?.stagedHandoff &&
+      existingEffect?.status === 'indeterminate'
+    ) {
+      throw new ForegroundMessageTurnIdentityUnavailableError(
+        'The earlier Agent change may have started. Check its status before sending again.',
+      );
+    }
     if (existingEffect?.providerTurnId) {
       return {
         conversationId,
@@ -1213,6 +1263,14 @@ export async function executeForegroundMessage(
           }
         : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
+  if (binding && !continuation?.startRequired) {
+    const retained = deps.readSessionStartMetadata?.(
+      resolved.access,
+      sessionId,
+    )?.delegation;
+    assertInheritedDelegationToolPolicy(retained);
+    assertInheritedDelegationToolBinding(input.delegation, retained);
+  }
   const transcriptSeed =
     readProviderDurabilityProfile(
       deps.getProviderAdapter(resolved.provider)?.metadata,
@@ -1510,6 +1568,9 @@ export async function executeForegroundMessage(
         },
       };
       const startContext = {
+        ...(effectiveClientTurnId
+          ? { pendingStartClientTurnId: effectiveClientTurnId }
+          : {}),
         ...(input.automaticBackground
           ? { resourceAdmissionIntent: 'queued_background' as const }
           : {}),
@@ -1697,10 +1758,14 @@ export async function executeForegroundMessage(
       input.personAuthored ||
       submissionDigest ||
       context?.inboxPlacement ||
-      context?.dispatchOrigin
+      context?.dispatchOrigin ||
+      input.automaticBackground
       ? {
           ...(context?.dispatchOrigin
             ? { dispatchOrigin: context.dispatchOrigin }
+            : {}),
+          ...(input.automaticBackground
+            ? { resourceAdmissionIntent: 'queued_background' as const }
             : {}),
           ...(context?.inboxPlacement && submissionDigest === undefined
             ? { submissionDigest: null }

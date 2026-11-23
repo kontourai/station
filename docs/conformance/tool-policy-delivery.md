@@ -104,8 +104,9 @@ ACP is partial at its protocol `requestPermission` callback through the same
 staged evaluator. It has the unattended gap above and an additional coverage
 limit: only calls that invoke that callback and report a tool name enter the
 policy check, and the external engine reports that identity. Which calls
-invoke the callback is the engine's own configuration. For verified OpenCode
-1.x over ACP, Station sets its launch configuration from the approval mode.
+invoke the callback is the engine's own configuration. Station's approval
+mode can answer those requests without changing that configuration. For
+verified OpenCode 1.x over ACP, Station also sets the launch configuration.
 For OpenCode 2.x over ACP, host Never ask answers the engine's own requests
 without a launch overlay; confined modes remain refused
 ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)).
@@ -132,8 +133,13 @@ own allowlist. An empty group permits no tool. Station preserves the groups
 in delegated requests and binds them to the runtime attestation. Station
 refuses execution of requests or recorded sessions carrying inherited groups,
 including managed Station execution and forwarding to a peer or SSH target.
-Enabling that execution requires binding the policy to conversation reuse and
-durable intent, then proving enforcement at the actual tool effect.
+When reusing a Session, Station checks that the recorded policy retains the
+requested tool allowlist, blocked tools, and approval denial before sending a
+turn. The durable Task and foreground create claims include the requested tool
+restrictions in their identity. A retry with different restrictions conflicts
+before dispatch. An older receipt without a policy binding also conflicts with
+a policy-bound retry. Inherited groups still require proof of enforcement at
+the actual tool effect before execution can be enabled.
 
 Station Control derives the dispatch caller from its verified session.
 A child can start another child only on this Station in the caller's own
@@ -310,8 +316,8 @@ Claude's staged evaluator returns a required Ask as a `PreToolUse` permission
 ask; `canUseTool` also excludes it from automatic, guardian and session grants.
 Adapter tests exercise both callbacks, including repeated calls after a session
 answer. This is not fresh live-provider proof of every Claude permission mode;
-the earlier quota-blocked live run did not execute a tool. Codex, Muse and ACP
-cannot deliver this contract and refuse resolved Agents with nonempty Ask rules.
+the earlier quota-blocked live run did not execute a tool. Codex, Muse, ACP
+and the GitHub Copilot (SDK) preview engine cannot deliver this contract and refuse resolved Agents with nonempty Ask rules.
 Their picker labels approval as **Engine controlled**.
 
 ## Selected MCP tools

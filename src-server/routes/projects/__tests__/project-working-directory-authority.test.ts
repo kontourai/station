@@ -484,6 +484,14 @@ test('repository acquisition uses operator Git authority and returns one durable
     {},
   );
   expect(refusedRead.status).toBe(403);
+  // Clients tell the route's own operator refusal from the runtime's other
+  // 403s by this code.
+  expect(refusedRead.body).toMatchObject({
+    success: false,
+    code: 'repository_operator_required',
+    error:
+      "Repository acquisition uses this Station's Git credentials and requires its operator.",
+  });
   expect(JSON.stringify(refusedRead.body)).not.toContain(
     acquired.body.data.checkoutPath,
   );
@@ -495,16 +503,82 @@ test('repository acquisition uses operator Git authority and returns one durable
     { ...request, sourceRef: 'other' },
   );
   expect(changed.status).toBe(409);
+  const invalidId = randomUUID();
   const invalid = await f.send(
     f.operator.credential,
     'POST',
     '/repository-acquisitions',
     {
-      requestId: randomUUID(),
+      requestId: invalidId,
       sourceUrl: 'https://token@example.test/repo.git',
     },
   );
   expect(invalid.status).toBe(400);
+  // The refusal names the rule the source broke, in the validation-reasons
+  // shape the New Project form shows beside the URL, and records nothing.
+  const reason =
+    'Use an HTTPS or SSH repository URL without embedded credentials, query or fragment.';
+  expect(invalid.body).toMatchObject({
+    success: false,
+    error: reason,
+    details: { formErrors: [reason] },
+  });
+  const malformed = await f.send(
+    f.operator.credential,
+    'POST',
+    '/repository-acquisitions',
+    { requestId: randomUUID(), sourceUrl: 'not a url' },
+  );
+  expect(malformed.status).toBe(400);
+  expect(malformed.body).toMatchObject({
+    error:
+      'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.',
+  });
+  const wrongScheme = await f.send(
+    f.operator.credential,
+    'POST',
+    '/repository-acquisitions',
+    { requestId: randomUUID(), sourceUrl: 'http://example.test/repo.git' },
+  );
+  expect(wrongScheme.status).toBe(400);
+  expect(wrongScheme.body).toMatchObject({
+    error:
+      'Use an HTTPS or SSH repository URL. Other URL schemes are not accepted.',
+  });
+  for (const sourceUrl of [
+    'https://host.example/',
+    'ssh:///repo',
+    'ssh://host.example',
+  ]) {
+    const pathless = await f.send(
+      f.operator.credential,
+      'POST',
+      '/repository-acquisitions',
+      { requestId: randomUUID(), sourceUrl },
+    );
+    expect(pathless.status).toBe(400);
+    expect(pathless.body).toMatchObject({
+      error: 'Include the host and the repository path in the URL.',
+    });
+  }
+  const scpLike = await f.send(
+    f.operator.credential,
+    'POST',
+    '/repository-acquisitions',
+    { requestId: randomUUID(), sourceUrl: 'host:repo with space' },
+  );
+  expect(scpLike.status).toBe(400);
+  expect(scpLike.body).toMatchObject({
+    error:
+      'Use an HTTPS or SSH repository URL, or an absolute path to a local mirror.',
+  });
+  const unrecorded = await f.send(
+    f.operator.credential,
+    'GET',
+    `/repository-acquisitions/${invalidId}`,
+    {},
+  );
+  expect(unrecorded.status).toBe(404);
 });
 
 test('Project creation revalidates the acquisition and persists server-owned provenance', async () => {

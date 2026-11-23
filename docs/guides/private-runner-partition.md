@@ -1,8 +1,7 @@
 # Private runner partition
 
-Station's Linux CI, Android, publish, and secret-scan jobs run on
-GitHub-hosted images now that the repository is public. Container-smoke
-Playwright stays on the docker fleet listener. A private native Windows host
+Station's ordinary Linux CI, container smoke, Android, publish, and secret-scan
+jobs run on GitHub-hosted images. A private native Windows host
 remains available for interactive-workspace performance,
 the Windows Vitest diagnostic, and recovering a
 leaked physical-host capacity lease.
@@ -30,10 +29,11 @@ Both listeners retain GitHub's default `self-hosted`, `Linux`, and `X64`
 labels. Keep the existing native Windows listener and its `kontour-windows` /
 `native` routing unchanged.
 
-Ordinary Linux CI is hosted. Container smoke remains an exception: its
-[workflow](../../.github/workflows/container-smoke.yml) requests the heavy
-Linux/docker/Playwright fleet labels. Remaining native Windows
-jobs request the hardware labels (`kontour-windows`, `native`) and still
+The [container smoke workflow](../../.github/workflows/container-smoke.yml)
+runs on an Ubuntu VM with job-isolated Docker and repo-pinned Chromium. Only
+`ci-extended.yml` and `recover-terminal-capacity-owner.yml` still request the
+heavy Linux fleet labels. Remaining native Windows jobs request the hardware labels
+(`kontour-windows`, `native`) and still
 take a physical-host lease. If a Linux job is reintroduced on this host, route
 only `ci.yml`'s `fast-checks` to `fast-feedback` and every other leased Linux
 job to `heavy-host`. The lease is still required: the two listeners may run a

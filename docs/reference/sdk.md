@@ -533,6 +533,13 @@ retry, credential singleton, engine loop, or new Agent definition schema.
 
 ---
 
+Pass `stagedHandoff` to `handoffExecutionMessage` to submit the first message
+of a staged Agent change. Include the source Session ID, the approved
+`continue-from-history` policy and the target's `expectedEngine`. The SDK sends
+this to a separate route. A receiver without that route returns 404, and the
+SDK makes no second request. The [Session API](session-api.md#send-a-staged-agent-change)
+describes admission, context and retry behavior.
+
 ## Setup
 
 The React-free `/client` entry exports
@@ -561,7 +568,11 @@ Browser visibility, focus and online signals can shorten a transient backoff
 once its minimum wait has elapsed. Those signals are coalesced per wait and
 spread reconnects by 100–999 ms, within the existing retry deadline. Explicit
 `retry()` and cancellation remain immediate; cursor and authorization handling
-are unchanged.
+are unchanged. Leaving the page aborts the stream unless the browser is
+preserving it in the back-forward cache. When a stream or retry wait settles,
+the SDK removes its listeners from the host targets where it registered them.
+A browser stream needs a window that supports page lifecycle events. The SDK
+stops before reconnecting if that window has retired.
 A stream opening has a 30-second deadline until response headers arrive,
 including credential resolution. `timeoutMs` changes that opening deadline;
 `null` or `0` explicitly disables it. The deadline stops at headers, so it never
@@ -588,6 +599,11 @@ using `refetchType: 'all'`. Credential-usage queries are excluded.
 The first snapshot uses cached server status as its baseline when available;
 an absent or evicted baseline conservatively refreshes those queries. Invalid payloads and expired
 authority have no effect. All status fields are compared.
+
+An ACP connection can report `stationApprovalRequests: true` when the host
+supports applying chat approval modes to the engine's ACP permission requests.
+This covers Antigravity and other ACP engines using the standard permission
+callback. Older hosts omit the field.
 
 `useOrchestrationSessionsQuery(config?, requestScope?)` shares one list cache
 per API base and authority. SSE invalidates it promptly, while a 60-second
@@ -1950,6 +1966,11 @@ read-only. Both require a host-captured scope matching `apiBase`, rejecting abse
 or mismatched scopes before transport. Older servers return `UnifiedSearchRequestError.kind: 'unsupported'`
 on 404/405, never fabricated empty results.
 
+`filters.projectId` names a Project by its id or its slug. The server resolves
+it to the slug that Tasks and messages are scoped by, and answers `400` for one
+that names no Project rather than an empty result. A Project whose slug starts
+with another's is a different Project.
+
 Import `searchStation`, `resolveSearchOpen`, and `UnifiedSearchRequestError`
 from `@kontourai/station-sdk/client`. The root `@kontourai/station-sdk` entry
 exports `useUnifiedSearchQuery` and `unifiedSearchQueries`; its hook loads the
@@ -2129,7 +2150,9 @@ Fetches app configuration.
 
 Fetches conversation stats. Disabled when either param is undefined. The
 response's `engineMcp`, when present, is the engine's folded MCP status, which
-a reopened conversation shows in place of the live list.
+a reopened conversation shows in place of the live list. Its `engines`, when
+present, lists each engine's own usage; after an engine change the
+conversation's own token figures are absent rather than a sum across engines.
 
 ### `useConversationUsageTreeQuery(conversationId, apiBase?, config?)`
 
@@ -2492,6 +2515,13 @@ What deleting the Project removes, stops and keeps
 with a `projectId` as a Task in that Project. An older host would create a
 plain job, so offer Project schedules only on `true`.
 
+### `useSchedulerJobDisplayNameCapability()`
+
+`true` when the host advertises `schedulerJobDisplayName`: it stores a job's
+`displayName`, renames it on update, and derives the slug when a create names
+none. An older host drops the field and still answers success, so offer
+renaming only on `true`; `null` means the handshake could not be read.
+
 ### `useCreateLayoutMutation(projectSlug: string)`
 
 Creates a new layout within a project. Invalidates project layouts on success.
@@ -2538,7 +2568,9 @@ Fetches the namespace's `KnowledgeDocumentMeta[]` matching `filters`, such as
 ### `useKnowledgeScanMutation(projectSlug)`
 
 Requests the directory scan with optional extensions/include/exclude patterns
-and invalidates document/status queries. A completed file-store scan is not
+and invalidates document, status and namespace queries. The result counts
+`indexed` (new files), `alreadyIndexed` (paths already in the namespace, left
+as they were) and `skipped` (empty, oversized or failed files). A completed file-store scan is not
 proof that every root is indexed for semantic search; indexing has separate
 owners described in the [Knowledge guide](../guides/knowledge.md).
 
@@ -2738,8 +2770,9 @@ inventory when opening a child reader and derives delegate streaming state from
 the current Session's child-work facts.
 Chat opens engine children with a parent `session` and `child` selector;
 delegates use `childSession` for their own Session thread. `childTitle` labels
-the breadcrumb. These selectors choose a read-only child view and grant no
-additional authority. The pane consumes each child request once and retains
+the breadcrumb. These selectors identify the child transcript. Sending a child
+instruction separately requires current operation access, a writable parent,
+and a steer target reported for the child’s active turn. The pane consumes each child request once and retains
 an already-open parent Chat, including its draft, when the bound parent matches.
 A bound parent matches a child request when the request's reporting session
 belongs to that Chat by the Agents pane's rule (`threadInChat`), including an
@@ -2782,7 +2815,7 @@ Imperative API calls — use in event handlers, slash commands, or anywhere hook
 ### Turn steering and acknowledgement retries
 
 `steerChildWork(apiBase, { threadId, childId, turnId, input, clientInputId })`
-uses a distinct child-only command; `getChildWorkInstructions` reads its
+accepts a text string, or `{ text, attachmentRefs }` for a child whose current `controls.steer.images` is true. An image-only message uses empty text. The refs come from the current person's completed image stages. Older hosts reject this structured input. The SDK uses a distinct child-only command; `getChildWorkInstructions` reads its
 separately paged Station-attributed history. Both require the host's
 `childWorkSteering` capability. React clients can use
 `useSteerChildWorkMutation` and `useChildWorkInstructionsQuery`. Retain the
@@ -3690,6 +3723,32 @@ host-owned approval are separate checks; an arbitrary Station credential is
 not sufficient for every lifecycle operation. A recorded trusted grant also
 does not prove runtime activation: inspect reconciliation and current status.
 
+An install whose runtime activation does not complete (it outruns the
+server's deadline, or fails after saving) is saved but not active, and nothing
+activates it on its own. The server answers HTTP `202` with `success: false`
+and `configurationActivation.status: "pending"`, whose `reason` says to recover
+the plugin (or, rarely, `lifecycle.status: "pending"` when the selection is
+recorded but not yet listed). The mutation resolves with that result rather
+than rejecting, and refreshes the plugin queries. Read it with
+`pluginLifecycleUnapplied(result)` from `@kontourai/station-contracts/plugin`,
+which returns `{ kind: 'activation' }` or `{ kind: 'projection' }`, or
+`undefined` for an applied install. The plugin's row then reads
+`installationReadiness: { state: "pending", recovery: "review" }` until a person
+completes [retained plugin recovery](#retained-plugin-recovery). Do not replay
+the install. Its trusted permissions stay in `pendingConsent`, but their host
+approval refuses a plugin that is not ready, so ask for them after recovery.
+The activation kind also carries the receipt's `recovery`: `required` for a
+plugin activation nothing resumes, `none` when Station finishes on its own (a
+removal, or a legacy git update), and `unknown` for a server that predates the
+field, where the plugin's `installationReadiness` decides. Branch on it, not on
+the reason text. `usePluginUpdateMutation` resolves a saved update the same
+way. `usePluginRemoveMutation` resolves a saved removal too;
+a removal activates nothing, so Station's next reconciliation finishes
+unloading it without any action. `requestPluginRegistryInstallAction(id,
+'install')` reads the registry install the same way.
+`readPluginLifecycleResponse(status, body)` is the HTTP-level reading these
+clients share: `applied`, `saved` (with `unapplied`), or `refused`.
+
 ```tsx
 const { mutate } = usePluginInstallMutation();
 mutate({
@@ -3776,15 +3835,16 @@ const result = await recoverPlugin(apiBase, name, {
     })),
   },
 }, requestOptions);
-// A 202 receipt with configurationActivation.status === 'pending' is retained
-// work awaiting activation. It is not completed installation or a retry signal.
+// A 202 receipt with configurationActivation.status === 'pending' means the
+// recovery was saved but did not activate the plugin; it still needs recovery.
+// It is not a completed installation or an automatic retry signal.
 ```
 
 Recovery continues retained bytes and their data scope; it does not fetch missing
 dependencies or adopt unrelated installations. A changed selection/decision yields
 HTTP 409; unavailable grant evidence can yield 503. Surface the error and require
-a fresh preview and decision. `PluginRecoveryResult` preserves the existing
-`PluginInstallResult` plus the acceptance-time `configurationActivation` receipt.
+a fresh preview and decision. `PluginRecoveryResult` is `PluginInstallResult`,
+whose optional `configurationActivation` is the acceptance-time receipt.
 The mutation disables retries and refreshes plugin, recovery, layout, Agent, and
 Project queries after an accepted response, including pending activation. A network
 failure does not prove that the server had no effect; inspect current state before
@@ -5987,8 +6047,12 @@ own these stages.
 
 ## Package lifecycle results
 
-`listPlugins` also reports optional `installationReadiness`: `ready`, `pending`
-(with `recovery: "review"`), or `unavailable`. Absence preserves compatibility
+`listPlugins` also reports optional `installationReadiness`: `ready`,
+`pending` (with `recovery: "review"`: the plugin is not active), or `unavailable`.
+A row also carries `activationInFlight: true` while this server is still
+activating the plugin: it settles on its own, so offer no recovery and read the
+list again until the flag is gone, for no longer than the activation deadline
+plus a margin (the Plugins view stops at 15 seconds). Absence preserves compatibility
 with older servers; it is not a new readiness proof. Keep pending rows visible,
 but do not load their bundles or enable their actions. The server sets
 `hasBundle: false` until readiness is established. Project Pane availability
@@ -7267,10 +7331,13 @@ for expiry, source/Device revalidation and remaining qualification limits.
 `createAutomationRule`, `updateAutomationRule(apiBase, id, { ...rule,
 expectedFingerprint })`, `enableAutomationRule(apiBase, id,
 expectedFingerprint)`, `disableAutomationRule` and `deleteAutomationRule`.
-Each accepts `ClientRequestOptions`.
+Each accepts `ClientRequestOptions`. A rule's `action.projectId` and a grant's
+`projectId` may be a Project's id or slug; the returned rule carries the id.
 
 `listAutomationDeliveries` returns `AutomationDeliveryPage` with `deliveries`
-and `polls`, including partial coverage and source failures. Each delivery may
+and `polls`, including partial coverage and source failures. A delivery's
+`outcome` is `stopped` when a person stopped the turn it started; the
+client does not validate outcomes, so an older client lists the value as is. Each delivery may
 carry `decisions`: one `AutomationRuleDecision` per matched `observe` or `live`
 rule with its mode, outcome (`would-start`, `suppressed` with a reason, or
 `intent-retained`) and a bounded action snapshot. `listAutomationRules` and

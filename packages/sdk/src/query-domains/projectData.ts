@@ -546,6 +546,10 @@ export function useKnowledgeScanMutation(projectSlug: string) {
       queryClient.invalidateQueries({
         queryKey: ['knowledge', 'status', projectSlug],
       });
+      // A first scan can register the project's `code` namespace.
+      queryClient.invalidateQueries({
+        queryKey: ['knowledge', 'namespaces', projectSlug],
+      });
     },
   });
 }

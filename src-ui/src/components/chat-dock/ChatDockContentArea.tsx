@@ -75,6 +75,7 @@ interface ChatDockContentAreaProps {
     typeof ChatDockBody
   >['toolPolicyDelivery'];
   availableModels: ComponentProps<typeof ChatDockBody>['availableModels'];
+  stagedAgentChange?: ComponentProps<typeof ChatDockBody>['stagedAgentChange'];
   executionModels?: ComponentProps<typeof ChatDockBody>['executionModels'];
   onExecutionModelSelect?: ComponentProps<
     typeof ChatDockBody
@@ -145,6 +146,7 @@ function ChatDockContentAreaImpl({
   stationApprovalModeDefault,
   toolPolicyDelivery,
   availableModels,
+  stagedAgentChange,
   executionModels,
   onExecutionModelSelect,
   modelsLoading,
@@ -286,6 +288,7 @@ function ChatDockContentAreaImpl({
               stationApprovalModeDefault={stationApprovalModeDefault}
               toolPolicyDelivery={toolPolicyDelivery}
               availableModels={availableModels}
+              stagedAgentChange={stagedAgentChange}
               executionModels={executionModels}
               onExecutionModelSelect={onExecutionModelSelect}
               modelsLoading={modelsLoading}

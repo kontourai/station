@@ -44,6 +44,7 @@ import {
 } from '../../security/managed-engine-limits.js';
 import { prepareManagedAcpWorkspace } from '../../services/acp/managed-acp-workspace.js';
 import {
+  OPENCODE_SESSION_MOVE_ACTION,
   type OpenCodeNativeFloor,
   type OpenCodeNativeRule,
   type OpenCodeSavedApproval,
@@ -54,8 +55,10 @@ import {
 import {
   findOpenCodeProjectCode as defaultFindProjectCode,
   openCodeProjectCodeRefusal,
+  realish,
 } from '../../services/acp/opencode-project-config.js';
 import { openCodeSteerCustody } from '../../services/acp/opencode-steer-custody.js';
+import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import {
   sharedUntrustedContentLedger,
   untrustedContentAncestry,
@@ -109,7 +112,7 @@ import {
 } from './engine-command-dispatch.js';
 import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { nativeResumeBindingKey } from './native-resume-binding.js';
-import { readString } from './opencode-native-events.js';
+import { openCodeMcpStatus, readString } from './opencode-native-events.js';
 import {
   type OpenCodeNativeMcp,
   openCodeMcpDigest,
@@ -170,6 +173,16 @@ const ENGINE_NAME = 'OpenCode';
  * given back and the server idles as usual.
  */
 const PREFLIGHT_LEASE_HOLD_MS = 60_000;
+
+function nativeSessionRules(
+  floor: OpenCodeNativeFloor | undefined,
+  projectBound: boolean,
+): OpenCodeNativeRule[] {
+  if (floor === 'confined') return openCodeNativeApprovalRules(floor);
+  return projectBound
+    ? [{ action: OPENCODE_SESSION_MOVE_ACTION, resource: '*', effect: 'deny' }]
+    : [];
+}
 
 /** What the server a plan runs on is keyed by, less its tool servers. */
 function nativePlanKey(plan: NativePlan): string {
@@ -267,6 +280,7 @@ interface NativeRecord {
   readonly lease: OpenCodeServeLease;
   session: ProviderSession;
   readonly cursor: OpenCodeResumeCursor;
+  readonly projectBound: boolean;
   /** The OpenCode agent the session runs (undefined: OpenCode's default). */
   agent: string | undefined;
   /**
@@ -349,6 +363,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       lease: OpenCodeServeLease;
       planKey: string;
       timer: ReturnType<typeof setTimeout>;
+      detachAbort?: () => void;
     }
   >();
   private readonly inner: ProviderAdapterShape;
@@ -724,8 +739,10 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
   }
 
   async preflightStart(input: ProviderSessionStartInput): Promise<void> {
+    input.signal?.throwIfAborted();
     const config = await this.connection(input);
     const plan = await this.nativePlan(input, config);
+    input.signal?.throwIfAborted();
     if (!plan) {
       await this.inner.preflightStart?.(this.acpStartInput(input, config));
       return;
@@ -744,29 +761,33 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       await this.assertInspectableProjectConfig(plan.cwd);
     // The governance check needs no tool servers; it reads from a server
     // that has none added.
+    input.signal?.throwIfAborted();
     const lease = await this.verifiedLease(
       plan,
       input.threadId,
       openCodeMcpDigest([]),
     );
     if (!lease) {
+      input.signal?.throwIfAborted();
       await this.inner.preflightStart?.(this.acpStartInput(input, config));
       return;
     }
     try {
+      input.signal?.throwIfAborted();
       await this.assertGovernable(
         lease.client,
         lease.cwd,
         floor,
         agent ?? 'build',
       );
+      input.signal?.throwIfAborted();
     } catch (error) {
       lease.release();
       throw error;
     }
     // Nothing was added to it: the start takes it over for its own tool
     // servers (`startLease`) instead of starting a second server.
-    this.keepPreflightLease(input.threadId, plan, lease);
+    this.keepPreflightLease(input.threadId, plan, lease, input.signal);
   }
 
   async startSession(
@@ -874,6 +895,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     if (!held) return undefined;
     this.preflightLeases.delete(threadId);
     clearTimeout(held.timer);
+    held.detachAbort?.();
     return held;
   }
 
@@ -882,18 +904,23 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     threadId: string,
     plan: NativePlan,
     lease: OpenCodeServeLease,
+    signal?: AbortSignal,
   ): void {
     this.takePreflightLease(threadId)?.lease.release();
-    const timer = setTimeout(() => {
+    const release = () => {
       if (this.preflightLeases.get(threadId)?.lease !== lease) return;
-      this.preflightLeases.delete(threadId);
-      lease.release();
-    }, PREFLIGHT_LEASE_HOLD_MS);
+      this.takePreflightLease(threadId)?.lease.release();
+    };
+    const timer = setTimeout(release, PREFLIGHT_LEASE_HOLD_MS);
     timer.unref?.();
+    signal?.addEventListener('abort', release, { once: true });
     this.preflightLeases.set(threadId, {
       lease,
       planKey: nativePlanKey(plan),
       timer,
+      ...(signal
+        ? { detachAbort: () => signal.removeEventListener('abort', release) }
+        : {}),
     });
   }
 
@@ -914,6 +941,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     mcp: OpenCodeNativeMcp,
   ): Promise<void> {
     const failed: string[] = [];
+    const registered = new Set<string>();
     for (const server of mcp.servers) {
       try {
         await client.request(
@@ -921,18 +949,39 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           `/api/experimental/mcp/${encodeURIComponent(server.name)}`,
           { config: server.config },
         );
+        registered.add(server.name);
       } catch (error) {
         failed.push(
           `${server.name} (${error instanceof OpenCodeServeHttpError ? error.status : 'no answer'})`,
         );
       }
     }
+    const deadline = Date.now() + 2_000;
+    while (registered.size > 0 && Date.now() < deadline) {
+      try {
+        const answer = await client.request<{ data?: unknown }>(
+          'GET',
+          '/api/mcp',
+          undefined,
+          { timeoutMs: Math.max(1, deadline - Date.now()) },
+        );
+        for (const { name, state } of openCodeMcpStatus(answer?.data)) {
+          if (state === 'starting' || !registered.delete(name)) continue;
+          if (state !== 'ready') failed.push(`${name} (${state})`);
+        }
+      } catch {
+        break;
+      }
+      if (registered.size > 0) await sleep(100);
+    }
+    for (const name of registered)
+      failed.push(`${name} (readiness unconfirmed)`);
     const skipped = mcp.undelivered.map((entry) => entry.id ?? entry.reason);
     if (failed.length > 0 || skipped.length > 0)
       this.warn(
         threadId,
         'OPENCODE_TOOL_SERVERS_UNDELIVERED',
-        `Some tool servers were not given to OpenCode: ${[...failed, ...skipped].join(', ')}.`,
+        `Some tool servers could not be confirmed ready in OpenCode: ${[...failed, ...skipped].join(', ')}.`,
       );
   }
 
@@ -1065,6 +1114,9 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     lease: OpenCodeServeLease,
     mcp: OpenCodeNativeMcp,
   ): Promise<ProviderSession> {
+    const projectBound =
+      typeof input.metadata?.[SESSION_LOCAL_PROJECT_ID_METADATA_KEY] ===
+      'string';
     const cursor = isOpenCodeResumeCursor(input.resumeCursor)
       ? input.resumeCursor
       : undefined;
@@ -1110,6 +1162,10 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         readString(ownRecord(ownRecord(existing?.data)?.location)?.directory) ??
         cwd;
     }
+    if (projectBound && realish(cwd) !== realish(lease.cwd))
+      throw new Error(
+        'OpenCode moved this session outside its Station Project workspace.',
+      );
     // A governed session runs a named agent, whose denies its rules keep.
     const sessionAgent = agent ?? stored ?? (floor ? 'build' : undefined);
     if (floor && sessionAgent && !isOpenCodeGovernedMode(sessionAgent))
@@ -1122,7 +1178,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       floor === 'confined' && sessionAgent
         ? await this.assertGovernable(lease.client, cwd, floor, sessionAgent)
         : undefined;
-    const permissions = floor ? openCodeNativeApprovalRules(floor) : undefined;
+    const permissions = nativeSessionRules(floor, projectBound);
     const model = readModelRef(input.modelId);
     if (input.modelId && !cursor)
       await this.assertModel(lease.client, input.modelId);
@@ -1138,7 +1194,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       // `permissions: null` (the old rules stay; 2.3.0 mode-switch capture),
       // so a start without a mode sends `[]`, which clears them.
       await lease.client.request('PATCH', `/api/session/${sessionId}`, {
-        permissions: permissions ?? [],
+        permissions,
       });
     } else {
       const created = await lease.client.request<{ data?: unknown }>(
@@ -1148,7 +1204,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           location: { directory: lease.cwd },
           ...(sessionAgent ? { agent: sessionAgent } : {}),
           ...(model ? { model } : {}),
-          ...(permissions && permissions.length > 0 ? { permissions } : {}),
+          ...(permissions.length > 0 ? { permissions } : {}),
         },
       );
       const id = readString(ownRecord(created?.data)?.id);
@@ -1246,7 +1302,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
       cursor: resumeCursor,
       agent: sessionAgent,
       cwd,
-      rules: permissions ?? [],
+      rules: permissions,
+      projectBound,
       dirty: false,
       busy: false,
       serverIsSessions: mcp.sessionScoped,
@@ -1314,6 +1371,16 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
   ): Promise<void> {
     if (this.native.get(threadId) !== record) return;
     const own = move.sessionId === record.cursor.sessionId;
+    if (own && record.projectBound && move.directory !== realish(record.cwd)) {
+      this.warn(
+        threadId,
+        'OPENCODE_PROJECT_WORKSPACE_MOVED',
+        'Station stopped OpenCode after it moved this session outside its Project workspace.',
+        { directory: move.directory },
+      );
+      await this.stopSession(threadId);
+      return;
+    }
     if (own) {
       record.cwd = move.directory;
       record.cursor.cwd = move.directory;
@@ -1422,6 +1489,14 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     record.native.assertIdle();
     record.busy = true;
     try {
+      const configured = (await this.options.getConnections()).some(
+        (connection) => connection.id === record.cursor.connectionId,
+      );
+      if (!configured || this.native.get(input.threadId) !== record)
+        throw new SendTurnRefusedError(
+          'This engine is disconnected. Continue with another agent.',
+          'session_gone',
+        );
       return await this.sendNativeTurn(
         record,
         input,
@@ -1639,7 +1714,7 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
           ? await this.assertGovernable(client, record.cwd, floor, sessionAgent)
           : await this.agentRules(client, sessionAgent)
         : undefined;
-    const rules = floor ? openCodeNativeApprovalRules(floor) : [];
+    const rules = nativeSessionRules(floor, record.projectBound);
     if (sessionAgent && agentChanged) {
       try {
         await client.request('POST', `/api/session/${sessionId}/agent`, {

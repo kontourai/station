@@ -1,0 +1,11 @@
+{
+  "revision": "4d3758ceca8f8de385425b7df58ae80670443863",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Reviewed the Gallery testing, motion and telemetry references against the child-chat capture update. The 390px and 412px child scenes now hit-test Back, Restore size and Chat actions, check New chat inside the menu, and restore focus before capture. All six child screens passed the targeted capture and report-only pixel comparison completed. The existing motion and telemetry scenarios and snapshot baseline were untouched.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the Gallery testing, motion and telemetry references against the child-chat capture update. The 390px and 412px child scenes now hit-test Back, Restore size and Chat actions, check New chat inside the menu, and restore focus before capture. All six child screens passed the targeted capture and report-only pixel comparison completed. The existing motion and telemetry scenarios and snapshot baseline were untouched.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the Gallery testing, motion and telemetry references against the child-chat capture update. The 390px and 412px child scenes now hit-test Back, Restore size and Chat actions, check New chat inside the menu, and restore focus before capture. All six child screens passed the targeted capture and report-only pixel comparison completed. The existing motion and telemetry scenarios and snapshot baseline were untouched.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

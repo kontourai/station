@@ -28,3 +28,18 @@ export function localProjectIdFor(
     listed.find((project) => project.slug === identity)?.id
   );
 }
+
+/**
+ * The slug of the Project `identity` (an id or a slug) names, if any, with
+ * the same precedence as {@link localProjectIdFor}.
+ */
+export function projectSlugFor(
+  projects: ProjectIdentityLookup,
+  identity: string,
+): string | undefined {
+  const listed = projects.listProjects();
+  return (
+    listed.find((project) => project.id === identity)?.slug ??
+    listed.find((project) => project.slug === identity)?.slug
+  );
+}

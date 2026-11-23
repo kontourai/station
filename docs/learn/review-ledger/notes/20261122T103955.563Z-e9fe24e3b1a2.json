@@ -1,0 +1,7 @@
+{
+  "revision": "70659bd2ae0c0e2e09f10722eea772e2d5b3db5c",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Its builtins.ts claims are about /compact; this change edits only the /stats command's rendering, so the /compact claims still hold.","inputs":["docs/guides/agent-efficiency.md","src-ui/src/slashCommands/builtins.ts"]}
+  ]
+}

@@ -460,7 +460,8 @@ export function createAgentScheduleRoutes(deps: AgentScheduleRoutesDeps) {
         return proposalRefusal(c, 'job_proposal_project_out_of_scope', 403);
     }
     const proposedJob: AgentJobProposalJob = {
-      name: job.data.name,
+      // The proposal body requires a slug; the create schema's is optional.
+      name: parsed.data.name,
       schedule: job.data.schedule as AgentJobProposalJob['schedule'],
       prompt: job.data.prompt,
       ...(job.data.agent ? { agent: job.data.agent } : {}),

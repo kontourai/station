@@ -1,0 +1,9 @@
+{
+  "revision": "1f969537d3735b7e015ed450225c0c03e4b9672e",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked the New Project repository steps: a 403 on the first request now also keeps the form, a refused reason clears when any source field changes, and the fields use the shared field spacing. The described steps still hold.","inputs":["src-ui/src/components/modals/NewProjectRepositorySource.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the New Project repository steps: a 403 on the first request now also keeps the form, a refused reason clears when any source field changes, and the fields use the shared field spacing. The described steps still hold.","inputs":["src-ui/src/components/modals/NewProjectRepositorySource.tsx"]}
+  ]
+}

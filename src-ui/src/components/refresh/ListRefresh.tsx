@@ -191,10 +191,12 @@ export function ListRefreshStatus({
 export function ListRefreshActions({
   label,
   refreshLabel,
+  direct = false,
   refresh,
 }: {
   label: string;
   refreshLabel: string;
+  direct?: boolean;
   refresh: ListRefresh;
 }) {
   const coarsePointer = useCoarsePointer();
@@ -203,17 +205,29 @@ export function ListRefreshActions({
       className="list-refresh__actions"
       data-coarse-pointer={coarsePointer || undefined}
     >
-      <ActionOverflowMenu
-        label={label}
-        actions={[
-          {
-            key: 'refresh',
-            label: refreshLabel,
-            glyph: <RefreshGlyph />,
-            onSelect: () => refresh.run(),
-          },
-        ]}
-      />
+      {direct ? (
+        <button
+          type="button"
+          className="app-toolbar__icon-btn"
+          aria-label={refreshLabel}
+          title={refreshLabel}
+          onClick={() => void refresh.run()}
+        >
+          <RefreshGlyph />
+        </button>
+      ) : (
+        <ActionOverflowMenu
+          label={label}
+          actions={[
+            {
+              key: 'refresh',
+              label: refreshLabel,
+              glyph: <RefreshGlyph />,
+              onSelect: () => refresh.run(),
+            },
+          ]}
+        />
+      )}
     </div>
   );
 }

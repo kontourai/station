@@ -1,0 +1,7 @@
+{
+  "revision": "fa122514b3e9477e636a8586a9e551bb9b393aac",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"mobile-chat-composer.spec.ts gained a mocked-shell test of the #4568 engine-start capacity badge (held /chat send, read-model engineStartWait, session-projection update). The matrix row's description of this spec (mocked Home/composer reachability) still holds; no coverage claim changes.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/mobile-chat-composer.spec.ts"]}
+  ]
+}

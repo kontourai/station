@@ -1,0 +1,15 @@
+{
+  "revision": "68d8bc403f08de0c1371a676eb48fbf9a82193c0",
+
+  "notes": [
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Added CONVERSATION_FORK_REFUSAL_CODES; documented in the contracts orchestration row. No other contract claim changes.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Added CONVERSATION_FORK_REFUSAL_CODES; documented in the contracts orchestration row. No other contract claim changes.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Added CONVERSATION_FORK_REFUSAL_CODES; documented in the contracts orchestration row. No other contract claim changes.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Added CONVERSATION_FORK_REFUSAL_CODES; documented in the contracts orchestration row. No other contract claim changes.","inputs":["packages/contracts/src/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added CONVERSATION_FORK_REFUSAL_CODES; documented in the contracts orchestration row. No other contract claim changes.","inputs":["packages/contracts/src/orchestration.ts"]}
+  ]
+}

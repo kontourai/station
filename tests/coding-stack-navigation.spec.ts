@@ -367,8 +367,14 @@ test.describe('Coding stack — the dock is left as the reader had it', () => {
     await page.evaluate(() => (document.activeElement as HTMLElement)?.blur());
     await page.keyboard.press(`${primary}+KeyM`);
     await expect(dock).toHaveClass(/is-maximized/);
-    await expect.poll(savedDock).toContain('"maximized":true');
+    // The maximize is this page's (#5397): its URL carries it, and the
+    // device's saved arrangement does not, so a freshly loaded page opens
+    // the dock at its normal size.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.get('maximize'))
+      .toBe('true');
     const before = await savedDock();
+    expect(before).not.toContain('"maximized":true');
 
     // Into the Coding layout by its layout chip, as a reader would.
     await page

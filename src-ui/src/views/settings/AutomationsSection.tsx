@@ -1,4 +1,5 @@
 import type {
+  AutomationActionsUnavailable,
   AutomationDeliveryRecord,
   AutomationEpisodeRecord,
   AutomationRule,
@@ -87,16 +88,72 @@ function AutomationList<T>({
   );
 }
 
+const STALLED: Record<AutomationActionsUnavailable['reason'], string> = {
+  'projects-unreadable':
+    'Automation Tasks are paused: Station cannot read its Projects. Pending runs start once it can.',
+  unavailable:
+    'Automation Tasks are paused: Station could not check their rules. Pending runs start once it can.',
+};
+
+/** A rule's effective approval posture, in a few words. */
+function rulePosture(rule: AutomationRule): string | undefined {
+  if (rule.action.kind !== 'dispatch-task') return undefined;
+  if (rule.action.approvalMode === 'auto') return 'Approves its own tool calls';
+  if (rule.action.approvalMode === 'connection-default')
+    return "Agent's own approval settings";
+  return 'Asks before acting';
+}
+
+/** Whether a Retry sent now could start the Agent. */
+function retryCanStart(
+  episode: AutomationEpisodeRecord,
+  mayAct: boolean,
+): boolean {
+  return (
+    mayAct &&
+    !episode.retryNeedsRuleChange &&
+    episode.startFailure !== 'task-not-canceled'
+  );
+}
+
+/** Why the Agent did not start, and what helps now. */
+function startFailedNote(
+  episode: AutomationEpisodeRecord,
+  rule: AutomationRule | undefined,
+  mayAct: boolean,
+): string {
+  const agent = rule?.action.agentId ?? '';
+  if (episode.startFailure === 'task-not-canceled')
+    return 'The Agent did not start, and its Task could not be canceled. Cancel that Task before retrying.';
+  if (episode.retryNeedsRuleChange)
+    return episode.startFailure === 'agent-own-approval-required'
+      ? `Agent ${agent} uses its own approval settings; set the rule's approval to the Agent's own, or change its Agent.`
+      : `Agent ${agent} cannot take this approval setting. Retry returns when you change the rule's setting or its Agent.`;
+  const why = 'The Agent did not start, so nothing ran.';
+  return mayAct
+    ? `${why} Retry is available.`
+    : `${why} The rule is not live, so it cannot be retried.`;
+}
+
 function EpisodeRow({
   episode,
   rules,
+  sources,
 }: {
   episode: AutomationEpisodeRecord;
   rules: readonly AutomationRule[] | undefined;
+  sources: readonly AutomationSourceProjection[] | undefined;
 }) {
   const retry = useRetryAutomationEpisode();
-  const ruleName =
-    rules?.find((rule) => rule.id === episode.ruleId)?.name ?? episode.ruleId;
+  const rule = rules?.find((candidate) => candidate.id === episode.ruleId);
+  const ruleName = rule?.name ?? episode.ruleId;
+  const source = sources?.find((candidate) => candidate.id === rule?.sourceId);
+  // The rule may act: live, on an enabled source that is not revoked. The
+  // server still checks the grant when the retry is sent.
+  const mayAct =
+    rule?.mode === 'live' &&
+    source?.enabled === true &&
+    source.revokedAt === undefined;
   return (
     <li className="automations__item">
       <span>
@@ -107,7 +164,13 @@ function EpisodeRow({
         status={episode.state}
         tone={episode.state === 'open' ? 'neutral' : 'caution'}
       />
-      {episode.state === 'exhausted' ? (
+      {episode.startFailed ? (
+        <span className="automations__note" role="status">
+          {startFailedNote(episode, rule, mayAct)}
+        </span>
+      ) : null}
+      {episode.state === 'exhausted' ||
+      (episode.startFailed && retryCanStart(episode, mayAct)) ? (
         <Button
           disabled={retry.isPending}
           aria-label={`Retry episode ${episode.episodeId} of ${ruleName}`}
@@ -189,6 +252,7 @@ export function AutomationsSection() {
                 <li key={rule.id} className="automations__item">
                   <span>
                     {rule.name} · {rule.action.kind}
+                    {rulePosture(rule) ? ` · ${rulePosture(rule)}` : ''}
                   </span>
                   <StatusBadge
                     status={rule.mode}
@@ -197,6 +261,14 @@ export function AutomationsSection() {
                 </li>
               )}
             />
+            {episodes.data?.actionsUnavailable ? (
+              <p className="automations__note" role="status">
+                {STALLED[episodes.data.actionsUnavailable.reason]}
+                {episodes.data.actionsUnavailable.detail
+                  ? ` ${episodes.data.actionsUnavailable.detail}`
+                  : ''}
+              </p>
+            ) : null}
             <AutomationList<AutomationEpisodeRecord>
               id="episodes"
               title="Open episodes"
@@ -208,6 +280,7 @@ export function AutomationsSection() {
                   key={`${episode.ruleId}:${episode.episodeId}`}
                   episode={episode}
                   rules={rules.data?.rules}
+                  sources={sources.data?.sources}
                 />
               )}
             />
@@ -224,7 +297,9 @@ export function AutomationsSection() {
                     status={
                       delivery.reason
                         ? `${delivery.outcome} · ${delivery.reason}`
-                        : delivery.outcome
+                        : delivery.outcome === 'stopped'
+                          ? 'stopped by a person'
+                          : delivery.outcome
                     }
                     tone={
                       delivery.outcome === 'started'

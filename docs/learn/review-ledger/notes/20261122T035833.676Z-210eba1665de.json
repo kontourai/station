@@ -1,0 +1,15 @@
+{
+  "revision": "73558d0066c5226b32d8728da7ff6dfe65713a67",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Last change to this file moved one doc comment back above ConversationContextBoundaryNotFoundError (it had been displaced by the FORK_SOURCE_MAX_* constants); no behavior changed, so no cited claim changes.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Last change to this file moved one doc comment back above ConversationContextBoundaryNotFoundError (it had been displaced by the FORK_SOURCE_MAX_* constants); no behavior changed, so no cited claim changes.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Last change to this file moved one doc comment back above ConversationContextBoundaryNotFoundError (it had been displaced by the FORK_SOURCE_MAX_* constants); no behavior changed, so no cited claim changes.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Last change to this file moved one doc comment back above ConversationContextBoundaryNotFoundError (it had been displaced by the FORK_SOURCE_MAX_* constants); no behavior changed, so no cited claim changes.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Last change to this file moved one doc comment back above ConversationContextBoundaryNotFoundError (it had been displaced by the FORK_SOURCE_MAX_* constants); no behavior changed, so no cited claim changes.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]}
+  ]
+}

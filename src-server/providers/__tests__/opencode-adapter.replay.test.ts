@@ -628,6 +628,7 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
   test.each([204, 500])(
     'a late steer is withdrawn or blocks successor work when withdrawal fails (%s)',
     async (deleteStatus) => {
+      let releaseWithdrawal = false;
       const delivered = (record: OpenCodeReplayRecord) =>
         (record.kind === 'http' &&
           (JSON.stringify(record.body ?? null).includes('STEER-delivered') ||
@@ -645,6 +646,10 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
           scenario: 'steer',
           omit: delivered,
           ungated: (record) => record.method === 'DELETE',
+          holdUntil: (record) =>
+            record.method === 'DELETE' && record.path?.includes('/inbox/')
+              ? () => releaseWithdrawal
+              : undefined,
           respond: (request) =>
             request.method === 'DELETE' && request.path.includes('/inbox/')
               ? { status: deleteStatus }
@@ -674,6 +679,11 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
         'accept',
       );
       await h.waitFor(completedFor(turnId));
+      try {
+        await expect(h.turn('next')).rejects.toMatchObject({ kind: 'busy' });
+      } finally {
+        releaseWithdrawal = true;
+      }
       if (deleteStatus === 204)
         expect(await outcome).toBeInstanceOf(ProviderTurnEndedError);
       else expect(String(await outcome)).toContain('withdrawal is unconfirmed');
@@ -966,7 +976,16 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
   const asStationControl = (record: OpenCodeReplayRecord) =>
     record.path === '/api/experimental/mcp/station-echo'
       ? { ...record, path: '/api/experimental/mcp/station-control' }
-      : record;
+      : record.path === '/api/mcp' && record.method === 'GET'
+        ? {
+            ...record,
+            response: {
+              data: [
+                { name: 'station-control', status: { status: 'connected' } },
+              ],
+            },
+          }
+        : record;
 
   /** Station's tool servers for a thread: the built-in station-control, by HTTP. */
   function stationTools(tokens: Record<string, string>) {
@@ -1003,8 +1022,28 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
 
   test("a session's Station tool servers are added to its OpenCode server before the session, and their credentials go nowhere else", async () => {
     const tools = stationTools({ 'thread-1': 'tok-session-one' });
+    let statusReads = 0;
     const h = await setup(
-      { scenario: 'mcp-add', rewrite: asStationControl },
+      {
+        scenario: 'mcp-add',
+        rewrite: asStationControl,
+        respond: (request) => {
+          if (request.method !== 'GET' || request.path !== '/api/mcp') return;
+          return {
+            status: 200,
+            body: {
+              data: [
+                {
+                  name: 'station-control',
+                  status: {
+                    status: ++statusReads === 1 ? 'pending' : 'connected',
+                  },
+                },
+              ],
+            },
+          };
+        },
+      },
       tools.options,
     );
     await h.start();
@@ -1032,6 +1071,11 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     expect(
       writes.indexOf('PUT /api/experimental/mcp/station-control'),
     ).toBeLessThan(writes.indexOf('POST /api/session'));
+    expect(
+      writes
+        .slice(0, writes.indexOf('POST /api/session'))
+        .filter((write) => write === 'GET /api/mcp'),
+    ).toHaveLength(2);
     // Its server is keyed by the session's tool servers.
     expect(h.leaser.acquired[0]?.mcpDigest).not.toBe(openCodeMcpDigest([]));
     const { turnId } = await h.turn('DO_MCP');
@@ -1604,6 +1648,23 @@ describe('OpenCodeAdapter over the native transport (2.3.0 replay)', () => {
     const session = await h.adapter.startSession(input);
     expect(session.resumeCursor).toMatchObject({ transport: 'native' });
     expect(h.leaser.acquired).toHaveLength(2);
+  });
+
+  test('cancelling a governed preflight releases its retained serve lease', async () => {
+    const h = await setup({ scenario: 'basic' });
+    const cancel = new AbortController();
+    await h.adapter.preflightStart({
+      threadId: 'thread-1',
+      provider: 'opencode',
+      cwd: '/replay/proj',
+      metadata: { connectionId: 'opencode' },
+      modelOptions: { approvalMode: 'ask' },
+      signal: cancel.signal,
+    });
+    expect(h.leaser.acquired).toHaveLength(1);
+    cancel.abort();
+    expect(h.leaser.released).toBe(1);
+    expect(h.replay.made('POST', '/api/session')).toHaveLength(0);
   });
 
   test('a governed start sends Station rules and pins a governed agent', async () => {
@@ -3009,33 +3070,75 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
 
   const MOVED_TO = '{PROJ}/sub';
 
-  test("Code Mode's session move is not offered to a governed session: Station's rules deny it and OpenCode leaves it out", async () => {
+  test.each(['confined', 'project'])(
+    'Code Mode cannot move a %s session',
+    async (scope) => {
+      const h = await setup({
+        scenario: 'move-denied',
+        respond: childGovernance({ build: [] }),
+      });
+      if (scope === 'confined') await h.start({ approvalMode: 'ask' });
+      else
+        await h.start(undefined, {
+          metadata: { connectionId: 'opencode', localProjectId: 'project-1' },
+        });
+      const body = h.replay.made('POST', '/api/session')[0]?.body as {
+        permissions: OpenCodeNativeRule[];
+      };
+      expect(body.permissions.at(-1)).toEqual({
+        action: 'opencode_session_move',
+        resource: '*',
+        effect: 'deny',
+      });
+      const { turnId } = await h.turn('DO_MOVE sub-denied');
+      await h.waitFor(completedFor(turnId));
+      // The engine, under that rule (`move-denied` capture): the tool is unknown.
+      expect(
+        h.events.find(
+          (event) =>
+            event.method === 'tool.completed' && event.turnId === turnId,
+        )?.output,
+      ).toEqual(
+        expect.stringContaining("Unknown tool 'opencode.session_move'"),
+      );
+      expect(
+        h.events.some(
+          (event) => event.code === OPENCODE_SESSION_MOVED_UNGOVERNABLE,
+        ),
+      ).toBe(false);
+    },
+  );
+
+  test('a Project session moved externally stops without rebinding its resume cursor', async () => {
+    const h = await setup({ scenario: 'move' });
+    const session = await h.start(undefined, {
+      metadata: { connectionId: 'opencode', localProjectId: 'project-1' },
+    });
+    await h.turn('DO_MOVE sub');
+    await h.waitFor(
+      (event) => event.code === 'OPENCODE_PROJECT_WORKSPACE_MOVED',
+    );
+    expect(session.resumeCursor).toMatchObject({ cwd: '/replay/proj' });
+  });
+
+  test('cold Project recovery refuses a native session whose stored checkout moved', async () => {
+    const sessionId = recordedSessionId('move');
     const h = await setup({
-      scenario: 'move-denied',
-      respond: childGovernance({ build: [] }),
+      scenario: 'move',
+      ungated: (record) => record.method === 'GET',
+      respond: (request) =>
+        request.path === `/api/session/${sessionId}/inbox`
+          ? { status: 200, body: { data: [] } }
+          : undefined,
     });
-    await h.start({ approvalMode: 'ask' });
-    const body = h.replay.made('POST', '/api/session')[0]?.body as {
-      permissions: OpenCodeNativeRule[];
-    };
-    expect(body.permissions.at(-1)).toEqual({
-      action: 'opencode_session_move',
-      resource: '*',
-      effect: 'deny',
-    });
-    const { turnId } = await h.turn('DO_MOVE sub-denied');
-    await h.waitFor(completedFor(turnId));
-    // The engine, under that rule (`move-denied` capture): the tool is unknown.
-    expect(
-      h.events.find(
-        (event) => event.method === 'tool.completed' && event.turnId === turnId,
-      )?.output,
-    ).toEqual(expect.stringContaining("Unknown tool 'opencode.session_move'"));
-    expect(
-      h.events.some(
-        (event) => event.code === OPENCODE_SESSION_MOVED_UNGOVERNABLE,
-      ),
-    ).toBe(false);
+    await expect(
+      h.start(undefined, {
+        metadata: { connectionId: 'opencode', localProjectId: 'project-1' },
+        resumeCursor: nativeCursor(sessionId, 'native'),
+      }),
+    ).rejects.toThrow('OpenCode moved this session');
+    expect(h.replay.made('PATCH', '/api/session/:id')).toHaveLength(0);
+    expect(h.replay.made('POST', '/api/session/:id/prompt')).toHaveLength(0);
   });
 
   test('a governed session OpenCode moves into a directory whose configuration runs code is stopped, with a warning that says why', async () => {

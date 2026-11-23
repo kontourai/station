@@ -298,7 +298,7 @@ describe('knowledge-filesystem helpers', () => {
       uploadDocument,
     });
 
-    expect(result).toEqual({ indexed: 1, skipped: 0 });
+    expect(result).toEqual({ indexed: 1, alreadyIndexed: 0, skipped: 0 });
     expect(uploadDocument).toHaveBeenCalledWith(
       'test',
       'src/keep.ts',
@@ -354,7 +354,7 @@ describe('knowledge-filesystem helpers', () => {
       '*-keep.md',
     ]);
 
-    expect(result).toEqual({ indexed: 150, skipped: 0 });
+    expect(result).toEqual({ indexed: 150, alreadyIndexed: 0, skipped: 0 });
     expect(uploaded).toEqual(included);
   });
 
@@ -374,7 +374,7 @@ describe('knowledge-filesystem helpers', () => {
 
     const { result, uploaded } = await scanWorkspace(workingDirectory);
 
-    expect(result).toEqual({ indexed: 1, skipped: 0 });
+    expect(result).toEqual({ indexed: 1, alreadyIndexed: 0, skipped: 0 });
     expect(uploaded).toEqual(['inside.md']);
   });
 });

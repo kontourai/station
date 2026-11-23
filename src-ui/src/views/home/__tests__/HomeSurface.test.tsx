@@ -47,6 +47,9 @@ vi.mock('../../../components/home/HomeStartComposer', () => ({
     <form aria-label="Start work" data-compact={String(Boolean(compact))} />
   ),
 }));
+vi.mock('../../../hooks/useProjectNames', () => ({
+  useProjectNames: () => new Map(),
+}));
 vi.mock('../../../hooks/useProjectIcons', () => ({
   useProjectIcons: () => new Map(),
 }));
@@ -203,11 +206,11 @@ test('Home forgets Details when its row leaves and moves focus after snoozing', 
       </QueryClientProvider>
     );
     const view = render(home([current, following]));
-    const details = () =>
-      screen.getByRole('button', { name: 'Details for Review current work' });
+    const row = () =>
+      screen.getByRole('button', { name: /^Review current work/ });
     const sheet = () =>
       screen.queryByRole('dialog', { name: 'Details for Review current work' });
-    fireEvent.click(details());
+    fireEvent.contextMenu(row());
     await screen.findByRole('dialog', {
       name: 'Details for Review current work',
     });
@@ -216,10 +219,10 @@ test('Home forgets Details when its row leaves and moves focus after snoozing', 
     expect(sheet()).toBeNull();
     view.rerender(home([current, following]));
     expect(sheet()).toBeNull();
-    expect(details().getAttribute('aria-expanded')).toBe('false');
+    expect(row()).toBeTruthy();
 
-    details().focus();
-    fireEvent.click(details());
+    row().focus();
+    fireEvent.contextMenu(row());
     const choice = within(
       await screen.findByRole('dialog', {
         name: 'Details for Review current work',

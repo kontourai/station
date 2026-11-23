@@ -1,0 +1,17 @@
+{
+  "revision": "08086609fe726283ad2f3b9d8b2880f9b4195dd9",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked affected tool-policy references after adding external engineWorkspaceRead defer seam; existing policy and delegation docs remain accurate.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Checked affected tool-policy references after adding external engineWorkspaceRead defer seam; existing policy and delegation docs remain accurate.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked affected tool-policy references after adding external engineWorkspaceRead defer seam; existing policy and delegation docs remain accurate.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked affected tool-policy references after adding external engineWorkspaceRead defer seam; existing policy and delegation docs remain accurate.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked affected tool-policy references after adding external engineWorkspaceRead defer seam; existing policy and delegation docs remain accurate.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Checked affected tool-policy references after adding external engineWorkspaceRead defer seam; existing policy and delegation docs remain accurate.","inputs":["src-server/runtime/agents/pre-tool-policy.ts"]}
+  ]
+}

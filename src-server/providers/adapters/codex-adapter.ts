@@ -144,6 +144,7 @@ import {
   codexChildSteerTarget,
   codexRunningChildTurnId,
   codexRunningChildTurns,
+  refreshCodexChildSteerControls,
   requestStop as requestCodexChildStop,
 } from './codex-adapter-child-work.js';
 import {
@@ -554,9 +555,19 @@ function mapCodexModelCatalogEntry(model: any): {
   const supportsFastMode = serviceTiers.some(
     (tier) => tier.id === 'fast' || tier.id === 'priority',
   );
+  const modalities = model.inputModalities;
+  const imageInput =
+    Array.isArray(modalities) &&
+    modalities.length &&
+    modalities.every((entry: unknown) => typeof entry === 'string')
+      ? modalities.includes('image')
+      : undefined;
   const capabilities: ModelOptionCapabilities | undefined =
-    supportedEffortLevels.length > 0 || serviceTiers.length > 0
+    supportedEffortLevels.length > 0 ||
+    serviceTiers.length > 0 ||
+    imageInput !== undefined
       ? {
+          ...(imageInput !== undefined ? { imageInput } : {}),
           ...(supportedEffortLevels.length > 0
             ? {
                 supportsEffort: true,
@@ -991,6 +1002,26 @@ export function projectCodexQuotaSnapshot(
   if (!update) return null;
   const snapshot = mergeQuotaSnapshot(undefined, update);
   return snapshot ? { ...snapshot, baselineAt: snapshot.observedAt } : null;
+}
+
+function codexMessageInput(
+  text: string | undefined,
+  images: ReturnType<typeof decodeChatAttachments>,
+) {
+  return [
+    ...(text ? [{ type: 'text', text, text_elements: [] }] : []),
+    ...images.map(({ attachment }) => ({
+      type: 'image',
+      url: attachment.dataUrl,
+    })),
+  ];
+}
+
+/** A bound-tool refusal whose reason the model is given as the result. */
+class CodexBoundToolReasonedRefusal extends Error {
+  constructor(readonly reason: string) {
+    super('bound-tool-refused');
+  }
 }
 
 export class CodexAdapter implements ProviderAdapterShape {
@@ -1560,6 +1591,14 @@ export class CodexAdapter implements ProviderAdapterShape {
             value: catalog,
             observedAt: this.now().getTime(),
           };
+          for (const record of this.transport.listSessions()) {
+            if (record.childWork)
+              refreshCodexChildSteerControls({
+                record,
+                nowIso: () => this.now().toISOString(),
+                publish: (event) => this.transport.publish(event),
+              });
+          }
           return catalog;
         })
         .finally(() => {
@@ -2413,6 +2452,9 @@ export class CodexAdapter implements ProviderAdapterShape {
       resumeCursor: input.resumeCursor,
       nowIso: () => this.now().toISOString(),
     });
+    record.childModelAcceptsImages = (modelId) =>
+      this.modelCatalogCache?.value.models.find((model) => model.id === modelId)
+        ?.capabilities?.imageInput !== false;
     record.preparedResumeBindingKey = resumeBindingKey;
     // Where Codex writes this session's thread rollouts, children included:
     // a child's transcript ref names it, never a file path.
@@ -2505,12 +2547,21 @@ export class CodexAdapter implements ProviderAdapterShape {
       record.closeBoundTools = boundTools?.close;
       record.boundChannelCurrent = boundTools ? bindingCurrent : undefined;
       let boundPolicy: StagedPreToolPolicyEvaluator | undefined;
-      if (boundTools && this.options.resolveBoundToolPolicy) {
+      // Resolved for every Agent session, bound tools or not, and kept on the
+      // record: holding it keeps the session's launch binding, so a change to
+      // its Agent or integrations restarts it at the next turn. Only bound
+      // tools are decided by it.
+      if (input.agent && this.options.resolveBoundToolPolicy) {
         try {
-          boundPolicy = await this.options.resolveBoundToolPolicy(input);
+          record.launchPolicy =
+            await this.options.resolveBoundToolPolicy(input);
         } catch {
-          boundPolicy = undefined;
+          record.launchPolicy = undefined;
         }
+        if (boundTools)
+          boundPolicy = record.launchPolicy as
+            | StagedPreToolPolicyEvaluator
+            | undefined;
       }
       // Every station-control tool (devices included) is held to the
       // Agent's selection again here; browser tools follow `browserTools`.
@@ -2688,7 +2739,7 @@ export class CodexAdapter implements ProviderAdapterShape {
             callId: payload.callId,
             name: payload.tool,
           };
-          return channel.invoke(
+          const invoked = channel.invoke(
             call,
             (current) => {
               if (boundTools.expired())
@@ -2718,6 +2769,17 @@ export class CodexAdapter implements ProviderAdapterShape {
             },
             () => !record.cancelledBoundRequests?.has(rpcKey),
           );
+          // A replaced-configuration refusal reaches the model as the tool's
+          // result: a JSON-RPC error reaches it only as a bare failure, with
+          // nothing it can act on.
+          return invoked.catch((error: unknown) => {
+            if (error instanceof CodexBoundToolReasonedRefusal)
+              return {
+                success: false,
+                contentItems: [{ type: 'inputText', text: error.reason }],
+              };
+            throw error;
+          });
         };
         const close = record.closeBoundTools;
         record.closeBoundTools = async () => {
@@ -3620,19 +3682,7 @@ export class CodexAdapter implements ProviderAdapterShape {
                   },
                 ]
               : []),
-            ...(input.input
-              ? [
-                  {
-                    type: 'text',
-                    text: input.input,
-                    text_elements: [],
-                  },
-                ]
-              : []),
-            ...decodedAttachments.map(({ attachment }) => ({
-              type: 'image',
-              url: attachment.dataUrl,
-            })),
+            ...codexMessageInput(input.input, decodedAttachments),
           ],
           model: input.modelId,
           effort: mapReasoningEffort(modelOptions),
@@ -3716,21 +3766,31 @@ export class CodexAdapter implements ProviderAdapterShape {
     });
   }
 
+  readonly childSteerImages = true;
+
   async steerChildWork(
     threadId: string,
     childId: string,
     turnId: string,
     input: string,
+    images?: import('@kontourai/station-contracts/chat-attachment').ChatAttachmentInput[],
   ): Promise<ProviderChildSteerResult> {
     const record = this.transport.requireSession(threadId);
-    const target = codexChildSteerTarget(record, childId, turnId);
+    const target = codexChildSteerTarget(
+      record,
+      childId,
+      turnId,
+      !!images?.length,
+    );
     if (target !== 'ready') return { outcome: target };
     const text = input.trim();
-    if (!text) throw new Error('Steer input is empty.');
+    const decoded = decodeChatAttachments(images);
+    rejectFileAttachments('Codex', decoded);
+    if (!text && !decoded.length) throw new Error('Steer input is empty.');
     try {
       const result = await this.transport.sendRequest(record, 'turn/steer', {
         threadId: childId,
-        input: [{ type: 'text', text, text_elements: [] }],
+        input: codexMessageInput(text, decoded),
         expectedTurnId: turnId,
       });
       if (extractStringField(result, 'turnId') !== turnId)
@@ -4078,7 +4138,12 @@ export class CodexAdapter implements ProviderAdapterShape {
     } catch {
       return false;
     }
-    if (!current() || decision.behavior === 'deny') return false;
+    if (!current()) return false;
+    if (decision.behavior === 'deny') {
+      if (decision.staleGeneration || decision.generationSettling)
+        throw new CodexBoundToolReasonedRefusal(decision.denial.reason);
+      return false;
+    }
     if (decision.behavior === 'allow') return true;
     // Full access answers what Station's policy leaves open (`defer`); a
     // required ask (a tool that changes authority) still reaches a person.

@@ -392,7 +392,6 @@ describe.skipIf(!chromiumAvailable).each(['dark', 'light'])(
                 onNewChat={() => {}}
                 overflow={{
                   onOpenConversation: () => {},
-                  onToggleHistory: () => {},
                   onOpenChatSettings: () => {},
                   onOpenProject: null,
                   openProjectName: null,

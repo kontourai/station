@@ -319,6 +319,103 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     );
   });
 
+  test.describe('first-use Fork', () => {
+    test.use({ serviceWorkers: 'block' });
+
+    test('closing the source chat retires a Fork whose picker is still loading', async ({
+      page,
+    }) => {
+      const shell = await seedDailyDriverShell(page, {
+        agents: SHELL_AGENTS,
+        conversations: SHELL_CONVERSATIONS,
+      });
+      await seedDailyDriverChats(page, [
+        {
+          conversationId: FORK_CONVERSATION,
+          agentSlug: 'claude',
+          connectionId: 'claude',
+          title: 'Fork source chat',
+          model: MODEL_BRAVO,
+        },
+      ]);
+      const pickerModule =
+        /\/ConversationBoundaryDialogs(?:-[\w-]+\.js|\.tsx)(?:\?.*)?$/;
+      let markHeld!: (url: string) => void;
+      const held = new Promise<string>((resolve) => {
+        markHeld = resolve;
+      });
+      let release!: () => void;
+      const waitForRelease = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await page.route(pickerModule, async (route) => {
+        markHeld(route.request().url());
+        await waitForRelease;
+        await route.continue();
+      });
+      const forkRequests: string[] = [];
+      page.on('request', (request) => {
+        if (
+          request.method() === 'POST' &&
+          new URL(request.url()).pathname.endsWith('/fork')
+        )
+          forkRequests.push(request.url());
+      });
+      await openChat(page, FORK_CONVERSATION);
+      const textarea = page.locator('textarea[placeholder*="Type a message"]');
+      await closeRunSetup(page);
+      await textarea.fill('Parent branch prompt.');
+      await closeRunSetup(page);
+      await textarea.press('Enter');
+      await expect.poll(() => shell.executionRequests.length).toBe(1);
+      const answer = 'Parent branch answer.';
+      await completeDispatchedTurn(page, {
+        threadId: FORK_CONVERSATION,
+        turnId: 'dd-fork-source-turn',
+        provider: 'claude',
+        userText: 'Parent branch prompt.',
+        reply: answer,
+        metadata: { effectiveModel: MODEL_BRAVO, reportedModel: MODEL_BRAVO },
+      });
+      await expectSettled(page);
+      const source = transcriptLocator(page).getByText(answer, { exact: true });
+      const dialog = page.getByRole('dialog', { name: 'Fork from here' });
+      const close = page
+        .getByRole('button', { name: 'Close chat', exact: true })
+        .filter({ visible: true });
+      const pickerResponse = page.waitForResponse(pickerModule);
+      try {
+        await expect(source).toBeVisible();
+        expect(new URL(page.url()).searchParams.get('chat')).toBe(
+          FORK_CONVERSATION,
+        );
+        await forkFromHere(page);
+        const url = await held;
+        await expect(dialog).toHaveCount(0);
+        await close.focus();
+        await expect(close).toBeFocused();
+        await page.keyboard.press('Enter');
+        await expect
+          .poll(() => new URL(page.url()).searchParams.get('chat'))
+          .toBeNull();
+        await expect(source).toHaveCount(0);
+        await expect(close).toHaveCount(0);
+        release();
+        expect((await pickerResponse).ok()).toBe(true);
+        await page.evaluate(async (moduleUrl) => {
+          await import(/* @vite-ignore */ moduleUrl);
+          await new Promise((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(resolve)),
+          );
+        }, url);
+        await expect(dialog).toHaveCount(0);
+        expect(forkRequests).toEqual([]);
+      } finally {
+        release();
+      }
+    });
+  });
+
   test('same-provider fork retries idempotently, opens one child, and then diverges without replacing its parent', async ({
     page,
   }) => {
@@ -397,49 +494,24 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     await expectSettled(page);
 
     await forkFromHere(page);
-    const dialog = page.getByRole('region', { name: 'Fork from here' });
-    await expect(dialog).toContainText('New independent conversation');
-    await expect(dialog).toContainText('Engine cursor');
-    await expect(dialog).toContainText('tool state');
-    await expect(dialog).toContainText('approval state do not carry');
-    const sourceAgent = dialog.locator('button[data-agent-slug="claude"]');
-    const alternateAgent = dialog.locator('button[data-agent-slug="codex"]');
-    const bounds = await alternateAgent.boundingBox();
-    if (!bounds) throw new Error('Alternate Agent has no pointer target');
-    const x = bounds.x + bounds.width / 2;
-    const y = bounds.y + bounds.height / 2;
+    const dialog = page.getByRole('dialog', { name: 'Fork from here' });
+    await expect(dialog).toContainText(
+      'Opens a new chat from here. This chat stays as it is.',
+    );
+    const sourceAgent = dialog.getByRole('radio', { name: /Claude/ });
+    await expect(sourceAgent).toBeChecked();
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
-    await page.mouse.move(x, y);
-    await page
-      .getByRole('button', { name: 'More answer actions' })
-      .press('Enter');
-    await page.getByRole('menuitem', { name: 'Fork from here' }).press('Enter');
-    await expect(dialog).toBeVisible();
-    await expect
-      .poll(() =>
-        page.evaluate(
-          ([x, y]) =>
-            document
-              .elementFromPoint(x, y)
-              ?.closest('[data-agent-slug]')
-              ?.getAttribute('data-agent-slug'),
-          [x, y],
-        ),
-      )
-      .toBe('codex');
-    await expect(sourceAgent).toHaveClass(/new-chat-modal__agent--selected/);
-
-    await page.mouse.move(x + 4, y);
-    await expect(alternateAgent).toHaveClass(/new-chat-modal__agent--selected/);
-    const search = dialog.getByPlaceholder('Search agents…');
-    await search.press('ArrowUp');
-    await expect(sourceAgent).toHaveClass(/new-chat-modal__agent--selected/);
-    await search.press('Enter');
+    await forkFromHere(page);
+    await expect(sourceAgent).toBeChecked();
+    const forkWithSource = dialog.getByRole('button', {
+      name: /^Fork with Claude/,
+    });
+    await forkWithSource.click();
     await expect(dialog.getByRole('alert')).toContainText(
       /Could not reach Station/i,
     );
-    await sourceAgent.click();
+    await forkWithSource.click();
 
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
@@ -552,8 +624,9 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     });
     await expectSettled(page);
     await forkFromHere(page);
-    const dialog = page.getByRole('region', { name: 'Fork from here' });
-    await dialog.locator('button[data-agent-slug="codex"]').click();
+    const dialog = page.getByRole('dialog', { name: 'Fork from here' });
+    await dialog.getByRole('radio', { name: /Codex/ }).check();
+    await dialog.getByRole('button', { name: /^Fork with Codex/ }).click();
     await expect
       .poll(() => new URL(page.url()).searchParams.get('chat'))
       .toBe(childId);

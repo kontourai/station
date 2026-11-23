@@ -104,6 +104,14 @@ export interface StationControlCaller {
    * one must fail closed.
    */
   readonly principal?: StationControlCallerPrincipal;
+  /** A turn-scoped grant for reading and proposing personal appearance only. */
+  readonly appearanceOwnerId?: string;
+  /**
+   * A turn-scoped grant to read and write this one Task only (#4511): a
+   * person's typed turn in an automation Session they took over, which acts
+   * for no one. It admits only tools marked `ownTask` in the policy table.
+   */
+  readonly ownTaskId?: string;
   /** Station-local project identity (`ProjectConfig.id`); membership keys on it. */
   readonly localProjectId?: string;
   /**

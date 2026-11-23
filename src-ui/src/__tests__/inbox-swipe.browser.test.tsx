@@ -223,6 +223,11 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
     const rowTop = (await row.boundingBox())?.y ?? 0;
     await setUpdating(true);
     await expectBrowser(pill).toHaveText('Refreshing inbox…');
+    await pill.evaluate(async (element) => {
+      await Promise.all(
+        element.getAnimations().map((animation) => animation.finished),
+      );
+    });
     const [panelBounds, pillBounds] = await Promise.all([
       inbox.boundingBox(),
       pill.boundingBox(),
@@ -439,10 +444,16 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       .poll(() => page.locator('.inbox-row__swipe-actions:visible').count())
       .toBe(0);
 
-    await swipe(cdp, page, -75, 0, { cancel: true });
-    expect(
-      await page.locator('.inbox-row__swipe-actions:visible').count(),
-    ).toBe(0);
+    await swipe(cdp, page, -75, 0, {
+      cancel: true,
+      during: async () => {
+        await expectBrowser(rail).toBeVisible();
+        await expectBrowser(rail).toHaveAttribute('aria-hidden', 'true');
+      },
+    });
+    await expectBrowser(
+      page.locator('.inbox-row__swipe-actions:visible'),
+    ).toHaveCount(0);
     expect(
       await page.evaluate(() => (window as unknown as { opens: number }).opens),
     ).toBe(0);
@@ -466,8 +477,9 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await swipe(cdp, page, -90);
     expect(await page.locator('.inbox-row__swipe-actions').count()).toBe(0);
     await page
-      .getByRole('button', { name: 'Details for Review the inbox' })
-      .click();
+      .getByRole('button', { name: /^Review the inbox/ })
+      .click({ button: 'right' });
+    await page.getByRole('button', { name: 'Details', exact: true }).click();
     await page
       .getByRole('button', { name: 'Dismiss from inbox', exact: true })
       .click();
@@ -475,8 +487,9 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await page.getByRole('searchbox').fill('Review the inbox');
     await page.getByRole('region', { name: /Dismissed/ }).waitFor();
     await page
-      .getByRole('button', { name: 'Details for Review the inbox' })
-      .click();
+      .getByRole('button', { name: /^Review the inbox/ })
+      .click({ button: 'right' });
+    await page.getByRole('button', { name: 'Details', exact: true }).click();
     await page
       .getByRole('button', { name: 'Restore to inbox', exact: true })
       .click();
@@ -723,3 +736,69 @@ test('a refused direct discard keeps the 320px touch row readable and focused', 
     await browser.close();
   }
 }, 30_000);
+
+test('an engine-list swipe reveals Remove without selecting the engine or invoking Remove', async () => {
+  const splitFixture = `
+    import React from 'react';
+    import {createRoot} from 'react-dom/client';
+    import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+    import {NavigationProvider} from './src-ui/src/contexts/NavigationContext';
+    import {SplitPaneLayout} from './src-ui/src/components/SplitPaneLayout';
+    window.selected = 0;
+    window.removalRequests = 0;
+    createRoot(document.getElementById('root')).render(
+      <QueryClientProvider client={new QueryClient()}><NavigationProvider>
+        <SplitPaneLayout
+          label="engines" title="Engines" selectedId={null}
+          items={[{ id: 'agy', name: 'Antigravity', swipeAction: {
+            label: 'Remove', onSelect: () => window.removalRequests++,
+          } }]}
+          onSelect={() => window.selected++}
+        >
+          <div>Engine details</div>
+        </SplitPaneLayout>
+      </NavigationProvider></QueryClientProvider>
+    );
+  `;
+  const { page, browser, errors } = await scrollBrowserFixture(
+    splitFixture,
+    [],
+    { hasTouch: true },
+  );
+  try {
+    await page.addStyleTag({
+      content: resolveCssImports(resolve('src-ui/src/index.css')),
+    });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true });
+    await expectBrowser(
+      page.getByRole('button', { name: 'Antigravity', exact: true }),
+    )
+      .toBeVisible({ timeout: 4000 })
+      .catch((error: Error) => {
+        throw new Error(`${error.message} (page errors: ${errors.join('; ')})`);
+      });
+    const remove = page.getByRole('button', { name: 'Remove', exact: true });
+    await expectBrowser(remove).toHaveCount(0);
+    await swipe(cdp, page, -90, 0, {
+      name: 'Antigravity',
+      during: async () => {
+        const row = page.locator('.split-pane__swipe-row');
+        await expectBrowser(row).toHaveAttribute('data-dragging', 'true');
+      },
+    });
+    await expectBrowser(remove).toBeVisible();
+    expect(await page.evaluate(() => Reflect.get(window, 'selected'))).toBe(0);
+    expect(
+      await page.evaluate(() => Reflect.get(window, 'removalRequests')),
+    ).toBe(0);
+    await remove.tap({ timeout: 4000 });
+    await expect
+      .poll(() => page.evaluate(() => Reflect.get(window, 'removalRequests')))
+      .toBe(1);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});

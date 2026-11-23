@@ -174,7 +174,7 @@ export type OrchestrationCommand =
       threadId: string;
       childId: string;
       turnId: string;
-      input: string;
+      input: import('./child-work.js').ChildSteerMessage;
       clientInputId: string;
     }
   | {
@@ -622,6 +622,7 @@ export type SteerChildWorkResult =
         | 'unsupported'
         | 'no-active-task'
         | 'confinement-changed'
+        | 'attachments-unavailable'
         | 'unavailable'
         | 'not-authorized';
       threadId: string;
@@ -656,6 +657,27 @@ export interface OrchestrationCommandReceipt {
 /** Stable refusal code when a foreground session may already have started. */
 export const FOREGROUND_MESSAGE_INDETERMINATE_CODE =
   'foreground_message_indeterminate' as const;
+
+/**
+ * Refusal codes of a send while the Session already has a turn start that
+ * blocks it. Nothing was sent in any of them.
+ *
+ * `turn_start_held`: an earlier start by this Station process may have
+ * reached the engine and cannot be confirmed or ruled out. The Session's
+ * engine reports its process ending, so once it has ended the next send
+ * records that turn as interrupted and goes ahead.
+ *
+ * `turn_start_held_until_restart`: the same, on an engine that does not
+ * report its process ending: it stays held until that turn reports its end
+ * or Station restarts.
+ *
+ * `turn_start_busy`: another start on the Session (from another request or
+ * Station process, or the start of its engine) has not finished.
+ */
+export const TURN_START_HELD_CODE = 'turn_start_held' as const;
+export const TURN_START_HELD_UNTIL_RESTART_CODE =
+  'turn_start_held_until_restart' as const;
+export const TURN_START_BUSY_CODE = 'turn_start_busy' as const;
 
 /**
  * Exact evidence returned when foreground start effects completed but the
@@ -1202,6 +1224,27 @@ export interface OwnedSessionActivity {
   }>;
 }
 
+/** #4568: a person's engine start waiting for the one engine-start slot. */
+export interface EngineStartWaitObservation {
+  /** When this start was queued behind another engine start. */
+  since: string;
+}
+
+/**
+ * #4568: the orchestration stream's `orchestration:engine-start-wait` frame.
+ * `wait` is the current observation, or `null` once the start was admitted,
+ * cancelled, timed out or failed. Sent when it changes and, for every wait
+ * still pending, when a stream opens or replaces its snapshot. A first start
+ * has no Session summary yet; `pendingStart` identifies its cancellable
+ * preparation without asserting that a provider Session exists.
+ */
+export interface OrchestrationEngineStartWaitFrame {
+  threadId: string;
+  wait: EngineStartWaitObservation | null;
+  /** An owned first start is still cancellable, including after capacity admission. */
+  pendingStart?: true;
+}
+
 export interface OrchestrationSessionSummary extends ProviderSession {
   /** Soonest armed check-back in this conversation; approval proposals are excluded. */
   nextWakeUpAt?: string;
@@ -1281,8 +1324,23 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   lastRuntimeErrorUsageLimit?: true;
   /** Reason from the latest non-recovery turn abort, when it is terminal. */
   lastTurnAbortReason?: string;
+  /**
+   * Present when this Session's latest turn completed because the engine
+   * reached its output limit (`turn.completed` `finishReason: 'max-tokens'`),
+   * so its reply is incomplete. Absent while a later turn runs, for every
+   * other ending, and for engines that report no finish reason. Absent on
+   * older hosts.
+   */
+  lastTurnCutOff?: 'max-tokens';
   /** Present only while this process is watching this session's active turn. */
   turnProgress?: TurnProgressObservation;
+  /**
+   * #4568: present only while a person's engine start for this Session (a cold
+   * follow-up's respawn, or a credential-profile restart of a person's turn)
+   * is queued behind another engine start. Process memory, never persisted;
+   * removed when the start is admitted, cancelled, times out or fails.
+   */
+  engineStartWait?: EngineStartWaitObservation;
   /**
    * #2309: the activity of the conversation this session belongs to (every
    * execution child, not just this one). Absent on servers without the
@@ -1609,6 +1667,19 @@ export interface OrchestrationConversationEventWindow
   contextBoundaries: import('./conversation-context-boundary.js').ConversationContextBoundaryTranscriptMarker[];
 }
 
+export const STAGED_CONVERSATION_HANDOFF_PREVIEW = Object.freeze({
+  id: 'staged-agent-changes',
+  label: 'Stage chat Agent changes',
+  description:
+    'Choose the Agent and model for the next message. Sending starts a fresh Session with bounded conversation text.',
+});
+
+/** Send-time approval for a fresh Session seeded with bounded conversation text. */
+export interface StagedConversationHandoff {
+  expectedCurrentSessionId: string;
+  contextPolicy: 'continue-from-history';
+}
+
 export const CONVERSATION_HANDOFF_CARRIED_FIELDS = Object.freeze([
   'authorizedTranscript',
   'ownerTenantWorkspace',
@@ -1622,6 +1693,46 @@ export const CONVERSATION_HANDOFF_CARRIED_FIELDS = Object.freeze([
  */
 export const CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE =
   'conversation_handoff_predecessor_busy';
+
+/**
+ * The machine code on a continuation refused because the conversation's
+ * current Session failed while its engine process is still running: a
+ * successor would resume the same native conversation in a second engine.
+ * Nothing was sent; it clears once that process has stopped.
+ */
+export const CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE =
+  'conversation_predecessor_engine_live';
+
+/**
+ * Machine codes on a refused Agent/engine handoff beside
+ * {@link CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE}. Each names a state of the
+ * conversation the request conflicts with, so none is worth retrying as sent.
+ */
+export const CONVERSATION_HANDOFF_REFUSAL_CODES = Object.freeze({
+  /** The idempotency key already names a different target or message. */
+  idempotencyConflict: 'conversation_handoff_idempotency_conflict',
+  /**
+   * An earlier handoff is reserved and its target Session has not started;
+   * that handoff must start (or be withdrawn) before another turn or handoff.
+   */
+  awaitingTarget: 'conversation_handoff_awaiting_target',
+  /** A staged handoff named a current Session the conversation has moved past. */
+  sessionChanged: 'conversation_handoff_session_changed',
+  /** A staged handoff met a context change that has not been sent yet. */
+  contextChangePending: 'conversation_handoff_context_change_pending',
+} as const);
+export type ConversationHandoffRefusalCode =
+  (typeof CONVERSATION_HANDOFF_REFUSAL_CODES)[keyof typeof CONVERSATION_HANDOFF_REFUSAL_CODES];
+
+/**
+ * A turn refused because what its Session's engine was launched with (its
+ * Agent, tool servers or engine connection) changed while the engine was
+ * still running work started under the old configuration. Sending again
+ * once that work ends restarts the Session in place under the current
+ * configuration.
+ */
+export const SESSION_CONFIGURATION_REPLACED_CODE =
+  'session_configuration_replaced';
 
 export const CONVERSATION_HANDOFF_RESET_FIELDS = Object.freeze([
   'providerNativeCursor',
@@ -1709,6 +1820,41 @@ export interface ConversationContextSeedReceipt {
 
 export const CONVERSATION_CONTEXT_UNAVAILABLE_CODE =
   'conversation-context-unavailable';
+
+/**
+ * Machine codes on a refused `POST /agents/:slug/conversations/:id/fork`, so a
+ * client says what to do instead of showing the server's sentence. Every 4xx
+ * envelope that route answers for a JSON body within the size limit carries
+ * one of these, a Station Control scope code, `conversation_lineage_too_long`,
+ * or {@link CONVERSATION_CONTEXT_UNAVAILABLE_CODE} (a saved fork context that
+ * needs reconciling). A body that is not JSON (400) or is too large (413)
+ * gets the shared request-validation envelope, without a code.
+ */
+export const CONVERSATION_FORK_REFUSAL_CODES = Object.freeze({
+  /** The request names a malformed Agent or conversation identity (400). */
+  invalidRequest: 'conversation_fork_invalid_request',
+  /** The source Agent or the conversation is absent or not visible (404). */
+  sourceNotFound: 'conversation_fork_source_not_found',
+  /** The target Agent is absent, or not available in the target Project (404). */
+  targetUnavailable: 'conversation_fork_target_unavailable',
+  /** The caller's identity could not be resolved (403). */
+  callerUnresolved: 'conversation_fork_caller_unresolved',
+  /** The source history could not be read in full right now (409). */
+  historyUnavailable: 'conversation_fork_history_unavailable',
+  /**
+   * The history is past the fork read bound (decided before it is read), or
+   * even its text up to the selected turn is too large to save (409).
+   */
+  historyTooLarge: 'conversation_fork_history_too_large',
+  /** The selected turn is not a completed assistant answer (409). */
+  turnIncomplete: 'conversation_fork_turn_incomplete',
+  /** The source Agent does not own the conversation or the selected turn (409). */
+  sourceAgentMismatch: 'conversation_fork_source_agent_mismatch',
+  /** The idempotency key already names a different request or a deleted fork (409). */
+  idempotencyConflict: 'conversation_fork_idempotency_conflict',
+} as const);
+export type ConversationForkRefusalCode =
+  (typeof CONVERSATION_FORK_REFUSAL_CODES)[keyof typeof CONVERSATION_FORK_REFUSAL_CODES];
 
 export interface ConversationHandoffStatusProjection {
   conversationId: string;

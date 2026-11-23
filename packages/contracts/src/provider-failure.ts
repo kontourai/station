@@ -19,8 +19,15 @@ import {
 import {
   APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE,
   CONVERSATION_CONTEXT_UNAVAILABLE_CODE,
+  CONVERSATION_FORK_REFUSAL_CODES,
   CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  CONVERSATION_HANDOFF_REFUSAL_CODES,
+  CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE,
   FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+  SESSION_CONFIGURATION_REPLACED_CODE,
+  TURN_START_BUSY_CODE,
+  TURN_START_HELD_CODE,
+  TURN_START_HELD_UNTIL_RESTART_CODE,
 } from './orchestration.js';
 import {
   CONVERSATION_IMPORT_DELETED_CODE,
@@ -101,7 +108,15 @@ export const CONFINED_NETWORK_DENIED_CODE = 'confined_network_denied';
 export const SESSION_START_IN_FLIGHT_CODE = 'session_start_in_flight';
 export const RESOURCE_ENGINE_START_CAPACITY_CODE =
   'resource_engine_start_capacity';
+/** #4568: a person's Stop cancelled their engine start before any provider start. */
+export const RESOURCE_ENGINE_START_CANCELLED_CODE =
+  'resource_engine_start_cancelled';
 export const ADOPTION_ENGINE_NOT_READY_CODE = 'continuation_engine_not_ready';
+/**
+ * A start or turn refused because the Feature Preview that gates the engine
+ * is off (docs/guides/feature-previews.md). Same code as the HTTP refusal.
+ */
+export const FEATURE_PREVIEW_DISABLED_CODE = 'feature_preview_disabled';
 export const ADOPTION_CONTINUATION_IN_PROGRESS_CODE =
   'adoption_continuation_in_progress';
 /**
@@ -201,9 +216,26 @@ export const PROVIDER_FAILURE_KINDS = {
   [CONFINED_NETWORK_DENIED_CODE]: 'permission_denied',
   [SESSION_START_IN_FLIGHT_CODE]: 'busy',
   [RESOURCE_ENGINE_START_CAPACITY_CODE]: 'busy',
+  [RESOURCE_ENGINE_START_CANCELLED_CODE]: 'cancelled',
   [ADOPTION_CONTINUATION_IN_PROGRESS_CODE]: 'busy',
   // The current Session still has a turn running; the handoff waits for it.
   [CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE]: 'busy',
+  // A handoff that conflicts with the conversation's state
+  // (`CONVERSATION_HANDOFF_REFUSAL_CODES`): the person resolves it first.
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.idempotencyConflict]: 'conflict',
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.awaitingTarget]: 'conflict',
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.sessionChanged]: 'conflict',
+  [CONVERSATION_HANDOFF_REFUSAL_CODES.contextChangePending]: 'conflict',
+  // A replaced Session still runs work from before the change; sending again
+  // once it ends restarts the Session.
+  [SESSION_CONFIGURATION_REPLACED_CODE]: 'busy',
+  // A turn start refused beside one that may still run: waiting clears the
+  // held and busy starts and a live failed engine's stop; only a restart
+  // clears a held start whose engine cannot report its end.
+  [TURN_START_HELD_CODE]: 'busy',
+  [TURN_START_BUSY_CODE]: 'busy',
+  [CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE]: 'busy',
+  [TURN_START_HELD_UNTIL_RESTART_CODE]: 'conflict',
   // Continuing a conversation on a paired Station: the paired Station refused
   // the import outright (not retryable as sent), refused this Station's
   // credential, or takes imports only from a Station paired as a Station.
@@ -214,6 +246,7 @@ export const PROVIDER_FAILURE_KINDS = {
   // The import this key saved was deleted before it started.
   [CONVERSATION_IMPORT_DELETED_CODE]: 'session_gone',
   [ADOPTION_ENGINE_NOT_READY_CODE]: 'unavailable',
+  [FEATURE_PREVIEW_DISABLED_CODE]: 'unavailable',
   [ADOPTION_SOURCE_ACTIVE_CODE]: 'busy',
   // A second consumer violates Station's internal queue-ownership invariant.
   async_event_queue_consumer_conflict: 'conflict',
@@ -246,6 +279,17 @@ export const PROVIDER_FAILURE_KINDS = {
   [APPROVAL_FULL_ACCESS_NOT_GRANTED_CODE]: 'permission_denied',
   [FOREGROUND_MESSAGE_INDETERMINATE_CODE]: 'indeterminate',
   [CONVERSATION_CONTEXT_UNAVAILABLE_CODE]: 'conflict',
+  // A refused fork (`CONVERSATION_FORK_REFUSAL_CODES`): only a history read
+  // that could not complete is worth retrying as sent.
+  [CONVERSATION_FORK_REFUSAL_CODES.invalidRequest]: 'input_unsupported',
+  [CONVERSATION_FORK_REFUSAL_CODES.sourceNotFound]: 'session_gone',
+  [CONVERSATION_FORK_REFUSAL_CODES.targetUnavailable]: 'input_unsupported',
+  [CONVERSATION_FORK_REFUSAL_CODES.callerUnresolved]: 'auth',
+  [CONVERSATION_FORK_REFUSAL_CODES.historyUnavailable]: 'unavailable',
+  [CONVERSATION_FORK_REFUSAL_CODES.historyTooLarge]: 'input_unsupported',
+  [CONVERSATION_FORK_REFUSAL_CODES.turnIncomplete]: 'input_unsupported',
+  [CONVERSATION_FORK_REFUSAL_CODES.sourceAgentMismatch]: 'conflict',
+  [CONVERSATION_FORK_REFUSAL_CODES.idempotencyConflict]: 'conflict',
   [PRINCIPAL_UNRESOLVED_CODE]: 'auth',
   [PROJECT_IDENTITY_NOT_PREPARED_CODE]: 'input_unsupported',
   // No such Project on this Station (#4855): like `stage_not_found`, an

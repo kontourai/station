@@ -1,0 +1,9 @@
+{
+  "revision": "8afea8f0d9a500aa10ad25ec12dd6a7027b152c4",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked the Muse resume contract against the captured native session response and the adapter tests for both a cold attach and a host restart. A nonmatching reported workspace refuses before the next turn, and cold recovery retains the cursor without invoking the exec fallback.","inputs":["docs/reference/contracts.md","src-server/providers/adapters/muse-serve-session.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Checked the Muse resume and host restart paths against the focused adapter replays. The workspace comparison runs before a new turn and leaves Muse tool accounting and cumulative usage projection unchanged.","inputs":["docs/guides/monitoring.md","src-server/providers/__tests__/muse-serve-adapter.test.ts","src-server/providers/adapters/muse-serve-session.ts"]}
+  ]
+}

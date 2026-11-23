@@ -796,21 +796,18 @@ export const ACP_MODEL_OVERRIDE_PER_TURN = false;
  *   by the chat's approval mode (Ask: a person decides; Auto: file edits are
  *   allowed; full access: every request is allowed). The approval control
  *   offers Station's approval modes.
- * - `engine`: Station has no channel into the engine's permission rules. It
- *   answers only the requests the engine chooses to send, so the approval
- *   control says the engine decides and offers no mode.
+ * - `requests`: Station's approval mode answers the ACP permission requests
+ *   the engine sends. Its own tool rules still decide when it asks.
+ * - `engine`: Station has no confirmed ACP connection to apply a mode to.
  */
-export type AcpApprovalControl = 'station' | 'engine';
+export type AcpApprovalControl = 'station' | 'requests' | 'engine';
 
-/** ACP engines whose launch configuration Station sets (#3290). */
-export type AcpStationApprovalEngine = 'opencode';
+/** ACP engine identities with specific approval settings or descriptions. */
+export type AcpStationApprovalEngine = 'opencode' | 'antigravity';
 
 /**
- * The ACP engine a connection's command launches, when Station sets its
- * approval rules at launch. Matched on the executable's own name (any
- * directory, a Windows launcher extension ignored), the identity the
- * OpenCode model listing also uses. A wrapper such as `npx opencode-ai` is
- * not recognized, so that connection is `engine`-decided.
+ * Identifies an ACP engine with specific approval settings or descriptions.
+ * Unrecognized executables can still send the standard ACP permission requests.
  */
 export function acpStationApprovalEngine(
   command: string | null | undefined,
@@ -823,7 +820,9 @@ export function acpStationApprovalEngine(
     .pop()
     ?.toLowerCase()
     .replace(/\.(exe|cmd|bat)$/, '');
-  return executable === 'opencode' ? 'opencode' : undefined;
+  if (executable === 'opencode') return 'opencode';
+  if (executable === 'agy') return 'antigravity';
+  return undefined;
 }
 
 /**
@@ -854,7 +853,8 @@ export function isOpenCodeAcpConnection(
 export function acpApprovalControl(
   command: string | null | undefined,
 ): AcpApprovalControl {
-  return acpStationApprovalEngine(command) ? 'station' : 'engine';
+  if (acpStationApprovalEngine(command) === 'opencode') return 'station';
+  return command?.trim() ? 'requests' : 'engine';
 }
 
 export const ENGINE_CAPABILITY_MATRICES: Record<
@@ -1320,6 +1320,48 @@ export const ENGINE_CAPABILITY_MATRICES: Record<
         state: 'unsupported',
         reason: 'No subagent resume is wired.',
       },
+    },
+    builtInTools: { state: 'unenumerated' },
+    builtInToolControl: { state: 'none' },
+  },
+  // GitHub Copilot through the Copilot SDK (Feature Preview
+  // `copilot-sdk-engine`; docs/decisions/copilot-sdk-engine.md). Every cell is
+  // declared from the pinned SDK's own types (`@github/copilot-sdk` 1.0.32);
+  // no live Copilot session has been captured yet, so nothing here is an
+  // observation.
+  'copilot-sdk': {
+    engineId: toEngineId('copilot-sdk'),
+    // `send({ mode: 'immediate' })` joins a running turn (`steerTurn`).
+    durability: STEERING_ENGINE_DURABILITY,
+    // The SDK's `systemMessage` option is not bound yet.
+    systemPrompt: { state: 'unsupported' },
+    instructionsInFirstTurn: { state: 'session', channel: 'first-turn' },
+    // Station Control MCP passthrough is not bound yet; the engine's own MCP
+    // servers report through `engine-mcp.status`.
+    toolServers: { state: 'unsupported' },
+    skills: { state: 'unsupported' },
+    commands: { state: 'unsupported' },
+    // `SessionConfig.model` at create and resume, over the SDK's JSON-RPC.
+    modelSelection: { state: 'session', channel: 'wire' },
+    // Approvals are answered per request (`copilot-sdk-approval.ts`); the
+    // staged pre-tool policy is not bound to the SDK's `onPreToolUse` yet.
+    toolPolicy: { state: 'unsupported', adapterModule: 'copilot-sdk-adapter' },
+    imageInput: {
+      state: 'unsupported',
+      reason: 'Attachments are not supported on the Copilot SDK engine yet.',
+    },
+    midTurnSteer: true,
+    subagentObservability: {
+      state: 'declared',
+      signals: ['lifecycle', 'usage', 'result'],
+      evidence:
+        "SDK session events subagent.started (a snapshot of running children) / subagent.completed / subagent.failed (totalTokens, totalToolCalls, durationMs, error), and the task tool's tool.execution_complete as the reply (shared toolCallId); replayed by child-work-conformance",
+      adapterModule: 'copilot-sdk-events.ts',
+    },
+    subagentControl: {
+      state: 'none',
+      reason:
+        'The SDK has no per-subagent stop or resume; only the whole turn can be aborted.',
     },
     builtInTools: { state: 'unenumerated' },
     builtInToolControl: { state: 'none' },

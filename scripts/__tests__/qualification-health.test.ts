@@ -820,6 +820,66 @@ describe('qualification health through the GitHub API', () => {
     expect(result.healthy).toBe(true);
   });
 
+  it.each(['push only', 'skipped', 'partial', 'complete'])(
+    'tracks a delivery-validation failure through %s recovery evidence',
+    async (recovery) => {
+      const checked = ['install', 'portable', 'native', 'desktop', 'ecosystem']
+        .filter((family) => recovery !== 'partial' || family !== 'install')
+        .map((family) =>
+          gate({ name: `delivery-validation / ${family} / check` }),
+        );
+      const followUp =
+        recovery === 'push only' || recovery === 'skipped'
+          ? [gate({ name: 'delivery-validation', conclusion: 'skipped' })]
+          : checked;
+      const { result, writes } = await observe({
+        runs: [
+          run(2, 0.25, {
+            event: recovery === 'push only' ? 'push' : 'workflow_dispatch',
+          }),
+          run(1, 2, { conclusion: 'failure' }),
+        ],
+        scheduledRuns: [run(900, 1, { path: '.github/workflows/nightly.yml' })],
+        issues: [
+          {
+            ...issue,
+            body: `<!-- station-qualification-health:${JSON.stringify({
+              failures: [{ id: 1, at: ago(1.8), legs: ['native'] }],
+            })} -->`,
+          },
+        ],
+        jobs: {
+          1: [
+            gate(),
+            gate({
+              name: 'delivery-validation / install / install.ps1 (win32-x64)',
+              conclusion: 'failure',
+            }),
+          ],
+          2: [gate(), ...followUp],
+          900: [
+            gate({ name: '1 · Source gate (lint, typecheck, browser smoke)' }),
+            gate({
+              name: '3 · Publish native cohort / Record ledger and markers',
+            }),
+          ],
+        },
+      });
+      expect(result.healthy).toBe(recovery === 'complete');
+      if (recovery === 'complete') {
+        expect(writes[0].body).toMatchObject({ state: 'closed' });
+      } else {
+        expect(result.summary).toContain(
+          'Unresolved hosted delivery validation: https://github.com/owner/repo/actions/runs/1',
+        );
+        expect(writes[0].body.body).toContain('"legs":["validation"]');
+        expect(result.summary).toContain(
+          'gh workflow run main-qualification.yml --repo owner/repo --ref main',
+        );
+      }
+    },
+  );
+
   it('retains an unresolved delivery past the run lookback until actual publication', async () => {
     const { result } = await observe({
       issues: [
@@ -1015,7 +1075,7 @@ describe('qualification health through the GitHub API', () => {
 });
 
 describe('qualification watchdog workflow authority', () => {
-  it('runs independently each hour, after qualification, and manually with read-only Actions access', () => {
+  it('runs independently each hour, after qualification and Nightly, and manually with read-only Actions access', () => {
     const workflow = load(
       readFileSync(
         resolve(
@@ -1034,8 +1094,9 @@ describe('qualification watchdog workflow authority', () => {
     };
     expect(workflow.on.schedule).toEqual([{ cron: '43 * * * *' }]);
     expect(workflow.on.workflow_run).toEqual({
-      workflows: ['Main: Qualification'],
+      workflows: ['Main: Qualification', 'Nightly'],
       types: ['completed'],
+      branches: ['main'],
     });
     expect(Object.keys(workflow.on)).toContain('workflow_dispatch');
     expect(workflow.permissions).toEqual({

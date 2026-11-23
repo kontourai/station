@@ -264,6 +264,10 @@ const READER_SCROLL_EXTEND_MS = 200;
 // Growth this soon after a press or key inside the transcript is the reader's
 // own doing (a tool card or details they opened): it stays where it opened.
 const READER_INTERACTION_GRACE_MS = 1_000;
+// How much of a held row must show to read as its header, and the gap left
+// above it when a shorter view brings it back.
+const HELD_ROW_HEADER_PX = 48;
+const HELD_ROW_MARGIN_PX = 8;
 // A turn jump lets the virtualizer settle its reveal (measurement passes can
 // move it for a few frames) before retaining the revealed row as the reader's.
 const TURN_REVEAL_STABLE_FRAMES = 3;
@@ -540,6 +544,36 @@ function ChatMessageListComponent({
     /** Content growth before this time follows the reader's own interaction. */
     interactedUntil: 0,
   });
+  // A pinned reader who opened something at the end (a tool row, reasoning)
+  // keeps it where it is: the tail, streaming text and new turns included,
+  // stops being followed until the reader returns to the end, and Scroll to
+  // bottom shows from the moment the hold starts. Only growth of the row whose
+  // disclosure they activated starts it; an incidental tap on text or a link
+  // does not. `readerHeld` shows the button while held with the end out of
+  // view: showing it at the start puts the composer's layout change there, not
+  // under a later scroll, and a transcript that still fits shows none.
+  const readerHoldRef = useRef(false);
+  const [readerHeld, setReaderHeld] = useState(false);
+  const activatedRowRef = useRef<{
+    row: Element;
+    height: number;
+    /** The disclosure the reader activated: closing it ends the hold. */
+    toggle: Element;
+  } | null>(null);
+  // The transcript's height when the hold began, before Scroll to bottom took
+  // its line: what the end is measured against once the row closes.
+  const heldClientHeightRef = useRef(0);
+  const showHeldControl = useCallback((el: HTMLElement) => {
+    setReaderHeld(
+      readerHoldRef.current &&
+        el.scrollHeight - el.scrollTop - el.clientHeight > 1,
+    );
+  }, []);
+  const releaseReaderHold = useCallback(() => {
+    readerHoldRef.current = false;
+    activatedRowRef.current = null;
+    setReaderHeld(false);
+  }, []);
   const readerActing = useCallback(() => {
     const input = readerInputRef.current;
     return input.touching || input.pressing || performance.now() < input.until;
@@ -937,12 +971,16 @@ function ChatMessageListComponent({
     if (pinFrameRef.current !== undefined)
       cancelAnimationFrame(pinFrameRef.current);
     const el = messagesContainerRef.current;
-    if (!el || isUserScrolledUpRef.current) return;
+    if (!el || isUserScrolledUpRef.current || readerHoldRef.current) return;
     writeProgrammaticScroll(el, el.scrollHeight);
     markTranscriptPhase('pin-layout');
     pinFrameRef.current = requestAnimationFrame(() => {
       pinFrameRef.current = undefined;
-      if (messagesContainerRef.current && !isUserScrolledUpRef.current) {
+      if (
+        messagesContainerRef.current &&
+        !isUserScrolledUpRef.current &&
+        !readerHoldRef.current
+      ) {
         markTranscriptPhase('pin-raf');
         writeProgrammaticScroll(
           messagesContainerRef.current,
@@ -951,6 +989,59 @@ function ChatMessageListComponent({
       }
     });
   }, [writeProgrammaticScroll, messagesContainerRef]);
+  // A hold belongs to the chat it started in. Declared before the pin below,
+  // so a switched-to chat is pinned in the same pass.
+  useLayoutEffect(() => {
+    void activeSession.id;
+    releaseReaderHold();
+  }, [activeSession.id, releaseReaderHold]);
+  // What needs the reader ends a hold and brings the end into view: their own
+  // message (a send, a queued follow-up delivered) and a request opening. A
+  // reader who scrolled away from the held row stays where they are, as with
+  // no hold: Scroll to bottom still shows.
+  const releaseHoldToLatest = useCallback(() => {
+    if (!readerHoldRef.current) return false;
+    releaseReaderHold();
+    if (isUserScrolledUpRef.current) return false;
+    isUserScrolledUpRef.current = false;
+    setIsUserScrolledUp(false);
+    return true;
+  }, [releaseReaderHold]);
+  let lastUserKey: unknown;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role !== 'user') continue;
+    lastUserKey =
+      message.id ?? message.clientId ?? message.timestamp ?? message.content;
+    break;
+  }
+  const lastUserKeyRef = useRef(lastUserKey);
+  // Before the pin below, which then follows the new message.
+  useLayoutEffect(() => {
+    if (lastUserKeyRef.current === lastUserKey) return;
+    lastUserKeyRef.current = lastUserKey;
+    releaseHoldToLatest();
+  }, [lastUserKey, releaseHoldToLatest]);
+  const openRequestKeys = useMemo(
+    () =>
+      unansweredApprovalRequests(
+        [],
+        (approvalEvents ?? [])
+          .map((item) => item.event)
+          .filter((event) => Boolean(event.eventId)),
+      ).map((request) => `${request.approvalThreadId}:${request.approvalId}`),
+    [approvalEvents],
+  );
+  const openRequestKeysRef = useRef(openRequestKeys);
+  useLayoutEffect(() => {
+    const before = new Set(openRequestKeysRef.current);
+    openRequestKeysRef.current = openRequestKeys;
+    if (
+      openRequestKeys.some((key) => !before.has(key)) &&
+      releaseHoldToLatest()
+    )
+      pinToLatest();
+  }, [openRequestKeys, releaseHoldToLatest, pinToLatest]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: content growth triggers a pin before paint
   useLayoutEffect(() => {
     pinToLatest();
@@ -1015,12 +1106,27 @@ function ChatMessageListComponent({
       lastClientHeightRef.current = el.clientHeight;
       const resized = reanchorGate.shouldReanchor(el.clientHeight);
       if (!returning && !resized) return;
-      if (isUserScrolledUpRef.current) {
+      if (isUserScrolledUpRef.current || readerHoldRef.current) {
         if (
           visibleAnchorRef.current &&
           restoreChatScrollAnchor(el, visibleAnchorRef.current)
         ) {
           noteProgrammaticScroll(el);
+        }
+        // What the reader just opened stays visible: a shorter view (the
+        // keyboard opening) brings the held row's header back into it.
+        const held = readerHoldRef.current
+          ? activatedRowRef.current?.row
+          : undefined;
+        if (held?.isConnected) {
+          const top =
+            held.getBoundingClientRect().top - el.getBoundingClientRect().top;
+          if (top < 0 || top + HELD_ROW_HEADER_PX > el.clientHeight) {
+            writeProgrammaticScroll(
+              el,
+              el.scrollTop + top - HELD_ROW_MARGIN_PX,
+            );
+          }
         }
       } else {
         writeProgrammaticScroll(el, el.scrollHeight);
@@ -1048,15 +1154,56 @@ function ChatMessageListComponent({
       if (el.clientHeight === 0) return;
       // A running glide aims at the live end on every frame already.
       if (scrollAnimationRef.current) return;
+      const toggle = activatedRowRef.current?.toggle;
+      if (
+        readerHoldRef.current &&
+        toggle &&
+        (toggle.getAttribute('aria-expanded') === 'false' ||
+          (toggle.matches('summary') &&
+            !(toggle.parentElement as HTMLDetailsElement | null)?.open))
+      ) {
+        // The reader closed what they were holding. With the end in view
+        // (ignoring the line Scroll to bottom took) the tail is followed
+        // again; past it, they are a reader scrolled up like any other.
+        const shortBy =
+          el.scrollHeight -
+          el.scrollTop -
+          el.clientHeight -
+          Math.max(0, heldClientHeightRef.current - el.clientHeight);
+        releaseReaderHold();
+        if (shortBy > PINNED_TOLERANCE_PX) {
+          isUserScrolledUpRef.current = true;
+          setIsUserScrolledUp(true);
+          visibleAnchorRef.current = captureChatScrollAnchor(el);
+          return;
+        }
+      }
       if (!isUserScrolledUpRef.current) {
         // Growth the reader caused (opening a tool card near the end) or that
-        // lands while they are scrolling stays where it is.
+        // lands while they are scrolling stays where it is, and so does what
+        // it opened as it finishes rendering after the grace.
+        const interacting =
+          readerActing() ||
+          performance.now() < readerInputRef.current.interactedUntil;
+        const activated = activatedRowRef.current;
         if (
           !externalScrollContainerRef &&
-          (readerActing() ||
-            performance.now() < readerInputRef.current.interactedUntil)
-        )
+          interacting &&
+          activated?.row.isConnected &&
+          activated.row.getBoundingClientRect().height !== activated.height &&
+          !readerHoldRef.current
+        ) {
+          readerHoldRef.current = true;
+          heldClientHeightRef.current = el.clientHeight;
+        }
+        if (
+          !externalScrollContainerRef &&
+          (readerHoldRef.current || interacting)
+        ) {
+          visibleAnchorRef.current = captureChatScrollAnchor(el);
+          showHeldControl(el);
           return;
+        }
         if (el.scrollHeight - el.scrollTop - el.clientHeight > 0) {
           writeProgrammaticScroll(el, el.scrollHeight);
           markTranscriptPhase('content-repin');
@@ -1114,6 +1261,8 @@ function ChatMessageListComponent({
     externalScrollContainerRef,
     measureGrowth,
     messagesContainerRef,
+    showHeldControl,
+    releaseReaderHold,
   ]);
 
   // Ends the scroll-load suppression a press's restoration holds. Genuine
@@ -1251,7 +1400,7 @@ function ChatMessageListComponent({
     // already-pinned transcript stays pinned, while an intentionally scrolled
     // transcript is restored by the observer from its captured anchor.
     if (resized) {
-      if (!isUserScrolledUpRef.current) {
+      if (!isUserScrolledUpRef.current && !readerHoldRef.current) {
         writeProgrammaticScroll(target, target.scrollHeight);
         visibleAnchorRef.current = null;
       }
@@ -1290,8 +1439,11 @@ function ChatMessageListComponent({
       );
     const shortBy =
       target.scrollHeight - target.scrollTop - target.clientHeight;
+    // Back at the end: the tail is followed again.
+    if (shortBy <= 1) releaseReaderHold();
     if (
       !isUserScrolledUpRef.current &&
+      !readerHoldRef.current &&
       !acting &&
       shortBy > 0 &&
       shortBy <= PINNED_TOLERANCE_PX
@@ -1420,6 +1572,28 @@ function ChatMessageListComponent({
                 element.scrollHeight - element.clientHeight - 2));
       }
       const now = performance.now();
+      if (
+        event.type === 'touchstart' ||
+        event.type === 'pointerdown' ||
+        (event.type === 'keydown' &&
+          (event.key === 'Enter' || event.key === ' '))
+      ) {
+        // The row whose disclosure this activates, if it activates one.
+        const toggle =
+          event.target instanceof Element
+            ? event.target.closest('[aria-expanded], summary')
+            : null;
+        const row = toggle?.closest('.chat-message-anchor');
+        // A press elsewhere while a row is held keeps the held row's record:
+        // its closing still ends the hold.
+        if (toggle && row)
+          activatedRowRef.current = {
+            row,
+            height: row.getBoundingClientRect().height,
+            toggle,
+          };
+        else if (!readerHoldRef.current) activatedRowRef.current = null;
+      }
       if (event.type === 'touchstart') {
         input.touching = true;
         input.interactedUntil = now + READER_INTERACTION_GRACE_MS;
@@ -1571,6 +1745,8 @@ function ChatMessageListComponent({
       if (!completed) return;
       isUserScrolledUpRef.current = false;
       setIsUserScrolledUp(false);
+      // The glide's own frames skip the scroll handler's release.
+      releaseReaderHold();
     };
     const animation = animateScrollToBottom(el, {
       write: (top) => writeProgrammaticScroll(el, top),
@@ -1978,6 +2154,7 @@ function ChatMessageListComponent({
         data-chat-message-key={row.id}
         data-chat-turn-id={row.message.turnId}
         data-chat-role={row.message.role}
+        data-history-entry={row.message.historyEntry}
         data-role={row.message.role}
         data-transcript-message-id={messageId}
         data-testid={
@@ -2042,9 +2219,10 @@ function ChatMessageListComponent({
         fontSize={fontSize}
         show={showReasoning}
         hasAnswerText={hasAnswerText}
+        autoExpand={!isMobile}
       />
     ),
-    [fontSize, showReasoning],
+    [fontSize, isMobile, showReasoning],
   );
 
   const renderToolCall = useCallback(
@@ -2108,7 +2286,7 @@ function ChatMessageListComponent({
   );
 
   const scrollToBottomControl =
-    isUserScrolledUp && !scrollingToBottom ? (
+    (isUserScrolledUp || readerHeld) && !scrollingToBottom ? (
       <ScrollToBottomButton onClick={handleScrollToBottom} />
     ) : null;
   const scrollControls = scrollToBottomControl;
@@ -2271,7 +2449,9 @@ function ChatMessageListComponent({
                           onProgrammaticScroll={noteProgrammaticScroll}
                           renderRow={renderTranscriptRow}
                           followTail={
-                            !isUserScrolledUp && !requestedMessageRowId
+                            !isUserScrolledUp &&
+                            !readerHeld &&
+                            !requestedMessageRowId
                           }
                           followTick={`${tailContentLength}:${tailPartsLength}`}
                           anchorVersion={scrollAnchorVersion}
@@ -2380,6 +2560,13 @@ function ChatMessageListComponent({
                     }
                   />
                 )}
+                {/* Room at the end for the composer's floating status row
+                (chat.css shows it). A row of its own, not a pseudo-element,
+                so the tail-follow sees it come and go. */}
+                <div
+                  className="chat-messages__status-room"
+                  aria-hidden="true"
+                />
               </div>
               {turnBrowserOpen && (
                 <LazyBoundary

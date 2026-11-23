@@ -18,6 +18,10 @@ import { openChatsStore } from '../contexts/open-chats-store';
 // `RegionModelProvider` wraps the whole application, so `useShowSurface`
 // requires it. This harness mounts a fragment of that tree, and nothing
 // here asserts a surface reveal, so the command hook is supplied directly.
+const featurePreviews = vi.hoisted(
+  () => [] as Array<{ id: string; enabled: boolean }>,
+);
+
 vi.mock('../contexts/AuthContext', () => ({
   useAuth: () => ({ user: { name: 'Ada Lovelace' } }),
 }));
@@ -206,7 +210,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   // useSurfaceVisibilityFlags, which reads enabled previews from here. A
   // hand-rolled module mock owes every export its subject reaches, so this
   // file went red on main the moment that hook was added.
-  useFeaturePreviewsQuery: () => ({ data: [] }),
+  useFeaturePreviewsQuery: () => ({ data: featurePreviews }),
   // archive#3780 gave ProjectSidebarRow the Board-availability read, and this
   // file went red again for exactly the reason recorded above — the same
   // hazard, one hook later. `undefined` is the honest shape while no row is
@@ -278,6 +282,7 @@ function resetState() {
   projects.length = 0;
   sessions.length = 0;
   boards.length = 0;
+  featurePreviews.length = 0;
   boardCreateSpy.mockClear();
   navigate.mockClear();
   setProject.mockClear();
@@ -445,6 +450,34 @@ describe('ProjectSidebar Boards section mounts (#2062)', () => {
     expect(document.querySelector('.lazy-boundary__error')).toBeNull();
   });
 });
+
+// An archived Project stays archived on the server whatever the
+// `project-pause-archive` preview says (its chats refuse turns, its schedules
+// wait); the preview gates only starting a hold. So the sidebar keeps the
+// "Archived (n)" toggle that reaches it with the preview off as well as on.
+describe.each([
+  ['off', []],
+  ['on', [{ id: 'project-pause-archive', enabled: true }]],
+])(
+  'ProjectSidebar archived projects with the pause-and-archive preview %s',
+  (_label, previews) => {
+    test('an archived Project waits behind the Archived toggle, which reveals it', () => {
+      resetState();
+      featurePreviews.push(...previews);
+      projects.push({ id: 'p1', slug: 'station', name: 'Station' }, {
+        id: 'p2',
+        slug: 'ferry',
+        name: 'Ferry',
+        lifecycle: { state: 'archived', changedAt: '2026-11-16T09:00:00Z' },
+      } as (typeof projects)[number]);
+      renderSidebar(<ProjectSidebar />);
+      expect(screen.getByRole('button', { name: 'Station' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Ferry' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Archived (1)' }));
+      expect(screen.getByRole('button', { name: 'Ferry' })).toBeTruthy();
+    });
+  },
+);
 
 describe('ProjectSidebar panel order (#2059)', () => {
   const panelRowLabels = () =>
@@ -874,16 +907,24 @@ describe('a project wears the same colour everywhere', () => {
     // which no allocation over beta alone would give it.
     expect(sidebarColour).toBe('var(--event-agent-complete)');
 
-    const rowColour = (ui: ReactElement) => {
-      const view = renderSidebar(ui);
-      const colour = view.container.querySelector<HTMLElement>(
-        '.inbox-row__project-accent',
-      )?.style.backgroundColor;
-      view.unmount();
-      return colour;
-    };
-    const dockColour = rowColour(<DockInbox items={[betaWork]} />);
-    const homeColour = rowColour(<Home items={[betaWork]} />);
+    const dock = renderSidebar(<DockInbox items={[betaWork]} />);
+    const dockMark = dock.container.querySelector(
+      '.inbox-row__project-accent.project-icon--initials',
+    );
+    const dockColour = dockMark
+      ?.closest<HTMLElement>('.inbox-row__project-line')
+      ?.style.getPropertyValue('--inbox-project-accent');
+    dock.unmount();
+
+    const home = renderSidebar(<Home items={[betaWork]} />);
+    expect(
+      home.getByRole('button', {
+        name: /^Tidy the beta release notes.*Beta.*Codex/,
+      }),
+    ).toBeTruthy();
+    const homeColour = home.container.querySelector<HTMLElement>(
+      '.inbox-row__project-accent',
+    )?.style.backgroundColor;
 
     expect({
       dock: dockColour,

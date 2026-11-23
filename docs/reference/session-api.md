@@ -59,6 +59,16 @@ bounded replay. An explicit fork creates a separate Conversation. A handoff
 while the current Session still has a turn running, or has not settled, is
 refused (`409`) with `code: "conversation_handoff_predecessor_busy"`
 (`CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE`).
+The handoff routes refuse a request that conflicts with the conversation's
+state with `409` and a code from `CONVERSATION_HANDOFF_REFUSAL_CODES`:
+`conversation_handoff_idempotency_conflict` (the key already names a different
+target or message), `conversation_handoff_awaiting_target` (an earlier handoff
+is reserved and its target Session has not started),
+`conversation_handoff_session_changed` (a staged handoff named a Session the
+conversation has moved past) and `conversation_handoff_context_change_pending`
+(a staged handoff met an unsent context change). An ordinary `/chat` send that
+meets a reserved handoff is refused the same way, `409` with
+`conversation_handoff_awaiting_target`.
 
 An ordinary follow-up is refused while the native return's seed-bearing turn
 has no observed completion, including a failed or uncertain turn. Acceptance of
@@ -347,7 +357,8 @@ the operator's `coding:exec` grant to name one (one of the owner's own devices
 with owner-device standing counts as the operator in person); without it the route answers
 `403` with `code: "working-directory-not-granted"` and starts nothing. This
 applies to `/chat`, `/chat/delegated`, `/chat/background`,
-`/conversations/:conversationId/handoff` and `POST /api/orchestration/delegations`;
+`/conversations/:conversationId/handoff`, `/conversations/:conversationId/staged-handoff`
+and `POST /api/orchestration/delegations`;
 the other routes the rule covers are listed in the [API reference](api.md#choosing-a-working-folder).
 The operator credential is unaffected, and so is the roundtrip script at the end
 of this page when it runs with the operator credential (a paired device's
@@ -844,6 +855,29 @@ session metadata. Changing the engine on a bound conversation requires an
 explicit handoff; omitting the override on that handoff restores the authored
 binding and model default.
 
+### Send a staged Agent change
+
+With **Stage chat Agent changes** enabled, submit the first message with
+`POST /api/orchestration/conversations/:conversationId/staged-handoff`. Supply
+the ordinary handoff target and idempotency key, `target.expectedEngine`, and
+`stagedHandoff: { expectedCurrentSessionId, contextPolicy: "continue-from-history" }`.
+A selected model travels as `target.model.override` on that exact connection.
+A receiver-owned engine default with its own engine connection uses the Agent
+selector for engine changes. General-purpose profiles can use a compatible
+execution override under the same profile checks as other handoffs.
+
+Station requires an idle, current source Session and refuses while a follow-up
+is queued. A successful Send starts a fresh Session with bounded authorized
+conversation text and the submitted first message. Prior attachment bytes,
+engine-native cursors and engine-local tool state stay with the source.
+The message can include attachments supported by the selected engine. If the
+response is lost, check the handoff status using the same key before trying
+another Send. A same-key retry must identify the same request.
+A conversation owner can withdraw a request that has no reservation with
+`DELETE /api/orchestration/conversations/:conversationId/handoffs/:idempotencyKey`.
+The withdrawal is durable. A late request under the same key cannot reserve
+a successor. Station refuses withdrawal after the reservation exists.
+
 The optional conversation-open `execution.environment: { kind: "current" }`
 requires the authorized current child's persisted start Environment identity to
 match this receiver's existing Environment record. Peer activity, foreign,
@@ -1245,8 +1279,9 @@ as `acknowledgement`:
   and no `acknowledgement`; a later decision on it is refused. A close that
   crosses Station's reply in flight still reads `acknowledged`, although
   Codex discarded that reply: its close does not say which came first.
-- `in-process` (Station's own engine): consumed in-process; no delivery
-  event follows.
+- `in-process` (Station's own engine, and the GitHub Copilot (SDK)
+  engine's permission callback): consumed in-process; no delivery event
+  follows.
 - `none` (Claude Code, ACP): the protocol has no acknowledgement, so
   delivery is not reported.
 
@@ -1347,9 +1382,16 @@ The remaining controls are defined by
   handshake advertises this command and instruction history; an absent flag or
   an older host rejecting the unknown command is not permission to fall back.
 
+  With `controls.steer.images`, input may be `{ text, attachmentRefs }`.
+  Stage images using the same Station credential. The references, their order
+  and text are bound to the child instruction receipt. Text may be empty for
+  an image-only instruction. Expired or foreign stages fail before dispatch.
+
   Codex support follows observed child protocol and active turn facts, not model
   names. Captures with Codex 0.164 show v1 accepting child `turn/steer` and v2
-  rejecting direct app-server input. This provider evidence does not establish
+  rejecting direct app-server input. With codex-cli 0.167.0, the Station
+  adapter sent a PNG to an active v1 child and a local model endpoint received
+  its pixels in that child's next request. This provider evidence does not establish
   an end-to-end Station HTTP or deployed-device journey.
 
   A Muse workflow's turn ends when it launches its children, so the Muse
@@ -1800,6 +1842,21 @@ could not be made durable. Foreground execution can return
 `outcome: "indeterminate"` and `code: "foreground_message_indeterminate"` with
 the known Session/receipt detail. Inspect that Session; do not resend the
 request merely because it returned an error or the receipt lookup is empty.
+Until Station can tell whether that turn reached the engine, later sends to the
+same Session are refused with `turn_start_held` (or
+`turn_start_held_until_restart` on an engine that cannot report its process
+ending). Once the Session's engine process is observed gone, the next send
+records the held turn as interrupted (the same banner and abort boot recovery
+writes, with an engine-ended reason) and proceeds; otherwise the turn's own
+end or the next boot settles it. If the engine is seen to end before any
+further send, its Session's end records the held turn as interrupted the same
+way. A Claude engine observed to exit ends its
+Session, so the next message by the conversation id runs in a new Session. If
+that Session failed while its engine process still runs, Station stops the
+process first; until it has stopped, a continuation or an Agent handoff is
+refused with `conversation_predecessor_engine_live` and nothing is sent. A
+send that names an earlier Session of a conversation whose engine cannot be
+resumed is refused with the conversation id to continue by instead.
 A transport failure after dispatch can also leave the outcome uncertain.
 In the [chat UI](../../src-ui/src/hooks/orchestration/queueDrain.ts), an intermediary's
 error page during a queued send leaves the message in the queue; the page does

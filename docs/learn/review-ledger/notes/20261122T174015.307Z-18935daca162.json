@@ -1,0 +1,9 @@
+{
+  "revision": "fbefd43834d3a9ca94e47e8d232b0edfdb82668f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"PUT now validates with connectionUpdateSchema (turn-off exception); POST, listings and the other routes are unchanged. module-map's connection route description and api.md's Connections section still hold; api.md Save a Connection was updated for the exception.","inputs":["src-server/routes/connections/connections.ts"]},
+
+    {"path":"docs/reference/api.md","note":"PUT now validates with connectionUpdateSchema (turn-off exception); POST, listings and the other routes are unchanged. module-map's connection route description and api.md's Connections section still hold; api.md Save a Connection was updated for the exception.","inputs":["src-server/routes/connections/connections.ts"]}
+  ]
+}

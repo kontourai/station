@@ -1,0 +1,7 @@
+{
+  "revision": "f1d2ca0b7e20c959ac89165cb4e5ae1a87ff27fc",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"A send or a request no longer moves a reader who scrolled away from a held row; matches releaseHoldToLatest in ChatMessageList.tsx.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

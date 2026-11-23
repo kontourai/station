@@ -120,6 +120,9 @@
   overflow-y: auto;
   min-inline-size: 0;
   overscroll-behavior: contain;
+  /* A control scrolled into view with `nearest` keeps a gap above the
+     footer instead of sitting flush on the scrollport's edge. */
+  scroll-padding-bottom: var(--k-space-3);
 }
 
 .new-project-modal__draft-fields {

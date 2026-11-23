@@ -589,7 +589,7 @@ export async function buildCliRuntimePrerequisites(input: {
     {
       id: `${input.command}-cli`,
       name: program,
-      description: `Required to launch the ${input.displayName} runtime.`,
+      description: `Required to launch the ${input.displayName} engine.`,
       status: installStatus,
       category: 'required',
       installGuide: {

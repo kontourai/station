@@ -98,6 +98,12 @@ export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
   // entire 18-case file completed in 28s alone. Keep other bootstrap-heavy
   // Vitest files out of this lifecycle/cleanup measurement.
   'src-server/runtime/__tests__/runtime-cold-start-custom-agent.test.ts',
+  // Launches a REAL installed Chrome/Edge through the Browser pane registry
+  // to prove an agent's browser_evaluate on a blank tab is refused before it
+  // can abort Chrome 158 (and every tab with it). In this group, hosted full
+  // regression binds Playwright's pinned Chrome for Testing 158 as
+  // `google-chrome`; elsewhere the version-gated case skips, naming why.
+  'src-server/services/browser/__tests__/browser-blank-tab-evaluate.real.test.ts',
 ]);
 
 export const CREDENTIAL_LEDGER_EXCLUSIVE_VITEST_FILES = Object.freeze([
@@ -172,6 +178,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/orchestration/__tests__/thread-content-backfill.test.ts',
   // Reads the real tracked/untracked Git inventory and scans the UI AST corpus.
   'scripts/__tests__/conversation-boundary-gate.test.ts',
+  // Runs the real Play readback CLI as short-lived Node children (one against
+  // a loopback STS stand-in that never answers); the only wall-clock bound is
+  // a 45 s kill for a child that would otherwise never exit.
+  'scripts/__tests__/query-google-play-release.process.test.ts',
   // Two owned loopback runtime listeners with real Device grants and live streams.
   'src-server/runtime/__tests__/peer-chat-tunnel-boundary.test.ts',
   // Spawns short-lived fake-Chromium shell scripts through the production
@@ -325,6 +335,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/secrets/__tests__/telemetry-credential-materialization.process.test.ts',
   // Real OTLP loopback receiver and SDK providers own sockets and export timers.
   'src-server/__tests__/telemetry.test.ts',
+  'src-server/__tests__/telemetry-span-privacy.test.ts',
   // Real author-build children refuse FIFO definitions/Skills; timeout follows observed startup.
   'packages/shared/src/__tests__/skill-experience-author.test.ts',
   // Exercises the health CLI refusal before any GitHub request.
@@ -480,8 +491,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // see that seam; under the ordinary four-worker corpus two of its cases
   // timed out at canonical phase load.
   'packages/shared/src/__tests__/plugin-build.test.ts',
-  // #4831: builds the docs server bundle, which starts esbuild's service
-  // child; the file imports no child_process itself.
+  // Builds the docs bundle with esbuild and invokes the verified stdio child
+  // through the Claude SDK server's MCP interface.
   'src-server/tools/__tests__/station-docs-bundle.test.ts',
   // Parses each fixture bundle with esbuild, which starts esbuild's service
   // child; the file imports no child_process itself.

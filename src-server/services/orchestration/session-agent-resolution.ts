@@ -73,6 +73,7 @@ import { builtinStationApiServerId } from '../../runtime/bootstrap/station-contr
 import { SC_AUTO_APPROVED_TOOLS } from '../../runtime/tools/runtime-control-tools.js';
 import { agentCapabilityUndelivered } from '../../telemetry/metrics.js';
 import { stationControlToolCatalog } from '../../tools/station-control-mcp-server.js';
+import { markCanonicalStationDocsDelivery } from '../../tools/station-docs-binding.js';
 import { stationKnowledgeToolCatalog } from '../../tools/station-knowledge-mcp-server.js';
 import { agentDefinitionFingerprint } from '../agents/agent-definition-fingerprint.js';
 import { ToolLibraryRefusal } from '../plugins/tool-library-service.js';
@@ -657,6 +658,14 @@ export function createSessionAgentResolver(
                 if (!exemptBuiltinStationControl) {
                   return { ok: false, reason: 'secret-boundary-env' };
                 }
+              }
+              if (
+                !captured &&
+                input.provider === 'claude' &&
+                authoredToolServers.length ===
+                  BUILTIN_STATION_AGENT_MCP_SERVER_IDS.length
+              ) {
+                markCanonicalStationDocsDelivery(definition, toolDef, authored);
               }
               return {
                 ok: true,

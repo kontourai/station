@@ -15,6 +15,10 @@
   margin-bottom: 2rem;
 }
 
+.project-page__header--operator {
+  gap: var(--k-space-2);
+}
+
 .project-page__identity {
   display: flex;
   align-items: flex-start;
@@ -40,6 +44,7 @@
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .project-page__desc {
@@ -111,28 +116,12 @@
   white-space: nowrap;
 }
 
-.project-page__settings-btn {
+.project-page__header-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
-  border-radius: 6px;
-  padding: 6px 12px;
-  font-size: var(--text-base);
-  color: var(--text-muted);
-  cursor: pointer;
-  transition:
-    background-color var(--motion-fast) var(--ease-standard),
-    color var(--motion-fast) var(--ease-standard);
   flex-shrink: 0;
-  margin-top: 4px;
-}
-
-.project-page__settings-btn:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
+  gap: var(--k-space-2);
 }
 
 /* ── Shared section styles ──────────────────────────────────────── */
@@ -1353,7 +1342,7 @@
     padding: 8px 12px;
   }
 
-  .project-page__settings-btn,
+  .project-page__header-action,
   .project-page__add-btn,
   .project-page__ns-tab,
   .project-page__doc-group-header {
@@ -1365,19 +1354,12 @@
     min-width: 44px;
   }
 
-  /* Header stays a row: Settings collapses to an icon-only button pinned
-     top-right beside the identity block instead of stacking below it. */
-  .project-page__header {
-    gap: 12px;
-  }
-
-  .project-page__settings-btn {
+  .project-page__header-action {
     min-width: 44px;
-    padding: 6px;
-    margin-top: 0;
+    padding-inline: var(--k-space-2);
   }
 
-  .project-page__settings-label {
+  .project-page__header-action-label {
     display: none;
   }
 
@@ -1475,12 +1457,12 @@
 }
 .project-page__space > .project-page__header {
   margin: 0;
-  padding: var(--k-space-5);
   border-bottom: 1px solid var(--k-line-strong);
   background: var(--k-panel);
 }
 /* The section navigation and its body: the shared rail from
-   `page-layout.css`, as in Settings. This only gives it the page's padding. */
+   `page-layout.css`, as in Settings. The header and body share the page inset. */
+.project-page__space > .project-page__header,
 .project-page__layout {
   padding: var(--k-space-5);
 }
@@ -1522,6 +1504,7 @@
     min-height: 44px;
   }
 
+  .project-page__space > .project-page__header,
   .project-page__layout {
     padding: var(--k-space-4);
   }

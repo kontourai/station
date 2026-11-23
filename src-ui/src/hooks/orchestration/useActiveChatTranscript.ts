@@ -206,6 +206,52 @@ function storedMemoryKillMarkers(
   ];
 }
 
+/**
+ * The failed-turn card for the newest turn, rebuilt from its stored
+ * `runtime.error` when no marker for it survived (a reload, another device,
+ * an engine whose conversation store keeps none). It is the marker the live
+ * path appends, so the card keeps its Send again and Troubleshoot this.
+ * Only the newest turn: a failure the person has moved past is not offered
+ * for resending. A memory kill keeps its own server-authorized path above.
+ */
+function storedNewestFailureMarker(
+  turns: readonly ProjectedTurnFailure[],
+  markers: readonly ChatMessage[],
+): ChatMessage[] {
+  const turn = turns.at(-1);
+  if (
+    !turn?.failure ||
+    isEngineMemoryExhaustedFailure(turn.failure) ||
+    markers.some(
+      (marker) =>
+        isLiveFailureMarker(marker) &&
+        (marker.turnId === turn.turnId ||
+          // A marker no turn adopted still owns this failure when it says
+          // the same thing (the text fallback the arbitration below keeps).
+          (marker.turnId === undefined &&
+            failureMarkerReason(marker) === turn.failure?.message.trim())),
+    )
+  )
+    return [];
+  const { code, message } = turn.failure;
+  return [
+    {
+      id: `stored-failure:${turn.turnId}`,
+      role: 'user',
+      turnId: turn.turnId,
+      timestamp: turn.endedAt,
+      content: `${CHAT_ERROR_MARKER_PREFIX}${code ? `:${code}` : ''}] ${message}`,
+    },
+  ];
+}
+
+/** The failure a `[CHAT_ERROR…]` marker reports, without its tag. */
+function failureMarkerReason(message: ChatMessage): string {
+  return transcriptMessageText(message)
+    .replace(/^\s*\[SYSTEM_EVENT\]\s*\[CHAT_ERROR(?::[\w-]+)?\]\s*/, '')
+    .trim();
+}
+
 function isLiveSupplementalMessage(message: ChatMessage): boolean {
   return Boolean(
     message.ephemeral ||
@@ -303,26 +349,33 @@ export function isUnmatchedPendingRowStillPending(
 
 function mergeTranscriptMessages(...groups: ChatMessage[][]): ChatMessage[] {
   const seenIds = new Set<string>();
-  return groups
-    .flat()
-    .filter((message) => {
+  // A row with no usable time (none, or an unparseable date) keeps its place
+  // after the row before it in its own group, instead of sinking to the end
+  // or, as NaN, breaking the comparator. A group's leading untimed rows still
+  // sort last.
+  const timed = groups.flatMap((group) => {
+    let previous: number | undefined;
+    return group.map((message) => {
+      const own = message.timestamp;
+      if (typeof own === 'number' && Number.isFinite(own)) previous = own;
+      return { message, time: previous };
+    });
+  });
+  return timed
+    .filter(({ message }) => {
       if (!message.id) return true;
       if (seenIds.has(message.id)) return false;
       seenIds.add(message.id);
       return true;
     })
-    .map((message, inputIndex) => ({ message, inputIndex }))
+    .map((row, inputIndex) => ({ ...row, inputIndex }))
     .sort((left, right) => {
-      const leftTimestamp = left.message.timestamp;
-      const rightTimestamp = right.message.timestamp;
-      if (leftTimestamp === undefined && rightTimestamp === undefined) {
+      if (left.time === undefined && right.time === undefined) {
         return left.inputIndex - right.inputIndex;
       }
-      if (leftTimestamp === undefined) return 1;
-      if (rightTimestamp === undefined) return -1;
-      return (
-        leftTimestamp - rightTimestamp || left.inputIndex - right.inputIndex
-      );
+      if (left.time === undefined) return 1;
+      if (right.time === undefined) return -1;
+      return left.time - right.time || left.inputIndex - right.inputIndex;
     })
     .map(({ message }) => message);
 }
@@ -464,6 +517,58 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     readLiveFloor,
     readLiveFloor,
   );
+  const viewKey = JSON.stringify([
+    apiBase,
+    target?.station?.runtimeKey ?? target?.requestScope?.authorityKey,
+    session.conversationId ?? session.id,
+  ]);
+  // Frames buffered before this view opened belong to its history even if
+  // the live store can still supply them while the server page loads.
+  const initialSequence = Math.max(
+    liveFloor,
+    liveEvents.at(-1)?.sequence ?? 0,
+    session.conversationActivity?.asOfSequence ?? 0,
+  );
+  const [entryView, setEntryView] = useState(() => ({
+    key: viewKey,
+    sequence: initialSequence,
+  }));
+  if (entryView.key !== viewKey) {
+    setEntryView({ key: viewKey, sequence: initialSequence });
+  }
+  const previousArrivals = useRef<readonly OrchestrationSequencedEvent[]>([]);
+  const arrivals = useMemo(() => {
+    const threadIds = new Set([
+      session.id,
+      session.currentSessionId,
+      ...(window.sessionLineage ?? []).map((entry) => entry.sessionId),
+    ]);
+    const next = replay
+      ? []
+      : liveEvents.filter(
+          ({ sequence, event }) =>
+            sequence > entryView.sequence &&
+            threadIds.has(event.threadId) &&
+            (event.method === 'turn.started' ||
+              (TURN_TERMINAL_METHODS.includes(event.method) &&
+                !isDeferredRetriableTurnError(event))),
+        );
+    const prior = previousArrivals.current;
+    if (
+      next.length === prior.length &&
+      next.every((event, index) => event === prior[index])
+    )
+      return prior;
+    previousArrivals.current = next;
+    return next;
+  }, [
+    entryView.sequence,
+    liveEvents,
+    replay,
+    session.id,
+    session.currentSessionId,
+    window.sessionLineage,
+  ]);
   const behindSnapshot =
     !replay &&
     windowWatermark < liveFloor &&
@@ -716,6 +821,18 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     const agentPresentationBySessionId = new Map(
       (window.sessionLineage ?? []).map((entry) => [entry.sessionId, entry]),
     );
+    const newInputs = new Set<string>();
+    const newTurns = new Set<string>();
+    const newTerminals = new Set<string>();
+    for (const { event } of arrivals) {
+      const key = JSON.stringify([event.threadId, event.turnId]);
+      if (event.method === 'turn.started') {
+        if (event.eventId) newInputs.add(event.eventId);
+        if (event.turnId && event.inputKind !== 'steer') newTurns.add(key);
+      } else if (event.turnId) {
+        newTerminals.add(key);
+      }
+    }
     const projectedRows = projectRuntimeEventsToMessages(
       stitchedEvents
         .map((item) => item.event)
@@ -758,20 +875,34 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             message.metadata?.turnId === session.openTurnId
           ),
       )
-      .map<ChatMessage>((message) => ({
-        ...conversationMessageToChatMessage(message),
-        agentSlug: message.metadata?.sessionId
-          ? agentBySessionId.get(message.metadata.sessionId)
-          : undefined,
-        agentDisplayName: message.metadata?.sessionId
-          ? agentPresentationBySessionId.get(message.metadata.sessionId)
-              ?.agentDisplayName
-          : undefined,
-        agentIcon: message.metadata?.sessionId
-          ? agentPresentationBySessionId.get(message.metadata.sessionId)
-              ?.agentIcon
-          : undefined,
-      }));
+      .map<ChatMessage>((message) => {
+        const row = conversationMessageToChatMessage(message);
+        const key = JSON.stringify([row.sessionId, row.turnId]);
+        const isArrival =
+          row.role === 'user'
+            ? row.sourceEventId !== undefined &&
+              newInputs.has(row.sourceEventId)
+            : newTurns.has(key) ||
+              (row.turnEnded !== undefined && newTerminals.has(key)) ||
+              (openTurnProjected &&
+                row.turnEnded === undefined &&
+                row.sessionId === projectedOpenThread &&
+                row.turnId === projectedOpenTurn?.turnId);
+        const agent = row.sessionId
+          ? agentPresentationBySessionId.get(row.sessionId)
+          : undefined;
+        return {
+          ...row,
+          ...(!replay && row.role !== 'system' && !isArrival
+            ? { historyEntry: true }
+            : {}),
+          agentSlug: row.sessionId
+            ? agentBySessionId.get(row.sessionId)
+            : undefined,
+          agentDisplayName: agent?.agentDisplayName,
+          agentIcon: agent?.agentIcon,
+        };
+      });
     // A turn Station's restart cut off says so once, on its own row.
     const projected = withoutRepeatedRestartNotice(projectedRows);
     // #2309: the server's record when it sent one; the legacy fold otherwise.
@@ -931,17 +1062,25 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       session.messages,
       projectedFailures,
     );
+    const adoptedMarkerTurnIds = new Set(
+      adoptedMarkers
+        .filter((message) => isLiveFailureMarker(message))
+        .map((message) => message.turnId)
+        .filter((turnId): turnId is string => typeof turnId === 'string'),
+    );
     const markerMessages = [
       ...adoptedMarkers,
       ...storedMemoryKillMarkers(
         rawFailures,
-        new Set(
-          adoptedMarkers
-            .filter((message) => isLiveFailureMarker(message))
-            .map((message) => message.turnId)
-            .filter((turnId): turnId is string => typeof turnId === 'string'),
-        ),
+        adoptedMarkerTurnIds,
         serverWindow.memoryContinuation,
+      ),
+      ...storedNewestFailureMarker(
+        // The stored event's own words, else the projected part's.
+        rawFailures.map((turn, index) =>
+          turn.failure ? turn : (projectedFailures[index] ?? turn),
+        ),
+        adoptedMarkers,
       ),
     ];
     const markerFailureTurnIds = new Set(
@@ -984,9 +1123,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       // A turn-identified marker owns its failure's one visible element —
       // the projected copy for that turn was stripped above.
       if (message.turnId !== undefined) return true;
-      const reason = transcriptMessageText(message)
-        .replace(/^\s*\[SYSTEM_EVENT\]\s*\[CHAT_ERROR(?::[\w-]+)?\]\s*/, '')
-        .trim();
+      const reason = failureMarkerReason(message);
       return reason.length === 0 || !projectedFailureText.includes(reason);
     });
     const handoffBoundaries: ChatMessage[] = window.handoffs.map((handoff) => ({
@@ -1073,6 +1210,10 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
     session.sendAwaitingTurnStart,
     session.stopSettledTurnId,
     changedFilesByTurn,
+    arrivals,
+    replay,
+    projectedOpenThread,
+    projectedOpenTurn?.turnId,
     window.events,
     serverWindow.memoryContinuation,
     stitchedEvents,

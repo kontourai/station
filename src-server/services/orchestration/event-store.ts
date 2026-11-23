@@ -8,7 +8,7 @@ import {
 import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import type { SQLOutputValue } from 'node:sqlite';
+import type { SQLOutputValue, StatementSync } from 'node:sqlite';
 import {
   awaitTurnResolution,
   createPreparedTurnClaim,
@@ -36,6 +36,7 @@ import {
   type SqliteKernelStorage,
 } from '@kontourai/monument/sqlite';
 import { isSupportedAgentIconToken } from '@kontourai/station-contracts/agent';
+import type { StagedAttachmentReference } from '@kontourai/station-contracts/attachment-staging';
 import { ATTENTION_REQUEST_MAX_BYTES } from '@kontourai/station-contracts/attention';
 import {
   CHAT_ATTACHMENT_MAX_BYTES,
@@ -65,14 +66,15 @@ import { isLowContentPrompt } from '@kontourai/station-contracts/conversation-ti
 import { appearanceProposalReferenceOfEvent } from '@kontourai/station-contracts/custom-appearance';
 import { parseMcpToolRef } from '@kontourai/station-contracts/layout';
 import { parseLearningContextContributions } from '@kontourai/station-contracts/learning-review';
-import type {
-  ConversationHandoffProjection,
-  InterruptTurnResult,
-  OrchestrationCommandReceipt,
-  OrchestrationSessionEventWindow,
-  OwnedSessionActivity,
-  RuntimeEventElisionReason,
-  SteerTurnResult,
+import {
+  CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE,
+  type ConversationHandoffProjection,
+  type InterruptTurnResult,
+  type OrchestrationCommandReceipt,
+  type OrchestrationSessionEventWindow,
+  type OwnedSessionActivity,
+  type RuntimeEventElisionReason,
+  type SteerTurnResult,
 } from '@kontourai/station-contracts/orchestration';
 import {
   isAcpFamilyEngine,
@@ -105,7 +107,10 @@ import {
   parseSessionWorkItemAssociation,
   type SessionWorkItemAssociation,
 } from '@kontourai/station-contracts/session-work-item';
-import { parseStationControlRefusal } from '@kontourai/station-contracts/station-control-refusal';
+import {
+  parseStationControlRefusal,
+  stationControlToolName,
+} from '@kontourai/station-contracts/station-control-refusal';
 import { parseTenantExecutionContext } from '@kontourai/station-contracts/tenancy';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
 import type {
@@ -1839,6 +1844,7 @@ const { DatabaseSync } = require('node:sqlite') as {
       run: (...args: unknown[]) => unknown;
       get: (...args: unknown[]) => Record<string, SQLOutputValue> | undefined;
       all: (...args: unknown[]) => Record<string, SQLOutputValue>[];
+      iterate: StatementSync['iterate'];
     };
     close(): void;
     function(
@@ -2048,8 +2054,6 @@ const SESSION_EVENT_WINDOW_MAX_EVENTS = 150;
 const ATTACHMENT_CANDIDATE_THREAD_LIMIT = 4;
 const SNAPSHOT_TOOL_OUTPUT_MAX_CHARS = 84;
 /** Station's own HTML render tool, under every name it is exposed as. */
-const HTML_RENDER_TOOL_NAME =
-  /^(?:mcp__station-control__|station-control[_/]|Tool: station-control\/)html_render$/;
 /**
  * Per-event ceiling for a window read. Sized to clear the 16 KiB transcript
  * chunks the session sources persist (`MAX_TEXT_CHUNK_BYTES` in
@@ -2433,7 +2437,7 @@ function snapshotEvent(
     // Keep them outside the ordinary 84-character tool-output excerpt.
     const pageReference =
       typeof payload.toolName === 'string' &&
-      HTML_RENDER_TOOL_NAME.test(payload.toolName)
+      stationControlToolName(payload.toolName) === 'html_render'
         ? htmlReplyReference(payload.output)
         : undefined;
     // A station-control refusal is the tool's whole result, as JSON: the
@@ -2713,6 +2717,19 @@ export const THREAD_CONTENT_BACKFILL_PROJECT_SQL = `INSERT INTO orchestration_th
   LIMIT 1
   ON CONFLICT(thread_id) DO UPDATE SET
     content_sequence = MAX(content_sequence, excluded.content_sequence)`;
+
+type SteerReceiptInput = {
+  threadId: string;
+  clientInputId: string;
+  input: string;
+  turnId?: string;
+  childId?: string;
+  attachmentRefs?: readonly StagedAttachmentReference[];
+};
+type ChildSteerReceiptInput = SteerReceiptInput & {
+  childId: string;
+  turnId: string;
+};
 
 export class EventStoreIntegrityError extends Error {
   readonly code = 'STATION_EVENT_STORE_CORRUPT';
@@ -3227,6 +3244,21 @@ export class EventStore {
       );
       CREATE INDEX IF NOT EXISTS child_steer_instruction_page
         ON orchestration_child_steer_instructions(thread_id, child_id, sequence)`);
+      const hasChildAttachments = () =>
+        this.db
+          .prepare(
+            "SELECT 1 FROM pragma_table_info('orchestration_child_steer_instructions') WHERE name = 'attachments_json'",
+          )
+          .get();
+      if (!hasChildAttachments()) {
+        try {
+          this.db.exec(
+            'ALTER TABLE orchestration_child_steer_instructions ADD COLUMN attachments_json TEXT',
+          );
+        } catch (error) {
+          if (!hasChildAttachments()) throw error;
+        }
+      }
       // #3160: the request keys behind `send_to_session` / `interrupt_session`.
       this.db.exec(SESSION_CONTROL_REQUEST_KEY_SCHEMA);
       // #3158: delegated-result ownership and its one consumption record,
@@ -4125,6 +4157,34 @@ export class EventStore {
     return { status: 'found', decisions, delegations, partialDelegations };
   }
 
+  /**
+   * How much history these Sessions hold, without loading it: their event
+   * count and the stored bytes of their events and out-of-line content
+   * (`octet_length()` takes each payload's size from its row header without
+   * decoding it). A whole-history read checks this before it loads and
+   * resolves every payload.
+   */
+  readSessionsHistoryFootprint(threadIds: readonly string[]): {
+    events: number;
+    bytes: number;
+  } {
+    let events = 0;
+    let bytes = 0;
+    for (const threadId of new Set(threadIds)) {
+      const row = this.readStatement(
+        `SELECT COUNT(*) AS events, COALESCE(SUM(octet_length(payload)), 0) AS bytes
+         FROM orchestration_events WHERE thread_id = ?`,
+      ).get(threadId) as { events: number; bytes: number };
+      const spilled = this.readStatement(
+        `SELECT COALESCE(SUM(bytes), 0) AS bytes
+         FROM orchestration_event_content WHERE thread_id = ?`,
+      ).get(threadId) as { bytes: number };
+      events += row.events;
+      bytes += row.bytes + spilled.bytes;
+    }
+    return { events, bytes };
+  }
+
   readSessionInventoryHighWater(threadId: string): number {
     return (
       (
@@ -4872,6 +4932,19 @@ export class EventStore {
     if (projectedEvent.method === 'tool.completed') {
       delete projectedEvent.htmlReply;
       delete projectedEvent.mcpAppResourceUri;
+      if (
+        projectedEvent.provider === 'acp' &&
+        stationControlToolName(projectedEvent.toolName) === 'html_render'
+      ) {
+        const reference = htmlReplyReference(projectedEvent.output);
+        if (
+          reference?.sessionId === projectedEvent.threadId &&
+          reference.pageId !== projectedEvent.eventId &&
+          this.hasEventId(reference.pageId) &&
+          this.htmlReplyPages().contains(reference)
+        )
+          projectedEvent.output = { success: true };
+      }
       const replay = this.db
         .prepare('SELECT payload FROM orchestration_events WHERE id = ?')
         .get(projectedEvent.eventId) as { payload: string } | undefined;
@@ -4917,7 +4990,7 @@ export class EventStore {
       const toolName =
         typeof stamped.toolName === 'string' ? stamped.toolName : undefined;
       const pageReference =
-        toolName && HTML_RENDER_TOOL_NAME.test(toolName)
+        stationControlToolName(toolName) === 'html_render'
           ? htmlReplyReference(raw.output)
           : undefined;
       if (pageReference) stamped.htmlReply = pageReference;
@@ -8031,8 +8104,12 @@ export class EventStore {
     omitTranscriptBodies = false,
   ): CanonicalRuntimeEvent[] {
     if (methods?.length === 0) return [];
+    // Older stores can contain valid JSON beyond SQLite's nesting limit.
+    const payload = omitTranscriptBodies
+      ? "CASE WHEN json_valid(payload) THEN json_remove(payload, '$.prompt', '$.attachments', '$.outputText', '$.delta') ELSE payload END"
+      : 'payload';
     const rows = this.readStatement(
-      `SELECT ${omitTranscriptBodies ? "json_remove(payload, '$.prompt', '$.attachments', '$.outputText', '$.delta') AS payload" : 'payload'} FROM orchestration_events WHERE thread_id = ?
+      `SELECT ${payload} AS payload FROM orchestration_events WHERE thread_id = ?
        ${methods ? `AND (method IN (${methods.map(() => '?').join(', ')}) ${includeLatest ? 'OR sequence = (SELECT MAX(sequence) FROM orchestration_events WHERE thread_id = ?)' : ''})` : ''}
        ORDER BY sequence ASC`,
     ).all(
@@ -8040,7 +8117,72 @@ export class EventStore {
       ...(methods ?? []),
       ...(methods && includeLatest ? [threadId] : []),
     ) as Array<{ payload: string }>;
-    return rows.map((row) => JSON.parse(row.payload as string));
+    return rows.map(({ payload }) => {
+      const event = JSON.parse(payload);
+      if (omitTranscriptBodies && event !== null && typeof event === 'object') {
+        // SQLite returns the raw legacy row when it cannot parse its nesting.
+        delete event.prompt;
+        delete event.attachments;
+        delete event.outputText;
+        delete event.delta;
+      }
+      return event;
+    });
+  }
+
+  /** First-turn instruction facts in engine-context order. */
+  listTurnInstructionInputs(threadId: string): Array<{
+    method: string;
+    metadata?: unknown;
+    code?: unknown;
+  }> {
+    const rows = this.readStatement(
+      `SELECT method,
+         CASE
+           WHEN method = 'turn.started' THEN NULL
+           WHEN NOT json_valid(payload) THEN '!' || payload
+           WHEN method = 'runtime.warning' THEN payload -> '$.code'
+           ELSE payload -> '$.metadata'
+         END AS value
+       FROM orchestration_events INDEXED BY idx_events_history_projection
+       WHERE thread_id = ?
+         AND method IN ('session.started', 'session.configured', 'runtime.warning', 'turn.started')
+       ORDER BY sequence ASC`,
+    ).all(threadId) as Array<{ method: string; value: string | null }>;
+    return rows.map(({ method, value }) => {
+      if (value === null) return { method };
+      const field = method === 'runtime.warning' ? 'code' : 'metadata';
+      // SQLite cannot extract fields beyond its JSON nesting limit.
+      const fact = value.startsWith('!')
+        ? JSON.parse(value.slice(1))?.[field]
+        : JSON.parse(value);
+      return { method, [field]: fact };
+    });
+  }
+
+  /** Ordered input for the final send check's own lifecycle fold. */
+  listSessionLifecycleInputs(threadId: string): CanonicalRuntimeEvent[] {
+    const methods = [...LIFECYCLE_METHODS, 'session.started', 'request.opened'];
+    const placeholders = methods.map(() => '?').join(', ');
+    const payload =
+      "CASE WHEN json_valid(payload) THEN json_remove(payload, '$.prompt', '$.attachments', '$.outputText', '$.delta', '$.output') ELSE payload END";
+    // Both append paths write the stamp alongside its payload. The event-facts
+    // migration populated it for pre-column history. Stamps can occur on any
+    // method, including methods unknown to this reader.
+    const rows = this.readStatement(
+      `SELECT sequence, ${payload} AS payload
+       FROM orchestration_events INDEXED BY idx_events_history_projection
+       WHERE thread_id = ? AND method IN (${placeholders})
+       UNION ALL
+       SELECT sequence, ${payload} AS payload
+       FROM orchestration_events INDEXED BY idx_events_thread_session_state_sequence
+       WHERE thread_id = ? AND session_state IS NOT NULL
+         AND method NOT IN (${placeholders})
+       ORDER BY sequence ASC`,
+    ).all(threadId, ...methods, threadId, ...methods) as Array<{
+      payload: string;
+    }>;
+    return rows.map((row) => JSON.parse(row.payload));
   }
 
   /**
@@ -8400,6 +8542,49 @@ export class EventStore {
       thread_id: string;
     }>;
     return rows.map((row) => row.thread_id);
+  }
+
+  /** Scoped metadata candidates only. The grant reader checks each current lineage before admitting it. */
+  *iterateOwnedActiveWorkCandidates(
+    ownerId: string,
+    projectId: string | undefined,
+  ): Iterable<string> {
+    const rows = this.readStatement(
+      `SELECT DISTINCT thread_id FROM orchestration_events
+        WHERE method IN ('session.started', 'session.configured')
+          AND json_valid(payload)
+          AND json_type(payload, '$.metadata.userId') = 'text'
+          AND json_extract(payload, '$.metadata.userId') = ?
+          AND (json_type(payload, '$.metadata.delegation') IS NULL
+            OR json_extract(payload, '$.metadata.delegation.environmentKind') = 'current')
+          AND json_extract(payload, '$.metadata.localProjectId')
+            ${projectId === undefined ? 'IS NULL' : '= ?'}
+        ORDER BY thread_id`,
+    ).iterate(ownerId, ...(projectId === undefined ? [] : [projectId]));
+    for (const row of rows) {
+      if (typeof row.thread_id === 'string') yield row.thread_id;
+    }
+  }
+
+  /** A past host start or full-access decision remains relevant after the current posture narrows. */
+  hasHostAccessHistory(threadId: string): boolean {
+    return (
+      this.readStatement(
+        `SELECT 1 FROM orchestration_events
+        WHERE thread_id = ?
+          AND method IN ('session.started', 'session.approval-mode-set', 'session.configured', 'turn.started')
+          AND json_valid(payload)
+          AND (
+            (method = 'session.started'
+              AND json_extract(payload, '$.metadata.stationConfinement') = 'host')
+            OR (method = 'session.approval-mode-set'
+              AND json_extract(payload, '$.approvalMode') = 'never')
+            OR (method IN ('session.configured', 'turn.started')
+              AND json_extract(payload, '$.metadata.approvalMode') = 'never')
+          )
+        LIMIT 1`,
+      ).get(threadId) !== undefined
+    );
   }
 
   /** Navigation reads indexed metadata without tools or files; later pages can omit the initial count. */
@@ -10985,13 +11170,16 @@ export class EventStore {
     // #4992: the read model folds every readable thread on each list, and it
     // is listed several times a second while any session streams. Only the
     // threads whose mark moved are folded again.
-    const stale = uniqueThreadIds.filter(
-      (threadId) =>
-        this.cachedSessionProjection(threadId, marks)?.events === undefined,
-    );
+    const cached = new Map<string, readonly PersistedRuntimeEvent[]>();
+    const stale: string[] = [];
+    for (const threadId of uniqueThreadIds) {
+      const events = this.cachedSessionProjection(threadId, marks)?.events;
+      if (events === undefined) stale.push(threadId);
+      else cached.set(threadId, events);
+    }
     observe?.({
       refreshed: stale.length,
-      reused: uniqueThreadIds.length - stale.length,
+      reused: cached.size,
     });
     let folded = new Map<string, PersistedRuntimeEvent[]>();
     if (stale.length > 0) {
@@ -11001,19 +11189,15 @@ export class EventStore {
       } finally {
         this.deferAttachmentHydration = false;
       }
+      const oversized = marks.size > SESSION_PROJECTION_CACHE_MAX;
       for (const threadId of stale) {
         const events = folded.get(threadId) ?? [];
-        this.storeSessionProjection(threadId, marks, {
-          events: events.map(deepFreezeEvent),
-        });
+        this.storeSessionProjection(threadId, marks, { events }, oversized);
       }
     }
     const result = new Map<string, PersistedRuntimeEvent[]>();
     for (const threadId of uniqueThreadIds) {
-      const events =
-        folded.get(threadId) ??
-        this.cachedSessionProjection(threadId, marks)?.events ??
-        [];
+      const events = folded.get(threadId) ?? cached.get(threadId) ?? [];
       result.set(
         threadId,
         events.map((event) => this.hydrateAttachments(event)),
@@ -11067,13 +11251,27 @@ export class EventStore {
     threadId: string,
     marks: ReadonlyMap<string, number>,
     facts: { events?: readonly PersistedRuntimeEvent[]; eventCount?: number },
+    oversized: boolean,
   ): void {
     const highWater = marks.get(threadId);
     if (highWater === undefined) return;
     const current = this.sessionProjectionCache.get(threadId);
+    // A scan that cannot fit should refresh entries it already owns and fill
+    // spare slots. Admitting the rest evicts the warm set, including the
+    // projections just populated by the other half of the same read model.
+    if (
+      oversized &&
+      current === undefined &&
+      this.sessionProjectionCache.size >= SESSION_PROJECTION_CACHE_MAX
+    )
+      return;
     const kept = current?.highWater === highWater ? current : { highWater };
     this.sessionProjectionCache.delete(threadId);
-    this.sessionProjectionCache.set(threadId, { ...kept, ...facts });
+    this.sessionProjectionCache.set(threadId, {
+      ...kept,
+      ...facts,
+      ...(facts.events ? { events: facts.events.map(deepFreezeEvent) } : {}),
+    });
     while (this.sessionProjectionCache.size > SESSION_PROJECTION_CACHE_MAX) {
       const oldest = this.sessionProjectionCache.keys().next().value;
       if (oldest === undefined) break;
@@ -12746,9 +12944,10 @@ export class EventStore {
     // A thread without a mark has no events and needs no query: neither.
     observe?.({ refreshed: stale.length, reused: counts.size });
     const counted = this.queryEventCountsByThreads(stale);
+    const oversized = marks.size > SESSION_PROJECTION_CACHE_MAX;
     for (const threadId of stale) {
       const eventCount = counted.get(threadId) ?? 0;
-      this.storeSessionProjection(threadId, marks, { eventCount });
+      this.storeSessionProjection(threadId, marks, { eventCount }, oversized);
       if (eventCount > 0) counts.set(threadId, eventCount);
     }
     return counts;
@@ -14748,14 +14947,35 @@ export class EventStore {
     );
   }
 
+  /** Seal a key before any handoff reservation can claim it. */
+  withdrawUnreservedConversationHandoff(
+    conversationId: string,
+    idempotencyKey: string,
+  ): boolean {
+    const result = this.db
+      .prepare(`
+      INSERT INTO orchestration_handoff_withdrawals (conversation_id, idempotency_key)
+      SELECT ?, ? WHERE NOT EXISTS (
+        SELECT 1 FROM orchestration_conversation_handoffs
+        WHERE conversation_id = ? AND idempotency_key = ?
+      )
+      ON CONFLICT (conversation_id, idempotency_key)
+      DO UPDATE SET idempotency_key = excluded.idempotency_key
+      RETURNING idempotency_key
+    `)
+      .get(conversationId, idempotencyKey, conversationId, idempotencyKey);
+    return result !== undefined;
+  }
+
   /**
    * Persist the Station-owned marker for an explicit Agent/engine handoff.
    * This is intentionally unavailable to ordinary continuation callers.
    */
   reserveConversationHandoff(
     input: ConversationHandoffMarker,
+    staged?: boolean,
   ): ReturnType<ConversationHandoffModule['reserve']> {
-    return this.conversationHandoffs.reserve(input);
+    return this.conversationHandoffs.reserve(input, staged);
   }
 
   assertNativeSessionMutable(sessionId: string): void {
@@ -15592,9 +15812,34 @@ export class EventStore {
       persistence: {
         listByConversation: (conversationId) =>
           (byConversation.all(conversationId) as any[]).map(read),
-        reserve: (input) => {
+        reserve: (input, staged) => {
+          const inbox =
+            staged &&
+            (this.threadInbox ||
+              this.db
+                .prepare(
+                  "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'monument_inbox_entries'",
+                )
+                .get())
+              ? this.threadInboxStore()
+              : undefined;
           this.db.exec('BEGIN IMMEDIATE');
           try {
+            if (
+              this.db
+                .prepare(`
+              SELECT 1 FROM orchestration_handoff_withdrawals
+              WHERE conversation_id = ? AND idempotency_key = ?
+            `)
+                .get(input.conversationId, input.idempotencyKey)
+            ) {
+              throw Object.assign(
+                new Error('This Agent change was withdrawn.'),
+                {
+                  code: 'conversation_handoff_withdrawn',
+                },
+              );
+            }
             const existingForKey = byKey.get(
               input.conversationId,
               input.idempotencyKey,
@@ -15608,6 +15853,12 @@ export class EventStore {
               }
               this.db.exec('COMMIT');
               return { marker: existing, outcome: 'existing' as const };
+            }
+            if (inbox?.hasWaitingFollowUp(input.conversationId, true)) {
+              throw Object.assign(
+                new Error('Wait for queued messages before switching Agents.'),
+                { code: CONVERSATION_HANDOFF_PREDECESSOR_BUSY_CODE },
+              );
             }
             // The cutoffs precede projection. Under the write transaction,
             // reject any intervening append rather than acknowledge text
@@ -17761,13 +18012,9 @@ export class EventStore {
   }
 
   /** A pending steer claim is never reclaimed: its engine may have accepted it. */
-  readChildSteerInput(input: {
-    threadId: string;
-    childId: string;
-    turnId: string;
-    input: string;
-    clientInputId: string;
-  }):
+  readChildSteerInput(
+    input: ChildSteerReceiptInput,
+  ):
     | ReturnType<EventStore['readSteerInput']>
     | { outcome: 'unsupported' | 'no-active-task'; threadId: string } {
     const owner = this.db
@@ -17801,13 +18048,7 @@ export class EventStore {
   }
 
   claimChildSteerInput(
-    input: {
-      threadId: string;
-      childId: string;
-      turnId: string;
-      input: string;
-      clientInputId: string;
-    },
+    input: ChildSteerReceiptInput,
     attribution: {
       createdAt: string;
       principal?: import('@kontourai/station-contracts/principal').PrincipalRef;
@@ -17831,8 +18072,8 @@ export class EventStore {
       if (claimed)
         this.db
           .prepare(`INSERT INTO orchestration_child_steer_instructions
-        (thread_id, child_id, turn_id, client_input_id, input, created_at, principal_json, client_origin_json, delivery)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'indeterminate')`)
+        (thread_id, child_id, turn_id, client_input_id, input, created_at, principal_json, client_origin_json, attachments_json, delivery)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'indeterminate')`)
           .run(
             input.threadId,
             input.childId,
@@ -17846,6 +18087,17 @@ export class EventStore {
             attribution.clientOrigin
               ? JSON.stringify(attribution.clientOrigin)
               : null,
+            input.attachmentRefs?.length
+              ? JSON.stringify(
+                  input.attachmentRefs.map(
+                    ({ name, digest, clientAttachmentId }) => ({
+                      name,
+                      digest,
+                      clientAttachmentId,
+                    }),
+                  ),
+                )
+              : null,
           );
       this.db.exec('RELEASE SAVEPOINT child_steer_claim');
       return claimed;
@@ -17857,13 +18109,7 @@ export class EventStore {
     }
   }
 
-  confirmChildSteerInput(input: {
-    threadId: string;
-    childId: string;
-    turnId: string;
-    input: string;
-    clientInputId: string;
-  }): void {
+  confirmChildSteerInput(input: ChildSteerReceiptInput): void {
     this.db.exec('SAVEPOINT child_steer_confirm');
     try {
       this.confirmSteerInput(input, input.turnId);
@@ -17928,12 +18174,13 @@ export class EventStore {
     )
       throw new RangeError('Invalid child instruction page.');
     const rows = this.db
-      .prepare(`SELECT child_id, turn_id, client_input_id, input, created_at, principal_json, client_origin_json, delivery, refusal_code
+      .prepare(`SELECT child_id, turn_id, client_input_id, input, created_at, principal_json, client_origin_json, attachments_json, delivery, refusal_code
       FROM orchestration_child_steer_instructions WHERE thread_id = ? AND child_id = ? ORDER BY sequence LIMIT ? OFFSET ?`)
       .all(threadId, childId, limit + 1, offset) as Array<{
       child_id: string;
       turn_id: string;
       client_input_id: string;
+      attachments_json: string | null;
       input: string;
       created_at: string;
       principal_json: string | null;
@@ -17947,6 +18194,9 @@ export class EventStore {
         turnId: row.turn_id,
         clientInputId: row.client_input_id,
         text: row.input,
+        ...(row.attachments_json
+          ? { attachments: JSON.parse(row.attachments_json) }
+          : {}),
         createdAt: row.created_at,
         delivery: row.delivery,
         ...(row.delivery === 'refused' && row.refusal_code
@@ -17963,13 +18213,9 @@ export class EventStore {
     };
   }
 
-  readSteerInput(input: {
-    threadId: string;
-    clientInputId: string;
-    input: string;
-    turnId?: string;
-    childId?: string;
-  }):
+  readSteerInput(
+    input: SteerReceiptInput,
+  ):
     | Extract<SteerTurnResult, { outcome: 'steered' | 'indeterminate' }>
     | undefined {
     const result = this.steerReceiptStorage().executeSync(
@@ -17999,13 +18245,7 @@ export class EventStore {
     };
   }
 
-  claimSteerInput(input: {
-    threadId: string;
-    clientInputId: string;
-    input: string;
-    turnId?: string;
-    childId?: string;
-  }): boolean {
+  claimSteerInput(input: SteerReceiptInput): boolean {
     const result = this.steerReceiptStorage().executeSync(
       {
         type: 'steerReceipts.claim',
@@ -18021,16 +18261,7 @@ export class EventStore {
     throw new Error('Steer receipt claim was refused.');
   }
 
-  confirmSteerInput(
-    input: {
-      threadId: string;
-      clientInputId: string;
-      input: string;
-      turnId?: string;
-      childId?: string;
-    },
-    confirmedTurnId: string,
-  ): void {
+  confirmSteerInput(input: SteerReceiptInput, confirmedTurnId: string): void {
     const result = this.steerReceiptStorage().executeSync(
       {
         type: 'steerReceipts.confirm',
@@ -18046,11 +18277,7 @@ export class EventStore {
       throw new Error('Steer delivery confirmation was not recorded.');
   }
 
-  private steerInputDigest(input: {
-    input: string;
-    turnId?: string;
-    childId?: string;
-  }): string {
+  private steerInputDigest(input: SteerReceiptInput): string {
     return createHash('sha256')
       .update(
         JSON.stringify(
@@ -18061,6 +18288,18 @@ export class EventStore {
                 input.childId,
                 input.turnId ?? null,
                 input.input,
+                ...(input.attachmentRefs?.length
+                  ? [
+                      input.attachmentRefs.map((ref) => [
+                        ref.stageId,
+                        ref.clientAttachmentId,
+                        ref.name,
+                        ref.mimeType,
+                        ref.size,
+                        ref.digest,
+                      ]),
+                    ]
+                  : []),
               ],
         ),
       )
@@ -18159,6 +18398,9 @@ export class EventStore {
    */
   deleteConversationLineageRows(sessionIds: readonly string[]): void {
     const statements = [
+      `DELETE FROM orchestration_handoff_withdrawals WHERE conversation_id IN (
+        SELECT conversation_id FROM orchestration_conversation_sessions WHERE session_id = ?
+      )`,
       'DELETE FROM orchestration_conversation_sessions WHERE session_id = ?',
       `DELETE FROM orchestration_conversation_handoffs
        WHERE session_id = ?1 OR predecessor_session_id = ?1`,

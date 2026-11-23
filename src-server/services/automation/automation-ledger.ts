@@ -84,6 +84,7 @@ import {
   type AutomationRefusalReason,
   type AutomationRuleDecision,
   type AutomationRuleDecisionOutcome,
+  type AutomationStartFailure,
   type AutomationSuppressionReason,
 } from '@kontourai/station-contracts/automation';
 import {
@@ -226,7 +227,22 @@ export type AutomationEpisodeRecord = Readonly<{
   maxAttempts: number;
   openedAt: string;
   updatedAt: string;
+  /** Its latest start failed before the Agent started; a retry is accepted. */
+  startFailed?: true;
+  /** Why, when the intent's reason says (see `START_FAILURES`). */
+  startFailure?: AutomationStartFailure;
+  /** The failed start's policy fingerprint, to tell whether the rule changed. */
+  failedPolicyFingerprint?: string;
+  /** The Task the failed start created, to tell whether it is still live. */
+  failedTaskId?: string;
 }>;
+
+/** An intent's recorded reason, as the open episode reports it. */
+const START_FAILURES: Readonly<Record<string, AutomationStartFailure>> = {
+  agent_option_unsupported: 'agent-option-unsupported',
+  agent_own_approval_required: 'agent-own-approval-required',
+  task_not_canceled: 'task-not-canceled',
+};
 
 /**
  * A poll source's progress: when it last polled (any outcome) and the
@@ -350,7 +366,8 @@ export type RetryEpisodeOutcome =
         | 'active'
         | 'no-intent'
         | 'stale'
-        | 'policy-unavailable';
+        | 'policy-unavailable'
+        | 'task-live';
     }>;
 
 /** The current policy a retry adopts, or undefined when it may not act. */
@@ -409,13 +426,16 @@ export interface AutomationLedger {
    * one more attempt, and a new pending intent for that attempt is retained
    * under `policy` (the current rule, never the old snapshot). Refused for an
    * indeterminate episode (its earlier effect is unknown), an episode with
-   * live work, a stale event, or a rule that may not act now.
+   * live work, a stale event, or a rule that may not act now. Also refused
+   * (`task-live`) while the Task its failed start created is still live:
+   * `taskLive` reads that Task's current status inside this transaction.
    */
   retryEpisode(input: {
     ruleId: string;
     episodeId: string;
     now: number;
     policy: RetryEpisodePolicy;
+    taskLive: (taskId: string) => boolean;
   }): RetryEpisodeOutcome;
   updateIntent(
     intentId: string,
@@ -549,7 +569,7 @@ CREATE INDEX IF NOT EXISTS automation_action_intents_task
  * `policy_unavailable`, and a suppression reason makes the row `suppressed`.
  */
 function deliveryEffect(
-  state: 'refused' | 'failed' | 'indeterminate',
+  state: 'refused' | 'failed' | 'stopped' | 'indeterminate',
   reason: string | undefined,
 ): {
   outcome: AutomationDeliveryOutcome;
@@ -1133,7 +1153,7 @@ class SqliteAutomationLedger implements AutomationLedger {
       this.reconcileDeadClaims(Date.now());
       const rows = this.db
         .prepare(
-          "SELECT intent_id, state, body FROM automation_action_intents WHERE state NOT IN ('completed', 'failed', 'refused') ORDER BY CASE WHEN state='pending' THEN 1 ELSE 0 END, created_ms, intent_id LIMIT 200",
+          "SELECT intent_id, state, body FROM automation_action_intents WHERE state NOT IN ('completed', 'failed', 'stopped', 'refused') ORDER BY CASE WHEN state='pending' THEN 1 ELSE 0 END, created_ms, intent_id LIMIT 200",
         )
         .all() as { intent_id: string; state: string; body: string }[];
       return rows.map((row) => {
@@ -1192,6 +1212,7 @@ class SqliteAutomationLedger implements AutomationLedger {
       if (
         update.state === 'refused' ||
         update.state === 'failed' ||
+        update.state === 'stopped' ||
         update.state === 'indeterminate'
       ) {
         const effect = deliveryEffect(update.state, next.reason);
@@ -1213,7 +1234,7 @@ class SqliteAutomationLedger implements AutomationLedger {
           JSON.stringify(next),
           intentId,
         );
-      if (['completed', 'failed', 'refused'].includes(next.state))
+      if (['completed', 'failed', 'stopped', 'refused'].includes(next.state))
         this.db
           .prepare(`UPDATE automation_episodes SET state='closed', updated_ms=?
           WHERE rule_id=? AND episode_id=? AND closes_on_settle=1`)
@@ -1336,6 +1357,7 @@ class SqliteAutomationLedger implements AutomationLedger {
     episodeId: string;
     now: number;
     policy: RetryEpisodePolicy;
+    taskLive: (taskId: string) => boolean;
   }): RetryEpisodeOutcome {
     return this.transaction(() => {
       this.reconcileDeadClaims(input.now);
@@ -1348,7 +1370,8 @@ class SqliteAutomationLedger implements AutomationLedger {
       if (episode.state === 'indeterminate') return { kind: 'indeterminate' };
       if (
         episode.state !== 'exhausted' &&
-        episode.attempt_count < episode.max_attempts
+        episode.attempt_count < episode.max_attempts &&
+        !this.startFailedBeforeInvocation(input.ruleId, input.episodeId)
       )
         return { kind: 'not-exhausted' };
       const live = this.db
@@ -1360,6 +1383,12 @@ class SqliteAutomationLedger implements AutomationLedger {
         )
         .get(input.ruleId, input.episodeId, episode.episode_key);
       if (live) return { kind: 'active' };
+      // A Task the failed start left behind (its cancel failed, or has not
+      // run yet) is still startable; a retry would add a second live Task.
+      // Read its status now, under this transaction, not from the reason.
+      const failed = this.failedStart(input.ruleId, input.episodeId);
+      if (failed?.taskId !== undefined && input.taskLive(failed.taskId))
+        return { kind: 'task-live' };
       const row = this.db
         .prepare(
           'SELECT intent_id, state, body FROM automation_action_intents WHERE rule_id = ? AND episode_id = ? ORDER BY retry DESC LIMIT 1',
@@ -1436,6 +1465,51 @@ class SqliteAutomationLedger implements AutomationLedger {
         .run(input.now, intent.deliveryKey);
       return { kind: 'retried', intent };
     });
+  }
+
+  /**
+   * Whether the episode's latest intent ended `failed` or `refused` without
+   * ever being invoked: its start failed before any effect, so the episode
+   * still holds an unused attempt and only an operator retry moves it on.
+   * An invoked or `indeterminate` intent never qualifies.
+   */
+  private startFailedBeforeInvocation(
+    ruleId: string,
+    episodeId: string,
+  ): boolean {
+    return this.failedStart(ruleId, episodeId) !== undefined;
+  }
+
+  /** The latest intent's failure reason when it failed before invocation. */
+  private failedStart(
+    ruleId: string,
+    episodeId: string,
+  ):
+    | {
+        reason: string | undefined;
+        policyFingerprint: string;
+        taskId: string | undefined;
+      }
+    | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT state, invoked_ms, body FROM automation_action_intents WHERE rule_id = ? AND episode_id = ? ORDER BY retry DESC LIMIT 1',
+      )
+      .get(ruleId, episodeId) as
+      | { state: string; invoked_ms: number | null; body: string }
+      | undefined;
+    if (
+      row === undefined ||
+      row.invoked_ms !== null ||
+      (row.state !== 'failed' && row.state !== 'refused')
+    )
+      return undefined;
+    const intent = decodeAutomationActionIntent(row.body);
+    return {
+      reason: intent.reason,
+      policyFingerprint: intent.policyFingerprint,
+      taskId: intent.taskId,
+    };
   }
 
   recordDelivery(input: RecordDeliveryInput): RecordDeliveryOutcome {
@@ -1694,7 +1768,22 @@ class SqliteAutomationLedger implements AutomationLedger {
             "SELECT * FROM automation_episodes WHERE state <> 'closed' ORDER BY opened_ms DESC, rowid DESC LIMIT ?",
           )
           .all(Math.max(1, Math.min(1_000, Math.floor(limit)))) as EpisodeRow[]
-      ).map(episodeFromRow),
+      ).map((row) => {
+        const episode = episodeFromRow(row);
+        const failed =
+          episode.state === 'open'
+            ? this.failedStart(episode.ruleId, episode.episodeId)
+            : undefined;
+        if (!failed) return episode;
+        const startFailure = START_FAILURES[failed.reason ?? ''];
+        return {
+          ...episode,
+          startFailed: true as const,
+          failedPolicyFingerprint: failed.policyFingerprint,
+          ...(failed.taskId ? { failedTaskId: failed.taskId } : {}),
+          ...(startFailure ? { startFailure } : {}),
+        };
+      }),
     );
   }
 

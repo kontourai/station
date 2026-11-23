@@ -1,0 +1,7 @@
+{
+  "revision": "07323a9c82896bb5f1fbb9f867b2f5bfa40bad92",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Added that the search route resolves a Project filter given as id or slug to the slug and refuses an unknown one, checked against routes/search.ts and the runtime-routes mount passing projectService.","inputs":["docs/architecture/module-map.md","src-server/routes/search.ts","src-server/runtime/routes/runtime-routes.ts","src-ui/src/components/search/WorkspaceSearchPalette.tsx"]}
+  ]
+}

@@ -1786,7 +1786,17 @@
 
     "packages/shared/src/station-home-store-registry.ts",
 
-    "packages/sdk/src/query-domains/projectRooms.ts"
+    "packages/sdk/src/query-domains/projectRooms.ts",
+
+    "src-ui/src/hooks/orchestration/engineStartWaits.ts",
+
+    "src-ui/src/hooks/orchestration/ensureOrchestrationEventStream.ts",
+
+    "src-ui/src/hooks/useChatInput.ts",
+
+    "src-server/services/orchestration/__tests__/engine-start-capacity-recovery.test.ts",
+
+    "src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts"
   ],
 
   "checks": [

@@ -15,9 +15,11 @@ import { CLIENT_ORIGIN_HEADER } from '@kontourai/station-contracts/client-origin
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts/environment-security';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
+import { SERVICE_LAUNCHER_ENV } from '@kontourai/station-shared/service-launcher-protocol';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import * as systemUpdateRoutes from '../../../routes/system/system-update-routes.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { ServerUpdateCoordinator } from '../../../services/server-update/server-update-coordinator.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
@@ -85,6 +87,7 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
   afterEach(() => {
     for (const stream of streams.splice(0)) stream.abort();
     vi.restoreAllMocks();
+    vi.unstubAllEnvs();
   });
 
   async function setup() {
@@ -212,6 +215,25 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
       serverUpdate: result.serverUpdate,
     };
   }
+
+  test.each([undefined, '{"protocol":2}'])(
+    'startup and state skip coordinator provenance discovery with launcher context %j',
+    async (launcherContext) => {
+      vi.stubEnv(SERVICE_LAUNCHER_ENV, launcherContext);
+      const discover = vi.spyOn(
+        systemUpdateRoutes,
+        'resolveThisServerProvenance',
+      );
+      const { serverUpdate } = await setup();
+
+      expect(discover).not.toHaveBeenCalled();
+      expect(await serverUpdate.state()).toMatchObject({
+        supported: false,
+        progress: { state: 'unavailable' },
+      });
+      expect(discover).not.toHaveBeenCalled();
+    },
+  );
 
   test('each caller sees its own running turn and only a count of the rest, an ephemeral one included', async () => {
     const { app, phone, laptop, readAuthorities } = await setup();

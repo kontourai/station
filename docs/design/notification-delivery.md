@@ -36,7 +36,9 @@ visibility; it does not detect an overlapping dialog or another occluding surfac
 Actions that transfer from Station details close that dialog before reporting their
 outcome in a toast. Failed actions stay available to retry; an action can name
 why it failed instead of the generic line. A toast's dismissal callback runs once
-when it leaves the screen, which
+when the toast is dismissed. A dismissed transient card stays inert while its
+exit animation finishes. A card displaced by stack overflow returns to the queue
+immediately so its reading timer pauses. The dismissal callback is what
 [General Undo](../../src-ui/src/components/undo/undoable-actions.tsx) uses to
 commit a deferred write, or to drop it when Station changes.
 [NotificationContainer](../../src-ui/src/components/notifications/NotificationContainer.tsx)
@@ -100,6 +102,11 @@ completion joins the episode and its turn id names the record. So a user turn
 followed by Claude's own reply after a background
 child settles is one "finished", not "finished" then "replied". An episode
 made only of engine-opened turns reads "replied".
+
+Completion, failure and stop notices name the chat when Station has its
+title and explain what to review there. The link uses the Session ID.
+Provider response text and raw errors are kept in the chat. Device settings
+that hide notification previews still apply.
 
 What holds it ([finished-alert-hold.ts](../../src-server/services/orchestration/finished-alert-hold.ts),
 read by `OrchestrationService.readFinishedAlertHold`, plus the inbox's

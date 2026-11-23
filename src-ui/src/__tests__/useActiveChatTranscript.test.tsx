@@ -102,6 +102,95 @@ const event = (eventId: string, method: string, fields = {}) => ({
 });
 
 describe('useActiveChatTranscript', () => {
+  test('loaded pages are history, while arrivals in the open chat keep entry motion', async () => {
+    const apiBase = 'http://entry-motion.test';
+    const first = event('e3', 'turn.started', {
+      turnId: 'existing',
+      prompt: 'Existing question',
+    });
+    const completed = event('e4', 'turn.completed', {
+      turnId: 'existing',
+      outputText: 'Existing answer',
+    });
+    const incoming = event('e5', 'turn.started', {
+      turnId: 'arriving',
+      prompt: 'New question',
+    });
+    const answer = event('e6', 'turn.completed', {
+      turnId: 'arriving',
+      outputText: 'New answer',
+    });
+    const publish = (frame: ReturnType<typeof event>) =>
+      recordSequencedLiveEvent(
+        apiBase,
+        frame.event as Parameters<typeof recordSequencedLiveEvent>[1],
+        frame.sequence,
+      );
+    publish(first);
+    publish(completed);
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 4,
+      hasMore: true,
+      nextCursor: 'older',
+      events: [first, completed],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript(apiBase, baseSession),
+    );
+    const isHistory = (text: string) =>
+      result.current.messages.find((message) => message.content === text)
+        ?.historyEntry === true;
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    expect(isHistory('Existing question')).toBe(true);
+    expect(isHistory('Existing answer')).toBe(true);
+
+    act(() => {
+      publish(incoming);
+      publish(answer);
+    });
+    expect(result.current.messages.map((message) => message.content)).toEqual([
+      'Existing question',
+      'Existing answer',
+      'New question',
+      'New answer',
+    ]);
+    expect(isHistory('New question')).toBe(false);
+    expect(isHistory('New answer')).toBe(false);
+
+    const earlier = [
+      event('e1', 'turn.started', {
+        turnId: 'older',
+        prompt: 'Earlier question',
+      }),
+      event('e2', 'turn.completed', {
+        turnId: 'older',
+        outputText: 'Earlier answer',
+      }),
+    ];
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 4,
+      hasMore: false,
+      events: earlier,
+    });
+    await act(async () => result.current.loadOlder());
+    expect(isHistory('Earlier question')).toBe(true);
+    expect(isHistory('Earlier answer')).toBe(true);
+    expect(isHistory('New question')).toBe(false);
+    expect(isHistory('New answer')).toBe(false);
+
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 6,
+      hasMore: false,
+      events: [first, completed, incoming, answer],
+    });
+    await act(async () => result.current.reload());
+    expect(isHistory('New question')).toBe(false);
+    expect(isHistory('New answer')).toBe(false);
+  });
+
   test('an open that moves the chat forward is not undone by its settled transcript', async () => {
     const id = 'adoption-conversation';
     activeChatsStore.initChat(id, {
@@ -1582,6 +1671,7 @@ describe('useActiveChatTranscript', () => {
       expect(
         view.result.current.messages.map((message) => message.content),
       ).toContain('first answer question');
+      expect(view.result.current.messages[0]?.historyEntry).toBe(true);
       // The revalidating read is the normal one, for the same conversation.
       await waitFor(() =>
         expect(
@@ -1593,6 +1683,7 @@ describe('useActiveChatTranscript', () => {
       expect(
         view.result.current.messages.map((message) => message.content),
       ).toContain('revalidated question');
+      expect(view.result.current.messages[0]?.historyEntry).toBe(true);
       expect(view.result.current.settled).toBe(true);
     });
 
@@ -2127,6 +2218,220 @@ describe('useActiveChatTranscript', () => {
       ['user', undefined, 'boundary-5c'],
       ['user', undefined, 'boundary-6'],
     ]);
+  });
+
+  test('a restart notice after a failed turn stays where the restart happened, above the turns that followed', async () => {
+    // Recovery publishes no abort for a turn its own `runtime.error` already
+    // ended, so the projection still holds that turn open when the notice
+    // arrives. The conversation then continues in a successor Session, and
+    // is interrupted again there.
+    const successor = 'thread-1:session:b';
+    const claude = (threadId: string, fields: Record<string, unknown>) => ({
+      provider: 'claude-code',
+      threadId,
+      ...fields,
+    });
+    const failure = (eventId: string, threadId: string, turnId: string) =>
+      event(
+        eventId,
+        'runtime.error',
+        claude(threadId, {
+          turnId,
+          message: 'Claude Code process exited with code 143',
+        }),
+      );
+    const notice = (
+      eventId: string,
+      threadId: string,
+      boundaryId: string,
+      turnId: string,
+    ) =>
+      event(
+        eventId,
+        'session.state-changed',
+        claude(threadId, {
+          sessionId: threadId,
+          from: 'running',
+          to: 'awaiting-approval',
+          reason: TURN_INTERRUPTED_MESSAGE,
+          sessionState: 'needs_input',
+          transitionReason: 'runtime_exit',
+          transitionSource: 'system_recovery',
+          interruptedTurnBoundary: {
+            boundaryId,
+            priorState: 'accepted',
+            providerTurnId: turnId,
+            ownerId: 'owner-1',
+            boundaryCreatedAt: '2026-08-09T00:00:01.000Z',
+            boundaryUpdatedAt: '2026-08-09T00:00:01.000Z',
+          },
+        }),
+      );
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 10,
+      hasMore: false,
+      sessionLineage: [{ sessionId: 'thread-1' }, { sessionId: successor }],
+      events: [
+        event(
+          'e1',
+          'turn.started',
+          claude('thread-1', { turnId: 'turn-1', prompt: 'Fix the build' }),
+        ),
+        failure('e2', 'thread-1', 'turn-1'),
+        notice('e3', 'thread-1', 'boundary-1', 'turn-1'),
+        event(
+          'e4',
+          'turn.started',
+          claude(successor, {
+            turnId: 'turn-2',
+            prompt: 'Are you still there?',
+          }),
+        ),
+        event(
+          'e5',
+          'content.text-delta',
+          claude(successor, {
+            turnId: 'turn-2',
+            delta: 'Yes, picking up again.',
+          }),
+        ),
+        event('e6', 'turn.completed', claude(successor, { turnId: 'turn-2' })),
+        event(
+          'e7',
+          'turn.started',
+          claude(successor, { turnId: 'turn-3', prompt: 'Run the tests' }),
+        ),
+        failure('e8', successor, 'turn-3'),
+        notice('e9', successor, 'boundary-3', 'turn-3'),
+        event(
+          'e10',
+          'turn.started',
+          claude(successor, { turnId: 'turn-4', prompt: 'And now?' }),
+        ),
+      ],
+    });
+
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    const notices = (text: string | undefined) =>
+      text?.includes('[TURN_INTERRUPTED]') ? 'notice' : text;
+    expect(
+      result.current.messages.map((message) => [
+        message.role,
+        notices(message.content),
+        message.interruptedTurnBoundaryId,
+      ]),
+    ).toEqual([
+      ['user', 'Fix the build', undefined],
+      ['assistant', '⚠️ Claude Code process exited with code 143', undefined],
+      ['user', 'notice', 'boundary-1'],
+      ['user', 'Are you still there?', undefined],
+      ['assistant', 'Yes, picking up again.', undefined],
+      ['user', 'Run the tests', undefined],
+      ['assistant', '⚠️ Claude Code process exited with code 143', undefined],
+      ['user', 'notice', 'boundary-3'],
+      ['user', 'And now?', undefined],
+    ]);
+  });
+
+  test('a row without a usable time keeps its place after the row before it', async () => {
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 5,
+      hasMore: false,
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'First' }),
+        event('e2', 'turn.completed', {
+          turnId: 'turn-1',
+          outputText: 'First answer',
+        }),
+        // A marker whose date cannot be read projects with no timestamp.
+        {
+          ...event('e3', 'model.rerouted', {
+            fromModel: 'model-a',
+            toModel: 'model-b',
+            trigger: 'availability',
+            scope: 'session',
+          }),
+          event: {
+            ...event('e3', 'model.rerouted', {
+              fromModel: 'model-a',
+              toModel: 'model-b',
+              trigger: 'availability',
+              scope: 'session',
+            }).event,
+            createdAt: 'not a date',
+          },
+        },
+        event('e4', 'turn.started', { turnId: 'turn-2', prompt: 'Second' }),
+        event('e5', 'turn.completed', {
+          turnId: 'turn-2',
+          outputText: 'Second answer',
+        }),
+      ],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    const rows = result.current.messages.map((message) =>
+      message.role === 'system' || message.contentParts?.[0]?.type !== 'text'
+        ? 'marker'
+        : message.content,
+    );
+    expect(rows.indexOf('marker')).toBe(rows.indexOf('First answer') + 1);
+    expect(rows.indexOf('Second')).toBeGreaterThan(rows.indexOf('marker'));
+  });
+
+  test('an untimed row last in its group takes the row before it, not a later group row', async () => {
+    const rerouted = event('e3', 'model.rerouted', {
+      fromModel: 'model-a',
+      toModel: 'model-b',
+      trigger: 'availability',
+      scope: 'session',
+    });
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 3,
+      hasMore: false,
+      // Another group's row, later than everything the projection holds.
+      contextBoundaries: [
+        {
+          boundaryId: 'boundary-later',
+          successorSessionId: 'thread-1',
+          policy: 'empty-next-cold-start',
+          priorTranscriptInjected: false,
+          consumedAt: '2026-08-09T00:00:30.000Z',
+        },
+      ],
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'First' }),
+        event('e2', 'turn.completed', {
+          turnId: 'turn-1',
+          outputText: 'First answer',
+        }),
+        // Last in the projection, with a date that cannot be read.
+        { ...rerouted, event: { ...rerouted.event, createdAt: 'not a date' } },
+      ],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    const rows = result.current.messages.map((message) => {
+      const type = message.contentParts?.[0]?.type;
+      if (type === 'conversation-context-boundary') return 'boundary';
+      return message.role === 'system' || type !== 'text'
+        ? 'marker'
+        : message.content;
+    });
+    // The row before it (First answer) lends its time, which is earlier than
+    // the boundary's; the next row's time (none in its group) would sink it
+    // past the boundary.
+    expect(rows).toEqual(['First', 'First answer', 'marker', 'boundary']);
   });
 
   test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
@@ -5810,12 +6115,16 @@ describe('useActiveChatTranscript stored memory kill', () => {
     },
   );
 
-  test('another failure in the newest turn gets no recreated card', async () => {
+  // Another failure in the newest turn gets its ordinary card back (Send
+  // again, Troubleshoot this), never the memory card and its Continue.
+  test('another failure in the newest turn gets its ordinary card, not the memory card', async () => {
     const found = await read(
       killed('turn-1', 'codex-turn-orphaned', 'The Codex turn was orphaned.'),
     );
-    expect(found).toHaveLength(1);
-    expect(found[0]?.content ?? '').not.toContain('[CHAT_ERROR');
+    expect(found.map((message) => message.content)).toEqual([
+      '[SYSTEM_EVENT] [CHAT_ERROR:codex-turn-orphaned] The Codex turn was orphaned.',
+    ]);
+    expect(found[0]?.turnId).toBe('turn-1');
   });
 
   test('a later retriable Codex error prevents the memory Continue card', async () => {

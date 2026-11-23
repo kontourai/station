@@ -4,10 +4,10 @@ import type { ReactNode } from 'react';
 import { useDeveloperFeatures } from '../../hooks/useDeveloperFeatures';
 import {
   attentionKindLabel,
+  explainSessionFailure,
   isFlowGateKind,
   isPeerHostedAttentionItem,
   peerAttentionElsewhereText,
-  sessionFailureCause,
 } from '../../utils/attention';
 import {
   isPlainLeftClick,
@@ -38,6 +38,7 @@ export function AttentionHistoryItem({
   isDismissPending,
   onAction,
   onClose,
+  beforeAcknowledge,
   onDismiss,
   context = [],
   feedback,
@@ -48,6 +49,7 @@ export function AttentionHistoryItem({
   isDismissPending: boolean;
   onAction: (notificationId: string, actionId: string) => void;
   onClose: () => void;
+  beforeAcknowledge?: () => void;
   onDismiss: (notificationId: string) => void;
   /** Station · Project · Chat · Agent · Engine, from `useInboxContext`. */
   context?: readonly InboxContextPart[];
@@ -90,17 +92,37 @@ export function AttentionHistoryItem({
               id: 'dismiss',
               label: ACKNOWLEDGE_ATTENTION_ACTION.label,
               disabled: acknowledge.isPending,
-              onSelect: () => acknowledge.mutate(item.id),
+              onSelect: () => {
+                beforeAcknowledge?.();
+                acknowledge.mutate(item.id);
+              },
             },
           ]
         : [];
   // Same rule as the live card's `OpenFlowConsoleLink`.
   const { flow } = useDeveloperFeatures();
   const opensFlowConsole = isFlowGateKind(item.kind);
+  const failure =
+    item.kind === 'session-failed' ? explainSessionFailure(item) : null;
   const openLink = (
     <>
       {item.kind === 'session-failed' ? (
-        <FailedSessionOpenLink item={item} onClose={onClose} />
+        <>
+          <FailedSessionLink
+            item={item}
+            href={item.openHref}
+            label={openLinkLabel(item.kind)}
+            onClose={onClose}
+          />
+          {failure?.action && (
+            <FailedSessionLink
+              item={item}
+              href={failure.action.href}
+              label={failure.action.label}
+              onClose={onClose}
+            />
+          )}
+        </>
       ) : (
         item.openHref &&
         (flow || !opensFlowConsole) && (
@@ -137,12 +159,23 @@ export function AttentionHistoryItem({
         </div>
         <div className="notification-history__item-title">{item.title}</div>
         {item.kind === 'session-failed' ? (
-          <div
-            className="notification-history__detail notification-history__detail--cause"
-            data-testid="attention-cause"
-          >
-            {sessionFailureCause(item)}
-          </div>
+          <>
+            <div
+              className="notification-history__detail notification-history__detail--cause"
+              data-testid="attention-cause"
+            >
+              {failure?.cause}
+            </div>
+            {failure?.details && (
+              <details
+                className="notification-history__raw"
+                data-testid="attention-raw"
+              >
+                <summary>Details</summary>
+                <p>{failure.details}</p>
+              </details>
+            )}
+          </>
         ) : (
           item.body && (
             <div className="notification-history__detail">{item.body}</div>
@@ -208,15 +241,23 @@ export function AttentionHistoryItem({
  * firing it there would be a write that claims the row was seen and changes
  * nothing.
  */
-function FailedSessionOpenLink({
+/**
+ * A failed-session row's links ("Open session", and the fix its cause names):
+ * opening either target acknowledges the row (`openThenAcknowledge`), the
+ * same rule the live card follows.
+ */
+function FailedSessionLink({
   item,
+  href,
+  label,
   onClose,
 }: {
   item: SessionFailedItem;
+  href: string;
+  label: string;
   onClose: () => void;
 }) {
   const mutation = useAcknowledgeAttentionItemMutation();
-  const href = item.openHref;
   return (
     <a
       className="notification-history__action"
@@ -231,7 +272,7 @@ function FailedSessionOpenLink({
         });
       }}
     >
-      {openLinkLabel(item.kind)}
+      {label}
     </a>
   );
 }

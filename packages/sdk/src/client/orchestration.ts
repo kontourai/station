@@ -486,7 +486,7 @@ export interface SteerChildWorkInput {
   threadId: string;
   childId: string;
   turnId: string;
-  input: string;
+  input: import('@kontourai/station-contracts/child-work').ChildSteerMessage;
   clientInputId: string;
 }
 

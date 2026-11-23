@@ -157,6 +157,7 @@ function externalProviderItems(
 
 export function ProjectTasksSection({
   slug,
+  active = true,
   projectId,
   projectWorkingDirectory,
   gitStatus,
@@ -165,6 +166,7 @@ export function ProjectTasksSection({
   onPresentationChange,
 }: {
   slug: string;
+  active?: boolean;
   projectId?: string;
   projectWorkingDirectory?: string;
   gitStatus?: GitStatusResult | null;
@@ -282,12 +284,12 @@ export function ProjectTasksSection({
     isLoading: workItemsLoading,
     isFetching: workItemsFetching,
     refetch: refetchWorkItems,
-  } = useWorkItemsQuery(slug, { enabled: hasLocalWorkspace });
+  } = useWorkItemsQuery(slug, { enabled: active && hasLocalWorkspace });
   const { namespace } = useAuthorityPersistence();
   const tasksListRef = useRef<HTMLDivElement>(null);
   const taskListRefresh = useListRefresh({
     scope: JSON.stringify([namespace, projectId, slug]),
-    enabled: presentation === 'list',
+    enabled: active && presentation === 'list',
     refresh: () =>
       refreshListQueries(
         refetchTasks,

@@ -1,0 +1,9 @@
+{
+  "revision": "caf947c82dab28bb4ed4c24798afcaa9b2d11991",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked the New Project repository steps: only the operator refusal shows the operator sentence; other 403s keep the form with a neutral reason; after a failure the reason and Acquire are brought into view. The described steps still hold.","inputs":["src-ui/src/components/modals/NewProjectRepositorySource.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the New Project repository steps: only the operator refusal shows the operator sentence; other 403s keep the form with a neutral reason; after a failure the reason and Acquire are brought into view. The described steps still hold.","inputs":["src-ui/src/components/modals/NewProjectRepositorySource.tsx"]}
+  ]
+}

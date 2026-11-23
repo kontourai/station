@@ -720,7 +720,8 @@ describe('the "This chat" card’s Automations section', () => {
     expect(section.textContent).toContain('Resume after usage limit');
     expect(section.textContent).toContain('At 3:00 PM');
     expect(section.textContent).toContain('Needs your approval');
-    expect(section.textContent).toContain('Every 60 min · paused');
+    expect(section.textContent).toContain('Every 60 min · Paused');
+    expect(section.textContent).not.toContain('· paused');
 
     fireEvent.click(screen.getByRole('button', { name: 'Run nightly now' }));
     expect(scheduler.run).toHaveBeenCalledWith('nightly');
@@ -781,9 +782,51 @@ describe('the "This chat" card’s Automations section', () => {
     const section = await screen.findByRole('region', { name: 'Automations' });
     expect(section.textContent).toContain('check the deploy');
     expect(section.textContent).toContain('repo-digest');
-    expect(section.textContent).toContain('Every 60 min · 2 failed');
+    expect(section.textContent).toContain(
+      "Every 60 min · Last 2 runs didn't work",
+    );
+    expect(section.textContent).not.toContain('2 failed');
     expect(
       screen.getByRole('button', { name: 'Run repo-digest now' }),
+    ).toBeTruthy();
+  });
+
+  test('an automation with a display name is listed and labelled by it, and acted on by its slug', async () => {
+    schedule = {
+      wakeUps: [],
+      jobProposals: [],
+      jobs: [],
+      automations: [{ name: 'repo-digest', enabled: true }],
+    };
+    scheduler.jobs = [
+      {
+        name: 'repo-digest',
+        displayName: 'Repo digest',
+        provider: 'builtin',
+        prompt: 'p',
+        enabled: true,
+        target: { kind: 'conversation', conversationId: CONVERSATION },
+        schedule: { kind: 'every', everyMs: 3_600_000 },
+      },
+    ];
+    mount(
+      <SessionScheduledSection conversationId={CONVERSATION} wrap={wrap} />,
+    );
+    const section = await screen.findByRole('region', { name: 'Automations' });
+    expect(section.textContent).toContain('Repo digest');
+    expect(section.textContent).not.toContain('repo-digest');
+    expect(
+      screen.getByRole('button', { name: 'Edit Repo digest' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('switch', { name: 'Repo digest on' }));
+    expect(scheduler.toggle).toHaveBeenCalledWith({
+      target: 'repo-digest',
+      enabled: false,
+    });
+    // Only the label: Run now is never pressed in a test that can reach an
+    // engine, and here it stays a mocked mutation.
+    expect(
+      screen.getByRole('button', { name: 'Run Repo digest now' }),
     ).toBeTruthy();
   });
 

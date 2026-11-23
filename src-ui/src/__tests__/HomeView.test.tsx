@@ -25,7 +25,10 @@ import {
 } from 'vitest';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { openChatsStore } from '../contexts/open-chats-store';
-import { resetStartChoicesForTests } from '../hooks/useStartSelection';
+import {
+  resetStartChoicesForTests,
+  seedHomeStartProjectForTests,
+} from '../hooks/useStartSelection';
 import { writeSnooze } from '../utils/activity-snooze-store';
 import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
 import * as homeLanes from '../views/home/useHomeWorkLanes';
@@ -216,6 +219,8 @@ vi.mock('../contexts/open-chats-store', async () => {
 });
 
 vi.mock('@kontourai/station-sdk', () => ({
+  useGitStatusQuery: () => ({ data: undefined, isLoading: false }),
+  useSessionInventoryQuery: () => ({ data: undefined, isLoading: false }),
   // #4695: a live Session row reads its agent-reported plan; none here.
   useOrchestrationSessionActivityQuery: () => ({ data: undefined }),
   // #4519: the connected Station has no managed policy.
@@ -406,6 +411,7 @@ vi.mock('../components/UsageTelemetryDisclosure', () => ({
     outstanding: false,
   }),
   UsageTelemetryDisclosureStep: () => null,
+  UsageTelemetryDisclosure: () => null,
   dismissUsageTelemetryDisclosure: vi.fn(),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
@@ -1010,8 +1016,7 @@ describe('HomeView', () => {
     renderHomeView({ continuation: null, onNavigate: vi.fn() });
     const continueButton = continueRow();
     expect(continueButton.textContent).toContain('Task-first home');
-    // The work row's own metadata: the agent and the project.
-    expect(continueButton.textContent).toContain('Codex · Station');
+    expect(continueButton.textContent).toMatch(/Station\s+Codex/);
     fireEvent.click(continueButton);
     expect(focus).toHaveBeenCalledTimes(1);
     expect(focus).toHaveBeenCalledWith({ sessionId: 'newest' });
@@ -1021,7 +1026,7 @@ describe('HomeView', () => {
   // #3312: with work on the page the start composer is the compact one, and
   // its Agent chip names the Agent and Model Start will run on: the default
   // selection (`useNewChatSelectionModel`) for the context the start path
-  // opens in (`useNewChatStartContext`), so changing that selection changes
+  // opens in (Home's own project pick), so changing that selection changes
   // the chip.
   const workSession = () => ({
     threadId: 'work-thread',
@@ -1093,17 +1098,30 @@ describe('HomeView', () => {
     });
   });
 
-  // #3312 review HIGH: Start runs in the dock's remembered project once the
-  // user has opened one, so Home resolves its identity in that context, not
-  // the route's (on `/` there is none). `revalidateSelection` matches the
-  // input `NewChatModal` passes for a `startWithDefault` request.
+  // #3312 review HIGH: Home resolves its identity in the context Start opens
+  // in. That is the project picked in Home's own chip, never the dock's
+  // remembered binding, which opening any project rebinds silently.
+  // `revalidateSelection` matches the input `NewChatModal` passes for a
+  // `startWithDefault` request.
   test.each([
-    ['a dock bound to a project with a directory', 'station', 'station'],
-    ['a dock bound to nothing', null, '__global__'],
-    ['a dock bound to a project that is gone', 'deleted', '__global__'],
+    ['a project picked on Home', 'station', null, 'station'],
+    ['nothing picked on Home', undefined, null, '__global__'],
+    [
+      'nothing picked on Home, the dock remembers a project',
+      undefined,
+      'station',
+      '__global__',
+    ],
+    ['a pick that is gone', 'deleted', null, '__global__'],
+    [
+      'a pick that differs from what the dock remembers',
+      '__global__',
+      'station',
+      '__global__',
+    ],
   ])(
     'Home resolves its start identity in the context Start opens in: %s',
-    (_name, binding, expected) => {
+    (_name, picked, binding, expected) => {
       fixtures.projects = [
         {
           id: 'p1',
@@ -1113,6 +1131,7 @@ describe('HomeView', () => {
         } as any,
       ];
       fixtures.chatDockProjectSlug = binding;
+      seedHomeStartProjectForTests(picked);
       renderHomeView({ continuation: null, onNavigate: vi.fn() });
       expect(fixtures.selectionInputs.length).toBeGreaterThan(0);
       for (const input of fixtures.selectionInputs) {
@@ -1791,7 +1810,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
     expect(snooze.closest('.inbox-row__actions')).not.toBeNull();
   });
 
-  test('a coarse pointer keeps the 44px touch chrome with Details and one action', () => {
+  test('a coarse pointer opens Details and snooze choices from the row', async () => {
     fixtures.continueDecoy = true;
     const media = window.matchMedia as unknown as ReturnType<typeof vi.fn>;
     media.mockImplementation((query: string) => ({
@@ -1809,19 +1828,17 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
       const recent = screen.getByRole('region', { name: 'Recent work' });
       const [row] = within(recent).getAllByTestId('inbox-row');
       expect(row.className).toContain('inbox-row--touch');
+      const open = within(row).getByRole('button', {
+        name: new RegExp('^' + ITEM_TITLE),
+      });
+      expect(within(row).getAllByRole('button')).toHaveLength(1);
+      fireEvent.contextMenu(open);
+      const details = await screen.findByRole('dialog', {
+        name: `Details for ${ITEM_TITLE}`,
+      });
       expect(
-        within(recent).getByRole('button', {
-          name: `Details for ${ITEM_TITLE}`,
-        }),
+        within(details).getByRole('button', { name: '1 hour' }),
       ).toBeTruthy();
-      expect(
-        within(recent).getByRole('button', { name: `Snooze ${ITEM_TITLE}` }),
-      ).toBeTruthy();
-      expect(
-        within(row)
-          .queryAllByRole('button')
-          .filter((button) => button.closest('.inbox-row__actions')),
-      ).toHaveLength(2);
     } finally {
       media.mockImplementation(() => ({
         matches: false,
@@ -1928,7 +1945,9 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         vi.advanceTimersByTime(TERMINAL_LINGER_MS + 60_000);
       });
 
-      const earlier = screen.getByRole('region', { name: 'Earlier' });
+      const earlier = screen.getByRole('region', {
+        name: 'Earlier in Station',
+      });
       for (let index = 1; index <= 5; index += 1) {
         expect(within(earlier).getByText(`Completed ${index}`)).toBeTruthy();
       }
@@ -1949,7 +1968,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         within(earlier)
           .getAllByRole('heading')
           .map((heading) => heading.textContent),
-      ).toEqual(['Earlier']);
+      ).toEqual(['Earlier in Station']);
       expect(
         within(earlier)
           .getAllByText(/^Completed \d$/)
@@ -1983,7 +2002,9 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         vi.advanceTimersByTime(TERMINAL_LINGER_MS + 60_000);
       });
 
-      const earlier = screen.getByRole('region', { name: 'Earlier' });
+      const earlier = screen.getByRole('region', {
+        name: 'Earlier in Station',
+      });
       expect(
         within(earlier).getByText('Repair the settled failure'),
       ).toBeTruthy();

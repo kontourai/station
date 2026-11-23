@@ -1,0 +1,7 @@
+{
+  "revision": "0d8a3ff687e275de864403f16747a82d41fe7a33",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Save a Connection now documents the 400 connection_address_required refusal for a blank openai-compat config.baseUrl on POST and PUT, and the same rule on /api/providers writes; checked against runtime.ts refinement and route tests.","inputs":["docs/reference/api.md","src-server/routes/connections/connections.ts","src-server/routes/schemas/schema-definitions/runtime.ts"]}
+  ]
+}

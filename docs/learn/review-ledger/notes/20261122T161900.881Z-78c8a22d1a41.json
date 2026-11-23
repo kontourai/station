@@ -1,0 +1,7 @@
+{
+  "revision": "4f101ab0f8de657ae1782cf97535fc02e19c1715",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Cites voltagent-adapter.ts for composer-side behavior; the onEnd failure and Stop reporting change does not alter what the composer sends or shows.","inputs":["docs/design/chat-composer.md","src-server/runtime/frameworks/voltagent-adapter.ts"]}
+  ]
+}

@@ -1848,13 +1848,12 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
         name: 'Inbox',
         exact: true,
       });
-      const newChat = header.getByRole('button', {
-        name: 'New chat',
-        exact: true,
+      const extent = header.getByRole('button', {
+        name: /^(Full screen chat|Restore chat size)$/,
       });
       for (const control of [
         inboxToggle,
-        newChat,
+        extent,
         header.getByRole('button', { name: 'Chat actions', exact: true }),
       ]) {
         await expect(control).toBeVisible();
@@ -1884,9 +1883,22 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
       );
       const selected = chats.locator('button[aria-current="true"]');
       await expect(selected).toContainText('Claude Alpha Chat');
-      await expect(selected.locator('.inbox-row__project')).toHaveText('alpha');
+      await expect(selected.locator('.inbox-row__project')).toHaveText(
+        'Alpha Project',
+      );
       const activeBefore = new URL(page.url()).searchParams.get('chat');
       expect(activeBefore).toBeTruthy();
+      const newChat = chats.getByRole('button', {
+        name: 'New chat',
+        exact: true,
+      });
+      const composeBox = await newChat.boundingBox();
+      expect(composeBox?.width ?? 0).toBeGreaterThanOrEqual(
+        MIN_TOUCH_TARGET_PX,
+      );
+      expect(composeBox?.height ?? 0).toBeGreaterThanOrEqual(
+        MIN_TOUCH_TARGET_PX,
+      );
       await newChat.click();
       await expect(chats).not.toBeVisible();
       const draft = page.getByRole('region', {
@@ -1941,7 +1953,9 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
       await inboxToggle.click();
       await expect(chats).toBeVisible();
       await expect(selected).toContainText('Claude Alpha Chat');
-      await expect(selected.locator('.inbox-row__project')).toHaveText('alpha');
+      await expect(selected.locator('.inbox-row__project')).toHaveText(
+        'Alpha Project',
+      );
       expect(executionRequests).toHaveLength(0);
     });
   }

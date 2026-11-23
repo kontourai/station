@@ -1,0 +1,7 @@
+{
+  "revision": "67bc53f6e0384566a0842a955240ff3d0ace0b25",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rechecked (#5398 fix round): the composer's Retry Send and Check status text is unchanged; the row's Check now checks every listed message through its own chat and never resends, which this record does not describe.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/views/home/home-view-model.ts","src-ui/src/views/home/work-facts.ts"]}
+  ]
+}

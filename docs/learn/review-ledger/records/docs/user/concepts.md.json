@@ -66,7 +66,9 @@
 
     "src-ui/src/views/TaskWorkspaceView.tsx",
 
-    "src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx"
+    "src-ui/src/views/task-workspace/TaskCodeReviewPanel.tsx",
+
+    "src-ui/src/views/project-settings/KnowledgeSection.tsx"
   ],
 
   "checks": [

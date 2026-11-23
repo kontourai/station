@@ -689,16 +689,37 @@ behavior require separate platform verification.
 
 ### Recover interrupted activation
 
-An **Activation pending** plugin retains its code and data while its runtime
-contributions remain unavailable. Open **Plugins**, select it, and choose
-**Review recovery**. Review the permissions and retained dependencies, then
-choose **Recover plugin** and confirm the permission review. Recovery does not
-fetch replacement code or reset stored data. Trusted permissions still require
-the separate host approval flow.
+When a plugin's runtime activation does not finish in time (a slow host, or
+plugin code that hangs), an install or update can be saved first. Station waits up to 10 seconds for a
+plugin to activate, the same limit as any other configuration change; past it, Station stops that
+activation rather than hold every other configuration change behind it, and it
+does not retry it on its own. Recovery runs under the same limit, so a retry may
+work and removing the plugin is the way out. While the server is still
+activating the plugin, its row reads **Activating…** with no recovery offered;
+it becomes ready by itself or, once stopped, **Needs recovery**. Plugins
+then says the plugin was installed (or updated) but is not active, and opens
+its row, which reads **Needs recovery**. It did not fail, and installing it
+again would install a second copy: installing a plugin that reads **Needs
+recovery**, from Plugins, Registry or `station plugin install`, offers
+recovery instead, and installs again only when you ask (**Install again
+anyway**, or `--reinstall`). Station does not ask for its trusted
+permissions yet, because their host approval needs an active plugin; a
+recovery that activates it asks for them straight away, as a completed install
+does. The CLI prints the same
+outcome. A removal saved this way needs nothing from you: Station finishes
+unloading the plugin in the background.
 
-A recovery request may be accepted while runtime activation remains pending.
-Use **Refresh status** to read its current state; do not automatically replay the
-request. If a dependency must recover first, follow the server's dependency
+A **Needs recovery** plugin retains its code and data while its runtime
+contributions remain unavailable. Open **Plugins** and select it: the recovery
+review loads with the row. Review the permissions and retained dependencies,
+then choose **Recover plugin** and confirm the permission review. Recovery does
+not fetch replacement code or reset stored data. Once the plugin is active,
+Station asks for any trusted permissions it still needs through the separate
+host approval flow; declining leaves them under **Requested and not granted**.
+
+A recovery can also be saved without its activation finishing; the row then
+still reads **Needs recovery**. Use **Refresh status** to read its current
+state and recover it again; do not automatically replay the request. If a dependency must recover first, follow the server's dependency
 message, then obtain a fresh review for the parent. A changed approval or
 installation requires a new review, never reuse of an earlier decision.
 

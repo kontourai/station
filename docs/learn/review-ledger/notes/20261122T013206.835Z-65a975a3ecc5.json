@@ -1,0 +1,7 @@
+{
+  "revision": "11fb9b2e82a5c67eff0974d100c90e9ca8ba6876",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Read the rewritten Play readback paragraph against scripts/query-google-play-release.mjs at this revision (REQUEST_TIMEOUT_MS 15000, MAX_ATTEMPTS 3, waits 2000/5000 or a longer Retry-After on 429, TOTAL_BUDGET_MS 60000, MIN_ATTEMPT_BUDGET_MS 10000, CLEANUP_FLOOR_MS 5000, READBACK_WORST_CASE_MS 65000, phases authenticate/acquire-client/acquire-token/create-edit/read-track/read-bundles/validate-observation/delete-edit, retryable classes, cleanup warning after a good read), its tests, verify-release-cohort.mjs (90 s spawn limit) and the 3-minute step timeout plus always() unknown-claim fallback in nightly-native-cohort.yml. The STS no-timeout claim was executed against google-auth-library 11.3.4 with a stalled local endpoint. The cross-app one-open-edit exposure is stated as not verified.","inputs":["docs/guides/native-releases.md"]}
+  ]
+}

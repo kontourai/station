@@ -1,0 +1,7 @@
+{
+  "revision": "6e5db01edeac4b13532a43f6d6247b5c4061615a",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Scan-or-enter claims stay accurate: the scanner is still offered where a camera exists; the change only drops it where the browser has no camera.","inputs":["docs/guides/connections.md","packages/connect/src/__tests__/DevicePairingPanel.test.tsx"]}
+  ]
+}

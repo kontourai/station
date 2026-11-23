@@ -1,0 +1,11 @@
+{
+  "revision": "1a9a0e1f24df7097e2af139513eb635f9de2e727",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#5389 wording fix: a Codex Session continues when its first recorded codexThreadId equals an earlier run's last one (the fold searches every earlier run of that engine, not only the previous); checked against groupRuns/runOnThread in packages/shared/src/usage-lineage-fold.ts.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/design/terminal.md","note":"#5389 wording fix in api.md's conversation stats section only; this design's cited API claims concern terminal routes, so no prose change.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"#5389 wording fix in api.md's conversation stats section only; this guide's routing to the API reference stays accurate, so no prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

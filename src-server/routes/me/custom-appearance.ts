@@ -17,6 +17,7 @@ import { requestMayBeAnAgent } from '../../security/coding-authority.js';
 import { connectedAccountOwnerId } from '../../services/identity/connected-account-owner.js';
 import {
   CustomAppearanceConflictError,
+  CustomAppearanceGrantExpiredError,
   CustomAppearanceLibraryFullError,
   type CustomAppearanceStore,
   CustomAppearanceStudioDisabledError,
@@ -121,6 +122,7 @@ const PERSON_ONLY: Record<string, string> = {
 export function createCustomAppearanceRoutes(deps: {
   store: CustomAppearanceStore;
   resolvePrincipal(c: PersonalLayoutPrincipalContext): PrincipalRef;
+  resolveDelegatedAppearanceOwner?(request: Request): string | undefined;
   tenantId(request: Request): string | undefined;
   studioEnabled?: () => boolean;
   resolveProposalSourceSessionId?: (
@@ -143,16 +145,22 @@ export function createCustomAppearanceRoutes(deps: {
         owner: { principalId: string; tenantId?: string },
         body: T,
         c: Context,
+        delegatedGrantCurrent?: () => boolean,
       ) => unknown,
       personOnly?: keyof typeof PERSON_ONLY,
       studioOnly = false,
+      allowDelegatedAppearance = false,
     ) =>
     async (c: Context): Promise<Response> => {
       c.header('Cache-Control', 'no-store');
       if (studioOnly && !studioEnabled()) return c.json(disabled(), 404);
+      const delegatedOwner = allowDelegatedAppearance
+        ? deps.resolveDelegatedAppearanceOwner?.(c.req.raw)
+        : undefined;
       let principalId: string | undefined;
       try {
-        principalId = connectedAccountOwnerId(deps.resolvePrincipal(c));
+        principalId =
+          delegatedOwner ?? connectedAccountOwnerId(deps.resolvePrincipal(c));
       } catch {
         principalId = undefined;
       }
@@ -211,8 +219,27 @@ export function createCustomAppearanceRoutes(deps: {
       }
       const owner = { principalId, tenantId: deps.tenantId(c.req.raw) };
       try {
-        return c.json({ success: true, data: await run(owner, body, c) });
+        const grantCurrent = delegatedOwner
+          ? () =>
+              deps.resolveDelegatedAppearanceOwner?.(c.req.raw) ===
+              delegatedOwner
+          : undefined;
+        if (grantCurrent && !grantCurrent())
+          throw new CustomAppearanceGrantExpiredError();
+        return c.json({
+          success: true,
+          data: await run(owner, body, c, grantCurrent),
+        });
       } catch (error) {
+        if (error instanceof CustomAppearanceGrantExpiredError)
+          return c.json(
+            {
+              success: false,
+              code: 'custom_appearance_identity_required',
+              error: 'The delegated appearance proposal grant expired.',
+            },
+            403,
+          );
         if (error instanceof CustomAppearanceStudioDisabledError)
           return c.json(disabled(), 404);
         if (error instanceof CustomAppearanceLibraryFullError)
@@ -276,7 +303,7 @@ export function createCustomAppearanceRoutes(deps: {
 
   app.get(
     '/appearance',
-    handle(null, (owner) => deps.store.read(owner)),
+    handle(null, (owner) => deps.store.read(owner), undefined, false, true),
   );
   app.put(
     '/appearance',
@@ -289,14 +316,20 @@ export function createCustomAppearanceRoutes(deps: {
   );
   app.post(
     '/appearance/proposal',
-    handle(proposalBody, (owner, body, c) =>
-      deps.store.propose(
-        owner,
-        body.revision,
-        body.appearance,
-        deps.resolveProposalSourceSessionId?.(c),
-        studioEnabled,
-      ),
+    handle(
+      proposalBody,
+      (owner, body, c, grantCurrent) =>
+        deps.store.propose(
+          owner,
+          body.revision,
+          body.appearance,
+          deps.resolveProposalSourceSessionId?.(c),
+          studioEnabled,
+          grantCurrent,
+        ),
+      undefined,
+      false,
+      true,
     ),
   );
   app.post(

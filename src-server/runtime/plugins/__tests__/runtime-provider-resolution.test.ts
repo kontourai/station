@@ -1,4 +1,7 @@
-import { classifyManagedModelBinding } from '@kontourai/station-contracts/managed-model-binding';
+import {
+  AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE,
+  classifyManagedModelBinding,
+} from '@kontourai/station-contracts/managed-model-binding';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../../../providers/connection-factories.js', () => ({
@@ -375,7 +378,7 @@ describe('runtime-provider-resolution', () => {
             },
           ] as any,
       }),
-    ).rejects.toThrow('require an explicit default');
+    ).rejects.toThrow(AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE);
     expect(createLLMProvider).not.toHaveBeenCalled();
   });
 
