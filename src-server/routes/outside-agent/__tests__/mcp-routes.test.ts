@@ -86,18 +86,15 @@ test('outside layout listing reads only the approved Project and drops plugin me
     ]),
   );
 
-  const list = (token: string, session: string, slug: string) =>
-    f
-      .rpc(
+  const list = async (token: string, session: string, slug: string) =>
+    payload(
+      await f.rpc(
         token,
         'tools/call',
-        {
-          name: 'list_project_layouts',
-          arguments: { slug },
-        },
+        { name: 'list_project_layouts', arguments: { slug } },
         session,
-      )
-      .then(payload);
+      ),
+    );
   expect(
     (await list(projectGrant.accessToken, projectSession.session, 'foreign'))
       .result.isError,
