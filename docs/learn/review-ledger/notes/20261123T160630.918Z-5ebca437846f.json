@@ -1,0 +1,11 @@
+{
+  "revision": "2b7e91cfd2d2d9198b2a11fdced73b1ced9bd30b",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Change limited to the reader hold: input-less, movement-less scroll events no longer mark a holding reader scrolled up, and only a new user message (matched across client id, turn.started event and server id; not a bubble shown while a turn runs; not earlier history) ends the hold. Citing pages: chat-composer.md hold paragraph updated in the same change; ai-ui-bridge-expansion.md cites the form-submission context, unaffected; placement.md claims unaffected.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Change limited to the reader hold: input-less, movement-less scroll events no longer mark a holding reader scrolled up, and only a new user message (matched across client id, turn.started event and server id; not a bubble shown while a turn runs; not earlier history) ends the hold. Citing pages: chat-composer.md hold paragraph updated in the same change; ai-ui-bridge-expansion.md cites the form-submission context, unaffected; placement.md claims unaffected.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Change limited to the reader hold: input-less, movement-less scroll events no longer mark a holding reader scrolled up, and only a new user message (matched across client id, turn.started event and server id; not a bubble shown while a turn runs; not earlier history) ends the hold. Citing pages: chat-composer.md hold paragraph updated in the same change; ai-ui-bridge-expansion.md cites the form-submission context, unaffected; placement.md claims unaffected.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}
