@@ -1,0 +1,7 @@
+{
+  "revision": "436b4ca4dbab9500c5051b403e99a9d236715639",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Source change: a person's Stop marks session.stop-settled byPerson (operator or device origin) and the automation runtime reads it; the automation wall budget pauses while a blocking request is open. Grepped citing pages for stop-settled, initiatedBy, interruptTurn and maxWallRuntimeMs: their claims (interruptTurn as a command, cooperative stop callers passing initiatedBy user) remain true; no prose change needed.","inputs":["src-server/runtime/automation-actions-runtime.ts"]}
+  ]
+}
