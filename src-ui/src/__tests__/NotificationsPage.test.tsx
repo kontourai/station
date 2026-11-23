@@ -1657,7 +1657,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     ];
   });
 
-  describe('Unsnooze through the SDK HTTP mutation', () => {
+  describe('Wake now through the SDK HTTP mutation', () => {
     beforeEach(() => {
       useRealUnsnooze = true;
       snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
@@ -1677,7 +1677,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       });
     });
 
-    test('a rejected Unsnooze keeps the item, explains the failure and leaves retry available', async () => {
+    test('a rejected Wake now keeps the item, explains the failure and leaves retry available', async () => {
       const request = vi.fn(
         async (input: RequestInfo | URL, init?: RequestInit) => {
           expect(String(input)).toBe(
@@ -1709,7 +1709,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       ).toBe(false);
     });
 
-    test('Unsnooze serializes requests while only the active row reports pending', async () => {
+    test('Wake now serializes requests while only the active row reports pending', async () => {
       attention.items.push({
         id: 'session-failed:c',
         kind: 'session-failed',
@@ -1754,7 +1754,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       }
     });
 
-    test('Undo retains its action until the unsnooze response settles and can retry a rejection', async () => {
+    test('Undo retains its action until the wake response settles and can retry a rejection', async () => {
       let rejectUndo!: (response: Response) => void;
       const undoResponse = new Promise<Response>((resolve) => {
         rejectUndo = resolve;

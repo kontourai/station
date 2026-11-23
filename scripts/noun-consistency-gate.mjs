@@ -50,7 +50,7 @@
 //      rather than guessed at. This trades a few missed edge cases for
 //      zero false positives, which matters more for a zero-tolerance gate
 //      than exhaustive coverage.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   assertScopeIsHonest,
@@ -102,6 +102,21 @@ export const COPY_SOURCE_FILES = [
  * scanned with the wrong one reports zero blocks, which is a hard failure
  * rather than a quiet clean scan.
  */
+/**
+ * Plain TypeScript modules that hold user-facing words as string literals
+ * (row action labels, notice text) rather than JSX. The JSX scanners never
+ * read them, so a retired phrase written as `label: 'Settle conversation'`
+ * passed the gate. They are scanned for the retired user terms only, in
+ * every string and template literal: the older noun families have code
+ * senses (`agent`, `prompt`) a literal scan cannot tell from copy.
+ */
+export const LITERAL_COPY_FILES = [
+  'src-ui/src/components/inbox-row/inbox-row-actions.ts',
+  'src-ui/src/components/inbox-row/snooze-presets.ts',
+  'src-ui/src/components/chat-dock/mobile-activity-groups.ts',
+  'src-ui/src/components/chat-dock/useInboxGroups.ts',
+];
+
 export const COPY_SOURCE_OPENERS = {
   'packages/contracts/src/device-settings.ts': 'defineDeviceSetting(',
 };
@@ -835,6 +850,40 @@ export function scanObjectLiteralCopy(
  * surfaces (JSX attribute values, JSX text nodes, object-literal copy
  * fields). Returns an array of findings: { file, line, snippet }.
  */
+// A string or template literal on one line, or a template across lines.
+const STRING_LITERAL_PATTERN =
+  /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g;
+
+/**
+ * Every string and template literal in `rawContent` that carries a retired
+ * user term. Template interpolations are blanked first, so `${title}` cannot
+ * hide or fake a phrase. Only the retired user terms are checked; see
+ * `LITERAL_COPY_FILES`.
+ */
+export function scanStringLiterals(file, rawContent, retiredTerms) {
+  const content = stripComments(rawContent);
+  const findings = [];
+  if (retiredTerms.length === 0) return findings;
+  for (const match of content.matchAll(STRING_LITERAL_PATTERN)) {
+    const literal = match[0].startsWith('`')
+      ? maskTemplateLiteral(match[0])
+      : match[0].slice(1, -1);
+    const normalized = normalizeSnippet(literal);
+    if (
+      !retiredTerms.some(({ pattern }) =>
+        new RegExp(pattern.source, 'i').test(normalized),
+      )
+    )
+      continue;
+    findings.push({
+      file,
+      line: lineNumberAt(content, match.index),
+      snippet: normalized,
+    });
+  }
+  return findings;
+}
+
 export function scanFileContent(
   file,
   rawContent,
@@ -843,6 +892,10 @@ export function scanFileContent(
   const content = stripComments(rawContent);
   const findings = [];
   findings.push(...scanObjectLiteralCopy(file, content, retiredTerms));
+  // Notice text, labels in object literals and `{'…'}` children: any string
+  // literal in a scanned component, for the retired user terms. A literal
+  // the attribute scanners already reported is not reported twice.
+  const literals = scanStringLiterals(file, rawContent, retiredTerms);
 
   function collectAttr(pattern) {
     pattern.lastIndex = 0;
@@ -900,6 +953,9 @@ export function scanFileContent(
     );
   }
 
+  const reported = new Set(findings.map(allowlistKey));
+  for (const finding of literals)
+    if (!reported.has(allowlistKey(finding))) findings.push(finding);
   return findings;
 }
 
@@ -1052,13 +1108,25 @@ export function runGate({
   readFile,
   allowlist,
   copySourceFiles = [],
+  literalCopyFiles = [],
   retiredTerms = ACTIVE_RETIRED_USER_TERMS,
 }) {
-  const findings = [];
+  const scanned = [];
   for (const file of files) {
     const content = readFile(file);
-    findings.push(...scanFileContent(file, content, retiredTerms));
+    scanned.push(...scanFileContent(file, content, retiredTerms));
   }
+  for (const file of literalCopyFiles)
+    scanned.push(...scanStringLiterals(file, readFile(file), retiredTerms));
+  // One finding per place: a label can match both a JSX scanner and the
+  // literal scan.
+  const seen = new Set();
+  const findings = scanned.filter((finding) => {
+    const key = allowlistKey(finding);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   const unscannable = [];
   for (const file of copySourceFiles) {
@@ -1101,12 +1169,19 @@ function main() {
     pinned: PINNED_SCOPE_INVENTORY,
     files: [...files, ...COPY_SOURCE_FILES],
   });
+  // A listed literal source that no longer exists is a scope that shrank.
+  for (const file of LITERAL_COPY_FILES)
+    if (!existsSync(file))
+      throw new Error(
+        `noun-consistency gate: literal copy source ${file} is missing; update LITERAL_COPY_FILES.`,
+      );
 
   const { unallowlisted, staleEntries, unscannable } = runGate({
     files,
     readFile: (file) => readFileSync(file, 'utf8'),
     allowlist,
     copySourceFiles: COPY_SOURCE_FILES,
+    literalCopyFiles: LITERAL_COPY_FILES,
   });
 
   console.log(
@@ -1170,7 +1245,7 @@ function main() {
       roots: SCAN_ROOTS,
       extensions: SCAN_EXTENSIONS,
       files,
-      extraFiles: COPY_SOURCE_FILES,
+      extraFiles: [...COPY_SOURCE_FILES, ...LITERAL_COPY_FILES],
     });
     const allowlistNote =
       allowlist.length === 0
@@ -1178,7 +1253,7 @@ function main() {
         : `${allowlist.length} allowlist entries, all still live`;
     console.log(
       `OK: no un-allowlisted stale-noun matches. Scanned ${scope} — ` +
-        `${files.length + COPY_SOURCE_FILES.length} files total, ` +
+        `${files.length + COPY_SOURCE_FILES.length + LITERAL_COPY_FILES.length} files total, ` +
         `${allowlistNote}.`,
     );
     process.exit(0);
