@@ -248,6 +248,23 @@ describe('chat-24 transcript markers', () => {
     expect(markers(container, 'engine')).toHaveLength(1);
   });
 
+  test('one turn that recorded no model is not a change to or from "not reported"', () => {
+    const changedTurn = WINDOW.events.find(
+      ({ event }) =>
+        event.method === 'turn.started' &&
+        event.metadata?.effectiveModel === 'scripted-showcase',
+    )?.event.turnId;
+    expect(changedTurn).toBeDefined();
+    const { container } = renderTranscript(
+      transcript(WINDOW, (event) => {
+        if (event.turnId !== changedTurn || !event.metadata) return event;
+        const { effectiveModel: _omitted, ...metadata } = event.metadata;
+        return { ...event, metadata };
+      }),
+    );
+    expect(markers(container, 'model')).toHaveLength(0);
+  });
+
   test('a model change at a fresh context shows one row, not two', () => {
     // The first turn after the reset recorded no model; give it a different
     // one than the last turn before the reset.
