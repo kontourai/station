@@ -62,15 +62,17 @@ export function MobileInboxSelection({
   const settleId = (entry: Entry) =>
     inboxResolutionId(entry.item, facts?.get(entry.item.id), work.supported);
   // Mark done: settle where settlement reaches the row, else dismiss on this
-  // device; a row already done (Settled, or marked done) has nothing to do.
-  const mayMarkDone = (entry: Entry) =>
-    entry.group !== 'dismissed' &&
-    entry.group !== 'settled' &&
-    !(
-      settleId(entry) &&
-      Object.hasOwn(work.settled, entry.item.conversationId ?? '')
-    ) &&
-    (!settleId(entry) || !!work.change.mutateAsync);
+  // device. A row already done (settled, or marked done here) has nothing
+  // to do. The record decides, not the shelf: without the preview the
+  // shelf id `settled` is Just finished, whose rows are not done.
+  const mayMarkDone = (entry: Entry) => {
+    const conversationId = settleId(entry);
+    return (
+      entry.group !== 'dismissed' &&
+      !(conversationId && Object.hasOwn(work.settled, conversationId)) &&
+      (!conversationId || !!work.change.mutateAsync)
+    );
+  };
   const canMarkDone =
     !!entries.length && !work.change.isPending && entries.every(mayMarkDone);
   const canSnooze =

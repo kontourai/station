@@ -16,11 +16,14 @@ import { MobileInboxSelection } from '../MobileInboxSelection';
 
 const mutate = vi.hoisted(() => vi.fn());
 const reopen = vi.hoisted(() => vi.fn());
-const work = vi.hoisted(() => ({ supported: true }));
+const work = vi.hoisted(() => ({
+  supported: true,
+  settled: {} as Record<string, string>,
+}));
 vi.mock('../useConversationWorkState', () => ({
   useConversationWorkState: () => ({
     supported: work.supported,
-    settled: {},
+    settled: work.settled,
     change: { mutateAsync: mutate, mutate: reopen, isPending: false },
   }),
 }));
@@ -28,6 +31,7 @@ beforeEach(() => {
   mutate.mockReset();
   reopen.mockReset();
   work.supported = true;
+  work.settled = {};
   resetPendingUndoForTest();
 });
 function row(id: string): HomeWorkItem {
@@ -126,6 +130,7 @@ it('stops a batch when its Station selection disappears during the first write',
   expect(mutate).toHaveBeenCalledTimes(1);
 });
 it('keeps a selection holding a row already done from Mark done', () => {
+  work.settled = { two: '2026-11-01T00:00:00.000Z' };
   render(
     <MobileInboxSelection
       selected={new Set(['one', 'two'])}
@@ -148,4 +153,25 @@ it('keeps a selection holding a row already done from Mark done', () => {
   expect(screen.getByRole('status').textContent).toBe(
     'Some of these are already done.',
   );
+});
+// Without the preview the shelf id `settled` is Just finished: not done yet.
+it('marks a Just finished row done on this device when settlement is off', async () => {
+  work.supported = false;
+  const onChange = vi.fn();
+  const dismiss = vi.fn().mockResolvedValue(undefined);
+  render(
+    <MobileInboxSelection
+      selected={new Set(['one'])}
+      groups={[{ id: 'settled', label: 'Just finished', items: [row('one')] }]}
+      onChange={onChange}
+      isCurrent={() => true}
+      snooze={vi.fn()}
+      dismiss={dismiss}
+      restore={vi.fn()}
+      details={vi.fn()}
+    />,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Mark done' }));
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith(null));
+  expect(dismiss).toHaveBeenCalledWith(row('one'));
 });
