@@ -20,6 +20,7 @@ import {
   buildNewChatModelOverrideKey,
   GLOBAL_CONTEXT,
   getRecentAgentSlugsForContext,
+  newChatDefaultRow,
   newChatLastChosenModel,
   newChatProjectDefaultModel,
   resolveNewChatDefaultSelection,
@@ -397,7 +398,7 @@ export function useNewChatSelectionModel({
   );
   // The Station's default for new chats (#5401), recorded once from the
   // fixed order and read after every closer default below.
-  const newChatDefaultSlug = appConfig?.newChatDefault?.agent;
+  const storedNewChatDefaultSlug = appConfig?.newChatDefault?.agent;
   useRecordNewChatDefault({
     stored: appConfig ? appConfig.newChatDefault : null,
     agents: modalAgents,
@@ -410,6 +411,13 @@ export function useNewChatSelectionModel({
       agentCatalog.catalogState !== 'reconciling',
   });
   const listedAgents = viewModel.scopedAgents ?? viewModel.flatList;
+  // The stored default as the row the menu shows: an engine's alias row
+  // that another of that engine's own Agents stands in for resolves to it,
+  // for the selection and the tag alike.
+  const newChatDefaultSlug = newChatDefaultRow(
+    listedAgents,
+    storedNewChatDefaultSlug,
+  );
   const defaultSelection = resolveNewChatDefaultSelection({
     flatList: viewModel.flatList,
     listedAgents,

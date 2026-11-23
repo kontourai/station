@@ -26,8 +26,8 @@ export function resetRecordNewChatDefaultForTests() {
 /**
  * Station has verified this engine connection's sign-in: its login
  * prerequisite (`<command>-auth`, written by the engine's sign-in check) is
- * required and met. A login Station cannot check is optional or errored, and
- * an engine with no such row (an ACP engine) has no check here at all.
+ * met. A login Station cannot check is written as errored (optional or
+ * required), never met, and an engine with no such row has no check at all.
  */
 function engineSignInVerified(
   connection: Pick<ConnectionConfig, 'prerequisites'> | undefined,
@@ -36,7 +36,6 @@ function engineSignInVerified(
     connection?.prerequisites?.some(
       (prerequisite) =>
         prerequisite.id.endsWith('-auth') &&
-        prerequisite.category === 'required' &&
         prerequisite.status === 'installed',
     ),
   );

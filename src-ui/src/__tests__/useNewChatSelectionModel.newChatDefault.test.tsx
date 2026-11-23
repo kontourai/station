@@ -13,7 +13,10 @@ import {
   newChatFallbackAgent,
 } from '../components/modals/new-chat-modal-utils';
 import type { AgentData } from '../contexts/AgentsContext';
+import { AuthorityPersistenceContext } from '../contexts/AuthorityPersistenceContext';
+import type { ProjectMetadata } from '../contexts/ProjectsContext';
 import { useNewChatSelectionModel } from '../hooks/useNewChatSelectionModel';
+import { trackContextAgent } from '../hooks/useRecentAgents';
 import { resetRecordNewChatDefaultForTests } from '../hooks/useRecordNewChatDefault';
 
 const state = vi.hoisted(() => ({
@@ -24,6 +27,14 @@ const state = vi.hoisted(() => ({
   engines: [] as unknown[],
   catalogFetching: false,
   record: vi.fn(),
+  projects: [] as unknown[],
+  projectConfig: {} as Record<string, unknown>,
+  layout: undefined as Record<string, unknown> | undefined,
+  navigation: {
+    selectedProject: null as string | null,
+    selectedProjectLayout: null as string | null,
+  },
+  activeChats: {} as Record<string, unknown>,
 }));
 
 vi.mock('@kontourai/station-sdk', () => ({
@@ -39,7 +50,7 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: async () => ({}),
   }),
   useProjectsQuery: () => ({
-    data: [],
+    data: state.projects,
     isFetching: false,
     isSuccess: true,
     error: null,
@@ -58,9 +69,9 @@ vi.mock('@kontourai/station-sdk', () => ({
     error: null,
     refetch: async () => ({}),
   }),
-  useProjectLayoutQuery: () => ({ data: undefined }),
+  useProjectLayoutQuery: () => ({ data: state.layout }),
   useProjectQuery: () => ({
-    data: {},
+    data: state.projectConfig,
     isFetching: false,
     isSuccess: true,
     error: null,
@@ -84,10 +95,10 @@ vi.mock('../contexts/ConfigContext', () => ({
   useConfig: () => state.config,
 }));
 vi.mock('../contexts/NavigationContext', () => ({
-  useNavigation: () => ({ selectedProject: null, selectedProjectLayout: null }),
+  useNavigation: () => state.navigation,
 }));
 vi.mock('../contexts/ActiveChatsContext', () => ({
-  activeChatsStore: { getSnapshot: () => ({}) },
+  activeChatsStore: { getSnapshot: () => state.activeChats },
 }));
 
 /** An engine's own Agent, as the enriched catalog serves a detected engine. */
@@ -186,20 +197,41 @@ const STATION = {
   available: true,
 } as AgentData;
 
-function renderSelection(agents: AgentData[]) {
+function renderSelection(
+  agents: AgentData[],
+  context: string = GLOBAL_CONTEXT,
+) {
   return renderHook(
     ({ list }) =>
       useNewChatSelectionModel({
         agents: list,
-        projects: [],
-        selectedContext: GLOBAL_CONTEXT,
+        projects: state.projects as ProjectMetadata[],
+        selectedContext: context,
       }),
-    { initialProps: { list: agents } },
+    {
+      initialProps: { list: agents },
+      wrapper: ({ children }) => (
+        <AuthorityPersistenceContext.Provider value={PERSISTENCE}>
+          {children}
+        </AuthorityPersistenceContext.Provider>
+      ),
+    },
   );
 }
 
+const PERSISTENCE = {
+  status: 'verified' as const,
+  namespace: 'ns-new-chat-default',
+  observation: null,
+};
+
 beforeEach(() => {
   resetRecordNewChatDefaultForTests();
+  state.projects = [];
+  state.projectConfig = {};
+  state.layout = undefined;
+  state.navigation = { selectedProject: null, selectedProjectLayout: null };
+  state.activeChats = {};
   state.config = { defaultModel: '' };
   state.capability = true;
   state.catalogFetching = false;
@@ -381,19 +413,37 @@ describe('the default for new chats', () => {
       available: true,
       execution: { agentConnectionId: engineConnectionId('claude') },
     } as AgentData;
-    for (const agents of [
-      [STATION, reviewer, alias, engineAgent('codex', 'Codex', true)],
+    // The engine later creates its own Agent, under a different id, on the
+    // connection the stored alias names: the menu shows that Agent in the
+    // alias's place, and so must the chip and the tag.
+    const created = {
+      ...engineAgent('claude', 'Claude Code', true),
+      slug: agentId('claude-code'),
+    } as AgentData;
+    for (const [agents, expected] of [
       [
-        STATION,
-        engineAgent('claude', 'Claude Code', true),
-        engineAgent('codex', 'Codex', true),
+        [STATION, reviewer, alias, engineAgent('codex', 'Codex', true)],
+        'claude',
       ],
-    ]) {
-      const view = renderSelection(agents);
+      [
+        [
+          STATION,
+          engineAgent('claude', 'Claude Code', true),
+          engineAgent('codex', 'Codex', true),
+        ],
+        'claude',
+      ],
+      [
+        [STATION, alias, created, engineAgent('codex', 'Codex', true)],
+        'claude-code',
+      ],
+    ] as const) {
+      const view = renderSelection([...agents]);
       const rows = view.result.current.viewModel.flatList.map(
         (agent) => agent.slug,
       );
-      expect(view.result.current.defaultSelection.agent?.slug).toBe('claude');
+      expect(view.result.current.defaultSelection.agent?.slug).toBe(expected);
+      expect(view.result.current.newChatDefaultSlug).toBe(expected);
       expect(rows).toContain(view.result.current.defaultSelection.agent?.slug);
       expect(rows).toContain(view.result.current.newChatDefaultSlug);
       cleanup();
@@ -430,6 +480,69 @@ describe('the default for new chats', () => {
     state.config = undefined;
     renderSelection(agents);
     expect(state.record).not.toHaveBeenCalled();
+  });
+});
+
+describe('nearer defaults outrank the Station default', () => {
+  const claude = engineAgent('claude', 'Claude Code', true);
+  const codex = engineAgent('codex', 'Codex', true);
+  const opencode = engineAgent('opencode', 'OpenCode', true);
+  const gemini = engineAgent('gemini', 'Gemini CLI', true);
+  const agents = [STATION, claude, codex, opencode, gemini];
+
+  beforeEach(() => {
+    // Recorded long ago; every nearer default below names someone else.
+    state.config = {
+      defaultModel: '',
+      newChatDefault: { agent: 'gemini', reason: 'chosen' },
+    };
+    signedIn(
+      engine('claude', 'Claude Code'),
+      engine('codex', 'Codex'),
+      engine('opencode', 'OpenCode'),
+      engine('gemini', 'Gemini CLI'),
+    );
+  });
+
+  const selected = (context?: string) =>
+    renderSelection(agents, context).result.current.defaultSelection.agent
+      ?.slug;
+
+  test('the Agent the person last chose here', () => {
+    trackContextAgent(PERSISTENCE.namespace, GLOBAL_CONTEXT, 'codex');
+    expect(selected()).toBe('codex');
+  });
+
+  test('an Agent the person recently chatted with here', () => {
+    state.activeChats = {
+      chat: { agentSlug: 'opencode', messages: [{}], lastActivity: 1 },
+    };
+    expect(selected()).toBe('opencode');
+  });
+
+  test('the Project’s default Agent', () => {
+    state.projects = [{ slug: 'alpha', name: 'Alpha', layoutCount: 0 }];
+    state.projectConfig = { defaultAgent: 'claude' };
+    expect(selected('alpha')).toBe('claude');
+  });
+
+  test('the view’s default Agent', () => {
+    state.navigation = {
+      selectedProject: 'alpha',
+      selectedProjectLayout: 'board',
+    };
+    state.layout = {
+      name: 'Board',
+      availableAgents: [],
+      defaultAgent: 'codex',
+    };
+    expect(selected()).toBe('codex');
+  });
+
+  test('with none of them, the Station default wins over the fixed order', () => {
+    // The fixed order alone would start on Claude Code.
+    expect(newChatFallbackAgent(agents)).toBe(claude);
+    expect(selected()).toBe('gemini');
   });
 });
 

@@ -521,6 +521,36 @@ function aliasFoldedAway(
   };
 }
 
+/**
+ * The row that shows the Station's default for new chats among `agents`: the
+ * stored Agent itself, or, when it is an engine's alias row that another of
+ * that engine's own Agents now stands in for, that Agent (the row the menu
+ * shows in its place). The stored record is left as it is.
+ */
+export function newChatDefaultRow(
+  agents: readonly AgentData[],
+  storedSlug: string | undefined,
+): string | undefined {
+  if (!storedSlug) return storedSlug;
+  const stored = agents.find((agent) => agent.slug === storedSlug);
+  const connectionId = stored?.execution?.agentConnectionId;
+  if (!stored?.engineDefault || !connectionId) return storedSlug;
+  if (!aliasFoldedAway(agents)(stored)) return storedSlug;
+  const standIns = agents
+    .filter(
+      (agent) =>
+        !agent.engineDefault &&
+        isEngineProvenanceAgent(agent) &&
+        agent.execution?.agentConnectionId === connectionId,
+    )
+    .sort(
+      (a, b) =>
+        Number(agentRunnability(b).runnable) -
+          Number(agentRunnability(a).runnable) || a.slug.localeCompare(b.slug),
+    );
+  return standIns[0]?.slug ?? storedSlug;
+}
+
 /** The runnable Agents the fixed order can pick, in that order. */
 function newChatOrder(agents: readonly AgentData[]): AgentData[] {
   const folded = aliasFoldedAway(agents);
