@@ -22,6 +22,7 @@ async function decide(
     const result = scopeDispatch(c, undefined, () => ({
       kind: 'thread',
       threadId,
+      remote: false,
     }));
     return c.json({ refused: 'refused' in result });
   });
