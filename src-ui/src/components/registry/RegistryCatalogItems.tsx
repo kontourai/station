@@ -17,6 +17,7 @@ import {
   getRegistryItemId,
   getRegistrySkillInstallRefusal,
   getRegistrySourceLabel,
+  getRegistryTabCopy,
   type RegistryItem,
 } from './registryCatalogModel';
 
@@ -72,7 +73,9 @@ export function RegistryCatalogDetail({
       data-testid="registry-detail"
       aria-labelledby={`registry-detail-${id}`}
     >
-      <div className="page__section-label">Selected {tab.slice(0, -1)}</div>
+      <div className="page__section-label">
+        Selected {getRegistryTabCopy(tab).noun.slice(0, -1)}
+      </div>
       <RegistryItemHeading
         item={item}
         installed={installed}

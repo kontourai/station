@@ -819,7 +819,11 @@ describe('RegistryView', () => {
       expect(tabLabel).toBeTruthy();
       const detail = screen.getByTestId('registry-detail');
       expect(
-        within(detail).getByText(`Selected ${tabKey.slice(0, -1)}`),
+        within(detail).getByText(
+          tabKey === 'integrations'
+            ? 'Selected tool server'
+            : `Selected ${tabKey.slice(0, -1)}`,
+        ),
       ).toBeTruthy();
       if (sourceLabel) {
         expect(within(detail).getAllByText(sourceLabel).length).toBeGreaterThan(
