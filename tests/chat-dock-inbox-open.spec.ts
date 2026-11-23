@@ -1,66 +1,20 @@
 import { copyFile } from 'node:fs/promises';
 import { expect, type Page, type TestInfo } from '@playwright/test';
-import gallerySessionInventory from './fixtures/gallery-session-inventory.json' with {
-  type: 'json',
-};
-import { buildLongSessionTurns } from './fixtures/long-session';
 import { mockChatShell } from './helpers/chat-shell-fixture';
-import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import { test } from './helpers/fixture-audit';
 import {
   dismissSetupLauncher,
   installMockOrchestrationSse,
 } from './helpers/orchestration';
 import { chooseChatRegionRow } from './helpers/region-placement';
-import { mockRuntimeConversation } from './helpers/runtime-conversation-fixture';
-
-const json = (body: unknown) => ({
-  status: 200,
-  contentType: 'application/json',
-  body: JSON.stringify(body),
-});
-
-const THREAD_ID = 'thread-stored-conversation';
-// Recent, so the inbox lists it among current work rather than history.
-const UPDATED_AT = new Date(Date.now() - 5 * 60_000).toISOString();
-const CREATED_AT = new Date(Date.now() - 10 * 60_000).toISOString();
-const TITLE = 'Stored pricing review';
-const ANSWER = 'The stored answer is back on screen.';
-const PROMPT = 'Review the stored pricing.';
-
-async function mockStoredTurnDirectory(page: Page) {
-  await page.route(
-    (url) =>
-      url.pathname ===
-      `/api/orchestration/session-reads/${THREAD_ID}/turn-directory`,
-    (route) =>
-      route.request().method() === 'GET'
-        ? route.fulfill(
-            json({
-              success: true,
-              data: {
-                session: {
-                  conversationId: THREAD_ID,
-                  ...(new URL(route.request().url()).searchParams.get(
-                    'includeCount',
-                  ) === 'false'
-                    ? {}
-                    : { turnCount: 1 }),
-                },
-                turns: [
-                  {
-                    turnId: 'turn-0',
-                    startedAt: '2026-07-19T10:00:00.000Z',
-                    request: 'Transcript fixture 0: prompt.',
-                    outcome: 'completed',
-                  },
-                ],
-                nextCursor: null,
-              },
-            }),
-          )
-        : rejectUnexpectedFixtureRequest(route),
-  );
-}
+import {
+  ANSWER,
+  json,
+  mockStoredTurnDirectory,
+  storeConversation,
+  THREAD_ID,
+  UPDATED_AT,
+} from './helpers/stored-conversation-fixture';
 
 const APPROVAL_REFERENCE = {
   threadId: THREAD_ID,
@@ -206,203 +160,6 @@ for (const [mode, width, theme, decision] of [
  * A conversation the Station keeps, with no chat open for it in this
  * browser: only the inventory names it.
  */
-async function storeConversation(page: Page, awaitingApproval = false) {
-  // The inbox row is the Station's session; nothing in this browser has a
-  // chat open for it.
-  await page.route('**/api/orchestration/sessions/read-model', (route) =>
-    route.fulfill(
-      json({
-        success: true,
-        data: [
-          {
-            threadId: THREAD_ID,
-            conversationId: THREAD_ID,
-            provider: 'bedrock',
-            model: 'model-selected',
-            cwd: '/repo/project',
-            projectSlug: 'default',
-            assignedAgentSlug: 'station',
-            status: 'ready',
-            lifecycleState: awaitingApproval ? 'review_pending' : 'idle',
-            answerability: { answerable: true },
-            createdAt: CREATED_AT,
-            updatedAt: UPDATED_AT,
-            isLoaded: true,
-            isPersisted: true,
-            eventCount: 2,
-          },
-        ],
-      }),
-    ),
-  );
-  await page.route(/\/api\/conversations(?:\?.*)?$/, (route) =>
-    route.fulfill(
-      json({
-        success: true,
-        data: {
-          items: [
-            {
-              id: THREAD_ID,
-              source: 'runtime',
-              lifecycleState: awaitingApproval ? 'review_pending' : 'idle',
-              agentSlug: 'station',
-              provider: 'bedrock',
-              model: 'model-selected',
-              projectSlug: 'default',
-              title: TITLE,
-              createdAt: CREATED_AT,
-              updatedAt: UPDATED_AT,
-              messageCount: 2,
-              mutable: true,
-              answerability: { answerable: true },
-            },
-          ],
-          hasMore: false,
-        },
-      }),
-    ),
-  );
-  await page.route(/\/agents\/station\/conversations(?:\?.*)?$/, (route) =>
-    route.fulfill(
-      json({
-        success: true,
-        data: [
-          {
-            id: THREAD_ID,
-            title: TITLE,
-            agentSlug: 'station',
-            updatedAt: UPDATED_AT,
-          },
-        ],
-      }),
-    ),
-  );
-  await page.route(
-    new RegExp(`/api/conversations/${THREAD_ID}(?:\\?.*)?$`),
-    (route) =>
-      route.fulfill(
-        json({
-          success: true,
-          data: {
-            id: THREAD_ID,
-            agentSlug: 'station',
-            projectSlug: 'default',
-            title: TITLE,
-          },
-        }),
-      ),
-  );
-  await page.route(
-    `**/api/conversations/${THREAD_ID}/acknowledgement`,
-    (route) => route.fulfill(json({ success: true })),
-  );
-  // What an open chat reads next, as each route answers a conversation that
-  // has none of it: no Project chat layer (the client's own 404 meaning),
-  // no terminal runs, and nothing scheduled.
-  await page.route('**/api/projects/default/chat-defaults', (route) =>
-    route.request().method() === 'GET'
-      ? route.fulfill({
-          status: 404,
-          contentType: 'application/json',
-          body: JSON.stringify({ success: false, error: 'Not found' }),
-        })
-      : rejectUnexpectedFixtureRequest(route),
-  );
-  await page.route(
-    (url) =>
-      url.pathname === '/api/terminal/runs' &&
-      url.searchParams.get('conversationId') === THREAD_ID,
-    (route) =>
-      route.request().method() === 'GET'
-        ? route.fulfill(json({ success: true, data: { runs: [] } }))
-        : rejectUnexpectedFixtureRequest(route),
-  );
-  await page.route(
-    `**/api/orchestration/agent-schedule/${THREAD_ID}`,
-    (route) =>
-      route.request().method() === 'GET'
-        ? route.fulfill(
-            json({
-              success: true,
-              data: { wakeUps: [], jobProposals: [], jobs: [] },
-            }),
-          )
-        : rejectUnexpectedFixtureRequest(route),
-  );
-  await page.route(
-    `**/api/orchestration/session-reads/${THREAD_ID}/turn-directory*`,
-    (route) => {
-      if (route.request().method() !== 'GET')
-        return rejectUnexpectedFixtureRequest(route);
-      const includeCount =
-        new URL(route.request().url()).searchParams.get('includeCount') !==
-        'false';
-      return route.fulfill(
-        json({
-          success: true,
-          data: {
-            session: {
-              conversationId: THREAD_ID,
-              ...(includeCount ? { turnCount: 1 } : {}),
-            },
-            turns: [
-              {
-                turnId: 'turn-0',
-                startedAt: CREATED_AT,
-                request: PROMPT,
-                outcome: 'completed',
-              },
-            ],
-            nextCursor: null,
-          },
-        }),
-      );
-    },
-  );
-  await page.route('**/api/coding/git/status**', (route) =>
-    route.request().method() === 'GET'
-      ? route.fulfill({
-          ...json({
-            success: false,
-            error: 'Git is unavailable for this stored chat fixture',
-          }),
-          status: 503,
-        })
-      : rejectUnexpectedFixtureRequest(route),
-  );
-  // Rebind the captured inventory and its nested references to this chat.
-  const { inventory } = JSON.parse(
-    JSON.stringify(gallerySessionInventory).replaceAll(
-      'gallery-inventory-conversation',
-      THREAD_ID,
-    ),
-  );
-  await page.route(
-    `**/api/orchestration/sessions/${THREAD_ID}/inventory?**`,
-    (route) =>
-      route.request().method() === 'GET'
-        ? route.fulfill(json({ success: true, data: inventory }))
-        : rejectUnexpectedFixtureRequest(route),
-  );
-  await mockRuntimeConversation(page, {
-    id: THREAD_ID,
-    agentSlug: 'station',
-    title: TITLE,
-    provider: 'bedrock',
-    model: 'model-selected',
-    projectSlug: 'default',
-    canContinue: true,
-    turns: () =>
-      buildLongSessionTurns({
-        threadId: THREAD_ID,
-        turnCount: 1,
-        baseTimestamp: CREATED_AT,
-        promptText: () => PROMPT,
-        replyText: () => ANSWER,
-      }),
-  });
-}
-
 async function capturePlacement(page: Page, testInfo: TestInfo, name: string) {
   const directory = process.env.STATION_UI_REVIEW_SCREENSHOT_DIR;
   const screenshot = await page.screenshot({
@@ -506,56 +263,6 @@ test('the desktop Inbox hover card scrolls to Basis in a short window', async ({
   await expect(card).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(card).toBeHidden();
-});
-
-// The row's ⋯ menu is the only way to act on a row: Mark done with its
-// Undo, then the snooze list and Wake now, in the running app.
-test('a Chats row menu marks done with Undo, and snoozes and wakes', async ({
-  page,
-}) => {
-  test.setTimeout(60_000);
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await mockChatShell(page);
-  await installMockOrchestrationSse(page);
-  await storeConversation(page);
-
-  await page.goto('/?dock=open&maximize=true');
-  await dismissSetupLauncher(page);
-  const list = page.locator('#chat-dock').getByRole('complementary', {
-    name: 'Chats',
-    exact: true,
-  });
-  const row = list.getByRole('button', { name: /^Station session\b/i });
-  const actions = list.getByRole('button', { name: /^Actions for / });
-  const openMenu = async () => {
-    await row.hover();
-    await actions.click();
-    await expect(page.getByRole('menu')).toBeVisible();
-  };
-
-  await openMenu();
-  await expect(
-    page.getByRole('menuitem').evaluateAll((items) =>
-      items.map((item) => item.firstChild?.textContent),
-    ),
-  ).resolves.toEqual(
-    expect.arrayContaining(['Open chat', 'Mark done', 'In 1 hour']),
-  );
-  await page.getByRole('menuitem', { name: 'Mark done', exact: true }).click();
-  await expect(row).toHaveCount(0);
-  await page.getByRole('button', { name: 'Undo', exact: true }).click();
-  await expect(row).toBeVisible();
-
-  await openMenu();
-  await page.getByRole('menuitem', { name: /^In 1 hour,/ }).click();
-  const snoozed = list.getByRole('button', { name: /^Snoozed/ });
-  await expect(snoozed).toBeVisible();
-  if ((await snoozed.getAttribute('aria-expanded')) === 'false')
-    await snoozed.click();
-  await openMenu();
-  await page.getByRole('menuitem', { name: 'Wake now', exact: true }).click();
-  await expect(list.getByRole('button', { name: /^Snoozed/ })).toHaveCount(0);
-  await expect(row).toBeVisible();
 });
 
 test('This chat opens on the roomier side of the actual dock header', async ({
