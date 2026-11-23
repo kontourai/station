@@ -2,10 +2,11 @@ import type { Notification } from '@kontourai/station-contracts/notification';
 import {
   type AttentionItem,
   acknowledgeAttentionItem,
+  dismissNotification,
   useQueryClient,
 } from '@kontourai/station-sdk';
 import { useMutation } from '@tanstack/react-query';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AttentionSection } from '../components/attention/AttentionSection';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { NotificationSection } from '../components/notifications/NotificationSection';
@@ -46,6 +47,10 @@ import {
   useInboxSnooze,
 } from '../components/notifications/snooze';
 import {
+  offerUndoableAction,
+  usePendingUndoKeys,
+} from '../components/undo/undoable-actions';
+import {
   EMPTY_NOTIFICATION_HISTORY_FILTERS,
   filterNotificationHistory,
   hasNotificationHistoryFilters,
@@ -61,6 +66,9 @@ import {
  * attention row at once, behind a confirmation, not on one row.
  */
 const BULK_ACKNOWLEDGE_LABEL = 'Dismiss';
+
+const attentionDoneKey = (id: string) => `inbox-attention:${id}`;
+const notificationDoneKey = (id: string) => `inbox-notification:${id}`;
 
 export function NotificationsPage() {
   const { navigate } = useNavigation();
@@ -126,6 +134,8 @@ export function NotificationsPage() {
         : null,
     [pairingTarget, inbox.items],
   );
+  // Rows marked done whose write still waits behind its Undo read as gone.
+  const markingDone = usePendingUndoKeys();
   const attentionItems = useMemo(() => {
     const pending = pendingAttentionItems(filtered.items);
     const targets = [exactApproval, exactPairing].flatMap((item) =>
@@ -133,8 +143,10 @@ export function NotificationsPage() {
         ? [item]
         : [],
     );
-    return [...targets, ...pending];
-  }, [exactApproval, exactPairing, filtered.items]);
+    return [...targets, ...pending].filter(
+      (item) => !markingDone.has(attentionDoneKey(item.id)),
+    );
+  }, [exactApproval, exactPairing, filtered.items, markingDone]);
   const dismissibleItems = attentionItems.filter(
     isAcknowledgeableAttentionItem,
   );
@@ -155,11 +167,12 @@ export function NotificationsPage() {
         : [],
     [filtered.notifications, snooze.enabled],
   );
-  // One failed run is one row: a listed failed-Session row stands for its
-  // thread's failed-turn notification.
+  // One failed run is one row: the failed-Session item stands for its
+  // thread's failed-turn notification whether it is still pending or was
+  // already marked done, so the notification never comes back on its own.
   const pairs = useMemo(
-    () => failedTurnPairs(attentionItems, inbox.notifications),
-    [attentionItems, inbox.notifications],
+    () => failedTurnPairs(inbox.items, inbox.notifications),
+    [inbox.items, inbox.notifications],
   );
   const paired = useMemo(() => new Set([...pairs.values()].flat()), [pairs]);
   const activityTotal = inbox.notifications.filter(
@@ -171,7 +184,8 @@ export function NotificationsPage() {
     const current = filtered.notifications.filter(
       (notification) =>
         !deferredNotifications.includes(notification) &&
-        !paired.has(notification.id),
+        !paired.has(notification.id) &&
+        !markingDone.has(notificationDoneKey(notification.id)),
     );
     return exactApprovalNotification &&
       !current.some(
@@ -184,8 +198,55 @@ export function NotificationsPage() {
     exactApprovalNotification,
     filtered.notifications,
     paired,
+    markingDone,
   ]);
   const queryClient = useQueryClient();
+  const currentApiBase = useRef(apiBase);
+  currentApiBase.current = apiBase;
+  const refresh = () =>
+    Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['attention'] }),
+      queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+    ]);
+  /**
+   * Mark done on this page holds its write behind the notice's Undo (and
+   * ⌘Z): the server cannot take back an acknowledgement or a notification
+   * dismissal, so Undo cancels the write before it happens instead.
+   */
+  const markAttentionDone = (item: AttentionItem) => {
+    const pairedIds = pairs.get(item.id) ?? [];
+    const base = apiBase;
+    offerUndoableAction({
+      key: attentionDoneKey(item.id),
+      message: 'Marked done',
+      restoredMessage: 'Reopened',
+      failureMessage: "Couldn't mark it done.",
+      isCurrent: () => currentApiBase.current === base,
+      commit: async () => {
+        await Promise.all([
+          item.kind === 'approval'
+            ? dismissNotification(item.source.notificationId)
+            : acknowledgeAttentionItem(item.id, base),
+          ...pairedIds.map((id) => dismissNotification(id)),
+        ]);
+        await refresh();
+      },
+    });
+  };
+  const markNotificationDone = (id: string) => {
+    const base = apiBase;
+    offerUndoableAction({
+      key: notificationDoneKey(id),
+      message: 'Marked done',
+      restoredMessage: 'Reopened',
+      failureMessage: "Couldn't mark it done.",
+      isCurrent: () => currentApiBase.current === base,
+      commit: async () => {
+        await dismissNotification(id);
+        await refresh();
+      },
+    });
+  };
   const dismissAllAttention = useMutation({
     // `allSettled`, not `all`: these acknowledgements are independent and
     // already persisted server-side one by one, so there is nothing to roll
@@ -202,6 +263,13 @@ export function NotificationsPage() {
       const outcomes = await Promise.allSettled(
         dismissibleItems.map((item) =>
           acknowledgeAttentionItem(item.id, apiBase),
+        ),
+      );
+      // A failed run's notification goes with its row, as one row's Mark
+      // done takes it too.
+      await Promise.allSettled(
+        dismissibleItems.flatMap((item) =>
+          (pairs.get(item.id) ?? []).map((id) => dismissNotification(id)),
         ),
       );
       const failures = outcomes.filter(
@@ -357,7 +425,7 @@ export function NotificationsPage() {
               focusedApprovalId={approvalTarget || undefined}
               focusedPairingRequestId={pairingTarget || undefined}
               unavailableSources={inbox.unavailableSources}
-              pairedNotifications={pairs}
+              onMarkDone={markAttentionDone}
             />
             {approvalTarget && !exactApproval && !exactApprovalNotification && (
               <p role="status">That approval request is no longer available.</p>
@@ -367,7 +435,7 @@ export function NotificationsPage() {
             )}
             <NotificationSection
               notifications={activityNotifications}
-              onDismiss={inbox.dismiss}
+              onDismiss={markNotificationDone}
               filtered={filtersActive}
               focusedNotificationId={
                 exactApproval ? undefined : approvalTarget || undefined

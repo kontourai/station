@@ -113,7 +113,7 @@ export function AttentionCard({
   focused = false,
   context = [],
   menuItems,
-  pairedNotificationIds = [],
+  onMarkDone,
 }: {
   item: AttentionItem;
   focused?: boolean;
@@ -127,10 +127,11 @@ export function AttentionCard({
    */
   menuItems?: readonly RowMenuItem[];
   /**
-   * Stored notifications this row stands for (one failed run's failed-turn
-   * notification): marking the row done marks them done too.
+   * The inbox page's Mark done, which holds the write behind an Undo and
+   * also marks done the notifications this row stands for. Absent, the menu
+   * writes at once.
    */
-  pairedNotificationIds?: readonly string[];
+  onMarkDone?: (item: AttentionItem) => void;
 }) {
   const cardRef = useRef<HTMLElement>(null);
   const menuMode = menuItems !== undefined;
@@ -148,7 +149,9 @@ export function AttentionCard({
             label: DISMISS_NOTIFICATION_ACTION.label,
             disabled: dismissNotification.isPending,
             onSelect: () =>
-              dismissNotification.mutate(item.source.notificationId),
+              onMarkDone
+                ? onMarkDone(item)
+                : dismissNotification.mutate(item.source.notificationId),
           },
         ]
       : isAcknowledgeableAttentionItem(item)
@@ -157,13 +160,8 @@ export function AttentionCard({
               id: 'dismiss',
               label: ACKNOWLEDGE_ATTENTION_ACTION.label,
               disabled: acknowledge.isPending,
-              // Both start now: a row that leaves on the first refetch
-              // must not drop the second.
-              onSelect: () => {
-                for (const id of pairedNotificationIds)
-                  dismissNotification.mutate(id);
-                acknowledge.mutate(item.id);
-              },
+              onSelect: () =>
+                onMarkDone ? onMarkDone(item) : acknowledge.mutate(item.id),
             },
           ]
         : [];

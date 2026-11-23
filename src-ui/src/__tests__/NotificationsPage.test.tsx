@@ -40,7 +40,23 @@ const unsnoozeAttention = vi.fn();
 const snoozeNotification = vi.fn();
 let useRealUnsnooze = false;
 
+import { undoLatestAction } from '../components/undo/UndoableActionShortcut';
+import { resetUndoableActionsForTest } from '../components/undo/undoable-actions';
 import { chooseRowAction } from './helpers/row-menu';
+
+afterEach(() => resetUndoableActionsForTest());
+
+/**
+ * Mark done on the page holds its write behind the notice's Undo; closing
+ * the notice (its window ends, or it is dismissed) is what commits it.
+ */
+async function commitMarkDone() {
+  await act(async () => {
+    for (const toast of toastStore.getSnapshot())
+      if (toast.id.startsWith('undoable-')) toastStore.dismiss(toast.id);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   const sdk = await importOriginal<typeof import('@kontourai/station-sdk')>();
@@ -53,6 +69,12 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     useAttentionQuery: () => ({ data: attention, isLoading: false }),
     useDevicePresentation: () => undefined,
     useFeaturePreviewsQuery: () => ({ data: snoozePreviews }),
+    // The page's Mark done writes through the plain function after its Undo
+    // window; the row hooks write through the mutation below.
+    dismissNotification: (id: string) => {
+      dismiss(id);
+      return Promise.resolve();
+    },
     useSnoozeAttentionItemMutation: (apiBase?: string) => {
       const mutation = sdk.useSnoozeAttentionItemMutation(apiBase);
       return useRealUnsnooze
@@ -1172,7 +1194,7 @@ describe('NotificationsPage', () => {
   // for `status === 'delivered'` — an `expired` (or still-`pending`)
   // notification, exactly the stale-pairing-request shape the issue
   // reported, had no dismiss affordance at all.
-  test('an expired notification still offers a Dismiss button', () => {
+  test('an expired notification still offers a Dismiss button', async () => {
     notifications = [
       {
         id: 'notif-expired',
@@ -1190,6 +1212,9 @@ describe('NotificationsPage', () => {
 
     expect(screen.getByText('Pairing request expired')).toBeTruthy();
     chooseRowAction('Mark done');
+    // Held behind its Undo until the notice closes.
+    expect(dismiss).not.toHaveBeenCalled();
+    await commitMarkDone();
     expect(dismiss).toHaveBeenCalledWith('notif-expired');
   });
 
@@ -1218,7 +1243,7 @@ describe('NotificationsPage', () => {
 
   // archive#1914: a `session-failed` attention item's "Dismiss" acknowledges
   // it (a stored ack, not a notification delete) rather than doing nothing.
-  test('dismissing a session-failed attention item acknowledges it', () => {
+  test('dismissing a session-failed attention item acknowledges it', async () => {
     const timestamp = new Date().toISOString();
     attention = {
       pendingCount: 1,
@@ -1240,30 +1265,28 @@ describe('NotificationsPage', () => {
 
     expect(screen.getByText('Needs attention (1)')).toBeTruthy();
     chooseRowAction('Mark done');
+    await commitMarkDone();
     expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
       'session-failed:thread-boom',
+      expect.any(String),
     );
   });
 
   // One failed run, one row: the failed Session's attention row stands for
   // the same thread's failed-turn notification.
-  test('a failed run is one Failed row, and Mark done marks its notification done too', () => {
+  describe('one failed run, one row', () => {
     const timestamp = new Date().toISOString();
-    attention = {
-      pendingCount: 1,
-      items: [
-        {
-          id: 'session-failed:thread-boom',
-          kind: 'session-failed',
-          title: 'Upgrade the test runner',
-          body: 'Engine exited with code 1',
-          createdAt: timestamp,
-          updatedAt: timestamp,
-          openHref: '/?surface=activity&session=thread-boom',
-          source: { threadId: 'thread-boom' },
-        },
-      ],
-    };
+    const failedSession = (acknowledgedAt?: string) => ({
+      id: 'session-failed:thread-boom',
+      kind: 'session-failed' as const,
+      title: 'Upgrade the test runner',
+      body: 'Engine exited with code 1',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      ...(acknowledgedAt ? { acknowledgedAt } : {}),
+      openHref: '/?surface=activity&session=thread-boom',
+      source: { threadId: 'thread-boom' },
+    });
     const turnFailed = (id: string, threadId: string): Notification => ({
       id,
       source: 'turn-completion',
@@ -1275,22 +1298,78 @@ describe('NotificationsPage', () => {
       updatedAt: timestamp,
       metadata: { sessionId: threadId, threadId, turnId: `${id}-turn` },
     });
-    notifications = [
-      turnFailed('pair', 'thread-boom'),
-      turnFailed('other', 'thread-other'),
-    ];
+    beforeEach(() => {
+      attention = { pendingCount: 1, items: [failedSession()] };
+      notifications = [
+        turnFailed('pair', 'thread-boom'),
+        turnFailed('other', 'thread-other'),
+      ];
+    });
 
-    renderPage();
+    test('lists the pair once, and Mark done marks its notification done too', async () => {
+      renderPage();
+      // The pair's notification is not a second row; another thread's is.
+      expect(screen.getAllByText('Your agent needs attention')).toHaveLength(1);
+      expect(screen.getByText('Showing 1 of 1 activity items')).toBeTruthy();
+      chooseRowAction('Mark done');
+      // The row leaves at once; the write waits behind the notice's Undo.
+      expect(screen.queryByText('Upgrade the test runner')).toBeNull();
+      expect(acknowledgeAttentionItem).not.toHaveBeenCalled();
+      await commitMarkDone();
+      expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
+        'session-failed:thread-boom',
+        expect.any(String),
+      );
+      expect(dismiss).toHaveBeenCalledWith('pair');
+      expect(dismiss).not.toHaveBeenCalledWith('other');
+    });
 
-    // The pair's notification is not a second row; another thread's is.
-    expect(screen.getAllByText('Your agent needs attention')).toHaveLength(1);
-    expect(screen.getByText('Showing 1 of 1 activity items')).toBeTruthy();
-    chooseRowAction('Mark done');
-    expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
-      'session-failed:thread-boom',
-    );
-    expect(dismiss).toHaveBeenCalledWith('pair');
-    expect(dismiss).not.toHaveBeenCalledWith('other');
+    test('Undo (and ⌘Z) takes Mark done back before anything is written', async () => {
+      renderPage();
+      chooseRowAction('Mark done');
+      expect(screen.queryByText('Upgrade the test runner')).toBeNull();
+      act(() => {
+        expect(undoLatestAction()).toBe(true);
+      });
+      expect(screen.getByText('Upgrade the test runner')).toBeTruthy();
+      await commitMarkDone();
+      expect(acknowledgeAttentionItem).not.toHaveBeenCalled();
+      expect(dismiss).not.toHaveBeenCalled();
+    });
+
+    test('a run already marked done does not come back as its notification', () => {
+      attention = {
+        pendingCount: 0,
+        items: [failedSession(timestamp)],
+      };
+      notifications = [
+        { ...turnFailed('pair', 'thread-boom'), status: 'dismissed' },
+        turnFailed('other', 'thread-other'),
+      ];
+      renderPage();
+      expect(screen.getAllByText('Your agent needs attention')).toHaveLength(1);
+      expect(screen.getByText('Showing 1 of 1 activity items')).toBeTruthy();
+    });
+
+    test('the bulk action marks the paired notification done with its row', async () => {
+      renderPage();
+      fireEvent.click(
+        screen.getByRole('button', { name: /^Dismiss eligible items/ }),
+      );
+      fireEvent.click(
+        within(screen.getByRole('dialog')).getByRole('button', {
+          name: /^Dismiss eligible items/,
+        }),
+      );
+      await waitFor(() =>
+        expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
+          'session-failed:thread-boom',
+          expect.any(String),
+        ),
+      );
+      await waitFor(() => expect(dismiss).toHaveBeenCalledWith('pair'));
+      expect(dismiss).not.toHaveBeenCalledWith('other');
+    });
   });
 });
 
@@ -1493,7 +1572,7 @@ describe('NotificationsPage attention count scope', () => {
    * with the acknowledgement recorded, exactly as the invalidation-driven
    * refetch does.
    */
-  test('acknowledging an item moves the heading and the badge together', () => {
+  test('acknowledging an item moves the heading and the badge together', async () => {
     attention = {
       pendingCount: 2,
       items: [
@@ -1506,8 +1585,10 @@ describe('NotificationsPage attention count scope', () => {
     expect(attentionHeading()).toBe('Needs attention (2)');
 
     chooseRowAction('Mark done');
+    await commitMarkDone();
     expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
       'session-failed:boom',
+      expect.any(String),
     );
 
     attention = {
