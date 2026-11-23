@@ -237,6 +237,25 @@ const EMPTY_STYLE: React.CSSProperties = {};
 // (which re-measures on every keystroke) from repeatedly snapping the
 // scroll position even when nothing visually grew.
 const RESIZE_REANCHOR_THRESHOLD_PX = 4;
+
+/**
+ * Every name one message goes by across its copies: the composer's bubble
+ * (`clientId`), the same bubble once its turn starts (`sourceEventId`, its
+ * `turn.started`) and the server's copy, whose id is `<that event>:user`.
+ */
+function userMessageNames(message: ChatMessage): string[] {
+  const names: string[] = [];
+  if (message.id) {
+    names.push(`id:${message.id}`);
+    if (message.id.endsWith(':user'))
+      names.push(`event:${message.id.slice(0, -':user'.length)}`);
+  }
+  if (message.clientId) names.push(`client:${message.clientId}`);
+  if (message.sourceEventId) names.push(`event:${message.sourceEventId}`);
+  if (names.length === 0)
+    names.push(`content:${message.timestamp ?? ''}:${message.content}`);
+  return names;
+}
 // A programmatic scrollTop write dispatches its scroll event asynchronously,
 // so the handler recognizes the write's echo by position for this long. The
 // positional match alone is already safe (a write always targets the position
@@ -1007,21 +1026,51 @@ function ChatMessageListComponent({
     setIsUserScrolledUp(false);
     return true;
   }, [releaseReaderHold]);
-  let lastUserKey: unknown;
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]!;
-    if (message.role !== 'user') continue;
-    lastUserKey =
-      message.id ?? message.clientId ?? message.timestamp ?? message.content;
-    break;
-  }
-  const lastUserKeyRef = useRef(lastUserKey);
+  // Only a message of the reader's that is new ends the hold. Its id is not
+  // its identity: the composer's bubble (client id) gains its `turn.started`
+  // event and is then replaced by the server's copy (`<that event>:user`),
+  // so the newest message is the one seen before when any name matches.
+  const seenUserNamesRef = useRef<Set<string> | null>(null);
+  const firstMessageNamesRef = useRef<string[]>([]);
+  // Whether a turn was live before this render's messages arrived.
+  const turnWasLiveRef = useRef(turnLive);
   // Before the pin below, which then follows the new message.
   useLayoutEffect(() => {
-    if (lastUserKeyRef.current === lastUserKey) return;
-    lastUserKeyRef.current = lastUserKey;
+    const firstBefore = firstMessageNamesRef.current;
+    firstMessageNamesRef.current = messages[0]
+      ? userMessageNames(messages[0])
+      : [];
+    let index = messages.length - 1;
+    while (index >= 0 && messages[index]!.role !== 'user') index -= 1;
+    const names = index >= 0 ? userMessageNames(messages[index]!) : [];
+    const seen = seenUserNamesRef.current;
+    if (!seen || names.some((name) => seen.has(name))) {
+      seenUserNamesRef.current = new Set([...(seen ?? []), ...names]);
+      return;
+    }
+    if (names.length === 0) return;
+    // A bubble sent while a turn runs is a follow-up Station queues: the
+    // send path shows it until Station answers, then withdraws it. It counts
+    // once its turn starts, or when Station delivers it.
+    const message = messages[index]!;
+    if (
+      !message.id &&
+      !message.turnId &&
+      !message.sourceEventId &&
+      turnWasLiveRef.current
+    )
+      return;
+    seenUserNamesRef.current = new Set(names);
+    // Earlier history loaded in front of the window is not new.
+    const formerFirst = messages.findIndex((candidate) =>
+      userMessageNames(candidate).some((name) => firstBefore.includes(name)),
+    );
+    if (formerFirst > index) return;
     releaseHoldToLatest();
-  }, [lastUserKey, releaseHoldToLatest]);
+  }, [messages, releaseHoldToLatest]);
+  useLayoutEffect(() => {
+    turnWasLiveRef.current = turnLive;
+  }, [turnLive]);
   const openRequestKeys = useMemo(
     () =>
       unansweredApprovalRequests(
@@ -1494,6 +1543,16 @@ function ChatMessageListComponent({
         reachedOldTail) &&
       !readerMovingUp;
     if (reachedOldTail) writeProgrammaticScroll(target, height);
+    // While a row is held, only the reader leaves the end: their input, or
+    // the view actually moving (a scrollbar drag has no other trace). A
+    // scroll event from content growing under the held row changes nothing.
+    if (
+      readerHoldRef.current &&
+      !acting &&
+      previousTop !== null &&
+      Math.abs(target.scrollTop - previousTop) <= 0.5
+    )
+      return;
     isUserScrolledUpRef.current = !isAtBottom;
     setIsUserScrolledUp(!isAtBottom);
     visibleAnchorRef.current = isAtBottom

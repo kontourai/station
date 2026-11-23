@@ -662,10 +662,14 @@ Scroll to bottom shows while the reader is scrolled up, and from the moment
 they open a row at the end that then grows past the view's end: that row stays
 where it is, and
 streaming text and new answers are not followed until the reader returns to the
-end by any means, closes that row, or switches chats. Their own message and a
-request opening end it too and bring the end into view, unless the reader has
-scrolled away from the held row: they stay where they are, as with no row
-held, and Scroll to bottom stays. Their rows stay where
+end by any means, closes that row, or switches chats. It also ends when the
+reader's message appears in the transcript (a send, or a queued follow-up being
+delivered) and when a request opens, and those bring the end into view; queueing
+a follow-up alone does not, and neither does an earlier message changing to the
+server's copy or earlier history loading. A reader who scrolled away from the
+held row stays where they are, as with no row held, and Scroll to bottom stays.
+Content growing under the held row never counts as scrolling away: only the
+reader's own input or the view moving does. Their rows stay where
 they are as it appears. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.

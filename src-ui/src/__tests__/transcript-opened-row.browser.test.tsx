@@ -65,6 +65,25 @@ async function openAndGrow(page: Page) {
   return row;
 }
 
+const transcriptTop = (page: Page) =>
+  page
+    .getByRole('log', { name: 'Conversation transcript' })
+    .evaluate((element) => element.scrollTop);
+
+/**
+ * The answer under the held row grows, then a scroll event arrives with no
+ * reader input and no movement, as the app's layout produces one.
+ */
+async function growWithoutReader(page: Page) {
+  for (let i = 0; i < 6; i += 1)
+    await call(page, '__streamTail', ' and the rest of the answer lands');
+  await frames(page);
+  await page
+    .getByRole('log', { name: 'Conversation transcript' })
+    .evaluate((element) => element.dispatchEvent(new Event('scroll')));
+  await frames(page);
+}
+
 for (const [name, viewport] of [
   ['desktop', DESKTOP],
   ['phone', PHONE],
@@ -274,6 +293,112 @@ for (const [name, viewport] of [
       await call(page, '__streamTail', ' more words below');
       await frames(page);
       expect(await rowTop(page)).toBeCloseTo(closed, 0);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) the server's copy of the reader's message replacing their bubble keeps the hold`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await call(page, '__beginTurn');
+      await settledAtTail(page);
+      await openAndGrow(page);
+      const held = await rowTop(page);
+      expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+      // Same message, its id now the server's: nothing new appeared.
+      await call(page, '__serverCopy', 'client-a');
+      await frames(page);
+      await page.waitForTimeout(300);
+      expect(await rowTop(page), 'not moved').toBeCloseTo(held, 0);
+      expect(await scrollToBottom(page).count()).toBe(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) a scroll event the reader did not cause leaves a holding reader at the end's side`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      await openAndGrow(page);
+      const top = await transcriptTop(page);
+      await growWithoutReader(page);
+      expect(await transcriptTop(page), 'nothing moved').toBe(top);
+      // Not scrolled up: their own message still ends the hold and is
+      // followed, as for any holding reader.
+      await call(page, '__sendUser', 'My own new question');
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      await expect.poll(() => scrollToBottom(page).count()).toBe(0);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) a follow-up queued during a turn, then a row opened, is followed when it is delivered`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await call(page, '__beginTurn');
+      await settledAtTail(page);
+      await call(page, '__queueFollowUp', 'Also check the release notes.');
+      await page.waitForTimeout(400);
+      await settledAtTail(page);
+      await openAndGrow(page);
+      expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+      // The answer lands, the reader's bubble becomes the server's copy, the
+      // turn ends and Station delivers the follow-up.
+      await growWithoutReader(page);
+      await call(page, '__serverCopy', 'client-a');
+      await frames(page);
+      await call(page, '__setLive', false);
+      await frames(page);
+      await call(page, '__deliver', 'Also check the release notes.');
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      await expect.poll(() => scrollToBottom(page).count()).toBe(0);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) a row opened, then a follow-up queued, holds until it is delivered`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await call(page, '__beginTurn');
+      await settledAtTail(page);
+      await openAndGrow(page);
+      const held = await rowTop(page);
+      await call(page, '__queueFollowUp', 'Also check the release notes.');
+      await page.waitForTimeout(400);
+      await frames(page);
+      expect(await rowTop(page), 'queueing alone').toBeCloseTo(held, 0);
+      expect(await scrollToBottom(page).count()).toBe(1);
+      await call(page, '__setLive', false);
+      await frames(page);
+      await call(page, '__deliver', 'Also check the release notes.');
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      await expect.poll(() => scrollToBottom(page).count()).toBe(0);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) loading earlier history keeps the hold`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await call(page, '__answersOnly');
+      await settledAtTail(page);
+      await openAndGrow(page);
+      expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+      await call(page, '__loadOlder');
+      await frames(page);
+      await page.waitForTimeout(300);
+      expect(await distanceFromEnd(page), 'not moved').toBeGreaterThan(100);
+      expect(await scrollToBottom(page).count()).toBe(1);
       expect(errors).toEqual([]);
     } finally {
       await browser.close();
