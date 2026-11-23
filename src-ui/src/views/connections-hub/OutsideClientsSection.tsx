@@ -83,6 +83,7 @@ function ScopedOutsideClients({
   const scopeFormId = useId();
   const selectionOpener = useRef<HTMLButtonElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
+  const inventoryDone = useRef<HTMLButtonElement>(null);
   const scopeForm = useRef<HTMLFormElement>(null);
   const continueReview = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
@@ -91,7 +92,8 @@ function ScopedOutsideClients({
         scopeForm.current?.querySelector('select') ?? continueReview.current
       )?.focus();
     } else if (open && selectionOpener.current) {
-      selectionOpener.current.focus();
+      const control = selectionOpener.current;
+      (control.isConnected ? control : inventoryDone.current)?.focus();
       selectionOpener.current = null;
     }
   }, [selection, open]);
@@ -101,11 +103,11 @@ function ScopedOutsideClients({
     return (
       <section
         className="outside-clients page-frame__body-inset"
-        aria-label="Outside clients"
+        aria-label="MCP access"
       >
         <ErrorState
           variant="compact"
-          title="Outside clients unavailable"
+          title="MCP access unavailable"
           description={describeReadFailure(clients.error)}
           action={<Button onClick={() => void clients.refetch()}>Retry</Button>}
         />
@@ -118,16 +120,16 @@ function ScopedOutsideClients({
     return (
       <section
         className="outside-clients page-frame__body-inset"
-        aria-label="Outside clients"
+        aria-label="MCP access"
       >
         <PageRow
-          title="Outside clients"
+          title="MCP access"
           description={
             signInUrl
               ? 'Sign in as the Station operator to review access.'
               : isTauri
-                ? 'Open Tools in a paired browser to review outside clients.'
-                : 'Review outside clients from the Station host.'
+                ? 'Open Tools in a paired browser to manage MCP access.'
+                : 'Manage MCP access from the Station host.'
           }
           control={
             signInUrl ? (
@@ -214,13 +216,51 @@ function ScopedOutsideClients({
         ? decisionMessages[decisionStatus]
         : 'Confirm this decision with your operator passkey.';
 
+  const activeGrants = grants.filter((grant) => grant.state === 'active');
+  const endedGrants = grants.filter((grant) => grant.state !== 'active');
+  const renderGrant = (grant: (typeof grants)[number]) => {
+    const identity = {
+      grantId: grant.grantId,
+      expectedVersion: grant.version,
+      expectedDigest: grant.digest,
+    };
+    const projectId =
+      grant.projectScope.kind === 'project'
+        ? grant.projectScope.projectId
+        : undefined;
+    const access =
+      grant.accessLevel === 'read-only' ? 'Read-only' : 'Full access';
+    return (
+      <OutsideClientRow
+        key={grant.grantId}
+        client={grant}
+        status={grant.state}
+        description={`${access} · ${projectId ?? 'Work outside Projects'}`}
+        actions={
+          grant.state === 'active'
+            ? [
+                {
+                  operation: 'change',
+                  ...identity,
+                  currentProjectId: projectId ?? 'global',
+                  currentExpiry: grant.expiresAt,
+                },
+                { operation: 'revoke', ...identity },
+              ]
+            : undefined
+        }
+        selectReview={selectReview}
+      />
+    );
+  };
+
   return (
     <section
       className="outside-clients page-frame__body-inset"
-      aria-label="Outside clients"
+      aria-label="MCP access"
     >
       <PageRow
-        title="Outside clients"
+        title="MCP access"
         control={
           <Button
             ref={opener}
@@ -235,11 +275,11 @@ function ScopedOutsideClients({
       />
       {open && (
         <Dialog
-          title={target ? reviewTitles[target.operation] : 'Outside clients'}
+          title={target ? reviewTitles[target.operation] : 'MCP access'}
           subtitle={
             selection?.name ?? 'Names are reported by the connecting app.'
           }
-          closeLabel="Close outside clients"
+          closeLabel="Close MCP access"
           onClose={close}
           returnFocusTarget={opener.current}
           footer={
@@ -247,7 +287,9 @@ function ScopedOutsideClients({
               {selection ? (
                 <Button onClick={cancelSelection}>Back</Button>
               ) : (
-                <Button onClick={close}>Done</Button>
+                <Button ref={inventoryDone} onClick={close}>
+                  Done
+                </Button>
               )}
               {reviewButton ||
                 (!settled && selection && (
@@ -372,58 +414,29 @@ function ScopedOutsideClients({
                   </div>
                 )}
               </PageSectionGroup>
-              <PageSectionGroup
-                title="Client grants"
-                description={
-                  olderGrantsOmitted
-                    ? 'Showing 50 ended grants by approval date.'
-                    : undefined
-                }
-              >
-                {grants.length === 0 ? (
-                  <Empty variant="compact" label="No client grants" />
+              <PageSectionGroup title="Authorized clients">
+                {activeGrants.length === 0 ? (
+                  <Empty variant="compact" label="No authorized clients" />
                 ) : (
                   <div className="content-stack content-stack--sections">
-                    {grants.map((grant) => {
-                      const identity = {
-                        grantId: grant.grantId,
-                        expectedVersion: grant.version,
-                        expectedDigest: grant.digest,
-                      };
-                      const projectId =
-                        grant.projectScope.kind === 'project'
-                          ? grant.projectScope.projectId
-                          : undefined;
-                      const access =
-                        grant.accessLevel === 'read-only'
-                          ? 'Read-only'
-                          : 'Full access';
-                      return (
-                        <OutsideClientRow
-                          key={grant.grantId}
-                          client={grant}
-                          status={grant.state}
-                          description={`${access} · ${projectId ?? 'Work outside Projects'}`}
-                          actions={
-                            grant.state === 'active'
-                              ? [
-                                  {
-                                    operation: 'change',
-                                    ...identity,
-                                    currentProjectId: projectId ?? 'global',
-                                    currentExpiry: grant.expiresAt,
-                                  },
-                                  { operation: 'revoke', ...identity },
-                                ]
-                              : undefined
-                          }
-                          selectReview={selectReview}
-                        />
-                      );
-                    })}
+                    {activeGrants.map(renderGrant)}
                   </div>
                 )}
               </PageSectionGroup>
+              {endedGrants.length > 0 && (
+                <PageSectionGroup
+                  title="Access history"
+                  description={
+                    olderGrantsOmitted
+                      ? 'Showing 50 ended grants by approval date.'
+                      : undefined
+                  }
+                >
+                  <div className="content-stack content-stack--sections">
+                    {endedGrants.map(renderGrant)}
+                  </div>
+                </PageSectionGroup>
+              )}
             </div>
           </div>
         </Dialog>
