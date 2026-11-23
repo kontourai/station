@@ -1234,9 +1234,7 @@ class SqliteAutomationLedger implements AutomationLedger {
           JSON.stringify(next),
           intentId,
         );
-      if (
-        ['completed', 'failed', 'stopped', 'refused'].includes(next.state)
-      )
+      if (['completed', 'failed', 'stopped', 'refused'].includes(next.state))
         this.db
           .prepare(`UPDATE automation_episodes SET state='closed', updated_ms=?
           WHERE rule_id=? AND episode_id=? AND closes_on_settle=1`)

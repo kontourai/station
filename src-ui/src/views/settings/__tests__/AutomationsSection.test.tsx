@@ -136,9 +136,7 @@ test('a delivery whose turn a person stopped reads as stopped by a person, not f
   );
   render(<AutomationsSection />);
   const list = screen.getByRole('region', { name: /^Recent deliveries/ });
-  expect(
-    within(list).getByText('stopped by a person'),
-  ).toBeTruthy();
+  expect(within(list).getByText('stopped by a person')).toBeTruthy();
   expect(within(list).queryByText(/failed/)).toBeNull();
 });
 
