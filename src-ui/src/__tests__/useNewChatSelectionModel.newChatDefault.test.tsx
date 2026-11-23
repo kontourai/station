@@ -136,7 +136,12 @@ function connection(id: string, name: string, status = 'ready') {
 function engine(
   id: string,
   name: string,
-  login: 'verified' | 'signed-out' | 'unchecked' | 'none' = 'verified',
+  login:
+    | 'verified'
+    | 'signed-out'
+    | 'unknown'
+    | 'unchecked'
+    | 'none' = 'verified',
 ) {
   const prerequisites = [
     {
@@ -158,7 +163,9 @@ function engine(
                 ? `${name} CLI credentials are present on this Station.`
                 : login === 'signed-out'
                   ? `${name} CLI is not authenticated.`
-                  : `${name} sign-in is not checked.`,
+                  : login === 'unknown'
+                    ? `${name} CLI authentication could not be verified safely.`
+                    : `${name} sign-in is not checked.`,
             status:
               login === 'verified'
                 ? 'installed'
@@ -308,17 +315,21 @@ describe('the default for new chats', () => {
   test('an engine whose sign-in Station cannot check is the fallback, never recorded', () => {
     // first-run-03: Claude Code signed out, OpenCode runs with sign-in not
     // checked (no login row, as an ACP engine has none).
+    // Gemini's check ran and could not tell: a required login row that is
+    // errored, not met.
     signedIn(
       engine('claude', 'Claude Code', 'signed-out'),
       engine('opencode', 'OpenCode', 'none'),
       engine('muse', 'Muse Code', 'unchecked'),
+      engine('gemini', 'Gemini CLI', 'unknown'),
     );
     const view = renderSelection([
       engineAgent('claude', 'Claude Code', false),
       engineAgent('opencode', 'OpenCode', true),
       engineAgent('muse', 'Muse Code', true),
+      engineAgent('gemini', 'Gemini CLI', true),
     ]);
-    expect(view.result.current.defaultSelection.agent?.slug).toBe('muse');
+    expect(view.result.current.defaultSelection.agent?.slug).toBe('gemini');
     expect(state.record).not.toHaveBeenCalled();
   });
 
