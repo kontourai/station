@@ -348,6 +348,75 @@ describe('chat-24 transcript markers', () => {
     );
   });
 
+  /** The disclosure's "Carried" list of the one switch row. */
+  const carriedItems = (container: HTMLElement) => {
+    const [engine] = markers(container, 'engine');
+    const block = [
+      ...(engine?.querySelectorAll(
+        '.conversation-handoff-boundary__disclosure > div',
+      ) ?? []),
+    ].find((div) => div.querySelector('span')?.textContent === 'Carried');
+    return [...(block?.querySelectorAll('li') ?? [])].map(
+      (item) => item.textContent,
+    );
+  };
+
+  test('a switch from an empty fresh context does not list recent messages as carried', () => {
+    const { container } = renderTranscript(
+      RESET_THEN_SWITCH,
+      transcript(RESET_THEN_SWITCH),
+    );
+    expect(carriedItems(container)).toEqual([
+      'Workspace and identity',
+      'Selected Agent and model',
+    ]);
+  });
+
+  test('an ordinary switch still lists recent messages as carried', () => {
+    const { container } = renderTranscript(COMPLETED, transcript(COMPLETED));
+    expect(carriedItems(container)).toContain(
+      'Recent conversation messages, up to a size limit',
+    );
+  });
+
+  test('a fresh context used by a turn, then a switch into its own new Session: both rows, reset first', () => {
+    // The server today refuses a switch straight after a used reset (it
+    // reuses the reset's Session), but the records can hold this sequence:
+    // the refused window's reset and turn, then a switch that ran into a new
+    // Session with its catch-up turn.
+    const refused = REFUSED.handoffs[0] as ConversationHandoffProjection;
+    const newSession = `${rootSession(REFUSED)}:session:switch-target`;
+    const at = Date.parse(refused.createdAt);
+    const catchUp = REFUSED.events
+      .filter(
+        ({ event }) => event.threadId === refused.sessionId && event.turnId,
+      )
+      .map(({ sequence, event }, offset) => ({
+        sequence: sequence + 1000,
+        event: {
+          ...event,
+          threadId: newSession,
+          eventId: `${event.eventId}-switch`,
+          turnId: `${event.turnId}-switch`,
+          createdAt: new Date(at + 1_000 + offset).toISOString(),
+        },
+      }));
+    const ran: CapturedWindow = {
+      ...REFUSED,
+      currentSessionId: newSession,
+      handoffs: [{ ...refused, sessionId: newSession }],
+      events: [...REFUSED.events, ...catchUp],
+    };
+    const { container } = renderTranscript(ran, transcript(ran));
+    expect(kinds(container)).toEqual(['model', 'context', 'engine']);
+    expect(
+      markers(container, 'engine')[0]?.querySelector('.transcript-change__note')
+        ?.textContent,
+    ).toBe(
+      'Reviewer read up to about 8K tokens of recent messages. Approvals, tool servers and queued messages start fresh.',
+    );
+  });
+
   test('a switch that started from a summary says a summary was read', () => {
     const summary: CapturedWindow = {
       ...RESET_THEN_SWITCH,
@@ -362,6 +431,10 @@ describe('chat-24 transcript markers', () => {
     ).toBe(
       'Reviewer read a summary instead of recent messages. Approvals, tool servers and queued messages start fresh.',
     );
+    expect(carriedItems(container)).toEqual([
+      'Workspace and identity',
+      'Selected Agent and model',
+    ]);
   });
 
   describe('what ran, not only what was asked for', () => {

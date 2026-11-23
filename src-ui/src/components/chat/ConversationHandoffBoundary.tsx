@@ -53,20 +53,34 @@ function startsFreshSentence(handoff: ConversationHandoffProjection): string {
  * one, the engine's own earlier conversation on a return, else recent
  * messages under the default budget.
  */
-function readSentence(
+type SwitchStart = 'native' | 'none' | 'summary' | 'recent' | 'unstated';
+
+function switchStart(
   handoff: ConversationHandoffProjection,
-  agentName: string,
   startedFrom: ConversationContextBoundaryPolicy | undefined,
-): string {
+): SwitchStart {
   if (handoff.nativeReturn || handoff.carried.includes('nativeSession'))
-    return `${agentName} picked up its earlier conversation and read what it missed.`;
-  if (startedFrom === 'empty-next-cold-start')
-    return `${agentName} read no earlier messages.`;
-  if (startedFrom && isSummaryContextBoundary(startedFrom))
-    return `${agentName} read a summary instead of recent messages.`;
+    return 'native';
+  if (startedFrom === 'empty-next-cold-start') return 'none';
+  if (startedFrom && isSummaryContextBoundary(startedFrom)) return 'summary';
   return handoff.carried.includes('authorizedTranscript')
-    ? `${agentName} read up to about ${HANDOFF_SEED_BUDGET_LABEL} tokens of recent messages.`
-    : '';
+    ? 'recent'
+    : 'unstated';
+}
+
+function readSentence(start: SwitchStart, agentName: string): string {
+  switch (start) {
+    case 'native':
+      return `${agentName} picked up its earlier conversation and read what it missed.`;
+    case 'none':
+      return `${agentName} read no earlier messages.`;
+    case 'summary':
+      return `${agentName} read a summary instead of recent messages.`;
+    case 'recent':
+      return `${agentName} read up to about ${HANDOFF_SEED_BUDGET_LABEL} tokens of recent messages.`;
+    case 'unstated':
+      return '';
+  }
 }
 
 /**
@@ -105,10 +119,14 @@ export function ConversationHandoffBoundary({
     ? ` · ${modelIdentityLabel(handoff.targetModelId)}`
     : '';
   const switched = `Switched to ${target}${model}`;
-  const note = [
-    readSentence(handoff, agentName, startedFrom),
-    startsFreshSentence(handoff),
-  ]
+  const start = switchStart(handoff, startedFrom);
+  // The record lists recent messages as carried for every switch; a start
+  // that seeded none (an empty or summary fresh context) did not carry them.
+  const carried =
+    start === 'none' || start === 'summary'
+      ? handoff.carried.filter((field) => field !== 'authorizedTranscript')
+      : handoff.carried;
+  const note = [readSentence(start, agentName), startsFreshSentence(handoff)]
     .filter(Boolean)
     .join(' ');
 
@@ -150,7 +168,7 @@ export function ConversationHandoffBoundary({
           <div>
             <span>Carried</span>
             <ul>
-              {handoff.carried.map((field) => (
+              {carried.map((field) => (
                 <li key={field}>
                   {CONVERSATION_HANDOFF_DISCLOSURE_LABELS[field]}
                 </li>
