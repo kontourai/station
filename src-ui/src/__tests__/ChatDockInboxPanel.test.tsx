@@ -110,7 +110,7 @@ describe('ChatDockInboxPanel', () => {
       'Needs attention',
       'Working',
       'Just finished',
-      'Settled · 1',
+      'Earlier · 1',
     ]);
     // The Running row's chip says the lane's word, never "Active".
     expect(
@@ -166,7 +166,7 @@ describe('ChatDockInboxPanel', () => {
       'Working',
       'Open',
       'Just finished',
-      'Settled · 1',
+      'Earlier · 1',
     ]);
   });
 
@@ -320,7 +320,7 @@ describe('ChatDockInboxPanel', () => {
         if (snoozed)
           fireEvent.click(screen.getByRole('button', { name: /^Snoozed/ }));
         else if (lifecycle === 'Completed')
-          fireEvent.click(screen.getByRole('button', { name: /^Settled/ }));
+          fireEvent.click(screen.getByRole('button', { name: /^Earlier/ }));
 
         const row = screen.getByRole('button', {
           name: /^ready title.*ready project.*unsent draft/,
@@ -385,7 +385,7 @@ describe('ChatDockInboxPanel', () => {
       'Working',
       'Open',
       'Just finished',
-      'Settled · 1',
+      'Earlier · 1',
     ]);
 
     const rowName = /^never-prompted title.*never-prompted project/;
@@ -882,7 +882,7 @@ describe('ChatDockInboxPanel', () => {
     expect(screen.getByTestId('inbox-row-status').textContent).toBe('Idle');
   });
 
-  it('moves a collapsed Working shelf below expanded work and keeps Settled last', () => {
+  it('moves a collapsed Working shelf below expanded work and keeps Earlier last', () => {
     // No chat on screen: a collapsed shelf keeps the open chat's row, which
     // is covered by InboxRow.test.tsx's collapsed-section case.
     renderPanel({
@@ -932,7 +932,7 @@ describe('ChatDockInboxPanel', () => {
     expectWorkingFirst();
     expect(
       screen
-        .getByRole('button', { name: /^Settled/ })
+        .getByRole('button', { name: /^Earlier/ })
         .getAttribute('aria-expanded'),
     ).toBe('false');
     first.unmount();
@@ -950,7 +950,7 @@ describe('ChatDockInboxPanel', () => {
 
   it('persists collapsible section state', () => {
     const first = renderPanel();
-    const earlier = screen.getByRole('button', { name: /^Settled/ });
+    const earlier = screen.getByRole('button', { name: /^Earlier/ });
     expect(earlier.getAttribute('aria-expanded')).toBe('false');
 
     fireEvent.click(earlier);
@@ -960,7 +960,7 @@ describe('ChatDockInboxPanel', () => {
     renderPanel();
     expect(
       screen
-        .getByRole('button', { name: /^Settled/ })
+        .getByRole('button', { name: /^Earlier/ })
         .getAttribute('aria-expanded'),
     ).toBe('true');
     expect(

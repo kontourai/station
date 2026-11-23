@@ -39,11 +39,14 @@ export function RowMenu({
   items,
   label = 'More actions',
   triggerClassName,
+  onOpenChange,
 }: {
   items: readonly RowMenuItem[];
   label?: string;
   /** Replaces the trigger's own class, for a host with its own action slot. */
   triggerClassName?: string;
+  /** Told when the menu opens and closes (a host hides its hover card). */
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<{
@@ -86,14 +89,50 @@ export function RowMenu({
     if (open) place();
   }, [open]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: `place` reads refs only
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  const announced = useRef(false);
   useEffect(() => {
-    if (!open) return;
+    if (open === announced.current) return;
+    announced.current = open;
+    onOpenChangeRef.current?.(open);
+  }, [open]);
+
+  // The first item takes focus once the menu is placed: until then it is
+  // hidden (`visibility: hidden`), and focusing a hidden element does
+  // nothing, which left focus on the trigger and ArrowDown dead.
+  const placed = position !== null;
+  useEffect(() => {
+    if (!open || !placed) return;
     menuRef.current
       ?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')
       // Without preventScroll the focus scrolls the tray, and the scroll
       // listener below would close the menu it just opened.
       ?.focus({ preventScroll: true });
+  }, [open, placed]);
+  useEffect(() => {
+    if (!open) setPosition(null);
+  }, [open]);
+
+  // Escape belongs to the open menu first, before any surface around it
+  // that listens for Escape in its own capture phase (the dock's hover card,
+  // its close shortcut): it closes this menu only and returns focus.
+  useEffect(() => {
+    if (!open) return;
+    const onEscape = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      event.stopPropagation();
+      setOpen(false);
+      triggerRef.current?.focus();
+    };
+    window.addEventListener('keydown', onEscape, true);
+    return () => window.removeEventListener('keydown', onEscape, true);
+  }, [open]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `place` reads refs only
+  useEffect(() => {
+    if (!open) return;
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as Node;
       if (

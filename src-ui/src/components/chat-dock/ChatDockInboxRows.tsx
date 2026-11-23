@@ -816,6 +816,18 @@ export function InboxRow({
       : item.projectLabel;
   const hasTime = item.updatedAt > 0;
   const tooltip = hoverCard && chrome === 'hover';
+  // The metadata card stays shut while the row's menu is open and after an
+  // action from it, until the pointer leaves the row: it would otherwise
+  // cover the menu and the composer and catch their clicks.
+  const hoverQuiet = useRef(false);
+  const menuOpen = useRef(false);
+  const onMenuOpenChange = (open: boolean) => {
+    menuOpen.current = open;
+    if (open) {
+      hoverQuiet.current = true;
+      hover.close();
+    }
+  };
   const details = hoverCard && chrome === 'touch';
   const detailsOpenRef = useRef(detailsOpen);
   detailsOpenRef.current = detailsOpen;
@@ -1112,15 +1124,16 @@ export function InboxRow({
       }}
       onPointerEnter={(event) => {
         prefetch.onPointerEnter(event);
-        if (tooltip) hover.onPointerEnter(event);
+        if (tooltip && !hoverQuiet.current) hover.onPointerEnter(event);
       }}
       onPointerLeave={() => {
         prefetch.onPointerLeave();
+        if (!menuOpen.current) hoverQuiet.current = false;
         if (tooltip) hover.onPointerLeave();
       }}
       onFocus={(event) => {
         prefetch.onFocus();
-        if (tooltip) hover.onFocus(event);
+        if (tooltip && !hoverQuiet.current) hover.onFocus(event);
       }}
       onBlur={(event) => {
         prefetch.onBlur();
@@ -1293,6 +1306,7 @@ export function InboxRow({
             <RowMenu
               items={inboxRowMenuItems(actions)}
               label={`Actions for ${item.title}`}
+              onOpenChange={onMenuOpenChange}
               triggerClassName="chat-dock-inbox__row-action inbox-row__action"
             />
           )}

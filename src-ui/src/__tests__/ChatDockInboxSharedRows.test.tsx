@@ -325,7 +325,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+      screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
     );
     expect(screen.getByText(child.title)).toBeTruthy();
     expect(screen.getByText(parent.title)).toBeTruthy();
@@ -765,7 +765,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
           0,
         );
         fireEvent.click(
-          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
         );
       } else {
         render(
@@ -780,7 +780,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       }
       if (host === 'mobile')
         fireEvent.click(
-          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
         );
       expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
         20,
@@ -839,7 +839,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
           />,
         );
         fireEvent.click(
-          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
         );
       } else {
         render(
@@ -854,7 +854,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       }
       if (host === 'mobile')
         fireEvent.click(
-          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
         );
       const current = screen.getByRole('button', {
         name: /^Historical work 40.*Shared project/,

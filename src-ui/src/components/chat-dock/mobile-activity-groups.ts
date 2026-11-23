@@ -109,7 +109,8 @@ export function groupMobileActivity(
     { id: 'external', label: 'Third-party', items: partition.external ?? [] },
     {
       id: resolution ? 'settled' : 'earlier',
-      label: 'Settled',
+      // Nothing on the earlier shelf is settled unless settlement is on.
+      label: resolution ? 'Settled' : 'Earlier',
       items: partition.settled,
     },
   ];

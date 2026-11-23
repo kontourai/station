@@ -185,7 +185,7 @@ function panelMarkup(
   );
   // Expand the two collapsed sections the way a user does, so the slim
   // rows are in the measured markup.
-  for (const name of [/^Snoozed/, /^Settled/]) {
+  for (const name of [/^Snoozed/, /^(Settled|Earlier)/]) {
     const toggle = screen.queryByRole('button', { name });
     if (toggle?.getAttribute('aria-expanded') === 'false')
       fireEvent.click(toggle);
@@ -219,7 +219,7 @@ function sheetMarkup(
       workFacts={work.facts}
     />,
   );
-  for (const name of [/^Snoozed/, /^Settled/]) {
+  for (const name of [/^Snoozed/, /^(Settled|Earlier)/]) {
     const toggle = screen.queryByRole('button', { name });
     if (toggle?.getAttribute('aria-expanded') === 'false')
       fireEvent.click(toggle);
