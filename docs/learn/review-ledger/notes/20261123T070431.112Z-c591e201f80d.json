@@ -1,0 +1,23 @@
+{
+  "revision": "384672c1050a3077184df9f24e4842d45e4c0d8f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Read what each citing page says about which tools an automation Session may use. None describes the ownTask grant or lists tools it admits; only docs/design/automations.md does, and it now names the five tools. The change narrows one self-scoped tool's grant and alters no other tool, route or refusal, so the other pages remain accurate.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Read what each citing page says about which tools an automation Session may use. None describes the ownTask grant or lists tools it admits; only docs/design/automations.md does, and it now names the five tools. The change narrows one self-scoped tool's grant and alters no other tool, route or refusal, so the other pages remain accurate.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Read what each citing page says about which tools an automation Session may use. None describes the ownTask grant or lists tools it admits; only docs/design/automations.md does, and it now names the five tools. The change narrows one self-scoped tool's grant and alters no other tool, route or refusal, so the other pages remain accurate.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Read what each citing page says about which tools an automation Session may use. None describes the ownTask grant or lists tools it admits; only docs/design/automations.md does, and it now names the five tools. The change narrows one self-scoped tool's grant and alters no other tool, route or refusal, so the other pages remain accurate.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Read what each citing page says about which tools an automation Session may use. None describes the ownTask grant or lists tools it admits; only docs/design/automations.md does, and it now names the five tools. The change narrows one self-scoped tool's grant and alters no other tool, route or refusal, so the other pages remain accurate.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Read what each citing page says about which tools an automation Session may use. None describes the ownTask grant or lists tools it admits; only docs/design/automations.md does, and it now names the five tools. The change narrows one self-scoped tool's grant and alters no other tool, route or refusal, so the other pages remain accurate.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Read what each citing page says about which tools an automation Session may use. None describes the ownTask grant or lists tools it admits; only docs/design/automations.md does, and it now names the five tools. The change narrows one self-scoped tool's grant and alters no other tool, route or refusal, so the other pages remain accurate.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Read what each citing page says about which tools an automation Session may use. None describes the ownTask grant or lists tools it admits; only docs/design/automations.md does, and it now names the five tools. The change narrows one self-scoped tool's grant and alters no other tool, route or refusal, so the other pages remain accurate.","inputs":["src-server/tools/station-control-policy.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Read what each citing page says about which tools an automation Session may use. None describes the ownTask grant or lists tools it admits; only docs/design/automations.md does, and it now names the five tools. The change narrows one self-scoped tool's grant and alters no other tool, route or refusal, so the other pages remain accurate.","inputs":["src-server/tools/station-control-policy.ts"]}
+  ]
+}
