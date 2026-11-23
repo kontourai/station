@@ -165,7 +165,8 @@ function QuietFooter({
  * After the phone drawer closes for New chat, focus is nowhere: the drawer
  * leaves it to the chat. Once the chat dock has drawn, its composer takes it,
  * or its first control when it has no composer. A dock that focuses itself
- * first wins, and the wait gives up after about a second.
+ * first wins, and after about a second and a half without a composer the
+ * first control takes it.
  */
 function focusChatWhenItOpens() {
   let frames = 0;
@@ -173,11 +174,16 @@ function focusChatWhenItOpens() {
     const active = document.activeElement;
     if (active && active !== document.body) return;
     const dock = document.getElementById('chat-dock');
-    const target =
-      dock?.querySelector<HTMLElement>('textarea') ??
-      dock?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
-    if (target) target.focus();
-    else if (++frames < 60) requestAnimationFrame(step);
+    const composer = dock?.querySelector<HTMLElement>('textarea');
+    if (composer) {
+      composer.focus();
+      return;
+    }
+    if (++frames < 90) {
+      requestAnimationFrame(step);
+      return;
+    }
+    dock?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR)?.focus();
   };
   requestAnimationFrame(step);
 }

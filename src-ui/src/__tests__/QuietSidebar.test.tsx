@@ -783,6 +783,30 @@ describe('the quiet sidebar New chat row', () => {
     }
   });
 
+  test('in the phone drawer, a dock with no composer gets focus on its first control', async () => {
+    state.isMobile = true;
+    const dock = document.createElement('div');
+    dock.id = 'chat-dock';
+    dock.innerHTML = '<button type="button">Close chat</button>';
+    document.body.append(dock);
+    const accept = (event: Event) => event.preventDefault();
+    window.addEventListener(OPEN_NEW_CHAT_EVENT, accept);
+    try {
+      renderSidebar();
+      act(() => {
+        window.dispatchEvent(new CustomEvent('toggle-sidebar'));
+      });
+      fireEvent.click(await screen.findByRole('button', { name: 'New chat' }));
+      await waitFor(
+        () => expect(document.activeElement?.textContent).toBe('Close chat'),
+        { timeout: 4000 },
+      );
+    } finally {
+      window.removeEventListener(OPEN_NEW_CHAT_EVENT, accept);
+      dock.remove();
+    }
+  });
+
   test.each(['Escape', 'Automations'])(
     'closing the quiet drawer by %s returns focus to the menu button',
     async (how) => {
