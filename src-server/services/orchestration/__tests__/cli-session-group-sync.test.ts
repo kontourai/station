@@ -356,15 +356,19 @@ test('retains the exact owned receipt even when response authority is withdrawn'
   await expect(f.sync(controller.signal)).rejects.toThrow(
     'sync credential revoked',
   );
-  expect((await f.open().view(f.groupId, 'owner')).contextSync).toMatchObject({
-    status: 'acknowledged',
-    members: [
+  await vi.waitFor(async () => {
+    expect((await f.open().view(f.groupId, 'owner')).contextSync).toMatchObject(
       {
-        attempts: 1,
         status: 'acknowledged',
-        turnId: 'acknowledged-before-withdrawal',
+        members: [
+          {
+            attempts: 1,
+            status: 'acknowledged',
+            turnId: 'acknowledged-before-withdrawal',
+          },
+        ],
       },
-    ],
+    );
   });
   expect(send).toHaveBeenCalledOnce();
 });
@@ -405,4 +409,81 @@ test('replay during a held attempt observes its reservation without starting or 
     await running;
   }
   expect((await running).contextSync?.status).toBe('acknowledged');
+});
+
+test('an expired caller returns before a held attempt and its late receipt admits no retry', async () => {
+  const f = await fixture();
+  const controller = new AbortController();
+  const started = Promise.withResolvers<void>();
+  const release = Promise.withResolvers<void>();
+  const send = vi.fn<Sync>(async (handle, input) => {
+    input.assertCurrent();
+    started.resolve();
+    await release.promise;
+    return receipt(
+      handle,
+      'late-exact-turn',
+      'Completed without tools but mismatched',
+    );
+  });
+  f.host.sync = send;
+  let callerReturned = false;
+  const caller = f
+    .sync(controller.signal)
+    .then(
+      (value) => ({ value }),
+      (error: unknown) => ({ error }),
+    )
+    .then((result) => {
+      callerReturned = true;
+      return result;
+    });
+  try {
+    await Promise.race([
+      started.promise,
+      caller.then(() => {
+        throw new Error('Sync ended before reserving a turn');
+      }),
+    ]);
+    controller.abort();
+    await vi.waitFor(() => expect(callerReturned).toBe(true));
+    expect(await caller).toMatchObject({
+      error: { code: 'group_sync_interrupted' },
+    });
+
+    const beforeReplay = f.readBytes();
+    expect(await f.sync()).toMatchObject({
+      supervision: 'not-running',
+      contextSync: {
+        status: 'incomplete',
+        members: [{ attempts: 1, status: 'unknown' }],
+      },
+    });
+    expect(f.readBytes()).toBe(beforeReplay);
+    await expect(
+      f.groups.run(f.groupId, 'owner', f.host, new AbortController().signal),
+    ).rejects.toMatchObject({ code: 'group_unavailable' });
+  } finally {
+    release.resolve();
+    await caller;
+  }
+
+  await vi.waitFor(async () => {
+    expect(await f.groups.view(f.groupId, 'owner')).toMatchObject({
+      supervision: 'not-running',
+      contextSync: {
+        status: 'incomplete',
+        members: [
+          {
+            attempts: 1,
+            status: 'failed',
+            turnId: 'late-exact-turn',
+            terminalEventId: 'terminal-late-exact-turn',
+            toolCalls: 0,
+          },
+        ],
+      },
+    });
+  });
+  expect(send).toHaveBeenCalledOnce();
 });

@@ -636,156 +636,178 @@ export class CliSessionGroups<T> {
     const prompt = `Retain the complete folded result below as context for this conversation. Use no tools. Reply with exactly ${ack} and nothing else.
 
 ${content}`;
-    let reserved = false;
-    try {
-      for (const { handle } of participants) {
-        assertAdmission();
-        const preparation = prepareSync(handle);
-        void preparation.catch(() => {});
-        await awaitWithAbort(preparation, lifetime);
-        assertAdmission();
-      }
+    // The owned operation keeps its reservation until its effect settles.
+    const settlement = (async () => {
+      let reserved = false;
+      try {
+        for (const { handle } of participants) {
+          assertAdmission();
+          const preparation = prepareSync(handle);
+          void preparation.catch(() => {});
+          await awaitWithAbort(preparation, lifetime);
+          assertAdmission();
+        }
 
-      const replay = await this.withGroupMutation(
-        groupId,
-        owner,
-        async (record, path) => {
-          assertInspectionCurrent();
-          if (existingOperation(record)) return record;
-          assertAdmission(record);
-          if (canonicalJson(this.membersForNewSync(record)) !== memberBinding)
-            throw new CliSessionGroupUnavailable('group_sync_identity_changed');
-          record.syncs ??= [];
-          record.syncs.push({
-            operationId,
-            runId,
-            contentHash,
-            timestamp: new Date().toISOString(),
-            status: 'syncing',
-            members: participants.map(({ seatId }) => ({
-              seatId,
-              status: 'pending',
-              attempts: 0,
-            })),
-          });
-          await this.publishRecord(path, record, assertAdmission);
-          return undefined;
-        },
-      );
-      if (replay) return await observeOperation(replay);
-      reserved = true;
-
-      for (const { seatId, handle, initialTerminalEventId } of participants) {
-        for (let attempt = 1; attempt <= 2; attempt++) {
-          const clientTurnId = `sync-${digest([groupId, operationId, seatId, attempt])}`;
-          await this.mutate(
-            groupId,
-            owner,
-            (record) => {
-              const member = findMember(record, seatId);
-              if (
-                member.attempts !== attempt - 1 ||
-                (attempt === 2 &&
-                  (member.status !== 'failed' || member.toolCalls !== 0))
-              )
-                throw new CliSessionGroupUnavailable('group_conflict');
-              member.attempts = attempt;
-              member.status = 'unknown';
-              member.timestamp = new Date().toISOString();
-            },
-            assertAdmission,
-          );
-
-          const reservedMember = (record: GroupRecord) => {
-            const member = findMember(record, seatId);
-            const seat = record.seats.find((value) => value.seatId === seatId);
-            if (
-              member.attempts !== attempt ||
-              member.status !== 'unknown' ||
-              seat?.handle?.sessionId !== handle.sessionId ||
-              seat.handle.initialTurnId !== handle.initialTurnId ||
-              seat.terminalEvent?.eventId !== initialTerminalEventId
-            )
-              throw new CliSessionGroupUnavailable(
-                'group_sync_identity_changed',
-              );
-            return member;
-          };
-          const assertAttempt = () => {
-            const record = this.read(groupId, owner);
+        const replay = await this.withGroupMutation(
+          groupId,
+          owner,
+          async (record, path) => {
+            assertInspectionCurrent();
+            if (existingOperation(record)) return record;
             assertAdmission(record);
-            reservedMember(record);
-          };
-          try {
-            assertAttempt();
-            const result = syncResultSchema.parse(
-              await sync(handle, {
-                prompt,
-                clientTurnId,
-                signal: lifetime,
-                assertCurrent: assertAttempt,
-              }),
-            );
-            if (
-              result.sessionId !== handle.sessionId ||
-              result.turnId === handle.initialTurnId ||
-              result.terminalEventId === initialTerminalEventId
-            )
+            if (canonicalJson(this.membersForNewSync(record)) !== memberBinding)
               throw new CliSessionGroupUnavailable(
                 'group_sync_identity_changed',
               );
-            const acknowledged =
-              result.toolCalls === 0 && result.output === ack;
-            await this.mutate(groupId, owner, (record) => {
-              const member = reservedMember(record);
-              if (
-                (member.nativeIdentityHash &&
-                  member.nativeIdentityHash !== result.nativeIdentityHash) ||
-                record.syncs?.some((entry) =>
-                  entry.members.some(
-                    (previous) =>
-                      (previous.seatId === seatId &&
-                        previous.turnId === result.turnId) ||
-                      previous.terminalEventId === result.terminalEventId,
-                  ),
+            record.syncs ??= [];
+            record.syncs.push({
+              operationId,
+              runId,
+              contentHash,
+              timestamp: new Date().toISOString(),
+              status: 'syncing',
+              members: participants.map(({ seatId }) => ({
+                seatId,
+                status: 'pending',
+                attempts: 0,
+              })),
+            });
+            await this.publishRecord(path, record, assertAdmission);
+            return undefined;
+          },
+        );
+        if (replay) return replay;
+        reserved = true;
+
+        for (const { seatId, handle, initialTerminalEventId } of participants) {
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            const clientTurnId = `sync-${digest([groupId, operationId, seatId, attempt])}`;
+            await this.mutate(
+              groupId,
+              owner,
+              (record) => {
+                const member = findMember(record, seatId);
+                if (
+                  member.attempts !== attempt - 1 ||
+                  (attempt === 2 &&
+                    (member.status !== 'failed' || member.toolCalls !== 0))
                 )
+                  throw new CliSessionGroupUnavailable('group_conflict');
+                member.attempts = attempt;
+                member.status = 'unknown';
+                member.timestamp = new Date().toISOString();
+              },
+              assertAdmission,
+            );
+
+            const reservedMember = (record: GroupRecord) => {
+              const member = findMember(record, seatId);
+              const seat = record.seats.find(
+                (value) => value.seatId === seatId,
+              );
+              if (
+                member.attempts !== attempt ||
+                member.status !== 'unknown' ||
+                seat?.handle?.sessionId !== handle.sessionId ||
+                seat.handle.initialTurnId !== handle.initialTurnId ||
+                seat.terminalEvent?.eventId !== initialTerminalEventId
               )
                 throw new CliSessionGroupUnavailable(
                   'group_sync_identity_changed',
                 );
-              member.status = acknowledged ? 'acknowledged' : 'failed';
-              member.turnId = result.turnId;
-              member.terminalEventId = result.terminalEventId;
-              member.nativeIdentityHash = result.nativeIdentityHash;
-              member.toolCalls = result.toolCalls;
-              member.timestamp = new Date().toISOString();
-            });
-            if (acknowledged || result.toolCalls !== 0) break;
-          } catch {
-            // An attempted effect with no exact receipt stays unknown.
-            break;
+              return member;
+            };
+            const assertAttempt = () => {
+              const record = this.read(groupId, owner);
+              assertAdmission(record);
+              reservedMember(record);
+            };
+            try {
+              assertAttempt();
+              const result = syncResultSchema.parse(
+                await sync(handle, {
+                  prompt,
+                  clientTurnId,
+                  signal: lifetime,
+                  assertCurrent: assertAttempt,
+                }),
+              );
+              if (
+                result.sessionId !== handle.sessionId ||
+                result.turnId === handle.initialTurnId ||
+                result.terminalEventId === initialTerminalEventId
+              )
+                throw new CliSessionGroupUnavailable(
+                  'group_sync_identity_changed',
+                );
+              const acknowledged =
+                result.toolCalls === 0 && result.output === ack;
+              await this.mutate(groupId, owner, (record) => {
+                const member = reservedMember(record);
+                if (
+                  (member.nativeIdentityHash &&
+                    member.nativeIdentityHash !== result.nativeIdentityHash) ||
+                  record.syncs?.some((entry) =>
+                    entry.members.some(
+                      (previous) =>
+                        (previous.seatId === seatId &&
+                          previous.turnId === result.turnId) ||
+                        previous.terminalEventId === result.terminalEventId,
+                    ),
+                  )
+                )
+                  throw new CliSessionGroupUnavailable(
+                    'group_sync_identity_changed',
+                  );
+                member.status = acknowledged ? 'acknowledged' : 'failed';
+                member.turnId = result.turnId;
+                member.terminalEventId = result.terminalEventId;
+                member.nativeIdentityHash = result.nativeIdentityHash;
+                member.toolCalls = result.toolCalls;
+                member.timestamp = new Date().toISOString();
+              });
+              if (lifetime.aborted || acknowledged || result.toolCalls !== 0)
+                break;
+            } catch {
+              // An attempted effect with no exact receipt stays unknown.
+              break;
+            }
           }
         }
-      }
-    } finally {
-      try {
-        if (reserved)
-          await this.mutate(groupId, owner, (record) => {
-            const entry = record.syncs?.find(
-              (value) => value.operationId === operationId,
-            );
-            if (entry?.status === 'syncing')
-              entry.status = entry.members.every(
-                (member) => member.status === 'acknowledged',
-              )
-                ? 'acknowledged'
-                : 'incomplete';
-          });
       } finally {
-        this.active.delete(groupId);
+        try {
+          if (reserved)
+            await this.mutate(groupId, owner, (record) => {
+              const entry = record.syncs?.find(
+                (value) => value.operationId === operationId,
+              );
+              if (entry?.status === 'syncing')
+                entry.status = entry.members.every(
+                  (member) => member.status === 'acknowledged',
+                )
+                  ? 'acknowledged'
+                  : 'incomplete';
+            });
+        } finally {
+          this.active.delete(groupId);
+        }
       }
+      return this.read(groupId, owner);
+    })();
+    const response = settlement.then(async (record) => {
+      lifetime.throwIfAborted();
+      const projection = await observeOperation(record);
+      lifetime.throwIfAborted();
+      return projection;
+    });
+    void response.catch(() => {});
+    try {
+      return await awaitWithAbort(response, lifetime);
+    } catch (error) {
+      if (!lifetime.aborted) throw error;
+      assertCallerCurrent();
+      throw new CliSessionGroupUnavailable('group_sync_interrupted');
     }
-    return observeOperation(this.read(groupId, owner));
   }
 
   async cancel(
