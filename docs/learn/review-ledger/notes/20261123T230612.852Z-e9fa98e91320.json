@@ -1,0 +1,9 @@
+{
+  "revision": "609234fe51006a5ea9d13798510c8c89c4c7a211",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Traced the dormant Ensemble holder from canonical file selection through descriptor reads, final identity recheck, and current caller checks before local inventory. The plan records resolved target observations and exact member briefs. The actual-context and model-catalog owners remain prerequisites for launch composition.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/ensemble-presets.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked the regenerated SessionCommandModule topic against the Ensemble paragraph in the module map. The deterministic bundle check passed for all 139 topics. The new paragraph describes the dormant owner and its evidence boundary.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}
