@@ -2599,6 +2599,13 @@ export class OrchestrationService {
       this.sendTurnsInDispatch.has(threadId)
     )
       throw new Error('group_sync_unavailable');
+    const assertOwnsActivation = () => {
+      if (
+        this.toolRestrictions.get(threadId)?.restriction !== restriction ||
+        !isCurrent()
+      )
+        throw new Error('group_sync_activation_changed');
+    };
     const restriction: SessionToolRestriction = {
       threadId,
       nativeSessionId,
@@ -2607,12 +2614,8 @@ export class OrchestrationService {
       clientTurnId,
       assertCurrent: () => {
         assertCurrent();
-        if (
-          signal.aborted ||
-          this.toolRestrictions.get(threadId)?.restriction !== restriction ||
-          !isCurrent() ||
-          !this.isRetainedSyncOwner(threadId, context)
-        )
+        assertOwnsActivation();
+        if (signal.aborted || !this.isRetainedSyncOwner(threadId, context))
           throw new Error('group_sync_activation_changed');
       },
     };
@@ -2620,18 +2623,18 @@ export class OrchestrationService {
     return withSessionToolRestriction(restriction, async () => {
       let released = true;
       let startedTurnId: string | undefined;
-      const park = (live: ProviderAdapterShape) =>
-        this.parkIdleSession(threadId, live, Date.now(), 0, undefined, {
+      const park = (assertStopCurrent: () => void) =>
+        this.parkIdleSession(threadId, adapter, Date.now(), 0, undefined, {
           requireObservedExit: true,
           beforeStop: () => {
-            restriction.assertCurrent();
+            assertStopCurrent();
             released = false;
           },
         });
       try {
         const live = this.sessionAdapters.get(threadId);
         if (live) {
-          if (live !== adapter || !(await park(live)))
+          if (live !== adapter || !(await park(restriction.assertCurrent)))
             throw new Error('group_sync_session_busy');
           released = true;
         }
@@ -2700,9 +2703,12 @@ export class OrchestrationService {
               throw new Error('group_sync_turn_failed');
             if (event.turnId !== turnId) continue;
             if (event.method === 'tool.started') toolCalls++;
-            if (event.method === 'turn.aborted')
+            if (event.method === 'turn.aborted') {
+              startedTurnId = undefined;
               throw new Error('group_sync_turn_failed');
+            }
             if (event.method === 'turn.completed') {
+              startedTurnId = undefined;
               if (event.finishReason !== 'stop')
                 throw new Error('group_sync_turn_failed');
               const terminal =
@@ -2719,11 +2725,7 @@ export class OrchestrationService {
                   nativeBindingKey
               )
                 throw new Error('group_sync_identity_changed');
-              if (!(await park(adapter)))
-                throw new Error('group_sync_release_unknown');
-              released = true;
-              restriction.assertCurrent();
-              return {
+              const receipt = {
                 sessionId: threadId,
                 nativeSessionId,
                 nativeIdentityHash: `sha256:${crypto
@@ -2735,19 +2737,27 @@ export class OrchestrationService {
                 output: terminal.outputText,
                 toolCalls,
               };
+              // The accepted terminal belongs to the activation's settlement.
+              // Caller expiry can stop delivery without erasing that evidence.
+              if (!(await park(assertOwnsActivation)))
+                throw new Error('group_sync_release_unknown');
+              released = true;
+              assertOwnsActivation();
+              return receipt;
             }
           }
           if (!page.hasMore) await scheduler.wait(50, { signal });
         }
       } finally {
-        if (!released && startedTurnId) {
+        const interruptTurnId = startedTurnId;
+        if (!released && interruptTurnId) {
           try {
-            await adapter.interruptTurn(threadId, startedTurnId);
+            await this.adapterRetirement.runCleanupWithinDeadline(async () => {
+              assertOwnsActivation();
+              await adapter.interruptTurn(threadId, interruptTurnId);
+            }, 'Retained Session sync interruption');
           } catch {
-            this.options.logger.warn(
-              'Context sync interruption was not confirmed',
-              { threadId },
-            );
+            // The deadline limits waiting. Only confirmed exit releases the restriction.
           }
         }
         // A failed/ambiguous activation stays fenced until explicit teardown.
