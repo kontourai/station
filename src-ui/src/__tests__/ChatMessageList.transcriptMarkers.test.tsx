@@ -278,6 +278,31 @@ describe('chat-24 transcript markers', () => {
     ]);
   });
 
+  test('a different model in a new session with no boundary row is not called a model change', () => {
+    // A successor session can start without a fresh-context or switch row
+    // (a restart, a tools change). Its memory is not the same, so "same
+    // engine, same memory" would be false there.
+    const successor = WINDOW.contextBoundaries[0]?.successorSessionId;
+    const firstInSuccessor = WINDOW.events.find(
+      ({ event }) =>
+        event.method === 'turn.started' && event.threadId === successor,
+    )?.event.turnId;
+    expect(firstInSuccessor).toBeDefined();
+    const { container } = renderTranscript(
+      transcript({ ...WINDOW, contextBoundaries: [], handoffs: [] }, (event) =>
+        event.turnId === firstInSuccessor &&
+        (event.method === 'turn.started' || event.method === 'turn.completed')
+          ? {
+              ...event,
+              metadata: { ...event.metadata, effectiveModel: 'scripted-long' },
+            }
+          : event,
+      ),
+    );
+    expect(markers(container, 'model')).toHaveLength(1);
+    expect(markers(container, 'context')).toHaveLength(0);
+  });
+
   test('the handed-over size in the copy is the server seed budget', async () => {
     const { TRANSCRIPT_SEED_DEFAULT_TOKEN_BUDGET } = await import(
       '../../../src-server/services/orchestration/conversation-transcript-seed'
