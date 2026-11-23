@@ -2212,6 +2212,8 @@ integration has a usable account. A missing token or an OAuth grant/client rejec
 during a required refresh refuses launch with **needs sign-in** and the deterministic
 `mcp_sign_in_required` code. No engine session has started for that refusal.
 The chat offers **Sign in to tool**, which opens **Connections → Tools**.
+When a server issues an access token without a refresh token, Station uses it
+until it expires or the server rejects it, then asks you to sign in again.
 
 Station gives the engine a loopback MCP proxy URL carrying a Station credential,
 scoped to that session and integration. The agent can read this proxy credential
