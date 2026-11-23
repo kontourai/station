@@ -25,13 +25,21 @@ const REPO_ROOT = resolve(HERE, '../../../');
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 const css = resolveCssImports(resolve(HERE, '../index.css'));
 
-/** The app frame with a toolbar, the page, and two region shells. */
-function frame({ right, bottom }: { right: string; bottom: string }): string {
+/** The app frame with a toolbar, the page, a side shell and a bottom shell. */
+function frame({
+  right,
+  bottom,
+  side,
+}: {
+  right: string;
+  bottom: string;
+  side: 'left' | 'right';
+}): string {
   return `<div class="app app--with-sidebar" style="height:900px">
     <div class="app__main" style="height:900px">
       <header class="app-toolbar" style="height:48px">Toolbar</header>
       <main class="main-content"><div class="content-view">Page</div></main>
-      <section class="chat-dock chat-dock--right ${right}" data-region="right" data-testid="right"><div class="dock-slot__body" data-testid="right-body">Right pane</div></section>
+      <section class="chat-dock chat-dock--${side} ${right}" data-region="${side}" data-testid="right"><div class="dock-slot__body" data-testid="right-body">Side pane</div></section>
       <section class="chat-dock chat-dock--bottom ${bottom}" data-region="bottom" data-testid="bottom"><div class="dock-slot__body" data-testid="bottom-body">Bottom pane</div></section>
     </div>
   </div>`;
@@ -49,13 +57,17 @@ describe.skipIf(!chromiumAvailable)(
       await browser?.close();
     });
 
-    async function measure(right: string, bottom: string) {
+    async function measure(
+      right: string,
+      bottom: string,
+      side: 'left' | 'right' = 'right',
+    ) {
       const page = await browser.newPage({
         viewport: { width: 1440, height: 900 },
       });
       try {
         await page.setContent(
-          `<style>${css}</style>${frame({ right, bottom })}`,
+          `<style>${css}</style>${frame({ right, bottom, side })}`,
         );
         const box = async (id: string) =>
           page.getByTestId(id).evaluate((node) => {
@@ -96,6 +108,19 @@ describe.skipIf(!chromiumAvailable)(
       // The bottom shell is hidden, not removed: its pane keeps its state.
       expect(bottom.shown).toBe(false);
       expect(bodyConnected).toBe(true);
+    });
+
+    test('a dock maximized in the Left region reaches the bottom with the Bottom region on', async () => {
+      const {
+        main,
+        right: left,
+        bottom,
+      } = await measure('is-maximized', '', 'left');
+      expect(left.shown).toBe(true);
+      expect(left.bottom).toBeGreaterThanOrEqual(main.bottom - 0.5);
+      expect(left.left).toBeLessThanOrEqual(main.left + 0.5);
+      expect(left.right).toBeGreaterThanOrEqual(main.right - 0.5);
+      expect(bottom.shown).toBe(false);
     });
 
     test('a maximized bottom dock reaches across with the Right region on (the mirrored case)', async () => {

@@ -1189,6 +1189,48 @@ test('kept New chat text is offered only to a New chat for the same Project, bot
   expect((await openPlain()).initialPrompt).toBe('Notes for Pulse');
 });
 
+// A dock that goes away with its draft open (a Station switch or sign-out
+// remounts it) must not leave Home believing a draft still covers it, or Home
+// would show no composer at all.
+test('the ambient dock unmounting with its New chat draft open publishes the draft as closed', async () => {
+  const { useDockNewChatDraftOpen } = await import(
+    '../dockNewChatDraftPresence'
+  );
+  const { useState } = await import('react');
+  const seen: boolean[] = [];
+  function Probe() {
+    seen.push(useDockNewChatDraftOpen());
+    return null;
+  }
+  let removeDock: () => void = () => {};
+  function DockThatCanGo() {
+    const [shown, setShown] = useState(true);
+    removeDock = () => setShown(false);
+    return shown ? (
+      <DockShell>
+        {(shellChrome) => (
+          <ChatWorkspacePane placement="dock" shellChrome={shellChrome} />
+        )}
+      </DockShell>
+    ) : null;
+  }
+  renderInProviders(
+    <>
+      <Probe />
+      <DockThatCanGo />
+    </>,
+  );
+  await act(async () => {});
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  await waitFor(() => expect(seen.at(-1)).toBe(true));
+  act(() => removeDock());
+  expect(screen.queryByRole('region', { name: 'New chat picker' })).toBeNull();
+  await waitFor(() => expect(seen.at(-1)).toBe(false));
+});
+
 // Home's start composer reads this to step aside for the dock's draft; a
 // full-screen pane's draft is not the ambient dock's and says nothing.
 test('the ambient dock publishes its open New chat draft, and a full-screen pane does not', async () => {
