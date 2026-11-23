@@ -5675,21 +5675,22 @@ export async function interruptDelegatedTask(
   }
   let interrupted: unknown;
   if (loaded.target.kind === 'current' && orchestrationService) {
-    interrupted = (
-      await orchestrationService.dispatchWithReceipt(
-        {
-          type: 'interruptTurn',
-          threadId: snapshot.currentSessionId,
-          ...(input.turnId ? { turnId: input.turnId } : {}),
-        },
-        dispatchContextForAuthority(
-          readAuthority,
-          input.clientOrigin,
-          input.principal,
-        ),
-        beforeProviderInterrupt ? { beforeProviderInterrupt } : undefined,
-      )
-    ).result;
+    const command = {
+      type: 'interruptTurn' as const,
+      threadId: snapshot.currentSessionId,
+      ...(input.turnId ? { turnId: input.turnId } : {}),
+    };
+    const context = dispatchContextForAuthority(
+      readAuthority,
+      input.clientOrigin,
+      input.principal,
+    );
+    const receipt = beforeProviderInterrupt
+      ? await orchestrationService.dispatchWithReceipt(command, context, {
+          beforeProviderInterrupt,
+        })
+      : await orchestrationService.dispatchWithReceipt(command, context);
+    interrupted = receipt.result;
   } else {
     if (beforeProviderInterrupt)
       throw new Error(
