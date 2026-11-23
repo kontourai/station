@@ -1150,6 +1150,45 @@ test('a started New chat leaves no text behind, and a request with its own promp
   expect(pickerProps.at(-1)!.initialPrompt).toBeUndefined();
 });
 
+// Kept text stays with the scope it was typed in: the Project the draft was
+// opened for, or none. It is offered only to a New chat for that same scope.
+test('kept New chat text is offered only to a New chat for the same Project, both ways', async () => {
+  renderDockedPane();
+  await act(async () => {});
+  const openPlain = async () => {
+    act(() => {
+      dispatchNewChatIntent({});
+    });
+    await screen.findByRole('region', { name: 'New chat picker' });
+    return pickerProps.at(-1)!;
+  };
+  const leave = async (text: string) => {
+    act(() => pickerProps.at(-1)!.onDraftChange(text));
+    act(() => pickerProps.at(-1)!.onClose());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('region', { name: 'New chat picker' }),
+      ).toBeNull(),
+    );
+  };
+
+  // Typed with no Project, then the dock bound to Pulse: nothing offered.
+  expect((await openPlain()).activeProjectSlug ?? null).toBeNull();
+  await leave('Notes with no project');
+  act(() => deviceSettingsStore.set('chatDockProjectSlug', 'pulse'));
+  const inPulse = await openPlain();
+  expect(inPulse.activeProjectSlug).toBe('pulse');
+  expect(inPulse.initialPrompt).toBeUndefined();
+
+  // Typed for Pulse, then back to no Project: each scope gets its own text.
+  await leave('Notes for Pulse');
+  act(() => deviceSettingsStore.set('chatDockProjectSlug', null));
+  expect((await openPlain()).initialPrompt).toBe('Notes with no project');
+  await leave('Notes with no project');
+  act(() => deviceSettingsStore.set('chatDockProjectSlug', 'pulse'));
+  expect((await openPlain()).initialPrompt).toBe('Notes for Pulse');
+});
+
 test('a Personal Board draft opens one projectless chat picker and stays unsent after Agent selection', async () => {
   renderDockedPane();
   let claimed = false;

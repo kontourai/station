@@ -725,7 +725,8 @@ chat dock is open to take it, Home keeps the message and says so.
 
 In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed Inbox bar),
 **⌘T**, and the floating button in the phone Inbox open the same composer.
-Text you leave there without starting comes back the next time you open New chat.
+Text you leave there without starting comes back the next time you open New chat
+for the same Project.
 **Explore agents** remains available for deliberate customization.
 
 Setup from Home continues in the chat dock. When you choose **Connect**,

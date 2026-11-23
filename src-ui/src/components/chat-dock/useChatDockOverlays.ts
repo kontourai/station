@@ -56,6 +56,7 @@ export function useChatDockOverlays({
   onReaderIntent,
   hostSessionRef,
   workingParentPending = false,
+  newChatScopeRef,
 }: {
   isMobile: boolean;
   composerMenuTriggerRef: RefObject<HTMLButtonElement | null>;
@@ -70,6 +71,11 @@ export function useChatDockOverlays({
    * has not bound yet.
    */
   workingParentPending?: boolean;
+  /**
+   * The Project the open New chat draft was opened for (`''` for none), as
+   * the dock last rendered it. Kept draft text belongs to that scope.
+   */
+  newChatScopeRef?: RefObject<string>;
 }) {
   const [mobileInboxOpen, setMobileInboxOpen] = useState(
     isMobile && !hasConversationIntent,
@@ -150,10 +156,18 @@ export function useChatDockOverlays({
   const reportNewChatDraft = useCallback((text: string) => {
     newChatDraftText.current = text;
   }, []);
-  // What a plain draft held when it was left without starting, so the next
-  // plain New chat opens with it, as a chat keeps its unsent draft. A draft a
-  // sender opened hands its text back to that sender instead.
-  const keptNewChatText = useRef<string | undefined>(undefined);
+  // What a draft held when it was left without starting, by the Project it
+  // was opened for (`''` for none): the next plain New chat for that same
+  // scope opens with it, as a chat keeps its unsent draft. A draft a sender
+  // opened hands its text back to that sender instead. It lives as long as
+  // this dock does.
+  const keptNewChatText = useRef(new Map<string, string>());
+  const keptNewChatTextFor = useCallback(
+    (scope: string) => keptNewChatText.current.get(scope),
+    [],
+  );
+  // Whether the open request is a plain one, which takes the kept text.
+  const [newChatRestoresKept, setNewChatRestoresKept] = useState(false);
   const [newChatStartWithDefault, setNewChatStartWithDefault] = useState(false);
   const [newChatSelection, setNewChatSelection] =
     useState<NewChatIntent['selection']>();
@@ -169,21 +183,19 @@ export function useChatDockOverlays({
       closedAs: NewChatClosedOutcome = 'dismissed',
     ) => {
       const closingText = newChatDraftText.current;
+      const scope = newChatScopeRef?.current ?? '';
       if (newChatOnClosed.current)
         newChatOnClosed.current(closedAs, closingText);
-      else if (closedAs === 'started') keptNewChatText.current = undefined;
-      else if (closingText !== undefined)
-        keptNewChatText.current = closingText.trim() ? closingText : undefined;
+      else if (closedAs === 'started') keptNewChatText.current.delete(scope);
+      else if (closingText !== undefined) {
+        if (closingText.trim()) keptNewChatText.current.set(scope, closingText);
+        else keptNewChatText.current.delete(scope);
+      }
       newChatDraftText.current = undefined;
       newChatOnClosed.current = open ? options?.onClosed : undefined;
       setNewChatTaskShaping(open && options?.taskShaping === true);
-      setNewChatInitialPrompt(
-        !open
-          ? undefined
-          : newChatIntentCarriesPayload(options)
-            ? options?.initialPrompt
-            : keptNewChatText.current,
-      );
+      setNewChatInitialPrompt(open ? options?.initialPrompt : undefined);
+      setNewChatRestoresKept(open && !newChatIntentCarriesPayload(options));
       setNewChatInitialFiles(open ? options?.initialFiles : undefined);
       setNewChatStartWithDefault(open && options?.startWithDefault === true);
       setNewChatSelection(open ? options?.selection : undefined);
@@ -198,7 +210,7 @@ export function useChatDockOverlays({
       }
       setShowNewChatModalState(open);
     },
-    [setShowNewChatModalState, onReaderIntent],
+    [setShowNewChatModalState, onReaderIntent, newChatScopeRef],
   );
 
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
@@ -281,6 +293,8 @@ export function useChatDockOverlays({
     newChatStartWithDefault,
     newChatTaskShaping,
     newChatInitialPrompt,
+    newChatRestoresKept,
+    keptNewChatTextFor,
     newChatInitialFiles,
     newChatSelection,
     newChatHandoff,

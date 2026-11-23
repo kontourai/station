@@ -773,6 +773,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     name: string;
     composerDraft?: ProjectChatComposerDraft;
   } | null>(null);
+  // The Project the open New chat draft was opened for, set each render below.
+  const newChatScopeRef = useRef('');
   // Scope is a dock presentation filter over the active tabs, not a separate
   // inventory. Keep the unfiltered source for a new sidebar request: React
   // has not applied `_setProjectFilter` yet while that handler is selecting
@@ -1151,6 +1153,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     newChatStartWithDefault,
     newChatTaskShaping,
     newChatInitialPrompt,
+    newChatRestoresKept,
+    keptNewChatTextFor,
     newChatInitialFiles,
     newChatSelection,
     newChatHandoff,
@@ -1186,6 +1190,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     composerMenuTriggerRef,
     setDeviceSetting,
     setShowNewChatModalState,
+    newChatScopeRef,
   });
   const mobileInboxShown = isMobile && mobileInboxOpen;
   const [mobileInboxToolsHost, setMobileInboxToolsHost] =
@@ -4059,6 +4064,22 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     chatBelongsToStation(activeSession, conversationConnection) &&
     conversationAccessFor(activeSession, conversationConnection)?.continue;
 
+  // Use the project shown by this dock, including explicit No project.
+  // A fork keeps its own source project.
+  const newChatDefaultProjectSlug = resolveNewChatModalDefaultProjectSlug({
+    forkProjectSlug: forkSource?.projectSlug,
+    hasImmutableProjectScope,
+    immutableProjectSlug: projectSlug,
+    dockChromeProjectSlug,
+    routeActiveProjectSlug,
+  });
+  // The scope a New chat draft opens for, which its kept text belongs to.
+  const newChatScope =
+    (newChatProjectOverride
+      ? newChatProjectOverride.slug
+      : newChatDefaultProjectSlug) ?? '';
+  newChatScopeRef.current = newChatScope;
+
   return (
     <TranscriptPrefetchTargetProvider value={transcriptPrefetchTarget}>
       <ChildChatNavigation
@@ -4745,20 +4766,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                             project.slug === projectSlug,
                                         )
                                       : projects,
-                                  // Use the project shown by this dock, including explicit No project.
-                                  // A fork keeps its own source project.
-                                  activeProjectSlug:
-                                    resolveNewChatModalDefaultProjectSlug({
-                                      forkProjectSlug: forkSource?.projectSlug,
-                                      hasImmutableProjectScope,
-                                      immutableProjectSlug: projectSlug,
-                                      dockChromeProjectSlug,
-                                      routeActiveProjectSlug,
-                                    }),
+                                  activeProjectSlug: newChatDefaultProjectSlug,
                                   newChatProjectOverride,
                                   startWithDefault: newChatStartWithDefault,
                                   taskShaping: newChatTaskShaping,
-                                  initialPrompt: newChatInitialPrompt,
+                                  initialPrompt:
+                                    newChatInitialPrompt ??
+                                    (newChatRestoresKept
+                                      ? keptNewChatTextFor(newChatScope)
+                                      : undefined),
                                   initialFiles: newChatInitialFiles,
                                   startSelection: newChatSelection,
                                   handoff: newChatHandoff,
