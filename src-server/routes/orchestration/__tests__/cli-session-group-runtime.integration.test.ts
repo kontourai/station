@@ -42,6 +42,8 @@ class MemberAdapter extends GateTestAdapter {
     Awaited<ReturnType<GateTestAdapter['startSession']>>
   >();
   readonly turns: ProviderSendTurnInput[] = [];
+  readonly interrupts: { sessionId: string; turnId: string }[] = [];
+  holdTurns = false;
   override async startSession(input: ProviderSessionStartInput) {
     this.starts.push(input);
     const session = await super.startSession(input);
@@ -75,6 +77,7 @@ class MemberAdapter extends GateTestAdapter {
       createdAt: new Date().toISOString(),
       invocationId: input.invocationId,
     });
+    if (this.holdTurns) return { threadId: input.threadId, turnId };
     this.events.push({
       eventId: randomUUID(),
       provider: this.provider,
@@ -88,6 +91,21 @@ class MemberAdapter extends GateTestAdapter {
     });
     return { threadId: input.threadId, turnId };
   }
+
+  override async interruptTurn(threadId: string, turnId?: string) {
+    if (!turnId) return { outcome: 'no-active-turn' as const };
+    this.interrupts.push({ sessionId: threadId, turnId });
+    this.events.push({
+      eventId: randomUUID(),
+      provider: this.provider,
+      threadId,
+      turnId,
+      method: 'turn.aborted',
+      createdAt: new Date().toISOString(),
+      reason: 'cancelled',
+    });
+    return { outcome: 'cancelled' as const, turnId };
+  }
 }
 
 async function fixture() {
@@ -100,6 +118,9 @@ async function fixture() {
   });
   const bus = new EventBus();
   let prepare: () => Promise<void> = async () => {};
+  let beforeReceipt: (
+    handle: Awaited<ReturnType<typeof delegateTask>>,
+  ) => Promise<void> = async () => {};
   const service = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
     eventBus: bus,
@@ -167,7 +188,12 @@ async function fixture() {
       callerBindingForRequest: () => 'fixture-group-owner',
       isRequestPrincipalCurrent: () => true,
       delegateTask: (input) => {
-        const pending = delegateTask(input, service, remote);
+        const pending = delegateTask(input, service, remote).then(
+          async (handle) => {
+            await beforeReceipt(handle);
+            return handle;
+          },
+        );
         pendingDispatches.push(pending);
         return pending;
       },
@@ -192,6 +218,9 @@ async function fixture() {
     adapter,
     store,
     pendingDispatches,
+    setBeforeReceipt: (work: typeof beforeReceipt) => {
+      beforeReceipt = work;
+    },
     setPreparation: (work: typeof prepare) => {
       prepare = work;
     },
@@ -306,3 +335,90 @@ test('a zero-dispatch group refuses startup through the real run route', async (
   expect(f.adapter.starts).toEqual([]);
   expect(f.adapter.turns).toEqual([]);
 });
+
+test('cancelling a running group interrupts only its accepted initial turn', async () => {
+  const f = await fixture();
+  f.adapter.holdTurns = true;
+  const group = await create(f, 1);
+  const path = `/api/orchestration/session-groups/${group.groupId}`;
+  const controller = new AbortController();
+  const running = f.app.request(`${path}/run`, {
+    method: 'POST',
+    signal: controller.signal,
+  });
+  try {
+    const accepted = await vi.waitFor(
+      async () => {
+        const response = await f.app.request(path);
+        expect(response.status).toBe(200);
+        const { data } = (await response.json()) as {
+          data: CliSessionGroupView;
+        };
+        const handle = data.members[0]?.handle;
+        expect(handle?.initialTurnId).toEqual(expect.any(String));
+        return handle!;
+      },
+      { timeout: 5000 },
+    );
+    const response = await f.app.request(`${path}/cancel`, { method: 'POST' });
+    expect(response.status).toBe(200);
+    expect((await running).status).toBe(200);
+    expect(f.adapter.interrupts).toEqual([
+      { sessionId: accepted.sessionId, turnId: accepted.initialTurnId },
+    ]);
+  } finally {
+    controller.abort();
+    await running;
+  }
+}, 30_000);
+
+test('a receipt arriving after cancellation reserves the exact stop without guessing a turn', async () => {
+  const f = await fixture();
+  f.adapter.holdTurns = true;
+  let received: Awaited<ReturnType<typeof delegateTask>> | undefined;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.setBeforeReceipt(async (handle) => {
+    received = handle;
+    await held;
+  });
+  const group = await create(f, 1);
+  const path = `/api/orchestration/session-groups/${group.groupId}`;
+  const controller = new AbortController();
+  const running = f.app.request(`${path}/run`, {
+    method: 'POST',
+    signal: controller.signal,
+  });
+  try {
+    const accepted = await vi.waitFor(
+      () => {
+        expect(received?.turnId).toEqual(expect.any(String));
+        return received!;
+      },
+      { timeout: 5000 },
+    );
+    const cancelled = await f.app.request(`${path}/cancel`, { method: 'POST' });
+    expect(cancelled.status).toBe(200);
+    expect(await cancelled.json()).toMatchObject({
+      data: { cancelled: true, members: [{ state: 'launch-intent' }] },
+    });
+    expect(f.adapter.interrupts).toEqual([]);
+    release();
+    await vi.waitFor(
+      () => {
+        expect(f.adapter.interrupts).toEqual([
+          { sessionId: accepted.sessionId, turnId: accepted.turnId },
+        ]);
+      },
+      { timeout: 5000 },
+    );
+    expect((await running).status).toBe(200);
+  } finally {
+    release();
+    controller.abort();
+    await running;
+    await Promise.allSettled(f.pendingDispatches);
+  }
+}, 30_000);

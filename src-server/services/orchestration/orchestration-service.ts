@@ -12093,6 +12093,9 @@ export class OrchestrationService {
               command.turnId,
               'user',
               byPerson,
+              internal?.beforeProviderInterrupt
+                ? assertInterruptCurrent
+                : undefined,
             );
           if (
             interrupted.outcome === 'cooperative' ||

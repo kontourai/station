@@ -386,9 +386,13 @@ export class CooperativeStop {
     initiatedBy: 'user' | 'stall' = 'user',
     /** The Stop command came from a person (operator or device origin). */
     byPerson = false,
+    beforeEffect?: () => void,
   ): Promise<InterruptTurnResult> {
+    beforeEffect?.();
     const existing = this.cooperativeStops.get(threadId);
     if (existing) {
+      if (beforeEffect && requestedTurnId !== existing.turnId)
+        return { outcome: 'no-active-turn', threadId };
       // A second Stop for the same thread rides the first one's task rather
       // than starting a second cancel (the pre-existing coalescing), and now
       // reports the SAME derived outcome instead of an untyped void the
@@ -429,6 +433,7 @@ export class CooperativeStop {
       completed,
       initiatedBy,
       byPerson,
+      beforeEffect,
     );
     this.cooperativeStops.set(threadId, state);
     try {
@@ -447,8 +452,9 @@ export class CooperativeStop {
     completed: Promise<void>,
     initiatedBy: 'user' | 'stall',
     byPerson: boolean,
+    beforeEffect?: () => void,
   ): Promise<StopSettlement> {
-    const settlement = await new Promise<StopSettlement>((resolve) => {
+    const settlement = await new Promise<StopSettlement>((resolve, reject) => {
       let settled = false;
       const settle = (next: StopSettlement) => {
         if (settled) return;
@@ -462,8 +468,22 @@ export class CooperativeStop {
       );
       completed.then(() => settle('completed'));
       void Promise.resolve()
-        .then(() => adapter.interruptTurn(threadId, state.turnId))
+        .then(() => {
+          if (beforeEffect) {
+            if (settled) return;
+            try {
+              beforeEffect();
+            } catch (error) {
+              settled = true;
+              clearTimeout(timer);
+              reject(error);
+              return;
+            }
+          }
+          return adapter.interruptTurn(threadId, state.turnId);
+        })
         .then((result) => {
+          if (beforeEffect && settled) return;
           if (
             isProviderInterruptTurnResult(result) &&
             result.outcome === 'cancelled' &&
@@ -514,6 +534,18 @@ export class CooperativeStop {
       });
       this.persistResumableStoppedSession(adapter.provider, threadId);
       return settlement;
+    }
+
+    if (beforeEffect) {
+      beforeEffect();
+      if (
+        interruptibleTurnIdForEvents(
+          this.deps.listSessionProjectionEvents(threadId),
+        ) !== state.turnId
+      )
+        throw new Error(
+          'The delegated turn changed before cancellation escalation.',
+        );
     }
 
     // The deadline is the sole path to hard teardown. Persist both the
