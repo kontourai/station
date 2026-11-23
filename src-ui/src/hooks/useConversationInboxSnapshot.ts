@@ -71,9 +71,13 @@ export function useConversationInboxSnapshot(
       ? undefined
       : (connection?.targetApiBase ?? target?.apiBase ?? scope?.apiBase);
   const queryKey = inboxQueryKey(scope, conversationId, apiBase);
+  // No queryFn, not skipToken: an observer's options replace the query's, and
+  // fetch() invokes whatever function the last one set. Without one, fetch()
+  // takes the first observer that has one (the list's real read); skipToken
+  // would be invoked and throw. enabled:false keeps this reader from fetching.
   const query = useQuery<ConversationInboxEntry[]>({
     queryKey,
-    queryFn: skipToken,
+    enabled: false,
     gcTime: 0,
   });
   const receipts = useInboxReceipts(queryKey);

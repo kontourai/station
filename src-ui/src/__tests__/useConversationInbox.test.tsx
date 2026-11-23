@@ -16,6 +16,8 @@ import {
 } from '@testing-library/react';
 
 import { afterEach, expect, test, vi } from 'vitest';
+import { useConversationInbox } from '../hooks/useConversationInbox';
+import { useConversationInboxSnapshot } from '../hooks/useConversationInboxSnapshot';
 import { ConversationInboxMessages } from '../components/chat/ConversationInboxMessages';
 import type { PendingMessageMetadata } from '../contexts/active-chats-state';
 import {
@@ -835,4 +837,101 @@ test('a held message lists the files it carries by name, never their bytes', asy
   expect(screen.getByText('2 files').getAttribute('title')).toBe(
     'a.txt, b.txt',
   );
+});
+
+const SCOPE_PREFIX = ['conversation-inbox', 'http://station.test', 'device-a'];
+
+function SnapshotProbe() {
+  const entries = useConversationInboxSnapshot('conversation');
+  return (
+    <output data-testid="snapshot">
+      {entries.map((e) => e.message).join('|')}
+    </output>
+  );
+}
+
+function Owner() {
+  const query = useConversationInbox('conversation');
+  return (
+    <output data-testid="owner">
+      {query.unavailable ? 'unavailable' : 'ok'}
+    </output>
+  );
+}
+
+function mountPair(readerFirst: boolean) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  setClientCredentialResolver(() => ({
+    origin: authority.current.apiBase,
+    requestAuthority: authority.current,
+  }));
+  render(
+    <QueryClientProvider client={client}>
+      {readerFirst && <SnapshotProbe />}
+      <ConversationInboxMessages
+        conversationId="conversation"
+        sessionId="session"
+        messages={[]}
+      />
+      <Owner />
+      {!readerFirst && <SnapshotProbe />}
+    </QueryClientProvider>,
+  );
+  return client;
+}
+
+for (const readerFirst of [false, true]) {
+  test(`an event-stream invalidation refetches through the list's own read with a snapshot reader mounted ${readerFirst ? 'before' : 'after'} it`, async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response([entry('queued', `call-${++calls}`)])),
+    );
+    const client = mountPair(readerFirst);
+    await waitFor(() =>
+      expect(screen.getByTestId('snapshot').textContent).toBe('call-1'),
+    );
+    const before = calls;
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: SCOPE_PREFIX });
+    });
+    await waitFor(() => expect(calls).toBeGreaterThan(before));
+    const query = client
+      .getQueryCache()
+      .find({ queryKey: [...SCOPE_PREFIX, 'conversation'], exact: true });
+    expect(query?.state.error).toBeNull();
+    expect(query?.state.status).toBe('success');
+    await waitFor(() =>
+      expect(screen.getByTestId('snapshot').textContent).toBe(`call-${calls}`),
+    );
+    expect(screen.queryByText(/load inbox entries/)).toBeNull();
+    expect(screen.getByTestId('owner').textContent).toBe('ok');
+  });
+}
+
+test('a snapshot reader mounted alone neither fetches nor errors on invalidation', async () => {
+  const fetchMock = vi.fn(async () => response([entry('queued', 'x')]));
+  vi.stubGlobal('fetch', fetchMock);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  render(
+    <QueryClientProvider client={client}>
+      <SnapshotProbe />
+    </QueryClientProvider>,
+  );
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: SCOPE_PREFIX });
+  });
+  expect(fetchMock).not.toHaveBeenCalled();
+  const query = client
+    .getQueryCache()
+    .find({ queryKey: [...SCOPE_PREFIX, 'conversation'], exact: true });
+  expect(query?.state.error).toBeNull();
+  expect(query?.state.fetchStatus).toBe('idle');
+  expect(screen.getByTestId('snapshot').textContent).toBe('');
 });
