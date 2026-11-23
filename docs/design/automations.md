@@ -362,8 +362,11 @@ hard billing reservation. A completed action records the first turn terminal,
 not Task acceptance or successful repair. When that turn ends, completed or
 failed, a Task still `in_progress` moves to `review` so a person sees the
 result; nothing else would move it, since the Session acts for no person. A
-Task that is blocked, or whose Session a person took over before the turn
-ended, keeps its status. A green run closes
+Task in any other status (blocked, done, canceled, or set by a person or the
+Agent) keeps it. A person's takeover does not change this: once the
+automation's dispatched turn has ended, the Task reads `review` whether or not
+a person has since continued the Session, and a person who continues afterwards
+works in a Task that already awaits review. A green run closes
 the episode and prevents later placement for it. A first turn a person
 stops ends as `turn.aborted`, so the action and its delivery read `failed`
 and it has used the episode's attempt. The wall-clock budget keeps running
