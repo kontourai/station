@@ -1,7 +1,0 @@
-{
-  "revision": "b780ce7043921ba7014588a8f6ada1979f6986cb",
-
-  "notes": [
-    {"path":"src-ui/AGENTS.md","note":"Edited the owner table's failure row: provider policy stays in utils/chatErrorTranslation except the provider-default refusal's wording, now in utils/providerDefaultFailure so the entry bundle does not carry it. Checked against the two modules and their importers (utils/attention.ts, SessionFailureAlert.tsx).","inputs":["src-ui/AGENTS.md"]}
-  ]
-}

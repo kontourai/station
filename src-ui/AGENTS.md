@@ -47,7 +47,7 @@ In framed shell routes, `PageFrame` owns gutters, `PageSection` owns titled sect
 | Reply and exact needs-input draft | `components/chat/ChatInputArea`; exact adapters retain request identity |
 | Owner, member and guest Task history | `components/conversation/SharedTaskHistoryList` |
 | Desktop and mobile Inbox | `components/chat-dock/useInboxPanelController` |
-| Request failure and durable error publisher | `utils/stationFailure`; provider policy stays in `utils/chatErrorTranslation`, except the provider-default refusal's wording in `utils/providerDefaultFailure`, kept apart so the entry bundle does not carry it |
+| Request failure and durable error publisher | `utils/stationFailure`; provider policy stays in `utils/chatErrorTranslation` |
 
 ## UI definition of done
 
