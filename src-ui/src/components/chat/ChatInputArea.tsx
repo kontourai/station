@@ -1122,7 +1122,13 @@ export function ChatInputArea({
       // transcript pinned to its newest message to the taller box. Restoring
       // the textarea does not restore the scroll position, so the frame
       // painted with a one-line gap under the newest message.
+      // With transitions off: reduced motion leaves every property a 0.01ms
+      // transition, and a transition read in the same task still holds its
+      // starting value, so the old reservation measured as the natural height
+      // and the composer could grow but never shrink back.
       const measure = () => {
+        const transition = root.style.transition;
+        root.style.transition = 'none';
         root.style.minHeight = '';
         root.style.flexShrink = '0';
         root.style.maxHeight = 'none';
@@ -1133,6 +1139,7 @@ export function ChatInputArea({
         );
         root.style.flexShrink = saved[1];
         root.style.maxHeight = saved[2];
+        root.style.transition = transition;
         return height;
       };
       if (!body?.classList.contains('chat-dock__body')) {

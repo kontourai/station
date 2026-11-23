@@ -554,7 +554,15 @@ function ChatMessageListComponent({
   // under a later scroll, and a transcript that still fits shows none.
   const readerHoldRef = useRef(false);
   const [readerHeld, setReaderHeld] = useState(false);
-  const activatedRowRef = useRef<{ row: Element; height: number } | null>(null);
+  const activatedRowRef = useRef<{
+    row: Element;
+    height: number;
+    /** The disclosure the reader activated: closing it ends the hold. */
+    toggle: Element;
+  } | null>(null);
+  // The transcript's height when the hold began, before Scroll to bottom took
+  // its line: what the end is measured against once the row closes.
+  const heldClientHeightRef = useRef(0);
   const showHeldControl = useCallback((el: HTMLElement) => {
     setReaderHeld(
       readerHoldRef.current &&
@@ -987,6 +995,50 @@ function ChatMessageListComponent({
     void activeSession.id;
     releaseReaderHold();
   }, [activeSession.id, releaseReaderHold]);
+  // What needs the reader ends a hold and brings the end into view: their own
+  // message (a send, a queued follow-up delivered) and a request opening.
+  const releaseHoldToLatest = useCallback(() => {
+    if (!readerHoldRef.current) return false;
+    releaseReaderHold();
+    isUserScrolledUpRef.current = false;
+    setIsUserScrolledUp(false);
+    return true;
+  }, [releaseReaderHold]);
+  let lastUserKey: unknown;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]!;
+    if (message.role !== 'user') continue;
+    lastUserKey =
+      message.id ?? message.clientId ?? message.timestamp ?? message.content;
+    break;
+  }
+  const lastUserKeyRef = useRef(lastUserKey);
+  // Before the pin below, which then follows the new message.
+  useLayoutEffect(() => {
+    if (lastUserKeyRef.current === lastUserKey) return;
+    lastUserKeyRef.current = lastUserKey;
+    releaseHoldToLatest();
+  }, [lastUserKey, releaseHoldToLatest]);
+  const openRequestKeys = useMemo(
+    () =>
+      unansweredApprovalRequests(
+        [],
+        (approvalEvents ?? [])
+          .map((item) => item.event)
+          .filter((event) => Boolean(event.eventId)),
+      ).map((request) => `${request.approvalThreadId}:${request.approvalId}`),
+    [approvalEvents],
+  );
+  const openRequestKeysRef = useRef(openRequestKeys);
+  useLayoutEffect(() => {
+    const before = new Set(openRequestKeysRef.current);
+    openRequestKeysRef.current = openRequestKeys;
+    if (
+      openRequestKeys.some((key) => !before.has(key)) &&
+      releaseHoldToLatest()
+    )
+      pinToLatest();
+  }, [openRequestKeys, releaseHoldToLatest, pinToLatest]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: content growth triggers a pin before paint
   useLayoutEffect(() => {
     pinToLatest();
@@ -1099,6 +1151,30 @@ function ChatMessageListComponent({
       if (el.clientHeight === 0) return;
       // A running glide aims at the live end on every frame already.
       if (scrollAnimationRef.current) return;
+      const toggle = activatedRowRef.current?.toggle;
+      if (
+        readerHoldRef.current &&
+        toggle &&
+        (toggle.getAttribute('aria-expanded') === 'false' ||
+          (toggle.matches('summary') &&
+            !(toggle.parentElement as HTMLDetailsElement | null)?.open))
+      ) {
+        // The reader closed what they were holding. With the end in view
+        // (ignoring the line Scroll to bottom took) the tail is followed
+        // again; past it, they are a reader scrolled up like any other.
+        const shortBy =
+          el.scrollHeight -
+          el.scrollTop -
+          el.clientHeight -
+          Math.max(0, heldClientHeightRef.current - el.clientHeight);
+        releaseReaderHold();
+        if (shortBy > PINNED_TOLERANCE_PX) {
+          isUserScrolledUpRef.current = true;
+          setIsUserScrolledUp(true);
+          visibleAnchorRef.current = captureChatScrollAnchor(el);
+          return;
+        }
+      }
       if (!isUserScrolledUpRef.current) {
         // Growth the reader caused (opening a tool card near the end) or that
         // lands while they are scrolling stays where it is, and so does what
@@ -1111,9 +1187,12 @@ function ChatMessageListComponent({
           !externalScrollContainerRef &&
           interacting &&
           activated?.row.isConnected &&
-          activated.row.getBoundingClientRect().height !== activated.height
-        )
+          activated.row.getBoundingClientRect().height !== activated.height &&
+          !readerHoldRef.current
+        ) {
           readerHoldRef.current = true;
+          heldClientHeightRef.current = el.clientHeight;
+        }
         if (
           !externalScrollContainerRef &&
           (readerHoldRef.current || interacting)
@@ -1180,6 +1259,7 @@ function ChatMessageListComponent({
     measureGrowth,
     messagesContainerRef,
     showHeldControl,
+    releaseReaderHold,
   ]);
 
   // Ends the scroll-load suppression a press's restoration holds. Genuine
@@ -1496,15 +1576,20 @@ function ChatMessageListComponent({
           (event.key === 'Enter' || event.key === ' '))
       ) {
         // The row whose disclosure this activates, if it activates one.
-        const row =
+        const toggle =
           event.target instanceof Element
-            ? event.target
-                .closest('[aria-expanded], summary')
-                ?.closest('.chat-message-anchor')
+            ? event.target.closest('[aria-expanded], summary')
             : null;
-        activatedRowRef.current = row
-          ? { row, height: row.getBoundingClientRect().height }
-          : null;
+        const row = toggle?.closest('.chat-message-anchor');
+        // A press elsewhere while a row is held keeps the held row's record:
+        // its closing still ends the hold.
+        if (toggle && row)
+          activatedRowRef.current = {
+            row,
+            height: row.getBoundingClientRect().height,
+            toggle,
+          };
+        else if (!readerHoldRef.current) activatedRowRef.current = null;
       }
       if (event.type === 'touchstart') {
         input.touching = true;

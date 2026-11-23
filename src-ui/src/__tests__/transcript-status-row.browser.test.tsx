@@ -314,35 +314,66 @@ for (const [width, viewport] of VIEWPORTS) {
     });
   }
 
+  test(`(${width}) a reader scrolling up and back finds the rows where they left them`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      await setStatus(page, 'working');
+      const top = () =>
+        transcript(page).evaluate((log) => {
+          const rows = log.querySelectorAll('.chat-message-anchor');
+          return (rows[rows.length - 1] as HTMLElement).getBoundingClientRect()
+            .top;
+        });
+      const before = await top();
+      const box = (await transcript(page).boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.wheel(0, -200);
+      await page.getByRole('button', { name: 'Scroll to bottom' }).waitFor();
+      await frames(page);
+      await page.mouse.wheel(0, 200);
+      await frames(page);
+      // Scroll to bottom's line in the composer is not taken back from the
+      // transcript as a lasting reservation (reduced motion, as here, kept
+      // it): the rows are where the reader left them.
+      await expect.poll(() => top()).toBeCloseTo(before, 0);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
   test(`(${width}) a reader moving a few px up moves no row`, async () => {
     const { browser, page, errors } = await tailFixture(viewport);
     try {
       await settledAtTail(page);
       await setStatus(page, 'working');
       expect(await statusRoom(page)).toBeGreaterThan(0);
-      const scrolled = await page.evaluate(() => {
-        const log = document.querySelector('.chat-messages') as HTMLElement;
-        log.dispatchEvent(
-          new WheelEvent('wheel', { deltaY: -8, bubbles: true }),
-        );
-        log.scrollTop -= 8;
-        log.dispatchEvent(new Event('scroll'));
-        const rows = log.querySelectorAll('.chat-message-anchor');
-        return (rows[rows.length - 1] as HTMLElement).getBoundingClientRect()
-          .top;
-      });
+      // Where the last row is, and where the transcript is scrolled.
+      const place = () =>
+        transcript(page).evaluate((log) => {
+          const rows = log.querySelectorAll('.chat-message-anchor');
+          return {
+            top: (rows[rows.length - 1] as HTMLElement).getBoundingClientRect()
+              .top,
+            scrollTop: log.scrollTop,
+          };
+        });
+      const before = await place();
+      // A real wheel: its scroll events are the reader's, one per frame, so
+      // nothing here races a second, synthetic one.
+      const box = (await transcript(page).boundingBox())!;
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      await page.mouse.wheel(0, -8);
       await page.getByRole('button', { name: 'Scroll to bottom' }).waitFor();
       await frames(page);
       // The end keeps the room: taking it away here would move the rows.
       expect(await statusRoom(page)).toBeGreaterThan(0);
-      const after = await page.evaluate(() => {
-        const rows = document.querySelectorAll(
-          '.chat-messages .chat-message-anchor',
-        );
-        return (rows[rows.length - 1] as HTMLElement).getBoundingClientRect()
-          .top;
-      });
-      expect(after).toBeCloseTo(scrolled, 0);
+      const after = await place();
+      const moved = before.scrollTop - after.scrollTop;
+      expect(moved).toBeGreaterThan(0);
+      // The rows moved by the reader's scroll and nothing else.
+      expect(after.top - before.top).toBeCloseTo(moved, 0);
       expect(errors).toEqual([]);
     } finally {
       await browser.close();

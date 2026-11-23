@@ -1,8 +1,10 @@
 /**
  * A row the reader opens at the end of the transcript stays where it is,
  * including as what it opened finishes rendering, an answer still streaming
- * and a new turn arriving: Scroll to bottom shows while it is held, and the
- * tail is followed again once the reader is back at the end.
+ * and a new answer arriving: Scroll to bottom shows while it is held, and the
+ * tail is followed again once the reader is back at the end. What needs the
+ * reader ends the hold (their own message, a request), and so does closing
+ * the row or switching chats.
  */
 import type { Page } from '@playwright/test';
 import { expect, test } from 'vitest';
@@ -16,6 +18,15 @@ import {
   settledAtTail,
   tailFixture,
 } from './transcript-tail-fixture';
+
+const call = (page: Page, name: string, arg?: unknown) =>
+  page.evaluate(
+    ([fn, value]) =>
+      (window as unknown as Record<string, (v: unknown) => void>)[
+        fn as string
+      ]!(value),
+    [name, arg] as const,
+  );
 
 const scrollToBottom = (page: Page) =>
   page.getByRole('button', { name: 'Scroll to bottom' });
@@ -89,14 +100,12 @@ for (const [name, viewport] of [
         });
         await frames(page);
         expect(await rowTop(page), 'late detail growth').toBeCloseTo(before, 0);
-        // A new turn arriving while held is not followed either: Scroll to
+        // A new answer arriving while held is not followed either: Scroll to
         // bottom tells the reader it is there.
-        await page.evaluate(() =>
-          (window as unknown as { __appendTurn(): void }).__appendTurn(),
-        );
+        await call(page, '__answer', 'A new answer arrives at the tail.');
         await frames(page);
         await page.waitForTimeout(300);
-        expect(await rowTop(page), 'a new turn').toBeCloseTo(before, 0);
+        expect(await rowTop(page), 'a new answer').toBeCloseTo(before, 0);
         await expect.poll(() => scrollToBottom(page).count()).toBe(1);
         // Back at the end, the tail is followed again.
         await scrollToBottom(page).click();
@@ -133,6 +142,123 @@ for (const [name, viewport] of [
       await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
       expect(await rowTop(page), 'followed again').toBeLessThan(opened - 20);
       await stopStream(page);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) the reader's own message ends the hold and is followed`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      await openAndGrow(page);
+      expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+      await call(page, '__sendUser', 'My own new question');
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      await expect.poll(() => scrollToBottom(page).count()).toBe(0);
+      // Their answer streams in and is followed.
+      await call(page, '__answer', 'The answer to my question.');
+      for (let i = 0; i < 10; i += 1)
+        await call(page, '__streamTail', ' and more words of the answer');
+      await frames(page);
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) a request opening ends the hold and comes into view`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      await openAndGrow(page);
+      expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+      await call(page, '__setRequest', 'approval');
+      await frames(page);
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      await expect.poll(() => scrollToBottom(page).count()).toBe(0);
+      const card = page.locator('.pending-approvals').last();
+      await card.waitFor();
+      const log = (await page
+        .getByRole('log', { name: 'Conversation transcript' })
+        .boundingBox())!;
+      const shown = (await card.boundingBox())!;
+      expect(shown.y + shown.height).toBeLessThanOrEqual(log.y + log.height);
+      expect(shown.y).toBeGreaterThanOrEqual(log.y);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) closing the held row ends the hold`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      const row = await openAndGrow(page);
+      expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+      // What it opened goes with it, and the reader closes the row.
+      await row.evaluate((button) => {
+        const anchor = button.closest('.chat-message-anchor')!;
+        anchor.lastElementChild!.remove();
+      });
+      await row.click();
+      await expect.poll(() => row.getAttribute('aria-expanded')).toBe('false');
+      await page.waitForTimeout(1_200);
+      await frames(page);
+      // The end is in view again, nothing says otherwise, and the next
+      // tokens are followed.
+      expect(await distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      expect(await scrollToBottom(page).count()).toBe(0);
+      for (let i = 0; i < 10; i += 1)
+        await call(page, '__streamTail', ' and more words after closing');
+      await frames(page);
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) closing the held row after content passed the end keeps the reader where they are`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      const row = await openAndGrow(page);
+      await call(page, '__answer', 'A new answer that arrived while held.');
+      await frames(page);
+      await row.click();
+      await expect.poll(() => row.getAttribute('aria-expanded')).toBe('false');
+      await page.waitForTimeout(1_200);
+      await frames(page);
+      const closed = await rowTop(page);
+      // Not at the end: they are scrolled up like any reader, and told so.
+      expect(await scrollToBottom(page).count()).toBe(1);
+      await call(page, '__streamTail', ' more words below');
+      await frames(page);
+      expect(await rowTop(page)).toBeCloseTo(closed, 0);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) switching chats ends the hold`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      await openAndGrow(page);
+      expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+      await call(page, '__switchSession');
+      await frames(page);
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      await expect.poll(() => scrollToBottom(page).count()).toBe(0);
+      for (let i = 0; i < 10; i += 1)
+        await call(page, '__streamTail', ' words in the other chat');
+      await frames(page);
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
       expect(errors).toEqual([]);
     } finally {
       await browser.close();

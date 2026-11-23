@@ -659,8 +659,10 @@ transcript keeps its end's room, so the reader leaving the end moves no row.
 Scroll to bottom shows while the reader is scrolled up, and from the moment
 they open a row at the end that then grows past the view's end: that row stays
 where it is, and
-streaming text and new turns are not followed until the reader returns to the
-end by any means. Their rows stay where they are as it appears. Scroll-button hover changes its background
+streaming text and new answers are not followed until the reader returns to the
+end by any means, closes that row, or switches chats. Their own message and a
+request opening end it too and bring the end into view. Their rows stay where
+they are as it appears. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 

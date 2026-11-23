@@ -16,6 +16,10 @@
  * - `window.__appendTurn()` adds a new turn at the tail.
  * - `window.__streamTail(text)` appends text to the newest answer, as a
  *   streaming answer grows.
+ * - `window.__sendUser(text)` appends the reader's own message;
+ *   `window.__answer(text)` appends a new answer (no message of theirs).
+ * - `window.__switchSession()` shows another chat (one turn fewer) in the
+ *   same list.
  *
  * Needs a cached Chromium (PLAYWRIGHT_BROWSERS_PATH); never downloads.
  */
@@ -164,6 +168,11 @@ export async function tailFixture(
         window.__appendTurn=()=>setSession(current=>({...current,messages:[...current.messages,
           {id:'u-new',role:'user',content:'One more question about the release notes.',timestamp:5000},
           {id:'a-new',role:'assistant',turnId:'turn-new',content:'A new answer arrives at the tail.',timestamp:5001}]}));
+        window.__sendUser=text=>setSession(current=>({...current,messages:[...current.messages,
+          {id:'u-sent-'+current.messages.length,role:'user',content:text,timestamp:9000+current.messages.length}]}));
+        window.__answer=text=>setSession(current=>({...current,messages:[...current.messages,
+          {id:'a-sent-'+current.messages.length,role:'assistant',turnId:'turn-sent-'+current.messages.length,content:text,timestamp:9000+current.messages.length}]}));
+        window.__switchSession=()=>setSession(()=>({...base,id:'tail-session-2',messages:makeMessages().slice(2)}));
         window.__streamTail=text=>setSession(current=>{
           const messages=[...current.messages];
           const last={...messages[messages.length-1]};
