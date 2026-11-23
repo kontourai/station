@@ -9,6 +9,7 @@ import type { ReactNode, RefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { boardPath } from '../../app-shell/board-route';
 import { boardSlugFromName, nextBoardSlug } from '../../app-shell/board-slug';
+import { resolveViewFromPath } from '../../app-shell/routing';
 import { useProjects } from '../../contexts/ProjectsContext';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
@@ -61,7 +62,17 @@ interface ProjectSidebarBoardsProps {
   /** Current route path; drives the active highlight. */
   activePath: string;
   onAfterNavigate?: () => void;
+  /**
+   * The quiet sidebar's Apps section (`quiet-sidebar` preview): no `+` in the
+   * header, its own empty line, Discover as the last row, and every row on
+   * the collapsed rail instead of behind one button. The rows, their menu
+   * and the palette's New Board stay what they are.
+   */
+  quiet?: boolean;
 }
+
+/** Where the quiet section's Discover row goes: Apps › Discover. */
+const DISCOVER_PATH = '/apps/discover';
 
 /** What a row can be doing instead of resting. */
 type RowMode =
@@ -166,6 +177,7 @@ export function ProjectSidebarBoards({
   navigate,
   activePath,
   onAfterNavigate,
+  quiet = false,
 }: ProjectSidebarBoardsProps) {
   const {
     data: boards,
@@ -603,6 +615,9 @@ export function ProjectSidebarBoards({
     if (open) openBoard(slug);
   };
 
+  // The Discover row stands for the whole Apps page, Library included.
+  const discoverCurrent = resolveViewFromPath(activePath).type === 'apps';
+
   const library = appsEnabled && libraryOpen && (
     <LazyBoundary
       load={loadAppsLibrary}
@@ -622,34 +637,38 @@ export function ProjectSidebarBoards({
     <>
       <div className="sidebar__section-label sidebar__section-label--boards">
         <span className="sidebar__section-label-text">Apps</span>
-        <button
-          type="button"
-          className="sidebar__section-add"
-          aria-label="New Board"
-          title="New Board"
-          disabled={createBoard.isPending || !Array.isArray(boards) || isError}
-          onClick={() =>
-            createBoard.mutate({
-              slug: nextBoardSlug(rows.map((row) => row.slug)),
-              name: DEFAULT_BOARD_NAME,
-            })
-          }
-        >
-          <svg
-            width="13"
-            height="13"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            aria-hidden="true"
+        {!quiet && (
+          <button
+            type="button"
+            className="sidebar__section-add"
+            aria-label="New Board"
+            title="New Board"
+            disabled={
+              createBoard.isPending || !Array.isArray(boards) || isError
+            }
+            onClick={() =>
+              createBoard.mutate({
+                slug: nextBoardSlug(rows.map((row) => row.slug)),
+                name: DEFAULT_BOARD_NAME,
+              })
+            }
           >
-            <line x1="12" y1="5" x2="12" y2="19" />
-            <line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-        </button>
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+          </button>
+        )}
       </div>
       {appsEnabled && (
         <Button
@@ -675,7 +694,11 @@ export function ProjectSidebarBoards({
         />
       )}
       {!collapsed && Array.isArray(boards) && visibleRows.length === 0 && (
-        <p className="sidebar__boards-description">Boards across Projects.</p>
+        <p className="sidebar__boards-description">
+          {quiet
+            ? 'Apps you add get their own screen here.'
+            : 'Boards across Projects.'}
+        </p>
       )}
       {visibleRows.map((board) => {
         const path = boardPath(board.slug);
@@ -959,9 +982,41 @@ export function ProjectSidebarBoards({
           </div>
         );
       })}
+      {quiet && (
+        <button
+          type="button"
+          className={`sidebar__project-btn${
+            discoverCurrent ? ' sidebar__project-btn--active' : ''
+          }`}
+          aria-current={discoverCurrent ? 'page' : undefined}
+          aria-label="Discover"
+          title={collapsed ? 'Discover' : undefined}
+          onClick={() => {
+            navigate(DISCOVER_PATH);
+            if (isMobile) onAfterNavigate?.();
+          }}
+        >
+          <span aria-hidden="true" className="sidebar__board-glyph">
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              aria-hidden="true"
+            >
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </span>
+          <span className="sidebar__project-name">Discover</span>
+        </button>
+      )}
     </>
   );
-  if (!collapsed)
+  // The quiet rail shows each app's icon and Discover in place.
+  if (!collapsed || quiet)
     return (
       <>
         {content}

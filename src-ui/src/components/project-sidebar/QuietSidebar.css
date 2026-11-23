@@ -1,0 +1,39 @@
+/* The quiet sidebar's footer (`quiet-sidebar` preview): labelled Customize and
+   Settings rows pinned to the bottom, the account control beside Settings. */
+.sidebar__footer--quiet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--k-space-1);
+}
+
+.sidebar__quiet-settings {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+.sidebar__footer--quiet .sidebar__project-btn {
+  position: relative;
+}
+
+.sidebar__quiet-dot {
+  flex: none;
+  width: var(--k-space-2);
+  height: var(--k-space-2);
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--k-caution);
+}
+
+/* The rail keeps every row as an icon, one under another, and the dot sits on
+   the Customize icon's corner. */
+.sidebar--collapsed .sidebar__quiet-settings {
+  flex-direction: column;
+}
+
+.sidebar--collapsed .sidebar__quiet-dot {
+  position: absolute;
+  top: var(--k-space-1);
+  right: var(--k-space-2);
+  margin-left: 0;
+}
