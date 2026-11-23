@@ -191,13 +191,15 @@ test.describe('Skills (via Registry + API)', () => {
     // The rail row is named by its name alone; its subtitle is the row's
     // description (SplitPaneLayout). The source word lives in the detail pane
     // (`views/skills/skill-view-utils.ts:156-168`; `SkillsView.tsx:351-355`),
-    // which the next line asserts. `exact` keeps this off "Browse Registry
-    // Skills".
+    // which the next line asserts: a catalogue skill reads "Added from
+    // Browse", after the Browse skills page it is added from.
     await page
       .getByRole('button', { name: 'Registry Skill', exact: true })
       .click();
     await expect(
-      page.locator('.skill-detail').getByText('Registry', { exact: true }),
+      page
+        .locator('.skill-detail')
+        .getByText('Added from Browse', { exact: true }),
     ).toBeVisible();
     await expect(page.getByRole('button', { name: 'Save' })).not.toBeVisible();
     await expect(page.locator('.skill-detail textarea')).toBeDisabled();
