@@ -427,6 +427,8 @@ interface DelegationEnvironmentSelection {
 }
 
 export interface DelegateTaskInput {
+  /** Reserved by the server's group owner for exactly one initial dispatch. */
+  sessionGroupAdmission?: import('../services/orchestration/cli-session-group.js').CliSessionGroupDispatchAdmission;
   appearanceProposal?: boolean;
   /** Composed from the verified parent at the local route. */
   delegatedAppearance?: { ownerId: string; parentSessionId: string };
@@ -5618,10 +5620,17 @@ export type DelegatedTaskInterruptResult = DelegatedTaskSnapshot & {
 
 /** Interrupt the active turn after re-verifying environment and user binding. */
 export async function interruptDelegatedTask(
-  input: DelegatedTaskReferenceInput & { turnId?: string },
+  input: DelegatedTaskReferenceInput & {
+    turnId?: string;
+    beforeProviderInterrupt?: (
+      threadId: string,
+      turnId: string | undefined,
+    ) => void;
+  },
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
 ): Promise<DelegatedTaskInterruptResult> {
+  const beforeProviderInterrupt = input.beforeProviderInterrupt;
   const readAuthority = readAuthorityForInput(input);
   const selectedTarget = await resolveTarget(
     { environmentId: input.environmentId },
@@ -5634,6 +5643,10 @@ export async function interruptDelegatedTask(
     orchestrationService,
   );
   if (selectedTarget.kind !== 'current' || !orchestrationService) {
+    if (beforeProviderInterrupt)
+      throw new Error(
+        'Session group cancellation requires the local Task owner.',
+      );
     // The selected Station's own route ran the stop and reports its outcome;
     // it is passed on only if it is one this Station's contract names.
     const { interruptOutcome, ...forwarded } = normalizeDelegatedIdentity(
@@ -5671,9 +5684,14 @@ export async function interruptDelegatedTask(
           input.clientOrigin,
           input.principal,
         ),
+        beforeProviderInterrupt ? { beforeProviderInterrupt } : undefined,
       )
     ).result;
   } else {
+    if (beforeProviderInterrupt)
+      throw new Error(
+        'Session group cancellation requires the local Task owner.',
+      );
     interrupted = await readSelectedStation(loaded.target, () =>
       interruptTurn(
         loaded.target.apiBase,
@@ -5750,6 +5768,24 @@ export async function delegateTask(
       input.sessionId)
   )
     throw new DelegationFileRefusal('delegation_files_unsupported');
+  const group = input.sessionGroupAdmission
+    ? { ...input.sessionGroupAdmission }
+    : undefined;
+  const assertGroupDispatch = (
+    sessionId: string | undefined,
+    turnId: string | undefined,
+  ) => {
+    if (
+      !group ||
+      group.sessionId !== sessionId ||
+      group.initialClientTurnId !== turnId
+    )
+      throw new Error(
+        'The Session group reservation does not match this dispatch.',
+      );
+    group.assertCurrent();
+  };
+  if (group) assertGroupDispatch(input.sessionId, input.clientTurnId);
   const readAuthority = readAuthorityForInput(input);
   // #2875: a prepared intent IS a portable intent with a version
   // requirement — every portable rule below (admission, no-onward-hop, SSH
@@ -5777,6 +5813,17 @@ export async function delegateTask(
     remote,
     orchestrationService,
   );
+  if (
+    group &&
+    (portableIntent ||
+      input.taskRoomInvocationAdmission ||
+      input.stagedFiles ||
+      input.delegationAttemptId ||
+      selectedTarget.kind !== 'current' ||
+      selectedTarget.relayEnvironmentId ||
+      !orchestrationService)
+  )
+    throw new Error('Session group dispatch requires the local Task owner.');
   if (
     input.stagedFiles &&
     (selectedTarget.kind !== 'current' ||
@@ -6474,6 +6521,7 @@ export async function delegateTask(
               provider: resolved.provider,
               // Durable Tasks must retain the native transcript their resume cursor names.
               persistSession: true,
+              ...(group ? { signal: group.signal } : {}),
               ...(resolvedCwd ? { cwd: resolvedCwd } : {}),
               ...(resolved.workspace?.kind === 'project'
                 ? { workspaceIsolation: resolved.workspace.workspaceIsolation }
@@ -6553,6 +6601,12 @@ export async function delegateTask(
               environmentId: target.environmentId,
             },
             resourceAdmissionIntent: 'delegated_background',
+            ...(group
+              ? {
+                  beforeProviderStart: (threadId: string) =>
+                    assertGroupDispatch(threadId, input.clientTurnId),
+                }
+              : {}),
             // #3323: stamped beside `delegation` after the reserved-key strip.
             ...(input.delegation && input.delegationProvenance
               ? {
@@ -6674,6 +6728,7 @@ export async function delegateTask(
                 ? { modelOptions: { ...resolved.modelOptions } }
                 : {}),
               clientTurnId: initialClientTurnId,
+              ...(group ? { signal: group.signal } : {}),
             },
           },
           dispatchContextForAuthority(
@@ -6689,6 +6744,7 @@ export async function delegateTask(
             resourceAdmissionIntent: 'delegated_background',
             // #4512: the delegated Session's first turn, sent by Station.
             dispatchOrigin: 'delegation',
+            ...(group ? { beforeProviderSend: assertGroupDispatch } : {}),
             ...(input.taskRoomInvocationAdmission
               ? {
                   receiverExecutionAdmission: input.taskRoomInvocationAdmission,

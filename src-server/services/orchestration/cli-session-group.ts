@@ -120,15 +120,18 @@ export class CliSessionGroupUnavailable extends Error {
   }
 }
 
+export interface CliSessionGroupDispatchAdmission {
+  readonly sessionId: string;
+  readonly initialClientTurnId: string;
+  readonly signal: AbortSignal;
+  assertCurrent(): void;
+}
+
 export interface CliSessionGroupHost<T> {
   assertCurrent(): void;
   dispatch(
     input: T,
-    admission: {
-      assertCurrent(): void;
-      sessionId: string;
-      initialClientTurnId: string;
-    },
+    admission: CliSessionGroupDispatchAdmission,
   ): Promise<unknown>;
   observe(handle: MemberHandle): Promise<{
     status: string;
@@ -579,6 +582,7 @@ export class CliSessionGroups<T> {
       execution.signal.throwIfAborted();
       const dispatched = host
         .dispatch(this.parseInput(launch.seat.input), {
+          signal: execution.signal,
           sessionId: z.string().min(1).parse(launch.seat.reservedSessionId),
           initialClientTurnId: z
             .string()

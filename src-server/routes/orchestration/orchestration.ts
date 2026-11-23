@@ -81,6 +81,7 @@ import { isRuntimeEventContentDigest } from '@kontourai/station-contracts/runtim
 import {
   ATTACHED_SESSION_CONTINUATION_REFRESH,
   ENGINE_MCP_SERVER_NAME_MAX_CHARS,
+  isDeferredRetriableTurnError,
   ORCHESTRATION_STREAM_ACTIVITY_EVENT,
   ORCHESTRATION_STREAM_CAUGHT_UP_EVENT,
   SERVER_EVENTS,
@@ -114,6 +115,7 @@ import {
   ORCHESTRATION_STREAM_REPLAY_MAX_SERIALIZED_BYTES,
   ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD,
 } from '../../constants.js';
+import { PROVIDER_PROVEN_FINISH_REASONS } from '../../providers/finish-reason-authority.js';
 import { providerFailure } from '../../providers/provider-failure.js';
 import type {
   RequestDelegationResolver,
@@ -144,6 +146,8 @@ import {
 } from '../../security/station-control-request-authority.js';
 import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
 import {
+  type CliSessionGroupDispatchAdmission,
+  type CliSessionGroupHost,
   CliSessionGroups,
   CliSessionGroupUnavailable,
 } from '../../services/orchestration/cli-session-group.js';
@@ -1432,6 +1436,7 @@ const sessionEventWindowQuerySchema = z.object({
 });
 
 interface DelegateTaskRequest {
+  sessionGroupAdmission?: CliSessionGroupDispatchAdmission;
   createRequestCallerSessionId?: string;
   taskRoomAttachments?: ChatAttachmentInput[];
   delegatedAppearance?: { ownerId: string; parentSessionId: string };
@@ -1658,6 +1663,10 @@ type InterruptDelegatedTaskBody = z.infer<
 >;
 
 type InterruptDelegatedTaskRequest = InterruptDelegatedTaskBody & {
+  beforeProviderInterrupt?: (
+    threadId: string,
+    turnId: string | undefined,
+  ) => void;
   taskId: string;
   userId: string;
   principal?: PrincipalRef;
@@ -4659,6 +4668,7 @@ export function createOrchestrationRoutes(
   async function dispatchAuthorizedDelegation(
     c: Context,
     sent: z.infer<typeof delegateTaskSchema>,
+    sessionGroupAdmission?: CliSessionGroupDispatchAdmission,
   ): Promise<Response> {
     if (!deps.delegateTask) {
       return c.json(
@@ -4902,7 +4912,7 @@ export function createOrchestrationRoutes(
       let roomAttachments: ChatAttachmentInput[] | undefined;
       let releaseRoomRequestPublication: (() => void) | undefined;
       const dispatch = async (
-        sessionId?: string,
+        sessionId: string | undefined = sessionGroupAdmission?.sessionId,
         recheck?: () => Promise<void>,
         roomBinding?: TaskRoomInvocationAdmission['roomBinding'],
         contextSnapshot?: TaskRoomContextSnapshot,
@@ -4912,8 +4922,10 @@ export function createOrchestrationRoutes(
             deps.taskRoomWork?.holdPublication?.(roomRequest.taskId);
           await deps.taskRoomWork?.beforeInvocation?.(roomRequest.taskId);
         }
+        sessionGroupAdmission?.assertCurrent();
         return delegate({
           ...request,
+          ...(sessionGroupAdmission ? { sessionGroupAdmission } : {}),
           createRequestIntent: body,
           ...(delegatedAppearance ? { delegatedAppearance } : {}),
           createRequestCallerSessionId: await createRequestCallerSession(
@@ -4941,8 +4953,9 @@ export function createOrchestrationRoutes(
           // spawns.
           ...(scoped.spawn ? { dispatchCwdAdmission: scoped.spawn } : {}),
           clientOrigin,
-          ...(sessionId
-            ? { sessionId, parentTaskId: roomRequest?.taskId }
+          ...(sessionId ? { sessionId } : {}),
+          ...(sessionId && roomRequest
+            ? { parentTaskId: roomRequest.taskId }
             : {}),
           ...(recheck && roomBinding
             ? {
@@ -5374,6 +5387,106 @@ export function createOrchestrationRoutes(
       }
     };
 
+    const groupHost = (
+      c: Context,
+      assertCurrent: () => void,
+    ): CliSessionGroupHost<z.infer<typeof groupTaskSchema>> => ({
+      assertCurrent,
+      dispatch: async (task, admission) => {
+        admission.assertCurrent();
+        const response = await dispatchAuthorizedDelegation(
+          c,
+          delegateTaskSchema.parse({
+            ...task,
+            clientTurnId: admission.initialClientTurnId,
+          }),
+          admission,
+        );
+        const { data } = z
+          .object({
+            success: z.literal(true),
+            data: z.object({
+              taskId: z.string().min(1),
+              conversationId: z.string().min(1),
+              sessionId: z.string().min(1),
+              turnId: z.string().min(1),
+            }),
+          })
+          .parse(await response.json());
+        return { ...data, initialTurnId: data.turnId };
+      },
+      observe: async (handle) => {
+        assertCurrent();
+        const { sessionId, initialTurnId } = handle;
+        if (!initialTurnId) return { sessionId, status: 'unknown' };
+        const window = await orchestrationService.readSessionEventWindow(
+          sessionId,
+          { turnLimit: 20, authority: readAuthorityFor(c) },
+        );
+        assertCurrent();
+        const terminal = window?.events.find(
+          ({ event }) =>
+            event.threadId === sessionId &&
+            event.turnId === initialTurnId &&
+            (event.method === 'turn.completed' ||
+              event.method === 'turn.aborted' ||
+              (event.method === 'runtime.error' &&
+                !isDeferredRetriableTurnError(event))),
+        )?.event;
+        if (terminal?.method === 'turn.aborted')
+          return { sessionId, status: 'canceled' };
+        if (terminal?.method === 'runtime.error')
+          return { sessionId, status: 'failed' };
+        if (terminal?.method === 'turn.completed') {
+          if (terminal.finishReason === 'cancelled')
+            return { sessionId, status: 'canceled' };
+          if (PROVIDER_PROVEN_FINISH_REASONS.has(terminal.finishReason ?? ''))
+            return {
+              sessionId,
+              status: 'completed',
+              completedEvent: {
+                eventId: terminal.eventId,
+                turnId: initialTurnId,
+              },
+            };
+        }
+        return { sessionId, status: 'unknown' };
+      },
+      interrupt: async (handle) => {
+        assertCurrent();
+        if (!handle.initialTurnId || !deps.interruptDelegatedTask)
+          throw new CliSessionGroupUnavailable('group_turn_unconfirmed');
+        const scoped = refuseOutOfScopeDispatch(
+          c,
+          deps.stationControlDispatchScope,
+          () => ({ kind: 'task', taskId: handle.taskId, remote: false }),
+        );
+        if (scoped)
+          throw new CliSessionGroupUnavailable('group_authority_required');
+        const { principal, userId, ownerAttribution } = resolveDispatchActor(
+          deps,
+          c,
+        );
+        await deps.interruptDelegatedTask({
+          taskId: handle.taskId,
+          turnId: handle.initialTurnId,
+          principal,
+          userId,
+          ownerAttribution,
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
+          beforeProviderInterrupt: (threadId, turnId) => {
+            assertCurrent();
+            if (
+              threadId !== handle.sessionId ||
+              turnId !== handle.initialTurnId
+            )
+              throw new CliSessionGroupUnavailable('group_turn_unconfirmed');
+          },
+        });
+        assertCurrent();
+      },
+    });
+
     app.post('/session-groups', (c) =>
       respondSessionGroup(c, async (owner, binding, assertCurrent) => {
         const body = await readBoundedRequestBody(c.req.raw, 262_144);
@@ -5400,6 +5513,21 @@ export function createOrchestrationRoutes(
     app.get('/session-groups/:groupId', (c) =>
       respondSessionGroup(c, (owner, binding) =>
         owner.view(param(c, 'groupId'), binding),
+      ),
+    );
+    app.post('/session-groups/:groupId/run', (c) =>
+      respondSessionGroup(c, (owner, binding, assertCurrent) =>
+        owner.run(
+          param(c, 'groupId'),
+          binding,
+          groupHost(c, assertCurrent),
+          c.req.raw.signal,
+        ),
+      ),
+    );
+    app.post('/session-groups/:groupId/cancel', (c) =>
+      respondSessionGroup(c, (owner, binding, assertCurrent) =>
+        owner.cancel(param(c, 'groupId'), binding, groupHost(c, assertCurrent)),
       ),
     );
   }
