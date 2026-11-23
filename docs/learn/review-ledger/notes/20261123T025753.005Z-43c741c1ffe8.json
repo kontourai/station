@@ -1,0 +1,7 @@
+{
+  "revision": "613e2415901cf108df011861da8b591414f7348f",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Task-to-review wording now states the Task reads review once the dispatched turn ends, regardless of a person's takeover; other statuses untouched.","inputs":["docs/design/automations.md"]}
+  ]
+}

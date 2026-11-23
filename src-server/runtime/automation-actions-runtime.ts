@@ -561,6 +561,36 @@ class AutomationActionsRuntime implements AutomationActions {
       }
   }
 
+  /**
+   * The action is over once its first turn ends: nothing else moves its Task,
+   * and the automation Session cannot (it acts for no person). A Task still
+   * `in_progress` moves to `review` so a person sees the result, as an
+   * isolated repair's does. Any other status (blocked by a revocation, or set
+   * by a person or the Agent) is left alone. A person's takeover does not
+   * matter: the minute tick can notice the end of the dispatched turn after
+   * the person continued the Session, and the Task must read `review` either
+   * way. A person who continues afterwards works in a Task already awaiting
+   * review. The status is read and then updated in a separate call because
+   * the Task service has no expected-status transition.
+   */
+  private async awaitReview(intent: AutomationActionIntent): Promise<void> {
+    if (!intent.taskId) return;
+    try {
+      const task = this.options.taskGraph.readTaskView(intent.taskId);
+      if (
+        task &&
+        task.createdAt === intent.taskCreatedAt &&
+        task.status === 'in_progress'
+      )
+        await this.options.taskGraph.updateTaskStatus(intent.taskId, 'review');
+    } catch (error) {
+      this.options.logger.warn('Automation Task could not be moved to review', {
+        intentId: intent.intentId,
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+  }
+
   placementRefusal(input: {
     conversationId: string;
     clientTurnId: string;
@@ -1210,6 +1240,7 @@ class AutomationActionsRuntime implements AutomationActions {
         Date.now(),
       );
       this.releaseKnown(intent.intentId);
+      await this.awaitReview(ledger.readIntent(intent.intentId) ?? intent);
       return;
     }
     if (allowPlacement && intent.state === 'queued') this.submit(intent);

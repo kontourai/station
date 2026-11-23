@@ -207,9 +207,12 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   [dialog](../../src-ui/src/components/chat-dock/ConversationForkDialog.tsx)):
   the chat-ready Agents of the chat's workspace, the source Agent first and
   selected on the source turn's model, one line saying a new chat opens from
-  here, and what carries over under **Details**. Cancel fork stays available
-  while the fork is being created and aborts it; a refusal stays in the
-  dialog so the same choice can retry. The fork keeps the source Project.
+  here, and what carries over under **Details**. Closing the source chat
+  dismisses its picker, including while it loads. A fork from the timeline
+  returns to that timeline's live chat. **Cancel fork** also stops the local
+  attempt while it is pending. Station can already have saved the fork at
+  that point, and a retry of the same attempt can recover it. A refusal stays
+  in the dialog so the same choice can retry. The fork keeps the source Project.
   **Regenerate** and **Edit and resend** fork before a message with that
   message's Agent, so they open no picker while it can run; the same dialog
   appears only when that fork fails or the Agent cannot run.
