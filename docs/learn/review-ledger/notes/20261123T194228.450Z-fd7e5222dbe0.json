@@ -1,0 +1,11 @@
+{
+  "revision": "7867fdd949a93a2c535ca4cf6f776f5068ac7d09",
+
+  "notes": [
+    {"path":"docs/README.md","note":"The lab entry still describes confined prerequisites and owned cleanup. The relay now owns stdout retirement when its loopback request expires or stdin closes.","inputs":["docs/README.md","docs/guides/native-model-channel-lab.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced the relay retirement path through the captured loopback request and owned stdout pipe. It closes both before awaiting settlement. The channel still retains accounting independently of worker and relay completion.","inputs":["docs/architecture/module-map.md","docs/guides/native-model-channel-lab.md","src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Checked the deadline through the output write, abort before pipe closure, and exact response bounds. The synthetic process probe established readable output on a stalled pipe and observed exit after stdin EOF. The process suite now exercises that path through the separate worker callback.","inputs":["docs/guides/native-model-channel-lab.md","src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts","src-server/services/connections/native-delegation-rpc-client.ts"]}
+  ]
+}
