@@ -299,7 +299,6 @@
   border-radius: var(--k-radius-md);
   background: var(--k-bg);
   color: var(--k-text);
-  margin-bottom: var(--k-space-3);
   font-family: inherit;
 }
 
