@@ -9,27 +9,31 @@ const eventTime = new Intl.DateTimeFormat(undefined, {
   timeStyle: 'medium',
 });
 
-export function IntegrationEventRead({
-  page,
-}: {
-  page: ToolServerEventPollPage;
-}) {
-  if (!page.supported)
-    return <p>This tool server does not advertise MCP Events.</p>;
+type EventOccurrence = Extract<
+  ToolServerEventPollPage,
+  { supported: true }
+>['events'][number];
 
+export function IntegrationEventRead({
+  events,
+  truncated,
+  emptyLabel = 'No events in this page',
+}: {
+  events: readonly EventOccurrence[];
+  truncated: boolean;
+  emptyLabel?: string;
+}) {
   return (
     <div className="content-stack">
-      {page.truncated && (
-        <p role="status">Some earlier events are unavailable.</p>
-      )}
-      {page.events.length === 0 ? (
-        <Empty variant="compact" label="No events in this page" />
+      {truncated && <p role="status">Some earlier events are unavailable.</p>}
+      {events.length === 0 ? (
+        <Empty variant="compact" label={emptyLabel} />
       ) : (
         <section
           className="integration-event-catalog"
           aria-label="Event results"
         >
-          {page.events.map((event) => (
+          {events.map((event) => (
             <EventDetails key={event.eventId} event={event} />
           ))}
         </section>

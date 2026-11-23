@@ -848,27 +848,44 @@ function withEventsTransport(
           : scope.signal,
       }),
     });
-    if (!response.body) return response;
-    const receive = scope?.receive;
-    const streamed =
-      receive &&
-      response.ok &&
-      /^text\/event-stream\b/iu.test(
-        response.headers.get('content-type') ?? '',
+    if (scope && response.ok) {
+      if (
+        !response.body ||
+        !/^text\/event-stream\b/iu.test(
+          response.headers.get('content-type') ?? '',
+        )
+      ) {
+        await response.body?.cancel();
+        throw new Error('Invalid MCP event stream response');
+      }
+      // Own the whole response so the SDK cannot resume it or dispatch another request's reply.
+      const reply = await observeMcpEventStream(
+        response.body,
+        { id, name },
+        scope.signal,
+        scope.receive,
       );
+      const headers = new Headers(response.headers);
+      headers.set('Content-Type', 'application/json');
+      headers.delete('Content-Length');
+      headers.delete('Content-Encoding');
+      return new Response(JSON.stringify(reply), {
+        status: response.status,
+        headers,
+      });
+    }
+    if (!response.body) return response;
     let bytes = 0;
-    const body = streamed
-      ? observeMcpEventStream(response.body, { id, name }, receive)
-      : response.body.pipeThrough(
-          new TransformStream<Uint8Array, Uint8Array>({
-            transform(chunk, controller) {
-              bytes += chunk.byteLength;
-              if (bytes > 512 * 1024)
-                throw new Error('MCP Events response exceeds 512 KiB');
-              controller.enqueue(chunk);
-            },
-          }),
-        );
+    const body = response.body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          bytes += chunk.byteLength;
+          if (bytes > 512 * 1024)
+            throw new Error('MCP Events response exceeds 512 KiB');
+          controller.enqueue(chunk);
+        },
+      }),
+    );
     return new Response(body, {
       headers: response.headers,
       status: response.status,

@@ -1974,7 +1974,10 @@ export class MCPService {
   async readMCPEventStream(
     serverId: string,
     input: ToolServerEventStreamInput,
-    receive: (frame: ToolServerEventStreamFrame) => Promise<void>,
+    receive: (
+      frame: ToolServerEventStreamFrame,
+      assertCurrent: () => void,
+    ) => Promise<void>,
     signal: AbortSignal,
   ): Promise<void> {
     if (this.eventStreams.has(serverId) || this.eventStreams.size >= 4)
@@ -1995,7 +1998,7 @@ export class MCPService {
             input,
             async (frame) => {
               assertCurrent();
-              await receive(frame);
+              await receive(frame, assertCurrent);
             },
             signal,
           );

@@ -2186,8 +2186,10 @@ with a shared account. Station checks the server using that connection and
 lists the event types it advertises. Choose **Read events** beside an event type
 to read a page and expand an event's data. **Next page** continues from the
 server's cursor and **Check again** looks for later events. A message above the
-results identifies missing earlier events. For OAuth, use a server that requests
-authorization during connection setup and sign in first.
+results identifies missing earlier events. Open **Live events** and choose
+**Listen** for a live view. Stop listening or leave the dialog to close it.
+Each connection lasts up to a minute. Choose **Listen** again to resume
+from the last cursor. For OAuth, sign in to the server before checking its events.
 
 ## Connect an OAuth MCP server to an Agent
 

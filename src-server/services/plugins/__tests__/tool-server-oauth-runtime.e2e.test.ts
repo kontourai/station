@@ -309,9 +309,12 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
             { jsonrpc: '2.0', id, result: { resultType: 'complete' } },
           ];
           return new Response(
-            notifications
-              .map((item) => `data: ${JSON.stringify(item)}\r\n\r\n`)
-              .join(''),
+            'id: resume-primer\r\ndata:\r\n\r\n' +
+              `event: custom\r\ndata: ${JSON.stringify(notifications[0])}\r\n\r\n` +
+              `data: ${JSON.stringify({ jsonrpc: '2.0', id: id + 9, result: { unexpected: true } })}\r\n\r\n` +
+              notifications
+                .map((item) => `data: ${JSON.stringify(item)}\r\n\r\n`)
+                .join(''),
             { headers: { 'content-type': 'text/event-stream' } },
           );
         }

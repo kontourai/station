@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-sdk';
 import { StationHttpError } from '@kontourai/station-sdk/client';
 import { useLayoutEffect, useRef, useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { PageRow } from '../../components/PageRow';
@@ -14,6 +15,7 @@ import {
   SkeletonBlock,
 } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { IntegrationEventLive } from './IntegrationEventLive';
 import { IntegrationEventRead } from './IntegrationEventRead';
 
 export function IntegrationEventsSection({
@@ -43,7 +45,11 @@ function EventCatalog({
   const opener = useRef<HTMLButtonElement>(null);
   const discovery = useDiscoverIntegrationEventsMutation();
   const poll = usePollIntegrationEventsMutation();
-  const [event, setEvent] = useState<{ name: string; label: string }>();
+  const [event, setEvent] = useState<{
+    name: string;
+    label: string;
+    mode: 'poll' | 'live';
+  }>();
   const [lastCursor, setLastCursor] = useState<string | null>(null);
   const eventOpener = useRef<HTMLButtonElement>(null);
   const back = useRef<HTMLButtonElement>(null);
@@ -111,7 +117,7 @@ function EventCatalog({
                 <Button ref={back} onClick={backToCatalog}>
                   Back
                 </Button>
-                {currentPage && (
+                {event.mode === 'poll' && currentPage && (
                   <Button
                     variant="primary"
                     onClick={() => read(event.name, currentPage.cursor)}
@@ -126,7 +132,13 @@ function EventCatalog({
           }
         >
           {event &&
-            (outdatedPoll ? (
+            (event.mode === 'live' ? (
+              <IntegrationEventLive
+                integrationId={integrationId}
+                name={event.name}
+                scope={scope}
+              />
+            ) : outdatedPoll ? (
               <p>Update this Station to read event pages.</p>
             ) : poll.isError ? (
               <ErrorState
@@ -139,8 +151,13 @@ function EventCatalog({
                   </Button>
                 }
               />
+            ) : currentPage ? (
+              <IntegrationEventRead
+                events={currentPage.events}
+                truncated={currentPage.truncated}
+              />
             ) : poll.data ? (
-              <IntegrationEventRead page={poll.data} />
+              <p>This tool server does not advertise MCP Events.</p>
             ) : (
               <SkeletonBlock label="Reading events" />
             ))}
@@ -166,18 +183,38 @@ function EventCatalog({
                       title={event.title || event.name}
                       description={event.description}
                       control={
-                        <Button
-                          onClick={(click) => {
-                            eventOpener.current = click.currentTarget;
-                            setEvent({
-                              name: event.name,
-                              label: event.title || event.name,
-                            });
-                            read(event.name, null);
-                          }}
-                        >
-                          Read events
-                        </Button>
+                        <ActionRow
+                          overflowLabel="More event actions"
+                          secondary={
+                            <Button
+                              onClick={(click) => {
+                                eventOpener.current = click.currentTarget;
+                                setEvent({
+                                  name: event.name,
+                                  label: event.title || event.name,
+                                  mode: 'live',
+                                });
+                              }}
+                            >
+                              Live events
+                            </Button>
+                          }
+                          primary={
+                            <Button
+                              onClick={(click) => {
+                                eventOpener.current = click.currentTarget;
+                                setEvent({
+                                  name: event.name,
+                                  label: event.title || event.name,
+                                  mode: 'poll',
+                                });
+                                read(event.name, null);
+                              }}
+                            >
+                              Read events
+                            </Button>
+                          }
+                        />
                       }
                     />
                   ))}

@@ -1308,6 +1308,7 @@ export {
   useStatsQuery,
   useSteerChildWorkMutation,
   useStopProviderTaskMutation,
+  useStreamIntegrationEventsMutation,
   useSurveyFlowReviewsQuery,
   useSyncKnowledgeGraphNeo4jMutation,
   useSystemStatusForApiBaseQuery,

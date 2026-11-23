@@ -203,6 +203,7 @@ export {
   useSetIntegrationEnabledMutation,
   useSetIntegrationRenderPermissionMutation,
   useStartIntegrationOAuthMutation,
+  useStreamIntegrationEventsMutation,
 } from './query-domains/catalog';
 export {
   type AcknowledgeConversationVariables,

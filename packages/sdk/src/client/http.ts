@@ -2061,11 +2061,14 @@ function dispatchSseFrame(
   return { accepted, id, retry };
 }
 
-async function consumeSseResponse(
+export async function consumeSseResponse(
   response: Response,
   signal: AbortSignal,
   onMessage: (message: FetchSseMessage) => unknown,
-  onCheckpoint: (checkpoint: { id?: string; retry?: number }) => void,
+  onCheckpoint: (checkpoint: {
+    id?: string;
+    retry?: number;
+  }) => void = () => {},
   stallTimeoutMs?: number,
 ): Promise<void> {
   if (signal.aborted) {

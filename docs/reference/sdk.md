@@ -436,6 +436,10 @@ with `cursor: null` and pass the returned cursor to continue. Keep the name
 and optional event arguments consistent when continuing. The response
 reports whether more events remain and whether earlier events are unavailable.
 
+`useStreamIntegrationEventsMutation().mutateAsync({id, input, requestScope, signal, receive})`
+opens a bounded operator event stream and delivers typed frames to `receive`.
+Use the caller's abort signal to stop it and the latest cursor to resume.
+
 `useIntegrationAccountQuery(id, projectSlug?, requestScope?)` reads the account
 summary. Pass the captured `ApiRequestScope` to partition account state by
 Station and principal authority and refuse a request after that authority changes.

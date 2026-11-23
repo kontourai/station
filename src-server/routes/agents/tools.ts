@@ -64,7 +64,7 @@ import {
   param,
   validate,
 } from '../schemas/schemas.js';
-import { streamSSE } from '../sse-response.js';
+import { demandSseResponse } from '../sse-response.js';
 import {
   changesAny,
   launchesCommand,
@@ -706,60 +706,126 @@ export function createToolRoutes(
       const denied = await refusal();
       if (denied) return denied;
 
-      const response = streamSSE(c, async (stream) => {
-        const disconnected = new AbortController();
-        stream.onAbort(() => disconnected.abort());
-        const deadline = AbortSignal.timeout(60_000);
-        const signal = AbortSignal.any([
-          c.req.raw.signal,
-          disconnected.signal,
-          deadline,
-        ]);
-        if (signal.aborted) {
-          stream.abort();
-          return;
+      const disconnected = new AbortController();
+      const signal = AbortSignal.any([
+        c.req.raw.signal,
+        disconnected.signal,
+        AbortSignal.timeout(60_000),
+      ]);
+      type Delivery = {
+        frame: ToolServerEventStreamFrame;
+        assertCurrent?: () => void;
+        acknowledge: () => void;
+      };
+      const frames = new TransformStream<Delivery, Delivery>(
+        undefined,
+        { highWaterMark: 0 },
+        { highWaterMark: 0 },
+      );
+      const reader = frames.readable.getReader();
+      const writer = frames.writable.getWriter();
+      const cancelRead = () => {
+        void reader.cancel().catch(() => {});
+      };
+      signal.addEventListener('abort', cancelRead, { once: true });
+
+      const publish = async (
+        frame: ToolServerEventStreamFrame,
+        assertCurrent?: () => void,
+      ) => {
+        signal.throwIfAborted();
+        const consumed = Promise.withResolvers<void>();
+        const releaseOnAbort = () => consumed.resolve();
+        signal.addEventListener('abort', releaseOnAbort, { once: true });
+        try {
+          await writer.write({
+            frame,
+            assertCurrent,
+            acknowledge: consumed.resolve,
+          });
+          await consumed.promise;
+          signal.throwIfAborted();
+        } finally {
+          signal.removeEventListener('abort', releaseOnAbort);
         }
-        const stop = () => stream.abort();
-        signal.addEventListener('abort', stop, { once: true });
+      };
+      const produce = async () => {
         let active = false;
         let ended = false;
-        const publish = async (frame: ToolServerEventStreamFrame) => {
-          if (ended || signal.aborted || stream.closed || stream.aborted)
-            return;
-          if (await refusal()) {
-            disconnected.abort();
-            return;
-          }
-          if (signal.aborted) return;
-          await stream.writeSSE({
-            event: frame.type,
-            data: JSON.stringify(frame),
-          });
-          active ||= frame.type === 'active';
-          ended ||= frame.type === 'ended';
-        };
         try {
-          if (await refusal()) return;
           await mcpService.readMCPEventStream(
             param(c, 'id'),
             parsed.data,
-            publish,
+            async (frame, assertCurrent) => {
+              signal.throwIfAborted();
+              if (ended) return;
+              await publish(frame, assertCurrent);
+              active ||= frame.type === 'active';
+              ended = frame.type === 'ended';
+            },
             signal,
           );
-          if (!ended)
+          if (!ended && !signal.aborted)
             await publish({
               type: 'ended',
               reason: active ? 'complete' : 'unavailable',
             });
         } catch {
-          await publish({ type: 'ended', reason: 'unavailable' });
+          if (!ended && !signal.aborted)
+            await publish({ type: 'ended', reason: 'unavailable' }).catch(
+              () => {},
+            );
         } finally {
-          signal.removeEventListener('abort', stop);
-          disconnected.abort();
+          await writer.close().catch(() => {});
+          signal.removeEventListener('abort', cancelRead);
         }
-      });
-      response.headers.set('Cache-Control', 'private, no-store');
-      return response;
+      };
+
+      let started = false;
+      const encoder = new TextEncoder();
+      return demandSseResponse(
+        c,
+        new ReadableStream<Uint8Array>(
+          {
+            async pull(controller) {
+              let acknowledge: (() => void) | undefined;
+              try {
+                signal.throwIfAborted();
+                if (!started) {
+                  if (await refusal()) throw new Error('Operator required');
+                  signal.throwIfAborted();
+                  started = true;
+                  void produce();
+                }
+                const { done, value } = await reader.read();
+                if (done) {
+                  controller.close();
+                  return;
+                }
+                acknowledge = value.acknowledge;
+                if (await refusal()) throw new Error('Operator required');
+                signal.throwIfAborted();
+                value.assertCurrent?.();
+                const { frame } = value;
+                controller.enqueue(
+                  encoder.encode(
+                    `event: ${frame.type}\ndata: ${JSON.stringify(frame)}\n\n`,
+                  ),
+                );
+              } catch {
+                disconnected.abort();
+                controller.close();
+              } finally {
+                acknowledge?.();
+              }
+            },
+            cancel() {
+              disconnected.abort();
+            },
+          },
+          { highWaterMark: 0 },
+        ),
+      );
     }),
   );
 

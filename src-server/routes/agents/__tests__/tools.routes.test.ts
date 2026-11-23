@@ -198,54 +198,80 @@ describe('Tool Routes', () => {
     expect(poll).not.toHaveBeenCalled();
   });
 
-  test('cancels a managed event stream before publishing a frame after operator loss', async () => {
-    const service = new MCPService(
-      new ConfigLoader({ projectHomeDir: makeTempDir('event-stream-route-') }),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      new Map(),
-      { warn: vi.fn() },
-    );
-    let operator = true;
-    let sourceSignal: AbortSignal | undefined;
-    vi.spyOn(service, 'readMCPEventStream').mockImplementation(
-      async (_server, _input, publish, signal) => {
-        sourceSignal = signal;
-        await publish({
-          type: 'active',
-          cursor: 'approved-cursor',
-          truncated: false,
-          heartbeatMs: 5000,
-        });
-        operator = false;
-        await publish({
-          type: 'event',
-          cursor: 'private-cursor',
-          eventId: 'private-event',
-          timestamp: '2026-11-23T18:00:00Z',
-          data: { outcome: 'private-outcome' },
-        });
-      },
-    );
-    const app = createToolRoutes(service, vi.fn(), {
-      async authorizeOperator() {
-        if (!operator) throw new Error('Operator required');
-      },
-    });
-    const response = await app.request('/mcp-1/events/stream', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name: 'work.settled', cursor: null }),
-    });
-    expect(response.status).toBe(200);
-    const body = await response.text();
-    expect(body).toContain('event: active');
-    expect(body).toContain('approved-cursor');
-    expect(body).not.toContain('private-');
-    expect(sourceSignal?.aborted).toBe(true);
-  });
+  test.each(['operator', 'integration'] as const)(
+    'stops a held managed event frame when the %s loses authority before the consumer reads',
+    async (owner) => {
+      const service = new MCPService(
+        new ConfigLoader({
+          projectHomeDir: makeTempDir('event-stream-route-'),
+        }),
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        { warn: vi.fn() },
+      );
+      let operator = true;
+      let integration = true;
+      const pendingFrame = Promise.withResolvers<void>();
+      let sourceSignal: AbortSignal | undefined;
+      vi.spyOn(service, 'readMCPEventStream').mockImplementation(
+        async (_server, _input, publish, signal) => {
+          sourceSignal = signal;
+          const assertCurrent = () => {
+            if (!integration) throw new Error('Integration changed');
+          };
+          await publish(
+            {
+              type: 'active',
+              cursor: 'approved-cursor',
+              truncated: false,
+              heartbeatMs: 5000,
+            },
+            assertCurrent,
+          );
+          const held = publish(
+            {
+              type: 'event',
+              cursor: 'private-cursor',
+              eventId: 'private-event',
+              timestamp: '2026-11-23T18:00:00Z',
+              data: { outcome: 'private-outcome' },
+            },
+            assertCurrent,
+          );
+          pendingFrame.resolve();
+          await held;
+        },
+      );
+      const app = createToolRoutes(service, vi.fn(), {
+        async authorizeOperator() {
+          if (!operator) throw new Error('Operator required');
+        },
+      });
+      const response = await app.request('/mcp-1/events/stream', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'work.settled', cursor: null }),
+      });
+      expect(response.status).toBe(200);
+      const reader = response.body!.getReader();
+      try {
+        const active = await reader.read();
+        expect(new TextDecoder().decode(active.value)).toContain(
+          'approved-cursor',
+        );
+        await pendingFrame.promise;
+        if (owner === 'operator') operator = false;
+        else integration = false;
+        expect(await reader.read()).toEqual({ done: true, value: undefined });
+        expect(sourceSignal?.aborted).toBe(true);
+      } finally {
+        await reader.cancel();
+      }
+    },
+  );
 
   test('serves only a resolver-approved local icon with private caching and nosniff', async () => {
     const asset = {

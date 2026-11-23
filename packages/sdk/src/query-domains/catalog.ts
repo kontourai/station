@@ -8,11 +8,14 @@ import type {
   IntegrationTrustReviewDecision,
   ToolDef,
   ToolServerEventPollInput,
+  ToolServerEventStreamFrame,
+  ToolServerEventStreamInput,
 } from '@kontourai/station-contracts/tool';
 import type { ApiRequestScope } from '../client/http';
 import {
   discoverIntegrationEvents,
   pollIntegrationEvents,
+  streamIntegrationEvents,
 } from '../client/integrations';
 import {
   type MutationOptions,
@@ -432,6 +435,24 @@ export function usePollIntegrationEventsMutation() {
       input: ToolServerEventPollInput;
       requestScope: ApiRequestScope;
     }) => pollIntegrationEvents(id, input, requestScope),
+  );
+}
+
+export function useStreamIntegrationEventsMutation() {
+  return useApiMutation(
+    ({
+      id,
+      input,
+      requestScope,
+      signal,
+      receive,
+    }: {
+      id: string;
+      input: ToolServerEventStreamInput;
+      requestScope: ApiRequestScope;
+      signal: AbortSignal;
+      receive: (frame: ToolServerEventStreamFrame) => void;
+    }) => streamIntegrationEvents(id, input, requestScope, signal, receive),
   );
 }
 

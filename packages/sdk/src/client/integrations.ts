@@ -18,10 +18,14 @@ import type {
   ToolServerEventCatalog,
   ToolServerEventPollInput,
   ToolServerEventPollPage,
+  ToolServerEventStreamFrame,
+  ToolServerEventStreamInput,
 } from '@kontourai/station-contracts/tool';
+import { z } from 'zod';
 import {
   type ApiRequestScope,
   type ClientRequestOptions,
+  consumeSseResponse,
   getJson,
   mutateJson,
   readEnvelopeOrThrow,
@@ -77,6 +81,59 @@ export async function pollIntegrationEvents(
   const page = await readEnvelopeOrThrow<ToolServerEventPollPage>(response);
   if (!page) throw new Error('Event page missing from response');
   return page;
+}
+
+const eventStreamFrame = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('active'),
+    cursor: z.string().min(1).max(4096),
+    truncated: z.boolean(),
+    heartbeatMs: z.number().int().positive(),
+  }),
+  z.object({
+    type: z.literal('event'),
+    cursor: z.string().min(1).max(4096),
+    eventId: z.string().min(1).max(256),
+    timestamp: z.iso.datetime({ offset: true }),
+    data: z.json(),
+  }),
+  z.object({
+    type: z.literal('heartbeat'),
+    cursor: z.string().min(1).max(4096),
+  }),
+  z.object({
+    type: z.literal('ended'),
+    reason: z.enum(['complete', 'unavailable']),
+  }),
+]);
+
+export async function streamIntegrationEvents(
+  id: string,
+  input: ToolServerEventStreamInput,
+  requestScope: ApiRequestScope,
+  signal: AbortSignal,
+  receive: (frame: ToolServerEventStreamFrame) => void,
+): Promise<void> {
+  const response = await mutateJson(
+    `${requestScope.apiBase}/integrations/${encodeURIComponent(id)}/events/stream`,
+    'POST',
+    { requestScope, signal, readOnly: true, maxResponseBytes: 3 * 1024 * 1024 },
+    input,
+  );
+  if (
+    response.ok &&
+    !response.headers
+      .get('content-type')
+      ?.toLowerCase()
+      .startsWith('text/event-stream')
+  ) {
+    await response.body?.cancel();
+    throw new Error('Event stream response is invalid.');
+  }
+  await consumeSseResponse(response, signal, ({ data }) => {
+    signal.throwIfAborted();
+    receive(eventStreamFrame.parse(JSON.parse(data)));
+  });
 }
 
 /** `POST /integrations` — create an integration. */
