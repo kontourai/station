@@ -63,8 +63,10 @@ function encodeListCursor(cursor: ActivityCursor): string {
 
 export function decodeActivityCursor(
   value: string,
+  maxLength = 1024,
 ): ActivityCursor | undefined {
-  if (value.length > 1024 || !/^[A-Za-z0-9_-]+$/u.test(value)) return undefined;
+  if (value.length > maxLength || !/^[A-Za-z0-9_-]+$/u.test(value))
+    return undefined;
   try {
     const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
     if (
@@ -252,7 +254,7 @@ export function createSessionActivityReader(deps: SessionActivityReaderDeps) {
       authority: SessionReadAuthority;
       viewer: ActivityListViewer;
       threadIds?: readonly string[];
-      admitThread?: (threadId: string) => boolean;
+      selectThreadIds?: () => readonly string[];
       cursor?: ActivityCursor;
       limit: number;
       activeWithinMinutes?: number;
@@ -271,7 +273,9 @@ export function createSessionActivityReader(deps: SessionActivityReaderDeps) {
         {
           purpose: 'project-activity',
           ...(threadIds === undefined ? {} : { threadIds }),
-          ...(input.admitThread ? { admitThread: input.admitThread } : {}),
+          ...(input.selectThreadIds
+            ? { selectThreadIds: input.selectThreadIds }
+            : {}),
         },
       );
       const since =

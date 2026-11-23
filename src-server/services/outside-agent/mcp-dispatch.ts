@@ -16,7 +16,10 @@ import {
 } from '../../tools/station-control-policy.js';
 import { registerActiveWorkTool } from '../../tools/station-control-work-discovery-tools.js';
 import type { ProjectService } from '../projects/project-service.js';
-import type { createOutsideActiveWorkReader } from './active-work.js';
+import {
+  type createOutsideActiveWorkReader,
+  MAX_OUTSIDE_ACTIVE_WORK_CURSOR,
+} from './active-work.js';
 import type { Records } from './oauth-records.js';
 
 export interface OutsideAgentCaller {
@@ -154,10 +157,13 @@ export function createOutsideMcpDispatch(input: {
     },
   });
   if (listActiveWork) {
-    registerActiveWorkTool(registry, (args) =>
-      listActiveWork(caller('list_active_work'), args, () => {
-        caller('list_active_work');
-      }),
+    registerActiveWorkTool(
+      registry,
+      (args) =>
+        listActiveWork(caller('list_active_work'), args, () => {
+          caller('list_active_work');
+        }),
+      MAX_OUTSIDE_ACTIVE_WORK_CURSOR,
     );
   }
   const server = new Server(

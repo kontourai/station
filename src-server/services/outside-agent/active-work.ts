@@ -6,7 +6,7 @@ import {
   ACTIVE_WORK_DEFAULT_MINUTES,
   WORK_DISCOVERY_DEFAULT_LIMIT,
 } from '../../routes/chat/work-discovery-limits.js';
-import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
+import type { StationControlSessionTargetReader } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import {
   type StationControlScope,
   sameScope,
@@ -22,6 +22,12 @@ import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../orchestration/session-
 import type { OutsideAgentCaller } from './mcp-dispatch.js';
 
 const MAX_CANDIDATES = 2_000;
+const MAX_METADATA_SCAN = 2 * MAX_CANDIDATES;
+const CURSOR_SIGNATURE_LENGTH = 44;
+// A signed cursor must hold a JSON-escaped conversation ID of up to 512 code units.
+export const MAX_OUTSIDE_ACTIVE_WORK_CURSOR = 8 * 1024;
+
+type Admission = 'host' | 'readable' | undefined;
 
 export interface OutsideActiveWorkDeps extends SessionActivityReaderDeps {
   eventStore: SessionActivityReaderDeps['eventStore'] &
@@ -32,7 +38,7 @@ export interface OutsideActiveWorkDeps extends SessionActivityReaderDeps {
       | 'conversationForSession'
       | 'conversationSessions'
     >;
-  dispatchScope: Pick<StationControlDispatchScope, 'target'>;
+  dispatchScope: StationControlSessionTargetReader;
 }
 
 /** Read through the existing activity projection using a live grant, without a Session caller. */
@@ -84,15 +90,15 @@ export function createOutsideActiveWorkReader(
       ) {
         throw invalid;
       }
-      cursor = decodeActivityCursor(raw);
+      cursor = decodeActivityCursor(
+        raw,
+        MAX_OUTSIDE_ACTIVE_WORK_CURSOR - CURSOR_SIGNATURE_LENGTH,
+      );
       if (!cursor) throw invalid;
     }
 
     const scopedTarget = (threadId: string) => {
-      const target = deps.dispatchScope.target(
-        { kind: 'thread', threadId, remote: false },
-        'view',
-      );
+      const target = deps.dispatchScope.sessionTarget(threadId, 'view');
       if (
         !target ||
         target.remote ||
@@ -119,11 +125,25 @@ export function createOutsideActiveWorkReader(
       }
       return target;
     };
+    const classifyLineage = (ids: ReadonlySet<string>): Admission => {
+      let host = false;
+      for (const id of ids) {
+        const member = scopedTarget(id);
+        if (!member) return undefined;
+        host ||= member.host || deps.eventStore.hasHostAccessHistory(id);
+      }
+      return host ? 'host' : 'readable';
+    };
     // The shared projection reads the root's title/prompt and sibling activity.
-    const admission = (threadId: string): 'host' | 'readable' | undefined => {
-      const target = scopedTarget(threadId);
-      if (!target) return undefined;
+    const admission = (
+      threadId: string,
+      cache: Map<string, Admission>,
+    ): Admission => {
       const lineage = deps.eventStore.conversationForSession(threadId);
+      const key = lineage
+        ? `conversation:${lineage.conversationId}`
+        : `session:${threadId}`;
+      if (cache.has(key)) return cache.get(key);
       const members = lineage
         ? deps.eventStore.conversationSessions(lineage.conversationId)
         : [];
@@ -131,67 +151,76 @@ export function createOutsideActiveWorkReader(
         threadId,
         ...members.map((member) => member.sessionId),
       ]);
-      let host = target.host;
-      for (const id of ids) {
-        const member = id === threadId ? target : scopedTarget(id);
-        if (!member) return undefined;
-        host ||= member.host || deps.eventStore.hasHostAccessHistory(id);
-      }
-      return host ? 'host' : 'readable';
+      const access =
+        lineage && !ids.has(lineage.conversationId)
+          ? undefined
+          : classifyLineage(ids);
+      cache.set(key, access);
+      return access;
     };
-    const admitThread = (threadId: string) => {
+
+    let scanLimited = false;
+    const hostFiltered = new Set<string>();
+    const selectThreadIds = () => {
       assertCurrent();
-      return admission(threadId) === 'readable';
+      const cache = new Map<string, Admission>();
+      const threadIds: string[] = [];
+      let scanned = 0;
+      for (const threadId of deps.eventStore.iterateOwnedActiveWorkCandidates(
+        caller.delegatingPrincipalId,
+        projectId,
+      )) {
+        if (scanned === MAX_METADATA_SCAN) {
+          scanLimited = true;
+          break;
+        }
+        scanned += 1;
+        const access = admission(threadId, cache);
+        if (!access) continue;
+        if (threadIds.length + hostFiltered.size === MAX_CANDIDATES) {
+          scanLimited = true;
+          break;
+        }
+        if (access === 'host') hostFiltered.add(threadId);
+        else threadIds.push(threadId);
+      }
+      return threadIds;
     };
 
     assertCurrent();
-    const threadIds: string[] = [];
-    let scanLimited = false;
-    let hostFiltered = 0;
-    for (const threadId of deps.eventStore.iterateOwnedActiveWorkCandidates(
-      caller.delegatingPrincipalId,
-      projectId,
-    )) {
-      const access = admission(threadId);
-      if (!access) continue;
-      if (threadIds.length + hostFiltered === MAX_CANDIDATES) {
-        scanLimited = true;
-        break;
-      }
-      if (access === 'host') hostFiltered += 1;
-      else threadIds.push(threadId);
-    }
     const authority = sessionReadAuthorityFromRequest(
       caller.delegatingPrincipalId,
       undefined,
       undefined,
     );
-    const result =
-      threadIds.length === 0
-        ? { sessions: [], nextCursor: null }
-        : await activity.page({
-            authority,
-            viewer: {
-              isOwn: () => false,
-              listsSession: admitThread,
-              showsClaim: (claim) => sameScope(scope, claim.scope),
-            },
-            cursor,
-            limit: input.limit ?? WORK_DISCOVERY_DEFAULT_LIMIT,
-            threadIds,
-            admitThread,
-            activeWithinMinutes,
-            now,
-          });
+    const pageAdmission = new Map<string, Admission>();
+    const result = await activity.page({
+      authority,
+      viewer: {
+        isOwn: () => false,
+        listsSession(threadId) {
+          assertCurrent();
+          const access = admission(threadId, pageAdmission);
+          if (access === 'host') hostFiltered.add(threadId);
+          return access === 'readable';
+        },
+        showsClaim: (claim) => sameScope(scope, claim.scope),
+      },
+      cursor,
+      limit: input.limit ?? WORK_DISCOVERY_DEFAULT_LIMIT,
+      selectThreadIds,
+      activeWithinMinutes,
+      now,
+    });
     assertCurrent();
     const incompleteSources = [
-      ...(hostFiltered || scanLimited
+      ...(hostFiltered.size || scanLimited
         ? [
             {
               source: 'station.work',
               state: 'partial',
               reason: 'host-execution-filtered',
-              filteredCount: hostFiltered,
+              filteredCount: hostFiltered.size,
               ...(scanLimited ? { countIsLowerBound: true } : {}),
             },
           ]

@@ -8554,6 +8554,8 @@ export class EventStore {
           AND json_valid(payload)
           AND json_type(payload, '$.metadata.userId') = 'text'
           AND json_extract(payload, '$.metadata.userId') = ?
+          AND (json_type(payload, '$.metadata.delegation') IS NULL
+            OR json_extract(payload, '$.metadata.delegation.environmentKind') = 'current')
           AND json_extract(payload, '$.metadata.localProjectId')
             ${projectId === undefined ? 'IS NULL' : '= ?'}
         ORDER BY thread_id`,

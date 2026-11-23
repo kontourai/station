@@ -5789,7 +5789,7 @@ export class OrchestrationService {
       const endedAt = performance.now();
       this.readModelMeasurement.record({
         purpose: options.purpose,
-        scope: options.threadIds ? 'threads' : 'all',
+        scope: options.threadIds || options.selectThreadIds ? 'threads' : 'all',
         totalMs: endedAt - startedAt,
         buildMs: endedAt - buildStartedAt,
         ...sample,
@@ -5815,7 +5815,6 @@ export class OrchestrationService {
       threadsConsidered: number;
     },
   ): OrchestrationSessionSummary[] {
-    const only = options.threadIds ? new Set(options.threadIds) : undefined;
     const persistedSessions =
       this.evictCollidingAttachedAliases() ??
       this.options.eventStore?.readSessions() ??
@@ -5832,12 +5831,13 @@ export class OrchestrationService {
     // ONE timestamp for the whole read: this list is a single observation of
     // this process's state, not one observation per row.
     const observedAt = new Date().toISOString();
+    const selected = options.selectThreadIds?.() ?? options.threadIds;
+    const only = selected ? new Set(selected) : undefined;
     const readableThreadIds = [...threadIds].filter(
       (threadId) =>
         (!only || only.has(threadId)) &&
         !this.isEphemeralSession(threadId) &&
-        this.sessionAuthz.canReadSession(threadId, authority) &&
-        (options.admitThread?.(threadId) ?? true),
+        this.sessionAuthz.canReadSession(threadId, authority),
     );
     const readableThreadSet = new Set(readableThreadIds);
     sample.threadsConsidered = readableThreadIds.length;

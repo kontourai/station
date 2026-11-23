@@ -28,6 +28,7 @@ const resource = `${issuer}/mcp`;
 describe('outside-agent MCP transport and live authority', () => {
   test('list_active_work filters the live grant before projection and refuses another grant’s cursor', async () => {
     let projectedStore!: EventStore;
+    const firstSessionId = `alpha-one-${'é'.repeat(350)}`;
     const f = await fixture(({ home, clock, projects, cleanup }) => {
       const eventStore = new EventStore(join(home, 'active-work.sqlite'));
       const service = new OrchestrationService({
@@ -76,8 +77,9 @@ describe('outside-agent MCP transport and live authority', () => {
           cwd: `/private/${threadId}`,
         });
       };
-      seed('alpha-one', 'id-alpha');
+      seed(firstSessionId, 'id-alpha');
       seed('alpha-two', 'id-alpha');
+      seed('alpha-change-during-refresh', 'id-alpha');
       seed('alpha-host', 'id-alpha', 'operator', {
         [STATION_CONFINEMENT_METADATA_KEY]: 'host',
       });
@@ -161,6 +163,22 @@ describe('outside-agent MCP transport and live authority', () => {
         ownerMay: (owner, id) =>
           owner === 'operator' && projects.some((project) => project.id === id),
       });
+      const listSessions = service.listSessions.bind(service);
+      vi.spyOn(service, 'listSessions').mockImplementationOnce(
+        async (authority) => {
+          const result = await listSessions(authority);
+          eventStore.appendEvent({
+            eventId: 'alpha-change-during-refresh:host-decision',
+            threadId: 'alpha-change-during-refresh',
+            sessionId: 'alpha-change-during-refresh',
+            provider: 'codex',
+            method: 'session.approval-mode-set',
+            approvalMode: 'never',
+            createdAt: new Date(clock.now).toISOString(),
+          });
+          return result;
+        },
+      );
       projectedStore = eventStore;
       return { eventStore, orchestrationService: service, dispatchScope };
     });
@@ -197,13 +215,13 @@ describe('outside-agent MCP transport and live authority', () => {
     ).data;
     expect(
       first.sessions.map((row: { sessionId: string }) => row.sessionId),
-    ).toEqual(['alpha-one']);
+    ).toEqual([firstSessionId]);
     expect(first.incompleteSources).toEqual([
       {
         source: 'station.work',
         state: 'partial',
         reason: 'host-execution-filtered',
-        filteredCount: 2,
+        filteredCount: 3,
       },
     ]);
     expect(first.nextCursor).toEqual(expect.any(String));
@@ -224,8 +242,8 @@ describe('outside-agent MCP transport and live authority', () => {
       message: 'Invalid active-work cursor',
     });
     expect(projection.mock.calls.map(([ids]) => [...ids].sort())).toEqual([
-      ['alpha-one', 'alpha-two'],
-      ['alpha-one', 'alpha-two'],
+      [firstSessionId, 'alpha-two'],
+      [firstSessionId, 'alpha-two'],
     ]);
   });
 
