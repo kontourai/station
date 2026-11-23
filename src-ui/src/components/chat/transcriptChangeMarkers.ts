@@ -42,14 +42,12 @@ function recordedTurn(message: ChatMessage): RecordedTurn | undefined {
   };
 }
 
-function isBoundaryRow(message: ChatMessage): boolean {
-  return (
-    message.contentParts?.some(
-      (part) =>
-        part.type === 'conversation-handoff' ||
-        part.type === 'conversation-context-boundary',
-    ) ?? false
-  );
+function boundaryKind(message: ChatMessage): 'engine' | 'context' | undefined {
+  for (const part of message.contentParts ?? []) {
+    if (part.type === 'conversation-handoff') return 'engine';
+    if (part.type === 'conversation-context-boundary') return 'context';
+  }
+  return undefined;
 }
 
 /**
@@ -78,9 +76,14 @@ export function transcriptChangeFacts(
   const seen = new Set<string>();
   let previous: RecordedTurn | undefined;
   messages.forEach((message, index) => {
-    if (isBoundaryRow(message)) {
+    const boundary = boundaryKind(message);
+    if (boundary) {
       if (previous) facts.set(index, { previousEngine: previous.engine });
-      previous = undefined;
+      // After a switch the engine before it is no longer the one running, so
+      // a later row with no recorded turn between must not name it. A fresh
+      // context keeps the engine; its successor Session is a new Session, so
+      // the session check below already keeps a model change from spanning it.
+      if (boundary === 'engine') previous = undefined;
       return;
     }
     if (message.role !== 'assistant' || !message.turnId) return;

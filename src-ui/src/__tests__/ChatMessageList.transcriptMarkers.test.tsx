@@ -303,6 +303,32 @@ describe('chat-24 transcript markers', () => {
     expect(markers(container, 'context')).toHaveLength(0);
   });
 
+  test('a fresh context right after a switch does not name the engine from before the switch', () => {
+    // Move the recorded handoff to just before the reset: no turn ran on the
+    // new Agent between them, so nothing recorded which engine forgot.
+    const consumedAt = Date.parse(
+      WINDOW.contextBoundaries[0]?.consumedAt ?? '',
+    );
+    const { container } = renderTranscript(
+      transcript({
+        ...WINDOW,
+        handoffs: WINDOW.handoffs.map((handoff) => ({
+          ...handoff,
+          createdAt: new Date(consumedAt - 1).toISOString(),
+        })),
+      }),
+    );
+    const rows = [...container.querySelectorAll('.transcript-change')];
+    expect(rows.map((row) => row.className)).toEqual([
+      'transcript-change transcript-change--model',
+      'transcript-change transcript-change--engine',
+      'transcript-change transcript-change--context',
+    ]);
+    expect(markers(container, 'context')[0]?.textContent).toBe(
+      'Fresh contextThe agent forgot everything above. You still see it.',
+    );
+  });
+
   test('the handed-over size in the copy is the server seed budget', async () => {
     const { TRANSCRIPT_SEED_DEFAULT_TOKEN_BUDGET } = await import(
       '../../../src-server/services/orchestration/conversation-transcript-seed'
