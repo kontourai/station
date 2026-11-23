@@ -21,6 +21,9 @@ Host/passkey approval records intent. Only a successful code exchange activates
 a grant and selected supersessions; waiting, approval or an unredeemed code
 disconnects nothing. Read-only remains the only selection.
 
+The consent store allows 20 pending outside-agent reviews per tenant.
+Ordinary consent retains its separate capacity of 100 pending reviews.
+
 The [R4a MCP owner](../../src-server/routes/outside-agent/mcp-routes.ts) serves
 only exact GET/POST/DELETE `/mcp` with an outside access bearer, plus narrowly
 allowlisted preflight. Anonymous GET receives a 401 metadata challenge before
@@ -32,16 +35,38 @@ engine-proxy or general Station routes, and Device/internal tokens cannot
 substitute on the outside resource.
 
 The [dispatch owner](../../src-server/services/outside-agent/mcp-dispatch.ts)
-currently exposes only `list_projects` and `get_project`, with stable Project
-scope from the live grant. Global grants list no Projects. Each request,
+exposes `list_projects` and `get_project` in the R4a composition, with stable
+Project scope from the live grant. Global grants list no Projects. Each request,
 dispatch and outward chunk checks live authority; grant changes invalidate the
 old session and cursors while the existing bearer can initialize under the new
 selection. Revocation cannot recall bytes already handed to the network.
+If another process revokes the grant after the transport prepares its
+response, the emission check can leave an HTTP 200 with an empty body.
+Treat that as an interrupted request. Check the grant and reconnect before
+retrying.
+Access checks and the periodic session recheck only read the store.
+The request's shared ingress budget still charges under the SQLite writer
+lock, so a competing writer can delay the request and lead to HTTP 503.
 Five sessions and ten in-flight calls per grant, bounded requests/results and
-bounded replay queues are local to this single transport owner. Discovery,
-host-exclusion counts and the remaining reads belong to R4b/R4c. See the
+bounded replay queues are local to this single transport owner. See the
 [isolated R4a receipt](../design/outside-agent-mcp-r4a-evidence.md) for executed
 faults, real-client checks and topology/release limits.
+
+The isolated active-work composition also offers `list_active_work`. It
+admits rows by the grant's stable Project ID and recorded owner before
+loading projection events or counts. Every Session in a conversation's
+lineage must pass the same scope and inventory checks, which omit ephemeral
+Sessions. Earlier host starts or full-access decisions
+still exclude a conversation after its current posture narrows. The reader
+checks admission again after refreshing the runtime inventory.
+The response identifies partial coverage when it excludes host access or
+hits a scan limit. The reader checks scope for at most 4,000 inventory-visible
+candidate IDs for the grant's owner and Project and admits up to 2,000.
+At either limit, the host exclusion
+count is a lower bound. Its cursors bind to the grant, token family, grant
+version, Project scope and activity window, and expire when the server
+restarts. Conversation search and the rest of the read catalog follow in
+R4b and R4c. [Active-work reader](../../src-server/services/outside-agent/active-work.ts)
 
 `O` is one exact configured canonical origin, persisted with the store's Station
 identity. `R` is exactly `O + /mcp`. Issuer changes require an explicit credential
@@ -165,8 +190,10 @@ identifiers, not tokens, so the middleware does not match them. Their prefix
 keeps the host CLI from reading an ID that starts with `--` as a flag. Present invalid
 bearers on the isolated router receive `error="invalid_token"` in the 401
 challenge; anonymous requests retain the resource-metadata challenge without
-that error. Session termination returns HTTP 404 / JSON-RPC `-32001` for a pending
-JSON response, or closes an already-open SSE response, and releases call capacity.
+that error. Session termination before a POST response returns HTTP 404 /
+JSON-RPC `-32001` and releases call capacity. Once the router has returned
+a response, Station closes a revoked stream without sending more data. A held database write lock
+at ingress returns HTTP 503 without waiting to charge the request budget.
 Open GET channels share the session's 30-minute cap since the last HTTP request;
 stream activity does not extend it. Reconnect before that cap. R6 must mount the
 authenticating router in the same change that removes the compiled guard.

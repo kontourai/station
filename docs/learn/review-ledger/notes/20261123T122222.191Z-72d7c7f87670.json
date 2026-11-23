@@ -1,0 +1,7 @@
+{
+  "revision": "fa92f2845f50b4d1c818cc765c5d05bc92e27881",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed against the automation state row's new Missed word (a one-time automation recorded missed while Station was off); nothing this page states is changed by it.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]}
+  ]
+}

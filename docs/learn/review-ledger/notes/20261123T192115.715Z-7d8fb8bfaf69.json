@@ -1,0 +1,7 @@
+{
+  "revision": "03de6c5660ef56ad345fb6674700afaefb107b6f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed NativeModelStdioChannel and the real-worker fixture after the relay addition. The default worker path, captured delivery port, and host settlement ownership remain accurate. The opt-in relay validates replies before writing to its stdout.","inputs":["docs/architecture/module-map.md","docs/guides/native-model-channel-lab.md","src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts","src-server/services/connections/native-model-stdio-worker.ts"]}
+  ]
+}

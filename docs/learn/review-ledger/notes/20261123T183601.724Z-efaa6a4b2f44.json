@@ -1,0 +1,7 @@
+{
+  "revision": "e1e84f6dce092e461e2edff8d5a497257f1bc20c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed Project overview and walkthrough claims against the button callbacks and rendered header. Settings and Invite people keep their actions and accessible names across widths.","inputs":["src-ui/src/views/project-page/ProjectPageHeader.tsx"]}
+  ]
+}

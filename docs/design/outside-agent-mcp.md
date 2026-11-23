@@ -1372,9 +1372,13 @@ SSE response ends without further content. Both paths release the request's
 call reservation. Revoke, in-place narrowing, CORS removal and same-grant
 DELETE all end the old session. The 30-minute inactivity clock is refreshed by
 HTTP requests, not by an open GET channel; clients must reconnect before this
-cap, still subject to token/grant expiry. Token admission and the one-second
-session recheck are read-only; lifecycle mutation/pruning remains with its
-existing owners, and outward emission still rechecks under the decision lock.
+cap, still subject to token/grant expiry. The token lookup and one-second
+session recheck are read-only. The request charges durable ingress budgets
+before authentication, and outward emission rechecks under the decision lock.
+The budget check returns HTTP 503 immediately when the database has another
+writer. If revocation is observed before a POST response is returned, the client
+receives the session error. Once the router has returned a response, revocation
+or an unavailable decision lock closes the stream before any further data.
 
 The negative audience middleware ships live even while the outside router is
 compiled off. It recognizes the full outside-artifact shape: `oat_`, `ort_` or

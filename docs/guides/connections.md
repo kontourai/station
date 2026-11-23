@@ -2201,6 +2201,17 @@ OAuth and the Station host must be able to reach that address.
    **Claude Code** or **Codex** engine and start a new session. The remote
    server's tools are available within the access you granted.
 
+### Read work from another environment
+
+Choose read-only access when the remote server offers it. In a new Station
+Session, ask the Agent to list projects or conversations using the tools
+the server supplies. A loopback URL reaches a server on the Station host.
+For a server on a different host, use an HTTPS address Station can reach.
+
+When the remote server offers environment discovery, use the environment
+ID it returns when calling tools that accept that selector. Manage access
+and links on the remote server that issued them.
+
 A custom integration uses the shared Station account by default. For sources
 configured for personal accounts, Station selects the session owner's Project account first, then their personal
 account. A shared account is used for a personal integration only when its
@@ -2212,6 +2223,8 @@ integration has a usable account. A missing token or an OAuth grant/client rejec
 during a required refresh refuses launch with **needs sign-in** and the deterministic
 `mcp_sign_in_required` code. No engine session has started for that refusal.
 The chat offers **Sign in to tool**, which opens **Connections → Tools**.
+When a server issues an access token without a refresh token, Station uses it
+until it expires or the server rejects it, then asks you to sign in again.
 
 Station gives the engine a loopback MCP proxy URL carrying a Station credential,
 scoped to that session and integration. The agent can read this proxy credential
@@ -2688,6 +2701,15 @@ takes more than 3 seconds. The selected address
 stays visible and an explicit edit takes precedence over a suggestion. No
 Tailscale configuration or listener binding is changed.
 
+
+## Share a Project summary with a browser assistant
+
+In a browser that supports WebMCP, open **Overview** for a Project you operate.
+Under **Browser assistant**, choose **Share summary**. The assistant can read
+the displayed Project name and description from that tab. Choose **Stop sharing**
+to end access. Leaving Overview, switching Stations, or changing the summary
+also ends the share. Browser support depends on its WebMCP preview configuration.
+[Chrome WebMCP](https://developer.chrome.com/docs/ai/webmcp/imperative-api)
 
 ## Outside-agent OAuth remains inert
 
