@@ -25,7 +25,13 @@ const MAX_CANDIDATES = 2_000;
 
 export interface OutsideActiveWorkDeps extends SessionActivityReaderDeps {
   eventStore: SessionActivityReaderDeps['eventStore'] &
-    Pick<EventStore, 'listThreadIdsStartedIn'>;
+    Pick<
+      EventStore,
+      | 'iterateOwnedActiveWorkCandidates'
+      | 'hasHostAccessHistory'
+      | 'conversationForSession'
+      | 'conversationSessions'
+    >;
   dispatchScope: Pick<StationControlDispatchScope, 'target'>;
 }
 
@@ -82,7 +88,7 @@ export function createOutsideActiveWorkReader(
       if (!cursor) throw invalid;
     }
 
-    const admittedTarget = (threadId: string) => {
+    const scopedTarget = (threadId: string) => {
       const target = deps.dispatchScope.target(
         { kind: 'thread', threadId, remote: false },
         'view',
@@ -113,23 +119,47 @@ export function createOutsideActiveWorkReader(
       }
       return target;
     };
+    // The shared projection reads the root's title/prompt and sibling activity.
+    const admission = (threadId: string): 'host' | 'readable' | undefined => {
+      const target = scopedTarget(threadId);
+      if (!target) return undefined;
+      const lineage = deps.eventStore.conversationForSession(threadId);
+      const members = lineage
+        ? deps.eventStore.conversationSessions(lineage.conversationId)
+        : [];
+      const ids = new Set([
+        threadId,
+        ...members.map((member) => member.sessionId),
+      ]);
+      let host = target.host;
+      for (const id of ids) {
+        const member = id === threadId ? target : scopedTarget(id);
+        if (!member) return undefined;
+        host ||= member.host || deps.eventStore.hasHostAccessHistory(id);
+      }
+      return host ? 'host' : 'readable';
+    };
     const admitThread = (threadId: string) => {
       assertCurrent();
-      return admittedTarget(threadId)?.host === false;
+      return admission(threadId) === 'readable';
     };
 
     assertCurrent();
-    const candidates = deps.eventStore.listThreadIdsStartedIn(projectId, {
-      exactProject: true,
-      limit: MAX_CANDIDATES + 1,
-    });
-    const scanLimited = candidates.length > MAX_CANDIDATES;
     const threadIds: string[] = [];
+    let scanLimited = false;
     let hostFiltered = 0;
-    for (const threadId of candidates.slice(0, MAX_CANDIDATES)) {
-      const target = admittedTarget(threadId);
-      if (target?.host) hostFiltered += 1;
-      else if (target) threadIds.push(threadId);
+    for (const threadId of deps.eventStore.iterateOwnedActiveWorkCandidates(
+      caller.delegatingPrincipalId,
+      projectId,
+    )) {
+      const access = admission(threadId);
+      if (!access) continue;
+      if (threadIds.length + hostFiltered === MAX_CANDIDATES) {
+        scanLimited = true;
+        break;
+      }
+      if (access === 'host') hostFiltered += 1;
+      else threadIds.push(threadId);
     }
     const authority = sessionReadAuthorityFromRequest(
       caller.delegatingPrincipalId,
@@ -155,7 +185,7 @@ export function createOutsideActiveWorkReader(
           });
     assertCurrent();
     const incompleteSources = [
-      ...(hostFiltered
+      ...(hostFiltered || scanLimited
         ? [
             {
               source: 'station.work',

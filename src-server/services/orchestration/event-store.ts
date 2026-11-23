@@ -8528,32 +8528,60 @@ export class EventStore {
   // Called by the Project activity route through a `Pick<EventStore>`
   // parameter, which the dead-code audit cannot trace to this class.
   // fallow-ignore-next-line unused-class-member
-  listThreadIdsStartedIn(
-    projectId: string | undefined,
-    bounded?: { limit: number; exactProject: true },
-  ): string[] {
-    const projectColumn = "json_extract(payload, '$.metadata.localProjectId')";
-    const projectFilter =
-      projectId === undefined
-        ? `${projectColumn} IS NULL`
-        : bounded?.exactProject
-          ? `${projectColumn} = ?`
-          : `(${projectColumn} IS NULL OR ${projectColumn} = ?)`;
+  listThreadIdsStartedIn(projectId: string | undefined): string[] {
     const rows = this.db
       .prepare(
         `SELECT DISTINCT thread_id FROM orchestration_events
           WHERE method IN ('session.started', 'session.configured')
             AND json_valid(payload)
-            AND ${projectFilter}
-          ${bounded ? 'ORDER BY thread_id LIMIT ?' : ''}`,
+            AND (json_extract(payload, '$.metadata.localProjectId') IS NULL
+              ${projectId === undefined ? '' : "OR json_extract(payload, '$.metadata.localProjectId') = ?"})`,
       )
-      .all(
-        ...(projectId === undefined ? [] : [projectId]),
-        ...(bounded ? [bounded.limit] : []),
-      ) as Array<{
+      .all(...(projectId === undefined ? [] : [projectId])) as Array<{
       thread_id: string;
     }>;
     return rows.map((row) => row.thread_id);
+  }
+
+  /** Scoped metadata candidates only. The grant reader checks each current lineage before admitting it. */
+  *iterateOwnedActiveWorkCandidates(
+    ownerId: string,
+    projectId: string | undefined,
+  ): Iterable<string> {
+    const rows = this.readStatement(
+      `SELECT DISTINCT thread_id FROM orchestration_events
+        WHERE method IN ('session.started', 'session.configured')
+          AND json_valid(payload)
+          AND json_type(payload, '$.metadata.userId') = 'text'
+          AND json_extract(payload, '$.metadata.userId') = ?
+          AND json_extract(payload, '$.metadata.localProjectId')
+            ${projectId === undefined ? 'IS NULL' : '= ?'}
+        ORDER BY thread_id`,
+    ).iterate(ownerId, ...(projectId === undefined ? [] : [projectId]));
+    for (const row of rows) {
+      if (typeof row.thread_id === 'string') yield row.thread_id;
+    }
+  }
+
+  /** A past host start or full-access decision remains relevant after the current posture narrows. */
+  hasHostAccessHistory(threadId: string): boolean {
+    return (
+      this.readStatement(
+        `SELECT 1 FROM orchestration_events
+        WHERE thread_id = ?
+          AND method IN ('session.started', 'session.approval-mode-set', 'session.configured', 'turn.started')
+          AND json_valid(payload)
+          AND (
+            (method = 'session.started'
+              AND json_extract(payload, '$.metadata.stationConfinement') = 'host')
+            OR (method = 'session.approval-mode-set'
+              AND json_extract(payload, '$.approvalMode') = 'never')
+            OR (method IN ('session.configured', 'turn.started')
+              AND json_extract(payload, '$.metadata.approvalMode') = 'never')
+          )
+        LIMIT 1`,
+      ).get(threadId) !== undefined
+    );
   }
 
   /** Navigation reads indexed metadata without tools or files; later pages can omit the initial count. */

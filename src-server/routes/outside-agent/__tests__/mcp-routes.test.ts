@@ -1,5 +1,9 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import {
+  STATION_CONFINEMENT_GRANTOR_METADATA_KEY,
+  STATION_CONFINEMENT_METADATA_KEY,
+} from '@kontourai/station-contracts/provider';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
 import {
@@ -36,6 +40,7 @@ describe('outside-agent MCP transport and live authority', () => {
           list: () => [],
         },
         logger: { debug() {}, warn() {} },
+        isFullAccessGrantorCurrent: () => false,
       });
       cleanup(async () => {
         await service.shutdown();
@@ -43,7 +48,7 @@ describe('outside-agent MCP transport and live authority', () => {
       });
       const seed = (
         threadId: string,
-        localProjectId: string,
+        localProjectId: string | undefined,
         owner = 'operator',
         extra: Record<string, unknown> = {},
       ) => {
@@ -74,8 +79,16 @@ describe('outside-agent MCP transport and live authority', () => {
       seed('alpha-one', 'id-alpha');
       seed('alpha-two', 'id-alpha');
       seed('alpha-host', 'id-alpha', 'operator', {
-        stationConfinement: 'host',
+        [STATION_CONFINEMENT_METADATA_KEY]: 'host',
       });
+      seed('revoked-host', 'id-alpha', 'operator', {
+        [STATION_CONFINEMENT_METADATA_KEY]: 'host',
+        [STATION_CONFINEMENT_GRANTOR_METADATA_KEY]: {
+          kind: 'device',
+          deviceId: 'revoked-test-device',
+        },
+      });
+      expect(service.sessionRunsHost('revoked-host')).toBe(false);
       seed('foreign-host', 'id-foreign', 'operator', {
         stationConfinement: 'host',
       });
@@ -84,6 +97,40 @@ describe('outside-agent MCP transport and live authority', () => {
       });
       seed('alpha-peer', 'id-alpha', 'operator', {
         delegation: { environmentKind: 'peer' },
+      });
+      seed('legacy-root', undefined);
+      const timestamp = new Date(clock.now - 60_000).toISOString();
+      eventStore.reserveNextConversationSession({
+        conversationId: 'legacy-root',
+        predecessorSessionId: 'legacy-root',
+        proposedSessionId: 'alpha-successor',
+        createdAt: timestamp,
+      });
+      seed('alpha-successor', 'id-alpha');
+      expect(
+        eventStore.conversationForSession('alpha-successor')?.conversationId,
+      ).toBe('legacy-root');
+
+      const foreign = (index: number) => {
+        const threadId = `0-foreign-${index}`;
+        return {
+          eventId: `${threadId}:start`,
+          threadId,
+          sessionId: threadId,
+          provider: 'codex',
+          method: 'session.started',
+          createdAt: timestamp,
+          metadata: {
+            userId: 'another-person',
+            projectSlug: 'alpha',
+            localProjectId: 'id-alpha',
+          },
+        } as const;
+      };
+      // More same-Project records than the outside scan accepts, all with another owner.
+      eventStore.appendEvent(foreign(0), [], () => {
+        for (let index = 1; index <= 2_001; index += 1)
+          eventStore.appendEvent(foreign(index));
       });
       const projectIdForSlug = (slug: string) =>
         projects.find((project) => project.slug === slug)?.id;
@@ -156,7 +203,7 @@ describe('outside-agent MCP transport and live authority', () => {
         source: 'station.work',
         state: 'partial',
         reason: 'host-execution-filtered',
-        filteredCount: 1,
+        filteredCount: 2,
       },
     ]);
     expect(first.nextCursor).toEqual(expect.any(String));

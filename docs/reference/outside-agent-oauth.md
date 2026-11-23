@@ -44,10 +44,12 @@ faults, real-client checks and topology/release limits.
 
 The isolated active-work composition also offers `list_active_work`. It
 admits rows by the grant's stable Project ID and recorded owner before
-loading projection events or counts. It checks admission again after
-refreshing the runtime inventory, and the bearer has no Session of its own.
-The response identifies partial coverage when it excludes host execution or
-hits its metadata scan limit. At the limit, any reported host exclusion
+loading projection events or counts. Every Session in a conversation's
+lineage must pass the same check. Earlier host starts or full-access decisions
+still exclude a conversation after its current posture narrows. The reader
+checks admission again after refreshing the runtime inventory.
+The response identifies partial coverage when it excludes host access or
+hits its limit on admitted metadata. At the limit, the host exclusion
 count is a lower bound. Its cursors bind to the grant, token family, grant
 version, Project scope and activity window, and expire when the server
 restarts. Conversation search and the rest of the read catalog follow in
