@@ -21,6 +21,9 @@ Host/passkey approval records intent. Only a successful code exchange activates
 a grant and selected supersessions; waiting, approval or an unredeemed code
 disconnects nothing. Read-only remains the only selection.
 
+The consent store allows 20 pending outside-agent reviews per tenant.
+Ordinary consent retains its separate capacity of 100 pending reviews.
+
 The [R4a MCP owner](../../src-server/routes/outside-agent/mcp-routes.ts) serves
 only exact GET/POST/DELETE `/mcp` with an outside access bearer, plus narrowly
 allowlisted preflight. Anonymous GET receives a 401 metadata challenge before
@@ -37,6 +40,13 @@ scope from the live grant. Global grants list no Projects. Each request,
 dispatch and outward chunk checks live authority; grant changes invalidate the
 old session and cursors while the existing bearer can initialize under the new
 selection. Revocation cannot recall bytes already handed to the network.
+If another process revokes the grant after the transport prepares its
+response, the emission check can leave an HTTP 200 with an empty body.
+Treat that as an interrupted request. Check the grant and reconnect before
+retrying.
+Access checks and the periodic session recheck only read the store.
+The request's shared ingress budget still charges under the SQLite writer
+lock, so a competing writer can delay the request and lead to HTTP 503.
 Five sessions and ten in-flight calls per grant, bounded requests/results and
 bounded replay queues are local to this single transport owner. Discovery,
 host-exclusion counts and the remaining reads belong to R4b/R4c. See the
