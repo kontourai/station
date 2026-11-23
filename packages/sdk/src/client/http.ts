@@ -228,7 +228,7 @@ function resolveTimeoutMs(opts?: ClientRequestOptions): number | undefined {
 }
 
 /** Native abort ordering where available, with an iOS 16.4 fallback. */
-function composeRequestSignals(
+export function composeRequestSignals(
   deadline: AbortSignal,
   ...callers: Array<AbortSignal | null | undefined>
 ): { signal: AbortSignal; cleanup: () => void } {

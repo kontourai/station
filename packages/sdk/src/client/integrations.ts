@@ -25,6 +25,7 @@ import { z } from 'zod';
 import {
   type ApiRequestScope,
   type ClientRequestOptions,
+  composeRequestSignals,
   consumeSseResponse,
   getJson,
   mutateJson,
@@ -115,7 +116,10 @@ export async function streamIntegrationEvents(
   receive: (frame: ToolServerEventStreamFrame) => void,
 ): Promise<void> {
   const controller = new AbortController();
-  const lifetime = AbortSignal.any([signal, controller.signal]);
+  const { signal: lifetime, cleanup } = composeRequestSignals(
+    controller.signal,
+    signal,
+  );
   try {
     const response = await mutateJson(
       `${requestScope.apiBase}/integrations/${encodeURIComponent(id)}/events/stream`,
@@ -149,6 +153,7 @@ export async function streamIntegrationEvents(
       throw new Error('Live events closed without a completion frame.');
   } finally {
     controller.abort();
+    cleanup();
   }
 }
 
