@@ -451,8 +451,11 @@ invalidates the integrations queries.
 
 ## Session-group preview
 
-`createCliSessionGroup`, `getCliSessionGroup`, `runCliSessionGroup` and
-`cancelCliSessionGroup` are exported from `@kontourai/station-sdk/client`.
+`createCliSessionGroup`, `getCliSessionGroup`, `listCliSessionGroups`,
+`runCliSessionGroup` and `cancelCliSessionGroup` are exported from
+`@kontourai/station-sdk/client`. To continue listing the groups owned by the
+current credential, pass the returned `nextGroupId` as `afterGroupId` when
+`hasMore` is true.
 The client checks the Station's `cliSessionGroups` capability before sending
 a group request. The personal Station must also have the preview enabled.
 `parseCliSessionGroupInput` validates a local plan before creation.

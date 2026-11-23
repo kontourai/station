@@ -2638,10 +2638,11 @@ station voice delete-session <id> [--api-base=<url>]
 
 ### `group`
 
-The **Session groups** preview on a personal Station adds four commands.
+The **Session groups** preview on a personal Station supports the following commands.
 
 ```sh
 station group session-create --file=group.json
+station group session-list [--after=<group>]
 station group session-get <group>
 station group session-run <group>
 station group session-cancel <group>

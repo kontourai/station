@@ -1,6 +1,9 @@
 import { existsSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { CliSessionGroupView } from '@kontourai/station-contracts/delegation-group';
+import type {
+  CliSessionGroupListPage,
+  CliSessionGroupView,
+} from '@kontourai/station-contracts/delegation-group';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
@@ -71,11 +74,14 @@ function fixture() {
     deadlineAt: Date.now() + 60_000,
   };
   const root = join(home, 'runtime', 'cli-session-groups');
-  const create = () =>
+  const create = (
+    operationId = body.operationId,
+    credential = 'credential-one',
+  ) =>
     app.request('/session-groups', {
       method: 'POST',
-      headers: { 'fixture-credential': 'credential-one' },
-      body: JSON.stringify(body),
+      headers: { 'fixture-credential': credential },
+      body: JSON.stringify({ ...body, operationId }),
     });
 
   return {
@@ -150,5 +156,49 @@ test('revoking the creating credential during body collection refuses the durabl
   expect(readdirSync(f.root).filter((name) => name.endsWith('.json'))).toEqual(
     [],
   );
+  expect(f.delegateTask).not.toHaveBeenCalled();
+});
+
+test('group listing pages only the current credential’s retained groups', async () => {
+  const f = fixture();
+  const list = (suffix = '') =>
+    f.app.request(`/session-groups${suffix}`, {
+      headers: { 'fixture-credential': 'credential-one' },
+    });
+  expect((await list()).status).toBe(404);
+  await f.setPreview(true);
+
+  const create = async (operationId: string, credential?: string) => {
+    const response = await f.create(operationId, credential);
+    expect(response.status).toBe(200);
+    const { data } = (await response.json()) as { data: CliSessionGroupView };
+    return data.groupId;
+  };
+  const foreign = await create('foreign', 'credential-two');
+  const owned = [];
+  for (let index = 0; index < 17; index += 1)
+    owned.push(await create(`operation-${index}`));
+  owned.sort();
+
+  const readPage = async (suffix = '') => {
+    const response = await list(suffix);
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store');
+    const text = await response.text();
+    expect(text).not.toContain(foreign);
+    expect(text).not.toContain(f.body.members[0].prompt);
+    return (JSON.parse(text) as { data: CliSessionGroupListPage }).data;
+  };
+  const first = await readPage();
+  expect(first.groups.map((group) => group.groupId)).toEqual(
+    owned.slice(0, 16),
+  );
+  expect(first).toMatchObject({ hasMore: true, nextGroupId: owned[15] });
+  const last = await readPage(`?afterGroupId=${first.nextGroupId}`);
+  expect(last.groups.map((group) => group.groupId)).toEqual(owned.slice(16));
+  expect(last).toMatchObject({ hasMore: false, nextGroupId: null });
+  expect((await list('?afterGroupId=%2F..')).status).toBe(400);
+  f.revoke();
+  expect((await list()).status).toBe(403);
   expect(f.delegateTask).not.toHaveBeenCalled();
 });

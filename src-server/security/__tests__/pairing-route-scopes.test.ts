@@ -291,6 +291,7 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
   });
 
   test.each([
+    ['GET', '/api/orchestration/session-groups', 'orchestration:read'],
     ['POST', '/api/orchestration/session-groups', 'orchestration:operate'],
     [
       'GET',

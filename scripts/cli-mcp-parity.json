@@ -497,6 +497,10 @@
       "exempt": "person-only",
       "reason": "The Session groups preview uses the verified personal Station credential. Session-authored Station Control callers cannot operate these routes."
     },
+    "group session-list": {
+      "exempt": "person-only",
+      "reason": "The Session groups preview lists groups bound to the verified personal Station credential."
+    },
     "group session-run": {
       "exempt": "person-only",
       "reason": "The Session groups preview uses the verified personal Station credential. Session-authored Station Control callers cannot operate these routes."

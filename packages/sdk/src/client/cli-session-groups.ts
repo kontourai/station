@@ -4,6 +4,7 @@ import {
 } from '@kontourai/station-contracts/agent-identity';
 import type {
   CliSessionGroupCreateInput,
+  CliSessionGroupListPage,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
 import { z } from 'zod/v3';
@@ -18,6 +19,7 @@ import { fetchPublicStationCapabilities } from './publicStationCapabilities.js';
 
 export type {
   CliSessionGroupCreateInput,
+  CliSessionGroupListPage,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
 
@@ -230,4 +232,39 @@ export async function cancelCliSessionGroup(
 ): Promise<CliSessionGroupView> {
   await requireCliSessionGroups(apiBase);
   return command(`${groupPath(apiBase, groupId)}/cancel`, {}, options);
+}
+
+/** Read one page of groups created with the selected Station credential. */
+export async function listCliSessionGroups(
+  apiBase: string,
+  input: { afterGroupId?: string } = {},
+  options?: ClientRequestOptions,
+): Promise<CliSessionGroupListPage> {
+  const suffix =
+    input.afterGroupId === undefined
+      ? ''
+      : `?afterGroupId=${encodeURIComponent(seatId.parse(input.afterGroupId))}`;
+  await requireCliSessionGroups(apiBase);
+  const response = await getJson(`${root(apiBase)}${suffix}`, {
+    ...options,
+    maxResponseBytes: 262_144,
+  });
+  if (response.status === 404)
+    throw new Error(
+      'Session group listing is unavailable. Enable the preview on an updated personal Station.',
+    );
+  return z
+    .object({
+      groups: z.array(viewSchema).max(16),
+      nextGroupId: seatId.nullable(),
+      hasMore: z.boolean(),
+    })
+    .strict()
+    .refine((page) =>
+      page.hasMore
+        ? page.nextGroupId !== null &&
+          page.nextGroupId === page.groups.at(-1)?.groupId
+        : page.nextGroupId === null,
+    )
+    .parse(await readEnvelopeOrThrow<unknown>(response));
 }

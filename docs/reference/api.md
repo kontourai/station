@@ -1586,7 +1586,10 @@ the same operation ID conflicts. `GET /api/orchestration/session-groups/:groupId
 reads the group projection for the creating credential. A disabled preview or
 unavailable group returns 404. A credential that becomes stale during creation
 cannot authorize the durable write. The projection contains group and member
-state without exposing the captured Task prompts.
+state without exposing the captured Task prompts. `GET /api/orchestration/session-groups`
+lists only groups created by the current credential. Results are ordered by
+group ID and capped at 16 groups and 256 KiB per response. If `hasMore` is true,
+pass `nextGroupId` as `afterGroupId` to read the next page.
 
 `POST /api/orchestration/session-groups/:groupId/run` runs ready members
 through local Task dispatch. Station checks the creating credential, the

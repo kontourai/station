@@ -67,3 +67,9 @@ export type CliSessionGroupCreateInput = {
     };
   }[];
 };
+
+export type CliSessionGroupListPage = {
+  groups: CliSessionGroupView[];
+  nextGroupId: string | null;
+  hasMore: boolean;
+};

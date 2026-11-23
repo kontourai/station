@@ -4,6 +4,7 @@ import {
   cancelCliSessionGroup,
   createCliSessionGroup,
   getCliSessionGroup,
+  listCliSessionGroups,
   parseCliSessionGroupInput,
   runCliSessionGroup,
 } from '@kontourai/station-sdk/client';
@@ -16,18 +17,20 @@ export async function runGroupCommand(
 ): Promise<void> {
   const [action, groupId, ...extra] = parsed.positionals;
   const create = action === 'session-create';
+  const list = action === 'session-list';
   if (
     ![
       'session-create',
       'session-get',
+      'session-list',
       'session-run',
       'session-cancel',
     ].includes(action ?? '') ||
     extra.length ||
-    (create ? groupId !== undefined : !groupId)
+    (create || list ? groupId !== undefined : !groupId)
   )
     throw new Error(
-      'Expected group session-create --file=<path> or session-get|session-run|session-cancel <group>.',
+      'Expected group session-create --file=<path>, session-list [--after=<group>], or session-get|session-run|session-cancel <group>.',
     );
   for (const flag of Object.keys(parsed.flags)) {
     if (
@@ -37,6 +40,7 @@ export async function runGroupCommand(
         'station',
         'credential',
         ...(create ? ['file'] : []),
+        ...(list ? ['after'] : []),
       ].includes(flag) ||
       (parsed.repeatedFlags[flag]?.length ?? 0) > 1
     )
@@ -80,7 +84,11 @@ export async function runGroupCommand(
       JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
     );
     result = await createCliSessionGroup(apiBase, input);
-  } else if (action === 'session-get')
+  } else if (list)
+    result = await listCliSessionGroups(apiBase, {
+      afterGroupId: optionalValueFlag(parsed, 'after'),
+    });
+  else if (action === 'session-get')
     result = await getCliSessionGroup(apiBase, groupId!);
   else if (action === 'session-cancel')
     result = await cancelCliSessionGroup(apiBase, groupId!);
