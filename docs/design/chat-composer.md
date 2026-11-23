@@ -663,7 +663,9 @@ they open a row at the end that then grows past the view's end: that row stays
 where it is, and
 streaming text and new answers are not followed until the reader returns to the
 end by any means, closes that row, or switches chats. Their own message and a
-request opening end it too and bring the end into view. Their rows stay where
+request opening end it too and bring the end into view, unless the reader has
+scrolled away from the held row: they stay where they are, as with no row
+held, and Scroll to bottom stays. Their rows stay where
 they are as it appears. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
