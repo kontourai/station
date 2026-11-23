@@ -1,4 +1,5 @@
 import type { Skill } from '@kontourai/station-contracts/catalog';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { resolveSkillCommandName } from '@kontourai/station-contracts/skill-command';
 import { agentQueries } from '@kontourai/station-sdk';
 import {
@@ -206,8 +207,11 @@ registerCommand(
       // shared derivations — a summed or "(uncached)" figure appears only
       // when the provider's declared inclusivity backs it, cache rows render
       // only when reported, and an absent figure reads "Not reported", never
-      // an invented zero (archive#3201). Dynamically imported to keep the
-      // shared usage modules out of the eager entry bundle.
+      // an invented zero (archive#3201). The shared usage modules are
+      // dynamically imported to keep them out of the eager entry bundle;
+      // `engineDisplayLabel` is imported statically because the entry already
+      // ships it, and a dynamic import of an entry module only adds a
+      // namespace object to the entry.
       const [
         {
           cacheInclusivePromptTokens,
@@ -221,11 +225,9 @@ registerCommand(
           formatMeasuredCostUsd,
           formatMeasuredTokens,
         },
-        { engineDisplayLabel },
       ] = await Promise.all([
         import('@kontourai/station-shared/usage-fold'),
         import('@kontourai/station-shared/usage-measurement'),
-        import('@kontourai/station-contracts/engine-display'),
       ]);
       const usageProvider =
         stats.measurement?.source === 'engine-events'
