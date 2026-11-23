@@ -28,6 +28,7 @@ import {
 } from '../../services/orchestration/dispatch-cwd-admission.js';
 import {
   type StationControlPolicyCaller,
+  stationControlOwnTaskRoute,
   stationControlRefusal,
   stationControlRefusalBody,
   stationControlScopeRefusal,
@@ -68,6 +69,17 @@ export function scopeDispatch(
   const ref = targetFor(
     caller.principal?.elevationEligible ? caller.principal.id : undefined,
   );
+  // #4511: the own-Task grant reaches only its own Session, and only on a
+  // route the policy table marks as touching nothing but that Session's Task.
+  if (
+    caller.ownTaskId &&
+    !caller.principal &&
+    ref?.kind === 'thread' &&
+    ref.threadId === caller.sessionId &&
+    !ref.remote &&
+    stationControlOwnTaskRoute(c.req.method, c.req.path)
+  )
+    return {};
   const target = ref ? scope?.target(ref, action) : undefined;
   const refusal = stationControlScopeRefusal(caller, target);
   if (refusal)

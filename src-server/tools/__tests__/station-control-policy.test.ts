@@ -1228,3 +1228,37 @@ describe('#4769: the tools a restricted session keeps', () => {
     expect(restrictedNetworkRouteWithheld('GET', '/no/such/route')).toBe(false);
   });
 });
+
+describe('the own-Task grant list (#4511)', () => {
+  const OWN_TASK_TOOLS = [
+    'get_task_brief',
+    'task_record',
+    'task_summary_update',
+    'task_thread_list',
+    'task_thread_reply',
+  ];
+  const widening =
+    'Adding a tool to the own-Task grant widens what an unattended automation ' +
+    "Session may do in a person's turn; it needs an owner decision. Update " +
+    'this list only with that decision.';
+
+  test('exactly these tools are marked ownTask, and each route serves only its tool', () => {
+    const marked = TABLE.filter(([, policy]) => policy.ownTask === true)
+      .map(([name]) => name)
+      .sort();
+    expect(marked, widening).toEqual(OWN_TASK_TOOLS);
+    for (const name of marked) {
+      const policy = STATION_CONTROL_TOOL_POLICY[
+        name as keyof typeof STATION_CONTROL_TOOL_POLICY
+      ] as StationControlToolPolicy;
+      expect(policy.routes.length, name).toBeGreaterThan(0);
+      for (const route of policy.routes) {
+        const match = matchStationControlRoute(route.method, route.path);
+        expect(
+          match?.owners,
+          `${name}: ${route.method} ${route.path} is served by another tool. ${widening}`,
+        ).toEqual([name]);
+      }
+    }
+  });
+});
