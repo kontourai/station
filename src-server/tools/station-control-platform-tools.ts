@@ -426,7 +426,7 @@ export function registerPlatformTools(server: StationControlToolRegistry) {
   server.tool(
     'remove_plugin',
     // #2323 S5 (owner decision 3): same path as update.
-    'Propose plugin removal in Needs attention. Removes nothing; a person confirms in Plugins.',
+    'Propose plugin removal in Needs attention. Removes nothing; a person confirms in Apps.',
     {
       name: z.string().describe('Plugin name'),
       rationale: z

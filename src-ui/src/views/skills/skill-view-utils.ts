@@ -175,7 +175,7 @@ export function skillSourceLabel(origin: SkillOrigin | undefined): string {
     case 'user':
       return 'This machine';
     case 'registry':
-      return 'Registry';
+      return 'Added from Browse';
     case 'plugin':
       return 'Plugin';
     case 'migrated-playbook':

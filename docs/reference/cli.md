@@ -4373,7 +4373,7 @@ station shortcut
 
 ### `registry`
 
-Unified catalog and plugin registry behavior for the Registry surface:
+Unified catalog and plugin registry behavior behind Apps › Discover and the catalogue pages:
 
 ```bash
 station registry
@@ -4434,7 +4434,7 @@ station registry install demo-layout
 The install command currently submits the ID without a preview decision.
 Executable or lifecycle-bearing entries are refused by the canonical installer;
 [#2809](https://github.com/kontourai/station/issues/2809) tracks the missing CLI
-consent flow. Use the Registry UI or `station plugin install <source>` to review
+consent flow. Use Apps › Discover or `station plugin install <source>` to review
 and submit consent. A successful catalog read does not prove installation.
 
 `examples/registry/manifest.json` is the reproducible local fixture used by
@@ -4486,7 +4486,7 @@ When Station saves the plugin but its runtime activation does not finish (a
 but … so it is not active.` (or `Updated …`) and **exit 2**, so a script does
 not continue as if the plugin were active. Station does not retry the
 activation: recover it with `station plugin recover <name>` or **Recover
-plugin** in Plugins; do not install it again. `station plugin install` refuses
+plugin** in Apps › Library; do not install it again. `station plugin install` refuses
 a plugin that already reads Needs recovery, installing nothing, unless you pass
 `--reinstall` to install another copy on purpose. A plugin the server is still
 activating (its row carries `activationInFlight`) is not stopped: `station
@@ -4501,7 +4501,7 @@ older Station without `recovery` exits 2 and says to check the plugin's row. A
 ### `plugin recover <name>`
 
 Recover an installed plugin that reads **Needs recovery**, as **Recover
-plugin** does in Plugins, for example on a headless home server.
+plugin** does in Apps › Library, for example on a headless home server.
 
 ```
 station plugin recover <name> [--yes]
@@ -4514,7 +4514,7 @@ non-interactive run is refused unless `--yes` approves what was printed.
 It sends exactly the reviewed revisions. Recovery uses the retained code and
 data and downloads nothing. When it activates the plugin, any trusted
 permissions it still needs are listed for the separate host approval in
-Plugins. When the activation does not finish within the activation limit, it
+Apps › Library. When the activation does not finish within the activation limit, it
 says so and exits 2: a retry may work, or remove the plugin.
 
 ### `plugin preview <source>`

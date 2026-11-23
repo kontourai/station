@@ -210,42 +210,68 @@ async function mockRegistry(page: Page) {
   return { catalog, installCalls, installed, layoutStates };
 }
 
-test.describe('Registry page', () => {
+/** The catalogue page's own title, once the app is past the onboarding gate. */
+async function catalogueHeading(page: Page, title: string) {
+  await expect(
+    page.getByRole('heading', { name: title, exact: true }),
+  ).toBeVisible({ timeout: 15_000 });
+}
+
+// The Registry is no longer a place: the catalogue root and its Plugins tab
+// are Apps › Discover, and each other catalogue is a page of its own,
+// entered from where its kind is used.
+test.describe('Catalogue pages', () => {
   test.beforeEach(async ({ page }) => {
     await mockStationIdentity(page);
-    // The catalogue root is Apps › Discover; its remaining tabs stay here.
-    await page.goto('/registry/agents');
-    // Wait for the app to load past the onboarding gate
-    await page.waitForSelector('.page__tab', { timeout: 15_000 });
   });
 
-  test('registry page loads with tabs', async ({ page }) => {
-    const tabs = page.locator('.page__tab');
-    await expect(tabs).toHaveCount(5);
-    await expect(tabs.nth(0)).toHaveText('Agents');
-    await expect(tabs.nth(1)).toHaveText('Skills');
-    await expect(tabs.nth(2)).toHaveText('Integrations');
-    await expect(tabs.nth(3)).toHaveText('Layouts');
-    await expect(tabs.nth(4)).toHaveText('Kits');
+  test('each catalogue is its own page, named for what it lists, with no tabs to the others', async ({
+    page,
+  }) => {
+    for (const [path, title, search] of [
+      ['/registry/agents', 'Browse agents', 'Search agents'],
+      ['/registry/skills', 'Browse skills', 'Search skills'],
+      ['/registry/integrations', 'Browse tool servers', 'Search tool servers'],
+      ['/registry/layouts', 'Browse layouts', 'Search layouts'],
+    ] as const) {
+      await page.goto(path);
+      await catalogueHeading(page, title);
+      await expect(page.getByLabel(search, { exact: true })).toBeVisible();
+      await expect(page.getByRole('tablist')).toHaveCount(0);
+      await expect(page.getByText('Registry', { exact: true })).toHaveCount(0);
+    }
+    await page.goto('/registry');
+    await expect(page).toHaveURL(/\/apps\/discover$/);
   });
 
-  test('switching tabs works', async ({ page }) => {
-    // Click Skills tab
-    await page.locator('.page__tab', { hasText: 'Skills' }).click();
+  test('skills and tool servers are browsed from where they are used, and the eyebrow leads back', async ({
+    page,
+  }) => {
+    await mockRegistry(page);
+    await page.goto('/guidance?tab=skills');
+    await page
+      .getByRole('button', { name: 'Browse skills', exact: true })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/\/registry\/skills$/);
+    await catalogueHeading(page, 'Browse skills');
+    await page.getByRole('link', { name: 'Skills', exact: true }).click();
+    await expect(page).toHaveURL(/\/guidance/);
 
-    // Verify Skills tab is active
-    await expect(page.locator('.page__tab--active')).toHaveText('Skills');
-
-    // Click Integrations tab
-    await page.locator('.page__tab', { hasText: 'Integrations' }).click();
-
-    await expect(page.locator('.page__tab--active')).toHaveText('Integrations');
+    await page.goto('/customize/tools');
+    await page
+      .getByRole('button', { name: 'Browse tool servers', exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/registry\/integrations$/);
+    await catalogueHeading(page, 'Browse tool servers');
+    await page.getByRole('link', { name: 'Tools', exact: true }).click();
+    await expect(page).toHaveURL(/\/customize\/tools$/);
   });
 
   test('Layouts shows standard Coding and Tasks starters', async ({ page }) => {
     await mockRegistry(page);
     await page.goto('/registry/layouts');
-    await page.waitForSelector('.page__tab', { timeout: 15_000 });
+    await catalogueHeading(page, 'Browse layouts');
 
     await expect(page.getByTestId('registry-detail')).toContainText('Coding');
     await page.getByRole('button', { name: /Tasks/ }).click();
@@ -260,7 +286,7 @@ test.describe('Registry page', () => {
   }) => {
     await mockRegistry(page);
     await page.goto('/registry/layouts');
-    await page.waitForSelector('.page__tab', { timeout: 15_000 });
+    await catalogueHeading(page, 'Browse layouts');
     await page.getByRole('button', { name: /Tasks/ }).click();
     const detail = page.getByTestId('registry-detail');
 
@@ -286,6 +312,7 @@ test.describe('Registry page', () => {
   test('the command palette reaches Apps, and Library steps to Discover', async ({
     page,
   }) => {
+    await page.goto('/apps/library');
     const navigation = page.getByRole('navigation', {
       name: 'Primary navigation',
     });
@@ -325,9 +352,8 @@ test.describe('Registry page', () => {
   }) => {
     const { installCalls } = await mockRegistry(page);
     await page.goto('/registry/skills');
-    await page.waitForSelector('.page__tab', { timeout: 15_000 });
+    await catalogueHeading(page, 'Browse skills');
 
-    await page.getByRole('tab', { name: 'Skills', exact: true }).click();
     await page.getByRole('button', { name: /Prompt Toolkit/i }).click();
 
     await expect(page.getByTestId('registry-detail')).toContainText(
@@ -345,28 +371,32 @@ test.describe('Registry page', () => {
     await expect.poll(() => installCalls.length).toBe(1);
   });
 
-  test('registry tabs install, remove, search, and surface action failures', async ({
+  test('catalogue pages install, remove, search, and surface action failures', async ({
     page,
   }) => {
     await mockRegistry(page);
-    await page.goto('/registry/agents');
-    await page.waitForSelector('.page__tab', { timeout: 15_000 });
 
     const cases = [
       {
-        tab: 'Agents',
+        path: '/registry/agents',
+        title: 'Browse agents',
+        noun: 'agents',
         item: 'Project Planner',
         install: 'Install',
         remove: 'Remove',
       },
       {
-        tab: 'Skills',
+        path: '/registry/skills',
+        title: 'Browse skills',
+        noun: 'skills',
         item: 'Prompt Toolkit',
         install: 'Install to workspace',
         remove: 'Remove from workspace',
       },
       {
-        tab: 'Integrations',
+        path: '/registry/integrations',
+        title: 'Browse tool servers',
+        noun: 'tool servers',
         item: 'Slack Notifier',
         install: 'Install',
         remove: 'Remove',
@@ -374,24 +404,21 @@ test.describe('Registry page', () => {
     ];
 
     for (const entry of cases) {
-      await page.locator('.page__tab', { hasText: entry.tab }).click();
+      await page.goto(entry.path);
+      await catalogueHeading(page, entry.title);
       await expect(page.getByTestId('registry-detail')).toContainText(
         entry.item,
       );
       await page
-        .getByLabel(new RegExp(`Search ${entry.tab.toLowerCase()}`))
+        .getByLabel(`Search ${entry.noun}`, { exact: true })
         .fill('no-match');
       await expect(
-        page.getByText(
-          `Nothing in ${entry.tab.toLowerCase()} matches “no-match”`,
-        ),
+        page.getByText(`Nothing in ${entry.noun} matches “no-match”`),
       ).toBeVisible();
       await expect(
         page.getByRole('button', { name: 'Clear filter' }),
       ).toBeVisible();
-      await page
-        .getByLabel(new RegExp(`Search ${entry.tab.toLowerCase()}`))
-        .fill('');
+      await page.getByLabel(`Search ${entry.noun}`, { exact: true }).fill('');
       await expect(page.getByTestId('registry-detail')).toContainText(
         entry.item,
       );
@@ -416,7 +443,8 @@ test.describe('Registry page', () => {
       ).toBeVisible();
     }
 
-    await page.locator('.page__tab', { hasText: 'Integrations' }).click();
+    await page.goto('/registry/integrations');
+    await catalogueHeading(page, 'Browse tool servers');
     await page.getByRole('button', { name: /Broken Integration/ }).click();
     await page
       .getByTestId('registry-detail')
@@ -498,7 +526,9 @@ test.describe('Registry page', () => {
   });
 });
 
-test('registry actions do not overlap at phone widths', async ({ page }) => {
+test('catalogue pages keep every card inside a phone width', async ({
+  page,
+}) => {
   await page.route('**/api/**', (route) =>
     route.fulfill({ json: { success: true, data: [] } }),
   );
@@ -518,55 +548,35 @@ test('registry actions do not overlap at phone widths', async ({ page }) => {
       },
     }),
   );
-  await page.goto('/registry/agents');
-  await dismissSetupLauncher(page);
-
-  const tabs = page.locator('.registry-view .page__tab');
-  await expect(tabs).toHaveCount(5);
-  for (const width of [320, 390, 430]) {
-    await page.setViewportSize({ width, height: 844 });
-    const boxes = await tabs.evaluateAll((elements) =>
-      elements.map((element) => {
-        const rect = element.getBoundingClientRect();
-        return {
-          bottom: rect.bottom,
-          height: rect.height,
-          left: rect.left,
-          right: rect.right,
-          top: rect.top,
-        };
-      }),
-    );
-    for (const box of boxes)
-      expect(box.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
-    for (let left = 0; left < boxes.length; left += 1) {
-      for (let right = left + 1; right < boxes.length; right += 1) {
-        const a = boxes[left];
-        const b = boxes[right];
-        const overlaps =
-          a.left < b.right &&
-          a.right > b.left &&
-          a.top < b.bottom &&
-          a.bottom > b.top;
-        expect(overlaps).toBe(false);
-      }
+  for (const [path, title] of [
+    ['/registry/agents', 'Browse agents'],
+    ['/registry/skills', 'Browse skills'],
+    ['/registry/integrations', 'Browse tool servers'],
+  ] as const) {
+    await page.goto(path);
+    await dismissSetupLauncher(page);
+    await catalogueHeading(page, title);
+    // No tab strip is left to crowd a phone: each catalogue is its own page.
+    await expect(page.getByRole('tablist')).toHaveCount(0);
+    for (const width of [320, 390, 430]) {
+      await page.setViewportSize({ width, height: 844 });
+      const clippedCatalogElements = await page
+        .locator(
+          '.registry-view .page__card-loose, .registry-view .page__card-footer button',
+        )
+        .evaluateAll(
+          (elements) =>
+            elements.filter((element) => {
+              const rect = element.getBoundingClientRect();
+              return rect.left < 0 || rect.right > window.innerWidth;
+            }).length,
+        );
+      expect(clippedCatalogElements).toBe(0);
+      expect(
+        await page.evaluate(
+          () => document.documentElement.scrollWidth <= window.innerWidth,
+        ),
+      ).toBe(true);
     }
-    const clippedCatalogElements = await page
-      .locator(
-        '.registry-view .page__card-loose, .registry-view .page__card-footer button',
-      )
-      .evaluateAll(
-        (elements) =>
-          elements.filter((element) => {
-            const rect = element.getBoundingClientRect();
-            return rect.left < 0 || rect.right > window.innerWidth;
-          }).length,
-      );
-    expect(clippedCatalogElements).toBe(0);
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= window.innerWidth,
-      ),
-    ).toBe(true);
   }
 });

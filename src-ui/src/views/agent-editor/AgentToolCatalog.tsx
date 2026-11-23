@@ -51,7 +51,7 @@ export function AgentToolCatalog({
         aria-label="Tool catalogs"
         items={[
           { key: 'integrations', label: 'Servers' },
-          { key: 'plugins', label: 'Plugins' },
+          { key: 'plugins', label: 'Apps' },
         ]}
         activeKey={tab}
         onSelect={(key) => {
@@ -91,7 +91,7 @@ export function AgentToolCatalog({
           const from =
             item.catalogSourceName ||
             item.toolOrigin?.registryName ||
-            'Registry provider';
+            'A tool catalogue';
           return (
             <article
               className="agent-tool-picker__source agent-tool-catalog__item"

@@ -328,6 +328,27 @@ export const RETIRED_USER_TERMS = Object.freeze([
     pattern:
       /\b(?:(?:open|review|configure in|in|under|from) connections\b(?![-\w])|connections\s*[›→>]\s*(?:models|engines|tools|knowledge|computers)\b)/i,
   },
+  // Apps area (first-release-apps.md, slice 1.4): Registry and Plugins are
+  // no longer places. Installable things are Apps (Discover, Library); the
+  // other catalogues are pages entered from where their kind is used. Only the
+  // place sense is matched: "browse/open/in/from/through/under the Registry",
+  // "Registry › <tab>", "Registry page/tab", and "open/in/under Plugins",
+  // "Plugins › …", "Plugins page/tab"; "Reload plugins" is an action on the
+  // packages, not a place, and stays legal. Technical registries
+  // (npm, the ACP public registry, "Registry URL") and the developer word
+  // "plugin" stay legal.
+  {
+    term: 'Registry as a place',
+    use: 'Apps › Discover, or the catalogue page of the kind (Browse skills)',
+    pattern:
+      /\b(?:(?:browse|open|in|from|through|under|via) (?:the )?registry\b(?![-\w])|registry\s*[›→>]\s*(?:agents|skills|integrations|plugins|layouts|kits)\b|registry (?:page|tab)s?\b)/i,
+  },
+  {
+    term: 'Plugins as a place',
+    use: 'Apps, Apps › Library or Apps › Discover',
+    pattern:
+      /\b(?:(?:open|in|under) plugins\b(?![-\w]|\.\w)|plugins\s*[›→>]\s*\w|plugins (?:page|tab)s?\b)/i,
+  },
 ]);
 
 /** The retired user-facing terms the gate enforces today. */

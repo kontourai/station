@@ -73,8 +73,11 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   },
 
   apps: SPLIT_PANE,
+  // Each remaining catalogue (agents, skills, tool servers, layouts, kits)
+  // is a page of its own, entered from where its kind is used; the view
+  // publishes its title ("Browse skills"). This is only the loading word.
   registry: {
-    title: 'Registry',
+    title: 'Browse',
     width: 'full',
     body: 'fill',
   },

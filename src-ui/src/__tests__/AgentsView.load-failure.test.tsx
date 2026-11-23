@@ -2,7 +2,8 @@
  * @vitest-environment jsdom
  *
  * A failed agents read says what happened once, with one Retry: the layout's
- * error state when nothing is listed, or one banner over stale rows.
+ * error state when nothing is listed, or one banner over stale rows. And the
+ * agent catalogue's link, which exists only while a source supplies agents.
  */
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -11,6 +12,11 @@ import { buildAgentsViewEmptyContent } from '../views/agent-editor/agentsViewHel
 
 const state = vi.hoisted(() => ({
   listItems: [] as Array<{ id: string; name: string }>,
+  /** What the agents catalogue read answers (`GET /api/registry/agents`). */
+  agentCatalog: { data: [] as unknown[] | undefined } as {
+    data: unknown[] | undefined;
+    error?: Error;
+  },
   query: {
     isLoading: false,
     isError: true,
@@ -31,6 +37,8 @@ vi.mock('../contexts/NavigationContext', () => {
 
 vi.mock('@kontourai/station-sdk', () => ({
   useAgentsQuery: () => state.query,
+  useRegistryItemsQuery: (tab: string) =>
+    tab === 'agents' ? state.agentCatalog : { data: undefined },
 }));
 
 vi.mock('../views/agent-editor/useAgentsViewModel', () => ({
@@ -62,6 +70,7 @@ afterEach(cleanup);
 beforeEach(() => {
   state.query.refetch.mockClear();
   state.listItems = [];
+  state.agentCatalog = { data: [] };
 });
 
 describe('AgentsView after a failed agents read', () => {
@@ -110,5 +119,37 @@ describe('AgentsView after a failed agents read', () => {
         error: new Error('agents read failed'),
       };
     }
+  });
+});
+
+describe('the agent catalogue link', () => {
+  test.each([
+    ['no source supplies agents', { data: [] }],
+    ['the catalogue has not answered', { data: undefined }],
+    [
+      'the catalogue read failed',
+      { data: undefined, error: new Error('offline') },
+    ],
+  ])('is absent when %s', (_case, catalog) => {
+    state.agentCatalog = catalog;
+    render(
+      <AgentsView agents={[]} availableModels={[]} onNavigate={vi.fn()} />,
+    );
+    expect(screen.queryByRole('button', { name: 'Browse agents' })).toBeNull();
+  });
+
+  test('appears when a source supplies an agent, and opens the agent catalogue', () => {
+    state.agentCatalog = {
+      data: [{ id: 'planner', displayName: 'Project Planner' }],
+    };
+    const onNavigate = vi.fn();
+    render(
+      <AgentsView agents={[]} availableModels={[]} onNavigate={onNavigate} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Browse agents' }));
+    expect(onNavigate).toHaveBeenCalledWith({
+      type: 'registry',
+      tab: 'agents',
+    });
   });
 });

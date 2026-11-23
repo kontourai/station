@@ -57,7 +57,7 @@ export function SkillExperiencePicker({
         <Empty
           variant="compact"
           label="Nothing here yet"
-          description="Install a visual skill through Registry to prepare it here."
+          description="Install a visual skill from Browse skills to prepare it here."
         />
       ) : (
         query.data.experiences.map((entry) => (

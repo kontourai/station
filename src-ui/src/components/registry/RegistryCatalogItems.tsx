@@ -111,7 +111,7 @@ export function RegistryCatalogDetail({
       {isInstalledPlugin && (
         <div className="page__subtitle">
           This plugin is installed. Add its enabled layout to a project, or
-          manage its settings in Plugins.
+          manage its settings in Apps › Library.
         </div>
       )}
       <div className="page__card-footer">

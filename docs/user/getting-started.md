@@ -1232,7 +1232,7 @@ shows the message with those values applied. **Start chat** opens a new chat
 and sends that message. This does not attach the skill to the Agent or install
 its dependencies; the Agent's configured tools and permissions still apply.
 
-To add skills, choose **Browse Registry Skills** (**Browse Registry** while the
+To add skills, choose **Browse skills** (it sits in the list while the
 library is empty) and inspect the available catalog before installing. **Import .md** accepts standalone Markdown skill
 files and reports the outcome of each file. Open an imported skill from its
 result to review and use it. Import does not copy a repository's

@@ -324,8 +324,8 @@ export function ACPConnectionDetailModal({
               )}
               {stdioToolServers.length === 0 ? (
                 <div style={{ fontSize: '13px', color: 'var(--text-muted)' }}>
-                  No stdio tool servers installed yet — install one from the
-                  Registry.
+                  No stdio tool servers installed yet. Add one in Customize ›
+                  Tools.
                 </div>
               ) : (
                 <div

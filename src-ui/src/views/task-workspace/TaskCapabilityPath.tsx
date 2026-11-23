@@ -296,8 +296,8 @@ function SourceTools({
         <p>From {source.from}</p>
         {!source.installed && (
           <p>
-            Review installation in Registry or request it through Agents and
-            tools.
+            Review installation in Customize › Tools or request it through
+            Agents and tools.
           </p>
         )}
         {source.installed && !source.enabled && (

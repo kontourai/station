@@ -7,7 +7,7 @@ import {
   useRegistryLayoutActionMutation,
   useRegistrySkillActionMutation,
 } from '@kontourai/station-sdk';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../components/Button';
 import { KitCatalog } from '../components/registry/KitCatalog';
 import { MarketplaceSources } from '../components/registry/MarketplaceSources';
@@ -21,13 +21,8 @@ import {
   type RegistryLayoutAction,
 } from '../components/registry/RegistryLayoutActions';
 import { getRegistrySkillInstallRefusal } from '../components/registry/registryCatalogModel';
-import {
-  StationExtensionsAccess,
-  useStationExtensionsAccess,
-} from '../components/registry/StationExtensionsAccess';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useShowSurface } from '../contexts/useShowSurface';
-import { pluginRegistry } from '../core/PluginRegistry';
 import { AgentToolCatalog } from './agent-editor/AgentToolCatalog';
 import { usePluginCatalogInstall } from './plugin-management/usePluginCatalogInstall';
 import './PluginManagementView.css';
@@ -63,7 +58,6 @@ export function RegistryView({
   // #928 C2a: "Open a Project" means Home by name; reveal the surface.
   const showSurface = useShowSurface();
   const invalidateQuery = useInvalidateQuery();
-  const extensionAccess = useStationExtensionsAccess();
   const [activeTab, setActiveTab] = useState<RegistryCatalogTab>(
     initialTab ?? 'agents',
   );
@@ -102,10 +96,6 @@ export function RegistryView({
   } | null>(null);
   const [installationOverrides, setInstallationOverrides] = useState(
     () => new Map<string, boolean>(),
-  );
-  const pluginRegistryStatus = useSyncExternalStore(
-    pluginRegistry.subscribe,
-    pluginRegistry.getLoadStatus,
   );
   const {
     data: availableData,
@@ -319,25 +309,11 @@ export function RegistryView({
     }
   };
 
-  const remoteBundlesSection = <StationExtensionsAccess />;
-  const remoteIsolationActive = extensionAccess.blocked;
-
+  // Each catalogue is a page entered from where its kind is used. The
+  // remote extension code controls live with installed apps (Apps ›
+  // Library) and Discover, where extension code is added and runs.
   return (
     <div className="registry-view">
-      {remoteIsolationActive && remoteBundlesSection}
-      {pluginRegistryStatus.state === 'degraded' &&
-        pluginRegistryStatus.failure !== 'remote-isolation' && (
-          <div className="page__message" role="alert">
-            <p>
-              {pluginRegistryStatus.failedPluginNames.length
-                ? `Couldn't load extensions: ${pluginRegistryStatus.failedPluginNames.join(', ')}.`
-                : "Couldn't load extensions for this Station."}
-            </p>
-            <Button onClick={() => void pluginRegistry.reload()}>
-              Retry extensions
-            </Button>
-          </div>
-        )}
       {!toolPicker && (
         <MarketplaceSources
           selected={selectedSource}
@@ -423,7 +399,6 @@ export function RegistryView({
             layoutPending: layoutMutation.isPending,
           }}
           actions={{
-            setActiveTab: selectTab,
             setSearch,
             clearMessage: () => setMessage(null),
             select: (id) => {
@@ -457,10 +432,10 @@ export function RegistryView({
               void refetchAvailable();
             },
             renderKits: () => <KitCatalog />,
+            openOwner: navigate,
           }}
         />
       )}
-      {!remoteIsolationActive && remoteBundlesSection}
       {pluginInstallModal}
     </div>
   );

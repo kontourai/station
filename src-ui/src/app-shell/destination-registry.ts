@@ -3,7 +3,6 @@ import type { NavigationView } from '../types';
 type ManagementDestinationId =
   | 'agents'
   | 'guidance'
-  | 'registry'
   | 'customize'
   | 'plugins'
   | 'developer'
@@ -29,7 +28,6 @@ export type DestinationIconId =
   | 'guidance'
   | 'notifications'
   | 'plugins'
-  | 'registry'
   | 'schedule'
   | 'activity'
   | 'settings';
@@ -441,18 +439,6 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     managementViewTypes: ['connections-computers'],
   },
   {
-    id: 'registry',
-    // Bare /registry redirects to Apps › Discover (`getLegacyPathRedirect`),
-    // so the remaining catalogue opens on its first tab.
-    route: '/registry/agents',
-    label: () => 'Registry',
-    keywords: ['registry', 'browse', 'install'],
-    icon: 'registry',
-    managementGroup: 'registry',
-    managementViewTypes: ['registry'],
-    view: { type: 'registry', tab: 'agents' },
-  },
-  {
     id: 'plugins',
     route: '/apps',
     label: () => 'Apps',
@@ -460,7 +446,8 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     icon: 'plugins',
     // Apps is not a Customize item. Until it has a sidebar row, the palette,
     // the links that point here and the redirects from `/plugins` and
-    // `/registry` are its doors.
+    // `/registry` are its doors. There is no Registry destination: each
+    // remaining catalogue is a page entered from where its kind is used.
     managementGroup: 'plugins',
     palette: { order: 60 },
     managementViewTypes: ['apps'],

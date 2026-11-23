@@ -675,7 +675,7 @@ export function SkillsView({
               size="sm"
               onClick={() => navigate('/registry/skills')}
             >
-              Browse Registry Skills
+              Browse skills
             </Button>
           )
         }
@@ -694,7 +694,7 @@ export function SkillsView({
                   className="split-pane__add-btn"
                   onClick={() => navigate('/registry/skills')}
                 >
-                  Browse Registry
+                  Browse skills
                 </button>
               ) : (
                 <button
@@ -875,7 +875,7 @@ export function SkillsView({
                         <p className="skill-detail__source-note">
                           {writeRefusal
                             ? `${mutationRefusal ? '' : 'Read-only. '}${skillWriteRefusalNote(writeRefusal)}`
-                            : 'This skill is read-only here. Browse Registry to discover or install skills; create a new workspace skill to author one.'}
+                            : 'This skill is read-only here. Browse skills to find more; create a new workspace skill to author one.'}
                         </p>
                         {/* The path is AUTHOR-CONTROLLED — a plugin names its
                             own directories and the last segment is usually the

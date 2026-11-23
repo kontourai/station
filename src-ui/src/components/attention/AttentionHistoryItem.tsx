@@ -296,7 +296,7 @@ function openLinkLabel(kind: AttentionItem['kind']): string {
     case 'tool-request':
       return 'Review tool request';
     case 'plugin-lifecycle-proposal':
-      return 'Open in Plugins';
+      return 'Open in Apps';
     case 'pull-request-feedback':
       return 'Open chat';
     default:

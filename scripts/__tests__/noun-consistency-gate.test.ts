@@ -460,6 +460,8 @@ describe('noun-consistency-gate', () => {
       'Restore workspace': 'Restore workspace?',
       'Reset agent context': 'Reset agent context',
       'Connections as a place': 'Configure in Connections',
+      'Registry as a place': 'Browse Registry Skills',
+      'Plugins as a place': 'Open in Plugins',
     };
     // Plural and lowercase forms of the same terms.
     const VARIANTS: Record<string, string> = {
@@ -485,6 +487,8 @@ describe('noun-consistency-gate', () => {
       'Restore workspace': 'restore workspace',
       'Reset agent context': 'reset agent context',
       'Connections as a place': 'Open Connections › Models, then retry',
+      'Registry as a place': 'Install one from the Registry › Integrations tab',
+      'Plugins as a place': 'Review its request under plugins.',
     };
 
     it('pins the retired terms, independently of the script', () => {
@@ -496,7 +500,11 @@ describe('noun-consistency-gate', () => {
     it('keeps every entry pending until the copy lanes merge, except those already enforced', () => {
       // Flip-on is deleting `pending`; when that happens this expectation
       // changes with it, deliberately.
-      const ENFORCED = ['Connections as a place'];
+      const ENFORCED = [
+        'Connections as a place',
+        'Registry as a place',
+        'Plugins as a place',
+      ];
       expect(
         RETIRED_USER_TERMS.filter(({ pending }) => !pending).map(
           ({ term }) => term,
@@ -603,6 +611,14 @@ describe('noun-consistency-gate', () => {
         '<p>Open Customize › Providers, then retry</p>',
         // The Station menu keeps its Connections label until Phase 2.
         '<p>Connections</p>',
+        // Registry and Plugins are retired only as places: technical
+        // registries and the developer word stay.
+        '<p>Browse skills</p>',
+        '<p>Open in Apps</p>',
+        '<p>Registry URL</p>',
+        '<p>Install it from the npm registry.</p>',
+        '<p>Reload plugins</p>',
+        '<p>Plugins can declare settings.</p>',
       ]) {
         expect(scanFileContent('Clean.tsx', source, all), source).toEqual([]);
       }

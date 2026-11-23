@@ -185,7 +185,7 @@ On a phone: The same, with the waiting line wrapping.
 | Import .md | Keep | Under "New skill". |
 | Registry › Skills | Simplify | Becomes Customize › Skills › Browse. One catalogue, entered from where you are. |
 | Registry › Integrations | Simplify | Becomes Customize › Tools › Add tool server › From the list. One catalogue, filtered in place. |
-| Registry › Agents and Agents › Browse | Remove | Removed for v1. On a fresh install it is empty beside "Manage sources (6)", and agents arrive inside apps. |
+| Registry › Agents and Agents › Browse | Simplify | No Browse tab in Agents for v1: on a fresh install the catalogue is empty beside "Manage sources (6)", and agents arrive inside apps. The agent catalogue stays a page of its own, and Agents links to it only while a source the person added supplies agent entries. |
 | Registry › Plugins, Layouts and Kits | Simplify | Out of scope here. Apps › Discover owns them. |
 | Registry sources | Keep | Behind "Sources…" in Skills › Browse and Add tool server. |
 | Tools tab | Keep | Now the Customize › Tools page. |

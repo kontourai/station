@@ -523,7 +523,7 @@ describe('RegistryView', () => {
       />,
     );
     expect(screen.queryByRole('tab', { name: 'Agents' })).toBeNull();
-    expect(screen.getByRole('tab', { name: 'Plugins' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: 'Apps' })).toBeTruthy();
     fireEvent.change(screen.getByRole('searchbox', { name: 'Find tools' }), {
       target: { value: 'Integration One' },
     });
@@ -700,39 +700,10 @@ describe('RegistryView', () => {
     }
   });
 
-  test('a chosen source is kept when the person switches tabs', () => {
-    registrySources.push({
-      id: 'mixed',
-      kind: 'skills',
-      displayName: 'Team catalog',
-      origin: 'user',
-      adapter: 'directory',
-      enabled: true,
-      status: 'ready',
-    });
-    try {
-      render(<RegistryView initialTab="skills" />);
-      fireEvent.change(screen.getByLabelText('Browse marketplace'), {
-        target: { value: 'mixed' },
-      });
-      fireEvent.click(screen.getByRole('tab', { name: 'Integrations' }));
-      expect(navigateMock).toHaveBeenCalledWith('/registry/integrations');
-      // The route remounts the view for the new tab.
-      cleanup();
-      render(<RegistryView initialTab="integrations" />);
-      expect(
-        (screen.getByLabelText('Browse marketplace') as HTMLSelectElement)
-          .value,
-      ).toBe('mixed');
-    } finally {
-      registrySources.length = 0;
-    }
-  });
-
   test('Discover comes first: management opens from the toolbar instead of sitting above the catalog', () => {
     render(<RegistryView />);
     const browse = screen.getByLabelText('Browse marketplace');
-    const tabs = screen.getByRole('tab', { name: 'Skills' });
+    const tabs = screen.getByRole('textbox', { name: 'Search agents' });
     const follows = (a: Node, b: Node) =>
       Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
     expect(follows(browse, tabs)).toBe(true);
@@ -754,118 +725,30 @@ describe('RegistryView', () => {
     expect(button.textContent).toBe('Details');
   });
 
-  test('updates the URL when switching Registry tabs', () => {
-    render(<RegistryView />);
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Skills' }));
-
-    expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
+  test('each catalogue is its own page: no tab strip leads to the others', () => {
+    for (const tab of [
+      'agents',
+      'skills',
+      'integrations',
+      'layouts',
+    ] as const) {
+      const view = render(<RegistryView initialTab={tab} />);
+      expect(screen.queryByRole('tablist')).toBeNull();
+      expect(screen.queryByRole('tab')).toBeNull();
+      view.unmount();
+    }
+    expect(navigateMock).not.toHaveBeenCalled();
   });
 
-  test('keeps remote plugin isolation visible in the Registry', () => {
-    render(<RegistryView />);
-
-    act(() => {
-      pluginRegistryStatus = {
-        state: 'degraded',
-        failedPluginNames: [],
-        failure: 'remote-isolation',
-      };
-      for (const listener of pluginRegistryListeners) listener();
-    });
-
-    expect(
-      screen.getByText(
-        /Extensions from http:\/\/127.0.0.1:3141 are off on this device/,
-      ),
-    ).toBeTruthy();
-  });
-
-  test('states the app-wide authority of remote extensions without claiming profile-only containment', () => {
-    render(<RegistryView />);
-
-    act(() => {
-      pluginRegistryStatus = {
-        state: 'degraded',
-        failedPluginNames: [],
-        failure: 'remote-isolation',
-      };
-      for (const listener of pluginRegistryListeners) listener();
-    });
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Review and enable',
-      }),
-    );
-
-    expect(
-      screen.getByText(/other Stations' data, credentials in this window/i),
-    ).toBeTruthy();
-    expect(screen.queryByText(/applies only to this Station/i)).toBeNull();
-    expect(screen.queryByText(/native bridge/i)).toBeNull();
-  });
-
-  test('names framed native loading and its unverified protection without promising app isolation', () => {
-    platformProfile.isTauri = true;
-    render(<RegistryView />);
-
-    act(() => {
-      pluginRegistryStatus = {
-        state: 'degraded',
-        failedPluginNames: [],
-        failure: 'remote-isolation',
-      };
-      for (const listener of pluginRegistryListeners) listener();
-    });
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Review and enable',
-      }),
-    );
-
-    expect(
-      screen.getByText(/runs in frames whose isolation isn't verified/),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(/native features and saved Station credentials/),
-    ).toBeTruthy();
-    expect(screen.queryByText(/runs inside this app/)).toBeNull();
-  });
-
-  test('puts the remote-isolation consent section before the catalog', () => {
-    render(<RegistryView />);
-
-    act(() => {
-      pluginRegistryStatus = {
-        state: 'degraded',
-        failedPluginNames: [],
-        failure: 'remote-isolation',
-      };
-      for (const listener of pluginRegistryListeners) listener();
-    });
-
-    const consent = screen.getByRole('button', {
-      name: 'Review and enable',
-    });
-    const catalog = screen.getByTestId('registry-detail');
-    expect(
-      consent.compareDocumentPosition(catalog) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  test('granted consent with a stale refusal keeps the override row below the catalog', () => {
-    platformProfile.isTauri = true;
-    // Right after consent is granted, the 'remote-isolation' status lingers
-    // until the reload completes; the enabled row must not jump above the
-    // catalog during that window (archive#2539).
+  // The remote extension code controls moved to Apps › Library, where
+  // AppsLibraryExtensions.test drives them; a catalogue page has none.
+  test('a catalogue page carries no remote extension controls', () => {
     remotePluginBundleConsent.setRemotePluginBundlesAllowed(
       'local-station',
       'http://127.0.0.1:3141',
       true,
     );
-    render(<RegistryView />);
-
+    render(<RegistryView initialTab="skills" />);
     act(() => {
       pluginRegistryStatus = {
         state: 'degraded',
@@ -874,83 +757,12 @@ describe('RegistryView', () => {
       };
       for (const listener of pluginRegistryListeners) listener();
     });
-
-    const disable = screen.getByRole('button', {
-      name: 'Turn off extensions',
-    });
-    const catalog = screen.getByTestId('registry-detail');
     expect(
-      catalog.compareDocumentPosition(disable) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
-  test('keeps remote extensions enabled and shows an error when revocation cannot be verified', () => {
-    platformProfile.isTauri = true;
-    const apiBase = 'http://127.0.0.1:3141';
-    remotePluginBundleConsent.setRemotePluginBundlesAllowed(
-      'local-station',
-      apiBase,
-      true,
-    );
-    const reload = vi
-      .spyOn(remotePluginBundleConsent, 'reloadAfterRemotePluginBundleRevoke')
-      .mockImplementation(() => {});
-    const removeItem = vi
-      .spyOn(Storage.prototype, 'removeItem')
-      .mockImplementation(() => {
-        throw new Error('storage unavailable');
-      });
-    try {
-      render(<RegistryView />);
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Turn off extensions' }),
-      );
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Turn off and reload' }),
-      );
-
-      expect(reload).not.toHaveBeenCalled();
-      expect(
-        screen.getByText(
-          "Couldn't turn extensions off. They are still allowed.",
-        ),
-      ).toBeTruthy();
-      expect(
-        screen.getByRole('dialog', {
-          name: 'Turn off extensions from http://127.0.0.1:3141?',
-        }),
-      ).toBeTruthy();
-    } finally {
-      removeItem.mockRestore();
-      reload.mockRestore();
-    }
-  });
-
-  test('reloads only after remote extension revocation is verified', () => {
-    platformProfile.isTauri = true;
-    const apiBase = 'http://127.0.0.1:3141';
-    remotePluginBundleConsent.setRemotePluginBundlesAllowed(
-      'local-station',
-      apiBase,
-      true,
-    );
-    const reload = vi
-      .spyOn(remotePluginBundleConsent, 'reloadAfterRemotePluginBundleRevoke')
-      .mockImplementation(() => {});
-    try {
-      render(<RegistryView />);
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Turn off extensions' }),
-      );
-      fireEvent.click(
-        screen.getByRole('button', { name: 'Turn off and reload' }),
-      );
-
-      expect(reload).toHaveBeenCalledOnce();
-    } finally {
-      reload.mockRestore();
-    }
+      screen.queryByRole('button', { name: 'Review and enable' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Turn off extensions' }),
+    ).toBeNull();
   });
 
   test('uses selected-card preview actions for agents without mutating on card click', () => {
@@ -1003,9 +815,8 @@ describe('RegistryView', () => {
   ] as const)(
     'renders preview install/remove actions for %s',
     (tabLabel, tabKey, itemId, itemLabel, sourceLabel) => {
-      const { rerender } = render(<RegistryView />);
-
-      fireEvent.click(screen.getByRole('tab', { name: tabLabel }));
+      const { rerender } = render(<RegistryView initialTab={tabKey} />);
+      expect(tabLabel).toBeTruthy();
       const detail = screen.getByTestId('registry-detail');
       expect(
         within(detail).getByText(`Selected ${tabKey.slice(0, -1)}`),
@@ -1034,7 +845,7 @@ describe('RegistryView', () => {
       expect(screen.getByText(`Installed ${itemLabel}`)).toBeTruthy();
       expect(showToastMock).not.toHaveBeenCalled();
 
-      rerender(<RegistryView />);
+      rerender(<RegistryView initialTab={tabKey} />);
       const installedDetail = screen.getByTestId('registry-detail');
       expect(
         within(installedDetail).getByRole('button', { name: /Remove/ }),
@@ -1047,18 +858,16 @@ describe('RegistryView', () => {
   // Layouts tab — which the install-flow cases above cannot cover, its
   // detail actions differ — is pinned on its own.
   test('derives the detail eyebrow from the Layouts tab', () => {
-    render(<RegistryView />);
+    render(<RegistryView initialTab="layouts" />);
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Layouts' }));
     const detail = screen.getByTestId('registry-detail');
     expect(within(detail).getByText('Selected layout')).toBeTruthy();
     expect(within(detail).queryByText('Selected agent')).toBeNull();
   });
 
   test('offers a route to installed skill management from the skills tab', () => {
-    render(<RegistryView />);
+    render(<RegistryView initialTab="skills" />);
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Skills' }));
     fireEvent.click(
       screen.getByRole('button', { name: 'Manage Installed Skills' }),
     );
@@ -1069,13 +878,14 @@ describe('RegistryView', () => {
   test('re-syncs the rendered tab when the route prop changes after mount (Back/Forward)', () => {
     const view = render(<RegistryView initialTab="integrations" />);
     expect(
-      screen.getByRole('tab', { name: 'Integrations', selected: true }),
+      screen.getByRole('textbox', { name: 'Search tool servers' }),
     ).toBeTruthy();
 
     view.rerender(<RegistryView initialTab="skills" />);
+    expect(screen.getByRole('textbox', { name: 'Search skills' })).toBeTruthy();
     expect(
-      screen.getByRole('tab', { name: 'Skills', selected: true }),
-    ).toBeTruthy();
+      screen.queryByRole('textbox', { name: 'Search tool servers' }),
+    ).toBeNull();
   });
 
   test('shows layout lifecycle truth and enables a disabled starter', () => {
@@ -1102,9 +912,7 @@ describe('RegistryView', () => {
     emptyTabs.add('agents');
     render(<RegistryView />);
 
-    expect(
-      screen.getByText('No agents in your marketplaces yet.'),
-    ).toBeTruthy();
+    expect(screen.getByText('No agents in your sources yet.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Manage plugins' })).toBeNull();
     expect(
       screen.getByText(
@@ -1121,9 +929,7 @@ describe('RegistryView', () => {
   test('offers plugin guidance on an empty Plugins tab', () => {
     emptyTabs.add('plugins');
     render(<RegistryView initialTab="plugins" />);
-    expect(
-      screen.getByText('No plugins in your marketplaces yet.'),
-    ).toBeTruthy();
+    expect(screen.getByText('No apps in your sources yet.')).toBeTruthy();
 
     const docsLink = screen.getByRole('link', { name: 'Open plugin guidance' });
     expect(docsLink.getAttribute('href')).toBe(
@@ -1674,32 +1480,3 @@ describe('RegistryView', () => {
     expect(screen.getByText('Install Preview')).toBeTruthy();
   });
 });
-
-test.each(['registry-unavailable', 'bundle-load-failure'] as const)(
-  'the Extensions screen owns %s and its Retry action',
-  (failure) => {
-    pluginRegistryStatus = {
-      state: 'degraded',
-      failedPluginNames:
-        failure === 'bundle-load-failure' ? ['broken-extension'] : [],
-      failure,
-    };
-    render(<RegistryView />);
-    expect(screen.getByRole('alert').textContent).toContain(
-      "Couldn't load extensions",
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Retry extensions' }));
-    expect(pluginRegistryReload).toHaveBeenCalledTimes(1);
-    act(() => {
-      pluginRegistryStatus = {
-        state: 'ready',
-        failedPluginNames: [],
-        failure: undefined,
-      };
-      for (const listener of pluginRegistryListeners) listener();
-    });
-    expect(
-      screen.queryByRole('button', { name: 'Retry extensions' }),
-    ).toBeNull();
-  },
-);

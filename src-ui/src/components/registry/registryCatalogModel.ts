@@ -67,38 +67,68 @@ export function getRegistrySourceLabel(item: RegistryItem) {
   return item.source;
 }
 
-export function getRegistryTabCopy(tab: RegistryCatalogTab) {
+/** Where a catalogue page is entered from; its eyebrow links back there. */
+interface RegistryPageOwner {
+  label: string;
+  path: string;
+}
+
+/**
+ * Each catalogue is its own page, entered from where its kind is used: there
+ * is no page that holds them all. `noun` names the entries in search and
+ * empty states; `owner` is the place the page's eyebrow climbs back to.
+ */
+export function getRegistryTabCopy(tab: RegistryCatalogTab): {
+  title: string;
+  noun: string;
+  description: string;
+  empty: string;
+  owner?: RegistryPageOwner;
+} {
   switch (tab) {
     case 'agents':
       return {
-        description:
-          'Discover agent definitions that can be added to this workspace.',
-        empty: 'No agents in your marketplaces yet.',
+        title: 'Browse agents',
+        noun: 'agents',
+        description: 'Agent definitions your sources supply.',
+        empty: 'No agents in your sources yet.',
+        owner: { label: 'Agents', path: '/agents' },
       };
     case 'skills':
       return {
+        title: 'Browse skills',
+        noun: 'skills',
         description: 'Find skills to install. Edit installed skills in Skills.',
-        empty: 'No skills in your marketplaces yet.',
+        empty: 'No skills in your sources yet.',
+        owner: { label: 'Skills', path: '/guidance?tab=skills' },
       };
     case 'integrations':
       return {
-        description: 'Discover integrations to connect to this workspace.',
-        empty: 'No integrations in your marketplaces yet.',
+        title: 'Browse tool servers',
+        noun: 'tool servers',
+        description: 'Tool servers you can add. Each is added turned off.',
+        empty: 'No tool servers in your sources yet.',
+        owner: { label: 'Tools', path: '/customize/tools' },
       };
     case 'plugins':
       return {
-        description:
-          'Discover plugins to install. Manage installed plugin settings in Plugins.',
-        empty: 'No plugins in your marketplaces yet.',
+        title: 'Discover',
+        noun: 'apps',
+        description: 'Find apps to add. Manage added apps in Apps › Library.',
+        empty: 'No apps in your sources yet.',
       };
     case 'layouts':
       return {
+        title: 'Browse layouts',
+        noun: 'layouts',
         description:
           'Browse ready layouts, then add an enabled layout to a project.',
         empty: 'No layouts are available for this workspace yet.',
       };
     case 'kits':
       return {
+        title: 'Browse kits',
+        noun: 'kits',
         description:
           'Browse installed Kits and add their read-only views to a Project.',
         empty: 'No portable Kits are installed for this workspace yet.',

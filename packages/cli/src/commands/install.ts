@@ -121,7 +121,7 @@ function unappliedLines(
     : 'its activation did not finish';
   return [
     `⚠️ ${verb} ${name}, but ${stopped}, so it is not active.`,
-    '  Run `station plugin recover <name>`, or choose Recover plugin in Plugins on the Station host, to activate it.',
+    '  Run `station plugin recover <name>`, or choose Recover plugin in Apps › Library on the Station host, to activate it.',
     `  Do not ${verb === 'Installed' ? 'install' : 'update'} it again; trusted permissions are approved after recovery.`,
   ];
 }
@@ -605,7 +605,7 @@ export async function recover(
     review.permissions.pendingConsent.some((entry) => entry.tier === 'trusted')
   )
     lines.push(
-      '  Trusted permissions still need the separate host approval in Plugins afterwards.',
+      '  Trusted permissions still need the separate host approval in Apps › Library afterwards.',
     );
   for (const line of lines) console.log(line);
   if (parsed.flags.yes !== true) {

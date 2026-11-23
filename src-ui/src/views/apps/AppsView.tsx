@@ -1,7 +1,12 @@
 import { usePageHeader } from '../../components/page-frame';
+import {
+  StationExtensionsAccess,
+  useStationExtensionsAccess,
+} from '../../components/registry/StationExtensionsAccess';
 import { Tabs, tabElementId, tabPanelElementId } from '../../components/Tabs';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { PluginManagementView } from '../PluginManagementView';
+import { AppsLoadFailure } from './AppsLoadFailure';
 import { APPS_SUBTITLE } from './appsCopy';
 import { DiscoverView } from './DiscoverView';
 import './AppsView.css';
@@ -36,7 +41,7 @@ export function AppsView({ tab }: { tab: 'discover' | 'library' }) {
         id={tabPanelElementId(TABS_ID, tab)}
         aria-labelledby={tabElementId(TABS_ID, tab)}
       >
-        {tab === 'discover' ? <DiscoverPanel /> : <PluginManagementView />}
+        {tab === 'discover' ? <DiscoverPanel /> : <LibraryPanel />}
       </div>
     </div>
   );
@@ -47,4 +52,22 @@ const DISCOVER_HEADER = { title: 'Apps', subtitle: APPS_SUBTITLE };
 function DiscoverPanel() {
   usePageHeader(DISCOVER_HEADER);
   return <DiscoverView />;
+}
+
+/**
+ * Library is where installed apps are managed, so it also holds this
+ * device's switch for remote extension code: first while it blocks apps from
+ * loading, otherwise after the list.
+ */
+function LibraryPanel() {
+  const extensionAccess = useStationExtensionsAccess();
+  const remoteAccess = <StationExtensionsAccess />;
+  return (
+    <>
+      {extensionAccess.blocked && remoteAccess}
+      <AppsLoadFailure />
+      <PluginManagementView />
+      {!extensionAccess.blocked && remoteAccess}
+    </>
+  );
 }

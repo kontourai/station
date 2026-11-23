@@ -41,7 +41,7 @@ import { resolvePluginValidateSource } from './plugin-validate-source.js';
 
 /** The one sentence a caller sees when the installation journal is unreadable. */
 export const PLUGIN_INSTALLATIONS_UNAVAILABLE =
-  'Plugin installations are unavailable; reload Plugins and retry.';
+  'Plugin installations are unavailable; reload Apps › Library and retry.';
 
 export class PluginInstallationsUnavailableError extends Error {
   constructor() {

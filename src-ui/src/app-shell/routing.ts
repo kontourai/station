@@ -114,7 +114,17 @@ export function getLegacyPathRedirect(path: string): string | null {
   ) {
     return preserveSearch('/apps/discover');
   }
-  if (pathname === '/apps/' || pathname === '/apps/discover/') {
+  // A segment that names no catalogue has no page of its own any more: the
+  // tabs that held them all are gone, so it lands on Discover too.
+  const registrySegment = pathname.match(/^\/registry\/([^/]+)\/?$/)?.[1];
+  if (registrySegment !== undefined && !isRegistryCatalogTab(registrySegment)) {
+    return preserveSearch('/apps/discover');
+  }
+  if (
+    pathname === '/apps/' ||
+    pathname === '/apps/discover/' ||
+    pathname === '/apps/library/'
+  ) {
     return preserveSearch(pathname.slice(0, -1));
   }
   if (pathname === '/developer/config') {

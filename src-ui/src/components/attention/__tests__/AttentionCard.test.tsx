@@ -814,15 +814,13 @@ describe('#2323 S5 plugin lifecycle proposal row', () => {
   test('links into Plugins, names who proposed it, and dismisses through the proposal route', async () => {
     render(<AttentionCard item={proposalItem()} />);
     // The row's actions load on demand (off the first paint).
-    await screen.findByRole('link', { name: 'Open in Plugins' });
+    await screen.findByRole('link', { name: 'Open in Apps' });
     expect(screen.getByText('Plugin proposal')).toBeTruthy();
     expect(
       screen.getByTestId('attention-plugin-proposal-author').textContent,
     ).toBe('Proposed by station in conversation c1');
     expect(
-      screen
-        .getByRole('link', { name: 'Open in Plugins' })
-        .getAttribute('href'),
+      screen.getByRole('link', { name: 'Open in Apps' }).getAttribute('href'),
     ).toBe('/plugins?proposal=p1');
     // No approve-shaped control: the row decides nothing.
     expect(
@@ -844,7 +842,7 @@ describe('#2323 S5 plugin lifecycle proposal row', () => {
       />,
     );
     // The row's actions load on demand (off the first paint).
-    await screen.findByRole('link', { name: 'Open in Plugins' });
+    await screen.findByRole('link', { name: 'Open in Apps' });
     expect(
       screen.getByTestId('attention-plugin-proposal-host').textContent,
     ).toBe('evil.example');
@@ -870,7 +868,7 @@ describe('#2323 S5 plugin lifecycle proposal row', () => {
       />,
     );
     // The row's actions load on demand (off the first paint).
-    await screen.findByRole('link', { name: 'Open in Plugins' });
+    await screen.findByRole('link', { name: 'Open in Apps' });
     expect(
       screen.getByTestId('attention-plugin-proposal-author').textContent,
     ).toBe(
