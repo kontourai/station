@@ -574,7 +574,8 @@ class AutomationActionsRuntime implements AutomationActions {
     try {
       const task = this.options.taskGraph.readTaskView(intent.taskId);
       if (
-        task?.createdAt === intent.taskCreatedAt &&
+        task &&
+        task.createdAt === intent.taskCreatedAt &&
         task.status === 'in_progress'
       )
         await this.options.taskGraph.updateTaskStatus(intent.taskId, 'review');
