@@ -3724,7 +3724,7 @@ div.chat-input
    notice, scheduled notes, check-backs) and Scroll to bottom, which shows
    while the reader is scrolled up, also keep it there. The row takes no
    pointer input except on the pill's own controls. */
-.chat-dock__body[data-status-floats] {
+.chat-dock__body[data-status-room] {
   /* The end of the transcript left clear for the pill at its tallest: a 44px
      touch control in its island (4px padding and a 1px border each side),
      and an 8px gap above it. */
@@ -3765,14 +3765,16 @@ div.chat-input
 
 /* The transcript keeps that room at its end, so pinned to the end the pill
    sits over empty space and covers no message. It is there whether or not a
-   status shows, so a status coming or going changes nothing. The column's
-   16px gap and the scroller's bottom padding count toward it. */
+   status shows, so a status coming or going changes nothing, and it stays
+   (`data-status-room`) while Scroll to bottom keeps the row in the composer,
+   so the reader leaving the end moves no row. The column's 16px gap and the
+   scroller's bottom padding count toward it. */
 .chat-messages__status-room {
   display: none;
   flex: none;
 }
 
-.chat-dock__body[data-status-floats]
+.chat-dock__body[data-status-room]
   > .chat-messages
   > .chat-messages__status-room {
   display: block;
@@ -3782,7 +3784,8 @@ div.chat-input
   );
 }
 
-/* The turn rail's bottom step leaves the pill its corner. */
+/* The turn rail's bottom step leaves the floating pill its corner; with the
+   row back in the composer the step comes down. */
 .chat-dock__body[data-status-floats] > .transcript-turn-rail-host {
   --transcript-turn-rail-inset-bottom: var(--chat-status-float-room);
 }

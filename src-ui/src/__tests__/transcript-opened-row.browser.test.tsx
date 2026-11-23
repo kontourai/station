@@ -1,8 +1,10 @@
 /**
  * A row the reader opens at the end of the transcript stays where it is,
- * including as what it opened finishes rendering; new content is followed
- * again.
+ * including as what it opened finishes rendering, an answer still streaming
+ * and a new turn arriving: Scroll to bottom shows while it is held, and the
+ * tail is followed again once the reader is back at the end.
  */
+import type { Page } from '@playwright/test';
 import { expect, test } from 'vitest';
 import {
   DESKTOP,
@@ -14,6 +16,43 @@ import {
   settledAtTail,
   tailFixture,
 } from './transcript-tail-fixture';
+
+const scrollToBottom = (page: Page) =>
+  page.getByRole('button', { name: 'Scroll to bottom' });
+
+/** The newest answer keeps streaming, a few words every 40ms. */
+function startStream(page: Page) {
+  return page.evaluate(() => {
+    const w = window as unknown as {
+      __streamTail(text: string): void;
+      __stream?: number;
+    };
+    w.__stream = window.setInterval(
+      () => w.__streamTail(' and a few more streamed words'),
+      40,
+    );
+  });
+}
+function stopStream(page: Page) {
+  return page.evaluate(() =>
+    window.clearInterval((window as unknown as { __stream: number }).__stream),
+  );
+}
+
+/** Opens the newest tool row, then grows it 600px past the input grace. */
+async function openAndGrow(page: Page) {
+  const row = lastToolRow(page);
+  await row.click();
+  await expect.poll(() => row.getAttribute('aria-expanded')).toBe('true');
+  await page.waitForTimeout(1_500);
+  await row.evaluate((button) => {
+    const late = document.createElement('div');
+    late.style.height = '600px';
+    button.closest('.chat-message-anchor')!.append(late);
+  });
+  await frames(page);
+  return row;
+}
 
 for (const [name, viewport] of [
   ['desktop', DESKTOP],
@@ -50,10 +89,17 @@ for (const [name, viewport] of [
         });
         await frames(page);
         expect(await rowTop(page), 'late detail growth').toBeCloseTo(before, 0);
-        // New content resumes following the tail.
+        // A new turn arriving while held is not followed either: Scroll to
+        // bottom tells the reader it is there.
         await page.evaluate(() =>
           (window as unknown as { __appendTurn(): void }).__appendTurn(),
         );
+        await frames(page);
+        await page.waitForTimeout(300);
+        expect(await rowTop(page), 'a new turn').toBeCloseTo(before, 0);
+        await expect.poll(() => scrollToBottom(page).count()).toBe(1);
+        // Back at the end, the tail is followed again.
+        await scrollToBottom(page).click();
         await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
         expect(errors).toEqual([]);
       } finally {
@@ -61,6 +107,37 @@ for (const [name, viewport] of [
       }
     },
   );
+
+  test(`(${name}) a row opened inside a streaming answer stays put while it streams`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      await startStream(page);
+      const row = lastToolRow(page);
+      await row.click();
+      await expect.poll(() => row.getAttribute('aria-expanded')).toBe('true');
+      await frames(page);
+      const opened = await rowTop(page);
+      // Well past the input grace, with tokens arriving all the while.
+      await page.waitForTimeout(1_500);
+      await frames(page);
+      expect(await rowTop(page), 'the opened row stays put').toBeCloseTo(
+        opened,
+        0,
+      );
+      expect(await scrollToBottom(page).count()).toBe(1);
+      // Back at the end, the stream is followed again.
+      await scrollToBottom(page).click();
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      await page.waitForTimeout(500);
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      expect(await rowTop(page), 'followed again').toBeLessThan(opened - 20);
+      await stopStream(page);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
 
   test(`(${name}) an incidental tap does not stop the tail being followed`, async () => {
     const { browser, page, errors } = await tailFixture(viewport);
@@ -173,3 +250,60 @@ for (const [name, viewport] of [
     }
   });
 }
+
+// Smooth keyboard scrolling and the glide, as a desktop reader has them.
+const SMOOTH = { reducedMotion: 'no-preference' } as const;
+
+test('(desktop) holding a row shows Scroll to bottom without moving the row', async () => {
+  const { browser, page, errors } = await tailFixture(DESKTOP, SMOOTH);
+  try {
+    await settledAtTail(page);
+    const before = await rowTop(page);
+    const row = lastToolRow(page);
+    await row.click();
+    await expect.poll(() => row.getAttribute('aria-expanded')).toBe('true');
+    await scrollToBottom(page).waitFor();
+    await page.waitForTimeout(1_500);
+    await frames(page);
+    expect(await rowTop(page), 'the held row').toBeCloseTo(before, 0);
+    expect(await scrollToBottom(page).isVisible()).toBe(true);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('(desktop) with a row held, one End reaches the end', async () => {
+  const { browser, page, errors } = await tailFixture(DESKTOP, SMOOTH);
+  try {
+    await settledAtTail(page);
+    await openAndGrow(page);
+    expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+    expect(await scrollToBottom(page).isVisible()).toBe(true);
+    await page.keyboard.press('End');
+    // The smooth scroll settles.
+    await page.waitForTimeout(1_500);
+    await frames(page);
+    expect(await distanceFromEnd(page)).toBeLessThanOrEqual(1);
+    expect(await scrollToBottom(page).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('(desktop) with a row held, Scroll to bottom reaches the end', async () => {
+  const { browser, page, errors } = await tailFixture(DESKTOP, SMOOTH);
+  try {
+    await settledAtTail(page);
+    await openAndGrow(page);
+    await scrollToBottom(page).click();
+    await page.waitForTimeout(1_500);
+    await frames(page);
+    expect(await distanceFromEnd(page)).toBeLessThanOrEqual(1);
+    expect(await scrollToBottom(page).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});

@@ -304,12 +304,70 @@ for (const [width, viewport] of VIEWPORTS) {
         const shown = (await pill(page, 'working').boundingBox())!;
         const log = (await transcript(page).boundingBox())!;
         expect(shown.y).toBeGreaterThanOrEqual(log.y + log.height - 0.5);
+        expect(
+          await page.locator('.chat-dock__body[data-status-floats]').count(),
+        ).toBe(0);
         expect(errors).toEqual([]);
       } finally {
         await browser.close();
       }
     });
   }
+
+  test(`(${width}) a reader moving a few px up moves no row`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      await setStatus(page, 'working');
+      expect(await statusRoom(page)).toBeGreaterThan(0);
+      const scrolled = await page.evaluate(() => {
+        const log = document.querySelector('.chat-messages') as HTMLElement;
+        log.dispatchEvent(
+          new WheelEvent('wheel', { deltaY: -8, bubbles: true }),
+        );
+        log.scrollTop -= 8;
+        log.dispatchEvent(new Event('scroll'));
+        const rows = log.querySelectorAll('.chat-message-anchor');
+        return (rows[rows.length - 1] as HTMLElement).getBoundingClientRect()
+          .top;
+      });
+      await page.getByRole('button', { name: 'Scroll to bottom' }).waitFor();
+      await frames(page);
+      // The end keeps the room: taking it away here would move the rows.
+      expect(await statusRoom(page)).toBeGreaterThan(0);
+      const after = await page.evaluate(() => {
+        const rows = document.querySelectorAll(
+          '.chat-messages .chat-message-anchor',
+        );
+        return (rows[rows.length - 1] as HTMLElement).getBoundingClientRect()
+          .top;
+      });
+      expect(after).toBeCloseTo(scrolled, 0);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+}
+
+/** The height of the room the transcript's end keeps for a floating row. */
+function statusRoom(page: Page) {
+  return page
+    .locator('.chat-messages__status-room')
+    .evaluate((room) => room.getBoundingClientRect().height);
+}
+
+/** How far the turn rail's lowest step sits above the transcript's bottom. */
+function stepClearance(page: Page) {
+  return page.evaluate(() => {
+    const log = document
+      .querySelector('.chat-messages')!
+      .getBoundingClientRect();
+    const steps = [
+      ...document.querySelectorAll('.transcript-turn-rail__step'),
+    ].map((step) => step.getBoundingClientRect().bottom);
+    return log.bottom - Math.max(...steps);
+  });
 }
 
 test('the pill keeps clear of the turn rail steps', async () => {
@@ -326,6 +384,19 @@ test('the pill keeps clear of the turn rail steps', async () => {
       const target = (await step.boundingBox())!;
       expect(overlaps(target, shown)).toBe(false);
     }
+    const raised = await stepClearance(page);
+    // Scrolled up, the pill is back in the composer: the steps come down.
+    await page.evaluate(() => {
+      const log = document.querySelector('.chat-messages') as HTMLElement;
+      log.dispatchEvent(
+        new WheelEvent('wheel', { deltaY: -400, bubbles: true }),
+      );
+      log.scrollTop -= 400;
+      log.dispatchEvent(new Event('scroll'));
+    });
+    await page.getByRole('button', { name: 'Scroll to bottom' }).waitFor();
+    await frames(page);
+    expect(await stepClearance(page)).toBeLessThan(raised - 30);
     expect(errors).toEqual([]);
   } finally {
     await browser.close();

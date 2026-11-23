@@ -650,9 +650,13 @@ message. Anything that takes room between the transcript and the composer (a
 notice card such as "Couldn't check this chat", the pending list, a banner),
 a shorter transcript, a next-turn or composer notice, scheduled notes or
 Scroll to bottom keep the row in the composer, so the status never covers a
-card or its controls and a short dock spends no line on room for it. Scroll to
-bottom shows only while the reader is scrolled up, and their rows stay where
-they are as it appears. Scroll-button hover changes its background
+card or its controls and a short dock spends no line on room for it. While the
+row is back in the composer the turn rail's steps come down, but the
+transcript keeps its end's room, so the reader leaving the end moves no row.
+Scroll to bottom shows while the reader is scrolled up, and from the moment
+they open a row at the end that then grows: that row stays where it is, and
+streaming text and new turns are not followed until the reader returns to the
+end by any means. Their rows stay where they are as it appears. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 

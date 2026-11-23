@@ -450,12 +450,24 @@ interface ChatInputAreaProps {
 const STATUS_FLOAT_MIN_TRANSCRIPT_PX = 240;
 
 /**
+ * What keeps the status row in the composer however much room there is: text
+ * with no surface of its own, and Scroll to bottom (chat.css names the same).
+ */
+const STATUS_ROW_STAYS =
+  '.chat-input__next-turn-notice, .chat-input__composer-notice, .agent-schedule-notes, .chat-check-backs, .chat-scroll-to-bottom';
+
+/**
  * The status row floats over the transcript's end (`data-status-floats` on
  * the dock body) only when that end is directly above the composer: a
  * transcript with rows, nothing that takes room between it and the composer
  * (a notice card, the pending list, a banner), and room to spare. Anywhere
  * else the row keeps its line in the composer, so the pill never covers a
  * card or its controls.
+ *
+ * The end keeps the row's room (`data-status-room`) wherever the row could
+ * float, including while what it holds keeps it in the composer: Scroll to
+ * bottom appears as the reader leaves the end, and taking the room away then
+ * would move the rows under them (a phone moved them by the room's height).
  */
 function placeStatusRow(body: HTMLElement, composer: HTMLElement) {
   const transcript = body.querySelector<HTMLElement>(
@@ -477,13 +489,11 @@ function placeStatusRow(body: HTMLElement, composer: HTMLElement) {
     )
       floats = false;
   }
+  const row = composer.querySelector<HTMLElement>(':scope > .chat-input__meta');
   if (floats && transcript) {
     // Measured the same way floating or not, so the decision cannot flip
     // itself: a row in the composer's flow would be the transcript's if it
     // floated.
-    const row = composer.querySelector<HTMLElement>(
-      ':scope > .chat-input__meta',
-    );
     const rowInFlow =
       row && getComputedStyle(row).position !== 'absolute'
         ? row.getBoundingClientRect().height
@@ -491,6 +501,12 @@ function placeStatusRow(body: HTMLElement, composer: HTMLElement) {
     floats =
       transcript.clientHeight + rowInFlow >= STATUS_FLOAT_MIN_TRANSCRIPT_PX;
   }
+  const room = floats;
+  // A row that stays in the composer does not float, and the turn rail's
+  // steps (keyed to `data-status-floats`) come down with it.
+  if (row?.querySelector(STATUS_ROW_STAYS)) floats = false;
+  if (room !== body.hasAttribute('data-status-room'))
+    body.toggleAttribute('data-status-room', room);
   if (floats !== body.hasAttribute('data-status-floats'))
     body.toggleAttribute('data-status-floats', floats);
 }
@@ -1218,6 +1234,7 @@ export function ChatInputArea({
       // none): do not leave it behind.
       body?.removeAttribute('data-composer-priority');
       body?.removeAttribute('data-status-floats');
+      body?.removeAttribute('data-status-room');
       root.style.minHeight = '';
       textarea.style.minHeight = '';
     };

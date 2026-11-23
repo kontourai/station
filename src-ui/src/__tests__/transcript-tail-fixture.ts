@@ -14,6 +14,8 @@
  *   which the transcript shows as a card at its end.
  * - `window.__setNextTurn(on)` shows the next-turn notice in the status row.
  * - `window.__appendTurn()` adds a new turn at the tail.
+ * - `window.__streamTail(text)` appends text to the newest answer, as a
+ *   streaming answer grows.
  *
  * Needs a cached Chromium (PLAYWRIGHT_BROWSERS_PATH); never downloads.
  */
@@ -82,6 +84,8 @@ export interface TailFixtureOptions {
   readonly theme?: 'light' | 'dark';
   /** The dock body's height in px; the viewport's when absent. */
   readonly dockHeight?: number;
+  /** `no-preference` for smooth keyboard scrolling and the glide. */
+  readonly reducedMotion?: 'reduce' | 'no-preference';
 }
 
 export async function tailFixture(
@@ -92,6 +96,7 @@ export async function tailFixture(
     turns = 6,
     theme = 'dark',
     dockHeight,
+    reducedMotion = 'reduce',
   } = typeof options === 'number' ? { turns: options } : options;
   const fixture = await scrollBrowserFixture(
     `
@@ -159,6 +164,19 @@ export async function tailFixture(
         window.__appendTurn=()=>setSession(current=>({...current,messages:[...current.messages,
           {id:'u-new',role:'user',content:'One more question about the release notes.',timestamp:5000},
           {id:'a-new',role:'assistant',turnId:'turn-new',content:'A new answer arrives at the tail.',timestamp:5001}]}));
+        window.__streamTail=text=>setSession(current=>{
+          const messages=[...current.messages];
+          const last={...messages[messages.length-1]};
+          last.content=(last.content||'')+text;
+          if(last.contentParts){
+            const parts=[...last.contentParts];
+            const end=parts.length-1;
+            parts[end]={...parts[end],content:parts[end].content+text};
+            last.contentParts=parts;
+          }
+          messages[messages.length-1]=last;
+          return {...current,messages};
+        });
       },[]);
       return <QueryClientProvider client={client}>
         <div className="chat-dock__body" style={{height:${dockHeight ? `${dockHeight}` : "'100vh'"},flex:'none',display:'flex',flexDirection:'column'}}>
@@ -179,7 +197,7 @@ export async function tailFixture(
     createRoot(document.getElementById('root')).render(<App/>);
   `,
     [shellStubs, composerControls],
-    { viewport, reducedMotion: 'reduce' },
+    { viewport, reducedMotion },
   );
   await fixture.page.addStyleTag({ content: appCss() });
   // Stylesheets the app's components import beside the chat's own.

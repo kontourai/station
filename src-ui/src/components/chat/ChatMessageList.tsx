@@ -545,15 +545,23 @@ function ChatMessageListComponent({
     interactedUntil: 0,
   });
   // A pinned reader who opened something at the end (a tool row, reasoning)
-  // keeps it where it is: the tail stops being followed until new content
-  // arrives (`pinToLatest`) or the reader returns to the end. Only growth of
-  // the row whose disclosure they activated starts it; an incidental tap on
-  // text or a link does not.
+  // keeps it where it is: the tail, streaming text and new turns included,
+  // stops being followed until the reader returns to the end, and Scroll to
+  // bottom shows from the moment the hold starts. Only growth of the row whose
+  // disclosure they activated starts it; an incidental tap on text or a link
+  // does not. The state mirrors the ref for render: showing the button at the
+  // start puts the composer's layout change there, not under a later scroll.
   const readerHoldRef = useRef(false);
+  const [readerHeld, setReaderHeld] = useState(false);
   const activatedRowRef = useRef<{ row: Element; height: number } | null>(null);
+  const startReaderHold = useCallback(() => {
+    readerHoldRef.current = true;
+    setReaderHeld(true);
+  }, []);
   const releaseReaderHold = useCallback(() => {
     readerHoldRef.current = false;
     activatedRowRef.current = null;
+    setReaderHeld(false);
   }, []);
   const readerActing = useCallback(() => {
     const input = readerInputRef.current;
@@ -949,16 +957,19 @@ function ChatMessageListComponent({
   const tailContentLength = lastMessage?.content?.length ?? 0;
   const tailPartsLength = lastMessage?.contentParts?.length ?? 0;
   const pinToLatest = useCallback(() => {
-    releaseReaderHold();
     if (pinFrameRef.current !== undefined)
       cancelAnimationFrame(pinFrameRef.current);
     const el = messagesContainerRef.current;
-    if (!el || isUserScrolledUpRef.current) return;
+    if (!el || isUserScrolledUpRef.current || readerHoldRef.current) return;
     writeProgrammaticScroll(el, el.scrollHeight);
     markTranscriptPhase('pin-layout');
     pinFrameRef.current = requestAnimationFrame(() => {
       pinFrameRef.current = undefined;
-      if (messagesContainerRef.current && !isUserScrolledUpRef.current) {
+      if (
+        messagesContainerRef.current &&
+        !isUserScrolledUpRef.current &&
+        !readerHoldRef.current
+      ) {
         markTranscriptPhase('pin-raf');
         writeProgrammaticScroll(
           messagesContainerRef.current,
@@ -966,7 +977,13 @@ function ChatMessageListComponent({
         );
       }
     });
-  }, [writeProgrammaticScroll, messagesContainerRef, releaseReaderHold]);
+  }, [writeProgrammaticScroll, messagesContainerRef]);
+  // A hold belongs to the chat it started in. Declared before the pin below,
+  // so a switched-to chat is pinned in the same pass.
+  useLayoutEffect(() => {
+    void activeSession.id;
+    releaseReaderHold();
+  }, [activeSession.id, releaseReaderHold]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: content growth triggers a pin before paint
   useLayoutEffect(() => {
     pinToLatest();
@@ -1091,9 +1108,10 @@ function ChatMessageListComponent({
           !externalScrollContainerRef &&
           interacting &&
           activated?.row.isConnected &&
-          activated.row.getBoundingClientRect().height !== activated.height
+          activated.row.getBoundingClientRect().height !== activated.height &&
+          !readerHoldRef.current
         )
-          readerHoldRef.current = true;
+          startReaderHold();
         if (
           !externalScrollContainerRef &&
           (readerHoldRef.current || interacting)
@@ -1158,6 +1176,7 @@ function ChatMessageListComponent({
     externalScrollContainerRef,
     measureGrowth,
     messagesContainerRef,
+    startReaderHold,
   ]);
 
   // Ends the scroll-load suppression a press's restoration holds. Genuine
@@ -1635,6 +1654,8 @@ function ChatMessageListComponent({
       if (!completed) return;
       isUserScrolledUpRef.current = false;
       setIsUserScrolledUp(false);
+      // The glide's own frames skip the scroll handler's release.
+      releaseReaderHold();
     };
     const animation = animateScrollToBottom(el, {
       write: (top) => writeProgrammaticScroll(el, top),
@@ -2174,7 +2195,7 @@ function ChatMessageListComponent({
   );
 
   const scrollToBottomControl =
-    isUserScrolledUp && !scrollingToBottom ? (
+    (isUserScrolledUp || readerHeld) && !scrollingToBottom ? (
       <ScrollToBottomButton onClick={handleScrollToBottom} />
     ) : null;
   const scrollControls = scrollToBottomControl;
@@ -2337,7 +2358,9 @@ function ChatMessageListComponent({
                           onProgrammaticScroll={noteProgrammaticScroll}
                           renderRow={renderTranscriptRow}
                           followTail={
-                            !isUserScrolledUp && !requestedMessageRowId
+                            !isUserScrolledUp &&
+                            !readerHeld &&
+                            !requestedMessageRowId
                           }
                           followTick={`${tailContentLength}:${tailPartsLength}`}
                           anchorVersion={scrollAnchorVersion}
