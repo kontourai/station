@@ -1,0 +1,7 @@
+{
+  "revision": "a05dfd19ed19335bcb9b470af227da6492be0175",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Updated for the Automations list change: the scheduler list read now carries recentOutcomes (last 12 finished runs by occurrence) and pausedItself, withheld with the other run-derived fields; checked the rest of the page against it.","inputs":["docs/architecture/module-map.md","packages/contracts/src/scheduler.ts","src-server/routes/operations/scheduler.ts","src-server/services/scheduling/builtin-scheduler.ts","src-server/services/scheduling/scheduler-ledger.ts"]}
+  ]
+}
