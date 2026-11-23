@@ -26,3 +26,11 @@
 .customize-shell--fill .customize-shell__main {
   min-height: 0;
 }
+
+/* Off a Customize item the shell is still in the tree (so the route outlet
+   keeps its place across the boundary) but draws nothing: the page lays out
+   as a direct child of the outlet, as it would without the shell. */
+.customize-shell.customize-shell--off,
+.customize-shell--off > .customize-shell__main {
+  display: contents;
+}

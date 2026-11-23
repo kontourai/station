@@ -17,13 +17,20 @@ const CUSTOMIZE_NAV_SURFACE = { id: 'customize-nav', label: 'Customize' };
  * The Customize page: its left list beside the routed page. The list
  * stays mounted while moving between items, so it does not reload or lose
  * its scroll on each click.
+ *
+ * Every route renders inside it, at the same place in the tree, so moving
+ * between a Customize item and any other page keeps the departing page
+ * mounted (held by the route's Suspense) while the arriving one loads. Off a
+ * Customize item (`activeId` null) it draws no list and takes no box of its
+ * own (`display: contents`), so the page lays out as if it were not there.
  */
 export function CustomizeShell({
   activeId,
   fill,
   children,
 }: {
-  activeId: string;
+  /** The Customize item the routed page belongs to, or null for any other page. */
+  activeId: string | null;
   /** The routed page fills the height and scrolls inside itself. */
   fill: boolean;
   children: ReactNode;
@@ -31,9 +38,16 @@ export function CustomizeShell({
   // On a phone the landing's list is the way in, so the left list is not
   // rendered (or loaded) there at all.
   const isMobile = useIsMobile();
+  const className = [
+    'customize-shell',
+    activeId === null ? 'customize-shell--off' : null,
+    fill ? 'customize-shell--fill' : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
   return (
-    <div className={`customize-shell${fill ? ' customize-shell--fill' : ''}`}>
-      {isMobile ? null : (
+    <div className={className}>
+      {activeId === null || isMobile ? null : (
         <div className="customize-shell__nav">
           <LazyBoundary
             load={loadCustomizeNav}

@@ -239,13 +239,14 @@ export function AppViewContent(props: AppViewContentProps) {
     </PageFrame>
   );
   // A Customize item's page sits beside the Customize list, which stays
-  // mounted across items and so lives outside the frame.
-  return customizeItem ? (
+  // mounted across items and so lives outside the frame. The shell wraps
+  // every route, not only Customize items: if the tree's shape changed at
+  // that boundary, React would unmount the departing page instead of holding
+  // it under Suspense while the arriving page's chunk loads.
+  return (
     <CustomizeShell activeId={customizeItem} fill={frameSpec?.body === 'fill'}>
       {page}
     </CustomizeShell>
-  ) : (
-    page
   );
 }
 
