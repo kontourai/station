@@ -2449,7 +2449,10 @@ function ChatMessageListComponent({
                 {/* Room at the end for the composer's floating status row
                 (chat.css shows it). A row of its own, not a pseudo-element,
                 so the tail-follow sees it come and go. */}
-                <div className="chat-messages__status-room" aria-hidden="true" />
+                <div
+                  className="chat-messages__status-room"
+                  aria-hidden="true"
+                />
               </div>
               {turnBrowserOpen && (
                 <LazyBoundary

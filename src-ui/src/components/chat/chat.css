@@ -3749,7 +3749,7 @@ div.chat-input
   position: absolute;
   inset-inline: 0;
   bottom: 100%;
-  z-index: 3;
+  z-index: var(--layer-sticky);
   pointer-events: none;
 }
 
@@ -3778,9 +3778,7 @@ div.chat-input
   display: block;
   height: max(
     0px,
-    calc(
-      var(--chat-status-float-room) - 16px - var(--chat-message-gutter)
-    )
+    calc(var(--chat-status-float-room) - 16px - var(--chat-message-gutter))
   );
 }
 

@@ -71,7 +71,10 @@ for (const [width, viewport] of VIEWPORTS) {
         const before = await rowTop(page);
         for (const kind of ['catching-up', 'working', 'unavailable'] as const) {
           await setStatus(page, kind);
-          expect(await rowTop(page), `${kind} appearing`).toBeCloseTo(before, 0);
+          expect(await rowTop(page), `${kind} appearing`).toBeCloseTo(
+            before,
+            0,
+          );
           await setStatus(page);
           expect(await rowTop(page), `${kind} leaving`).toBeCloseTo(before, 0);
         }
@@ -106,13 +109,17 @@ for (const [width, viewport] of VIEWPORTS) {
             `${kind}: last message above the pill`,
           ).toBeLessThanOrEqual(shown.y + 0.5);
           const composer = await box(page, '.chat-input__capsule');
-          expect(shown.y + shown.height, `${kind}: above the draft`).toBeLessThanOrEqual(
-            composer.y + 0.5,
-          );
           expect(
-            await hitAt(page, shown.x + shown.width / 2, shown.y + shown.height / 2, [
-              '[data-chat-status-pill]',
-            ]),
+            shown.y + shown.height,
+            `${kind}: above the draft`,
+          ).toBeLessThanOrEqual(composer.y + 0.5);
+          expect(
+            await hitAt(
+              page,
+              shown.x + shown.width / 2,
+              shown.y + shown.height / 2,
+              ['[data-chat-status-pill]'],
+            ),
             `${kind}: the pill is on top where it shows`,
           ).toBe('[data-chat-status-pill]');
           for (const x of [8, shown.x - 12, shown.x + shown.width + 12].filter(
@@ -150,12 +157,17 @@ for (const [width, viewport] of VIEWPORTS) {
           await setNotice(page, kind);
           const card = await box(page, selector);
           const shown = (await pill(page, 'unavailable').boundingBox())!;
-          expect(overlaps(card, shown), `${kind}: pill over the card`).toBe(false);
+          expect(overlaps(card, shown), `${kind}: pill over the card`).toBe(
+            false,
+          );
           for (const control of await page
             .locator(`:is(${selector}) button`)
             .all()) {
             const target = (await control.boundingBox())!;
-            expect(overlaps(target, shown), `${kind}: pill over a control`).toBe(false);
+            expect(
+              overlaps(target, shown),
+              `${kind}: pill over a control`,
+            ).toBe(false);
             // A press there reaches the card (a neighbouring control's
             // enlarged hit area may take it), never the status row.
             expect(
@@ -269,17 +281,23 @@ for (const [width, viewport] of VIEWPORTS) {
         await setStatus(page, 'working');
         const scrolled = await page.evaluate(() => {
           const log = document.querySelector('.chat-messages') as HTMLElement;
-          log.dispatchEvent(new WheelEvent('wheel', { deltaY: -400, bubbles: true }));
+          log.dispatchEvent(
+            new WheelEvent('wheel', { deltaY: -400, bubbles: true }),
+          );
           log.scrollTop -= 400;
           log.dispatchEvent(new Event('scroll'));
           const rows = log.querySelectorAll('.chat-message-anchor');
-          return (rows[rows.length - 3] as HTMLElement).getBoundingClientRect().top;
+          return (rows[rows.length - 3] as HTMLElement).getBoundingClientRect()
+            .top;
         });
         await page.getByRole('button', { name: 'Scroll to bottom' }).waitFor();
         await frames(page);
         const after = await page.evaluate(() => {
-          const rows = document.querySelectorAll('.chat-messages .chat-message-anchor');
-          return (rows[rows.length - 3] as HTMLElement).getBoundingClientRect().top;
+          const rows = document.querySelectorAll(
+            '.chat-messages .chat-message-anchor',
+          );
+          return (rows[rows.length - 3] as HTMLElement).getBoundingClientRect()
+            .top;
         });
         expect(after).toBeCloseTo(scrolled, 0);
         // The pill sits in the composer beside Scroll to bottom, over nothing.

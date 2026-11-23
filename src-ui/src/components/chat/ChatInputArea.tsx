@@ -481,7 +481,9 @@ function placeStatusRow(body: HTMLElement, composer: HTMLElement) {
     // Measured the same way floating or not, so the decision cannot flip
     // itself: a row in the composer's flow would be the transcript's if it
     // floated.
-    const row = composer.querySelector<HTMLElement>(':scope > .chat-input__meta');
+    const row = composer.querySelector<HTMLElement>(
+      ':scope > .chat-input__meta',
+    );
     const rowInFlow =
       row && getComputedStyle(row).position !== 'absolute'
         ? row.getBoundingClientRect().height

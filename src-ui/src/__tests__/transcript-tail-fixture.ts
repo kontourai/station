@@ -225,7 +225,9 @@ export async function setStatus(page: Page, kind?: StatusKind) {
   await callWindow(page, '__setStatus', kind);
   if (kind) await pill(page, kind).waitFor();
   else
-    await page.locator('[data-chat-status-pill]').waitFor({ state: 'detached' });
+    await page
+      .locator('[data-chat-status-pill]')
+      .waitFor({ state: 'detached' });
   await frames(page);
 }
 
