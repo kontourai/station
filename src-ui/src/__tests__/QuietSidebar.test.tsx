@@ -407,6 +407,7 @@ describe('the quiet sidebar preview', () => {
 
   test('the collapsed rail keeps Home, Automations, project initials, app icons, Discover, Customize with its dot and Settings', async () => {
     deviceSettingsStore.set('projectSidebarCollapsed', true);
+    state.previews = [...QUIET_ON, { id: 'apps-library', enabled: true }];
     state.engines = [engine('codex', 'Codex', { enabled: false })];
     state.projects = [{ id: 'p1', slug: 'notes-api', name: 'Notes API' }];
     state.boards = [{ id: 'b1', slug: 'daily-brief', name: 'Daily brief' }];
@@ -428,6 +429,8 @@ describe('the quiet sidebar preview', () => {
       name: 'Customize, needs attention',
     });
     expect(customize.querySelector('.sidebar__quiet-dot')).not.toBeNull();
+    // The Apps library's labelled button does not fit the icon column.
+    expect(screen.queryByRole('button', { name: 'Browse apps' })).toBeNull();
     // No utilities popover: Customize and Settings are on the rail itself.
     expect(
       screen.queryByRole('button', { name: 'Sidebar utilities' }),

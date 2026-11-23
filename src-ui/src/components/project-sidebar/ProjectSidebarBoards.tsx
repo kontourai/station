@@ -670,7 +670,8 @@ export function ProjectSidebarBoards({
           </button>
         )}
       </div>
-      {appsEnabled && (
+      {/* A labelled button does not fit the quiet rail's icon column. */}
+      {appsEnabled && !(quiet && collapsed) && (
         <Button
           className="apps-library-entry"
           onClick={() => {
