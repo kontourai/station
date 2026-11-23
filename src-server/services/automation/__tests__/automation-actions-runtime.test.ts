@@ -1967,6 +1967,9 @@ test.each([
     'a\u202ab\u202ec\u2066d\u2069e',
     'a b c d e',
   ],
+  ['a left-to-right mark is replaced', 'a\u200eb', 'a b'],
+  ['a right-to-left mark is replaced', 'a\u200fb', 'a b'],
+  ['an Arabic letter mark is replaced', 'a\u061cb', 'a b'],
   [
     'a cut never splits a surrogate pair',
     `${'y'.repeat(199)}\u{1F600}tail`,
@@ -2965,6 +2968,7 @@ async function approvalCards(
     OrchestrationService,
     'firstStartedMetadataOfThread'
   > = w.service,
+  tasks: Pick<TaskGraphService, 'readTaskView'> = w.graph,
 ) {
   const bus = new EventBus();
   const notifications = new NotificationService(
@@ -2979,7 +2983,7 @@ async function approvalCards(
     unattendedSessionTitle: unattendedSessionTitleResolver({
       orchestration,
       store: w.eventStore,
-      tasks: w.graph,
+      tasks,
     }),
   });
   notifications.addProvider(provider);
@@ -3051,6 +3055,22 @@ test("an ordinary Session's approval card is unchanged", async () => {
   });
   cards.opened(intent, 'ordinary-request');
   expect((await cards.card('ordinary-request')).body).toBe(
+    'git push origin main',
+  );
+});
+
+test('an unattended Session bound to a Task no automation rule created has an unchanged card', async () => {
+  const w = await world();
+  const intent = await running(w);
+  // The same unattended Session, bound to a Task a person (or an Agent) made.
+  const cards = await approvalCards(w, w.service, {
+    readTaskView: (taskId) => {
+      const view = w.graph.readTaskView(taskId);
+      return view && { ...view, createdBy: 'user' };
+    },
+  });
+  cards.opened(intent, 'other-task-request');
+  expect((await cards.card('other-task-request')).body).toBe(
     'git push origin main',
   );
 });

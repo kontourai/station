@@ -103,7 +103,8 @@ interface ApprovalInboxDependencies {
  * runs, bounded and with formatting controls and secrets removed. The
  * Session's own title is not used: for an automation it is derived from the
  * framed prompt, which quotes untrusted source data. Every other Session,
- * and an unattended one bound to no Task, gets undefined, so its approval
+ * and an unattended one bound to no Task or to a Task no automation rule
+ * created, gets undefined, so its approval
  * card is unchanged.
  */
 export function unattendedSessionTitleResolver(deps: {
@@ -120,7 +121,11 @@ export function unattendedSessionTitleResolver(deps: {
       return undefined;
     const taskId =
       deps.store?.readProjectTaskRoomExecutionBinding(threadId)?.taskId;
-    const title = taskId ? deps.tasks.readTaskView(taskId)?.title : undefined;
+    const task = taskId ? deps.tasks.readTaskView(taskId) : undefined;
+    // The marker is also set for external-monitor dispatches and internal
+    // principals, whose Task title an Agent may have written.
+    const title =
+      task?.createdBy === 'automation-rule' ? task.title : undefined;
     const bounded = title
       ? boundedText(redactSecrets(title), UNATTENDED_TITLE_MAX).trim()
       : '';

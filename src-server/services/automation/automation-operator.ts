@@ -70,7 +70,7 @@ export function retryAutomationEpisode(input: {
 /**
  * Text that is logged and shown to the operator: at most `max` code points
  * (a cut never splits a surrogate pair), with ASCII and C1 control
- * characters and the bidirectional embedding, override and isolate
+ * characters and the bidirectional mark, embedding, override and isolate
  * characters replaced by a space.
  */
 export function boundedText(text: string, max = 200): string {
@@ -80,11 +80,14 @@ export function boundedText(text: string, max = 200): string {
     .join('');
 }
 
-/** ASCII and C1 controls, and the bidirectional embeddings, overrides and isolates. */
+/** ASCII and C1 controls, and the bidirectional marks, embeddings, overrides and isolates. */
 function isFormattingControl(codePoint: number): boolean {
   return (
     codePoint <= 0x1f ||
     (codePoint >= 0x7f && codePoint <= 0x9f) ||
+    codePoint === 0x061c ||
+    codePoint === 0x200e ||
+    codePoint === 0x200f ||
     (codePoint >= 0x202a && codePoint <= 0x202e) ||
     (codePoint >= 0x2066 && codePoint <= 0x2069)
   );

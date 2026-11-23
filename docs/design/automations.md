@@ -418,10 +418,10 @@ questions, while its turns and tokens stay capped. An engine that never
 reports a request as resolved leaves the clock paused until the ceiling.
 
 An unanswered request notifies the way any approval does: the approval card
-reaches the owner's devices. For a Session that acts for no person, such as
-an automation's, the card's body starts with the title of the Task it runs
-("Automation: <rule name>", at most 80 characters), so it says which Task is
-waiting. The Session's own title is not used: it is derived from the framed
+reaches the owner's devices. For a Session that acts for no person and runs
+a Task an automation rule created, the card's body starts with that Task's
+title ("Automation: <rule name>", at most 80 characters), so it says which
+Task is waiting. The Session's own title is not used: it is derived from the framed
 prompt, which quotes untrusted source data.
 
 These Tasks can diagnose the normalized failing run. The quoted `head_sha` is
