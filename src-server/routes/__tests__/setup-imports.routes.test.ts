@@ -7,10 +7,10 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
-import { mkdtemp, realpath } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   deleteSkillPackageAt,
   saveSkillConfigIn,
@@ -41,10 +41,8 @@ vi.mock('../../telemetry/metrics.js', () => ({
 }));
 const { SkillService } = await import('../../services/agents/skill-service.js');
 
-const cleanup: string[] = [];
+const makeTempDir = trackTempDirs();
 afterEach(() => {
-  for (const dir of cleanup.splice(0))
-    rmSync(dir, { recursive: true, force: true });
   delete process.env.CODEX_HOME;
   delete process.env.STATION_HOME;
 });
@@ -55,10 +53,7 @@ afterEach(() => {
  * project home, the way the Skills page's dialog drives it.
  */
 async function realImportApp() {
-  const root = await realpath(
-    await mkdtemp(join(tmpdir(), 'station-setup-import-routes-')),
-  );
-  cleanup.push(root);
+  const root = await realpath(makeTempDir('station-setup-import-routes-'));
   const codex = join(root, 'codex');
   const project = join(root, 'project');
   mkdirSync(join(codex, 'prompts'), { recursive: true });
