@@ -1,3 +1,4 @@
+import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import { useMemo } from 'react';
 import { Button } from '../../components/Button';
 import { jobLabel } from '../../components/scheduler/jobName';
@@ -57,18 +58,48 @@ function moreText(hidden: number, uncounted: boolean): string | null {
   return uncounted ? 'More not shown' : null;
 }
 
-function RunChip({ run, zone }: { run: UpcomingRun; zone: string }) {
+/** Shows an automation's own row: opens it and brings it into view. */
+type OpenAutomation = (job: SchedulerJob) => void;
+
+function RunChip({
+  run,
+  zone,
+  onOpen,
+}: {
+  run: UpcomingRun;
+  zone: string;
+  onOpen: OpenAutomation;
+}) {
+  const time = shortTime(run.at, zone);
+  const label = jobLabel(run.job);
   return (
-    <li className="automations-week__run">
-      <time dateTime={run.time} className="automations-week__time">
-        {shortTime(run.at, zone)}
-      </time>{' '}
-      <span className="automations-week__name">{jobLabel(run.job)}</span>
+    <li>
+      {/* The chip truncates the name; the title carries the whole of it for
+          a pointer, and the button's own text is its full accessible name. */}
+      <button
+        type="button"
+        className="automations-week__run"
+        title={`${time} ${label}`}
+        onClick={() => onOpen(run.job)}
+      >
+        <time dateTime={run.time} className="automations-week__time">
+          {time}
+        </time>{' '}
+        <span className="automations-week__name">{label}</span>
+      </button>
     </li>
   );
 }
 
-function DayCell({ day, zone }: { day: ForecastDay; zone: string }) {
+function DayCell({
+  day,
+  zone,
+  onOpen,
+}: {
+  day: ForecastDay;
+  zone: string;
+  onOpen: OpenAutomation;
+}) {
   const parts = dayParts(day.key);
   const shown = day.runs.slice(0, RUNS_PER_DAY);
   const more = moreText(day.runs.length - shown.length, day.moreUncounted);
@@ -92,6 +123,7 @@ function DayCell({ day, zone }: { day: ForecastDay; zone: string }) {
               key={`${run.job.provider}:${run.job.name}:${run.time}`}
               run={run}
               zone={zone}
+              onOpen={onOpen}
             />
           ))}
           {more && <li className="automations-week__more">{more}</li>}
@@ -102,12 +134,32 @@ function DayCell({ day, zone }: { day: ForecastDay; zone: string }) {
 }
 
 /**
+ * The section's title: "Next 7 days" over the strip on a desktop, "Next up"
+ * over the three rows on a phone. CSS shows one; the hidden one is out of
+ * the accessibility tree too.
+ */
+export function NextDaysTitle() {
+  return (
+    <>
+      <span className="automations-title--wide">Next 7 days</span>
+      <span className="automations-title--narrow">Next up</span>
+    </>
+  );
+}
+
+/**
  * "Next 7 days": what runs from now to the end of the sixth day after
  * today, in the reader's zone, read from the scheduler's week forecasts.
  * Paused automations have no forecast, so they are not here. On a phone it
  * is "Next up", the next three runs in one column.
  */
-export function ScheduleNextDays({ now = Date.now() }: { now?: number }) {
+export function ScheduleNextDays({
+  onOpen,
+  now = Date.now(),
+}: {
+  onOpen: OpenAutomation;
+  now?: number;
+}) {
   const zone = browserTimeZone() ?? 'UTC';
   const [thisWeek, nextWeek] = forecastWeekStarts(now, zone);
   const first = useSchedulerJobs(thisWeek, zone);
@@ -158,7 +210,7 @@ export function ScheduleNextDays({ now = Date.now() }: { now?: number }) {
     <>
       <ol className="automations-week" aria-label="Next 7 days">
         {forecast.days.map((day) => (
-          <DayCell key={day.key} day={day} zone={zone} />
+          <DayCell key={day.key} day={day} zone={zone} onOpen={onOpen} />
         ))}
       </ol>
       <div className="automations-next-up">
@@ -169,17 +221,23 @@ export function ScheduleNextDays({ now = Date.now() }: { now?: number }) {
         ) : (
           <ol className="automations-next-up__list" aria-label="Next up">
             {nextUp.map(({ run, day }) => (
-              <li
-                key={`${run.job.provider}:${run.job.name}:${run.time}`}
-                className="automations-next-up__row"
-              >
-                <time dateTime={run.time} className="automations-next-up__when">
-                  {day.isToday ? 'Today' : dayParts(day.key).weekday}{' '}
-                  {shortTime(run.at, zone)}
-                </time>
-                <span className="automations-next-up__name">
-                  {jobLabel(run.job)}
-                </span>
+              <li key={`${run.job.provider}:${run.job.name}:${run.time}`}>
+                <button
+                  type="button"
+                  className="automations-next-up__row"
+                  onClick={() => onOpen(run.job)}
+                >
+                  <time
+                    dateTime={run.time}
+                    className="automations-next-up__when"
+                  >
+                    {day.isToday ? 'Today' : dayParts(day.key).weekday}{' '}
+                    {shortTime(run.at, zone)}
+                  </time>
+                  <span className="automations-next-up__name">
+                    {jobLabel(run.job)}
+                  </span>
+                </button>
               </li>
             ))}
             {nextUpMore && (

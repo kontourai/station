@@ -60,9 +60,18 @@ const jobs = [
     consecutiveFailures: 5,
     pausedItself: { failures: 5, at: '2026-11-21T02:00:00.000Z' },
     recentOutcomes: {
-      outcomes: ['worked', 'failed', 'failed', 'failed', 'failed', 'failed'],
+      outcomes: ['worked', 'failed', 'failed', 'unknown', 'unknown', 'failed'],
       more: false,
     },
+  },
+  {
+    ...base,
+    name: 'release-notes',
+    displayName: 'Release notes draft',
+    // A one-time automation whose run happened: it reads Done.
+    schedule: { kind: 'at', timeMs: Date.parse('2026-11-20T10:00:00.000Z') },
+    lastRun: '2026-11-20T10:00:02.000Z',
+    recentOutcomes: { outcomes: ['worked'], more: false },
   },
 ];
 const weeks = Object.fromEntries(
@@ -110,7 +119,7 @@ test('Automations: Next 7 days and the list fit phone and desktop in both themes
     `
     import React from 'react';
     import {createRoot} from 'react-dom/client';
-    import {ScheduleNextDays} from './src-ui/src/views/schedule/ScheduleNextDays';
+    import {ScheduleNextDays, NextDaysTitle} from './src-ui/src/views/schedule/ScheduleNextDays';
     import {ScheduleAutomationList, OutcomeLegend} from './src-ui/src/views/schedule/ScheduleAutomationList';
     const NativeDate = Date;
     const fixed = NativeDate.parse('${NOW}');
@@ -122,7 +131,8 @@ test('Automations: Next 7 days and the list fit phone and desktop in both themes
     const noop = () => {};
     function App() {
       return <main className="schedule" style={{padding:16}}>
-        <ScheduleNextDays />
+        <h2 className="page-section__title" data-testid="next-title"><NextDaysTitle /></h2>
+        <ScheduleNextDays onOpen={noop} />
         <OutcomeLegend jobs={jobs} />
         <ScheduleAutomationList jobs={jobs}
           agents={[{slug:'helper',name:'Release helper',engineDisplayName:'Codex'}]}
@@ -165,8 +175,29 @@ test('Automations: Next 7 days and the list fit phone and desktop in both themes
         const week = page.getByRole('list', { name: 'Next 7 days' });
         const nextUp = page.locator('.automations-next-up__list');
         const triggers = page.getByRole('button', { name: /^Actions for / });
-        expect(await triggers.count()).toBe(3);
+        expect(await triggers.count()).toBe(4);
+        const title = await page.getByTestId('next-title').innerText();
+        expect(title.trim()).toBe(width === 390 ? 'Next up' : 'Next 7 days');
+        await expect
+          .poll(() =>
+            page
+              .getByTestId('job-row-release-notes')
+              .locator('.automations-row__status')
+              .innerText(),
+          )
+          .toBe('Done');
         if (width === 390) {
+          // The ⋯ sits in the middle of its row, whatever the row holds.
+          for (const row of await page.locator('.automations-row').all()) {
+            const rowBox = (await row.boundingBox())!;
+            const menuBox = (await row
+              .locator('.action-overflow__trigger')
+              .boundingBox())!;
+            const offset = Math.abs(
+              menuBox.y + menuBox.height / 2 - (rowBox.y + rowBox.height / 2),
+            );
+            expect(offset, 'menu centred in its row').toBeLessThanOrEqual(4);
+          }
           expect(await week.isVisible()).toBe(false);
           expect(
             await nextUp.locator('.automations-next-up__row').count(),
@@ -188,6 +219,13 @@ test('Automations: Next 7 days and the list fit phone and desktop in both themes
             ),
           );
           expect(overflowing).toBe(false);
+          // A truncated chip still names its automation in full.
+          const chip = week.getByRole('button', {
+            name: /Check back on open work with a name long enough to wrap/,
+          });
+          expect(await chip.first().getAttribute('title')).toMatch(
+            /Check back on open work with a name long enough to wrap$/,
+          );
         }
         await page.screenshot({
           path: `${out}/automations-${width}-${theme}.png`,

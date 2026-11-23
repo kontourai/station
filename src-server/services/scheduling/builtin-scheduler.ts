@@ -1154,7 +1154,9 @@ export class BuiltinScheduler implements ISchedulerProvider {
         jobName: announcement.jobName,
         category: 'job-failure',
         title: `Automation "${labels.get(announcement.jobName) ?? announcement.jobName}" paused itself`,
-        body: `It failed ${announcement.failures} times in a row. Fix it, then resume it.`,
+        // The count includes runs whose outcome is unknown, so it says what
+        // is true of every counted run: none of them worked.
+        body: `Its last ${announcement.failures} runs didn't work. Fix it, then resume it.`,
         dedupeTag: fatigueDedupeTag(announcement.id),
         outbox: this.fatigueOutbox,
       }),

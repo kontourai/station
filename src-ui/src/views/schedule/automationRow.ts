@@ -27,7 +27,10 @@ function wallClock(hour: number, minute: number): string {
 /** ", Denver time" when the rule's zone is not the reader's; "" when it is. */
 function zoneSuffix(zone: string, readerZone: string | undefined): string {
   if (zone === readerZone) return '';
-  if (zone === 'UTC') return ', UTC';
+  if (/^(Etc\/)?(UTC|GMT|UCT|Zulu|Universal)$/.test(zone)) return ', UTC';
+  // POSIX signs are inverted: Etc/GMT+5 is five hours behind UTC.
+  const fixed = /^Etc\/GMT([+-])(\d{1,2})$/.exec(zone);
+  if (fixed) return `, UTC${fixed[1] === '+' ? '\u2212' : '+'}${fixed[2]}`;
   const city = zone.split('/').at(-1)?.replaceAll('_', ' ');
   return `, ${city ?? zone} time`;
 }
@@ -88,8 +91,27 @@ function runLabel(at: number, now: number): string {
   });
 }
 
+/**
+ * A one-time automation whose time has passed and that has had a run at or
+ * after that time: it will not run again, whatever its stored on or off says
+ * (a one-time automation set to be removed after its run is turned off once
+ * that run succeeds). Derived from the list read; nothing stores it. A run
+ * started by hand before its time does not finish it.
+ */
+export function hasFinished(job: SchedulerJob, now: number): boolean {
+  const schedule = job.schedule;
+  if (schedule?.kind !== 'at' || schedule.timeMs > now) return false;
+  const lastRun = Date.parse(job.lastRun ?? '');
+  return Number.isFinite(lastRun) && lastRun >= schedule.timeMs;
+}
+
 /** What the row says about the next run. */
 export function nextRunText(job: SchedulerJob, now: number): string {
+  if (hasFinished(job, now))
+    return `Ran ${new Date(Date.parse(job.lastRun ?? '')).toLocaleString(
+      undefined,
+      { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' },
+    )}`;
   if (!job.enabled) return "Won't run while paused";
   const next = Date.parse(job.nextRun ?? '');
   if (Number.isFinite(next)) return `Next: ${runLabel(next, now)}`;
@@ -98,26 +120,37 @@ export function nextRunText(job: SchedulerJob, now: number): string {
   return 'Next run unknown';
 }
 
-export type AutomationStatus = 'Active' | 'Paused' | 'Running';
+export type AutomationStatus = 'Active' | 'Paused' | 'Running' | 'Done';
 
 export function automationStatus(
   job: SchedulerJob,
   running: boolean,
+  now: number,
 ): AutomationStatus {
   if (running) return 'Running';
+  if (hasFinished(job, now)) return 'Done';
   return job.enabled ? 'Active' : 'Paused';
+}
+
+/** Where a row sorts: active first, then paused, then done. */
+export function statusRank(job: SchedulerJob, now: number): number {
+  if (hasFinished(job, now)) return 2;
+  return job.enabled ? 0 : 1;
 }
 
 /**
  * The row's warning, if any: Station pausing the automation itself outranks
- * a run of failures, because it is why the status reads Paused.
+ * a run of them, because it is why the status reads Paused. The scheduler
+ * counts a run whose outcome is unknown as not having worked, so the words
+ * say "didn't work", which is true of a failed run and of an unknown one;
+ * "failed" would claim more than Station knows about the unknown ones.
  */
 export function automationFlag(job: SchedulerJob): string | null {
   if (job.pausedItself)
-    return `Paused itself after ${job.pausedItself.failures} failed runs`;
+    return `Paused itself after ${job.pausedItself.failures} runs that didn't work`;
   const failures = job.consecutiveFailures ?? 0;
-  if (failures === 1) return 'Last run failed';
-  if (failures > 1) return `Last ${failures} runs failed`;
+  if (failures === 1) return "Last run didn't work";
+  if (failures > 1) return `Last ${failures} runs didn't work`;
   return null;
 }
 

@@ -67,7 +67,16 @@ const runMutation = vi.hoisted(() => ({
   variables: undefined as string | undefined,
 }));
 const toast = vi.hoisted(() => ({ showToast: vi.fn() }));
-const toggleMutation = vi.hoisted(() => ({ mutate: vi.fn() }));
+const toggleMutation = vi.hoisted(() => ({
+  mutate: vi.fn(),
+  isPending: false,
+  variables: undefined as { target: string; enabled: boolean } | undefined,
+}));
+const deleteMutation = vi.hoisted(() => ({
+  mutate: vi.fn(),
+  isPending: false,
+  variables: undefined as string | undefined,
+}));
 const retryQueries = vi.hoisted(() => ({
   jobs: vi.fn(),
   status: vi.fn(),
@@ -146,7 +155,7 @@ vi.mock('../hooks/useScheduler', () => ({
   }),
   useRunJob: () => runMutation,
   useToggleJob: () => toggleMutation,
-  useDeleteJob: () => ({ mutate: vi.fn() }),
+  useDeleteJob: () => deleteMutation,
   // Added when useScheduler gained it and the view adopted it. This
   // factory must name EVERY export the view reaches, so each new hook
   // reds this suite until listed (archive#4292). The partial-mock form
@@ -708,6 +717,13 @@ describe('Automations list (first-release automations-inbox-01 and -02)', () => 
   };
 
   beforeEach(() => {
+    toggleMutation.mutate = vi.fn();
+    toggleMutation.isPending = false;
+    toggleMutation.variables = undefined;
+    deleteMutation.mutate = vi.fn();
+    deleteMutation.isPending = false;
+    deleteMutation.variables = undefined;
+    toast.showToast.mockReset();
     window.history.replaceState({}, '', '/automations');
     schedulerHooks.runs = [];
     schedulerHooks.weeks = {};
@@ -854,13 +870,15 @@ describe('Automations list (first-release automations-inbox-01 and -02)', () => 
     ];
     render(<ScheduleView />);
     const failing = screen.getByTestId('job-row-failing');
-    expect(within(failing).getByText(/Last 2 runs failed/)).toBeTruthy();
+    expect(within(failing).getByText(/Last 2 runs didn't work/)).toBeTruthy();
     expect(within(failing).getByText('Active')).toBeTruthy();
     const selfPaused = screen.getByTestId('job-row-self-paused');
     expect(
-      within(selfPaused).getByText(/Paused itself after 5 failed runs/),
+      within(selfPaused).getByText(
+        /Paused itself after 5 runs that didn't work/,
+      ),
     ).toBeTruthy();
-    expect(within(selfPaused).queryByText(/runs failed/)).toBeNull();
+    expect(within(selfPaused).queryByText(/Last 5 runs/)).toBeNull();
     expect(within(selfPaused).getByText('Paused')).toBeTruthy();
     expect(within(selfPaused).getByText("Won't run while paused")).toBeTruthy();
     const personPaused = screen.getByTestId('job-row-person-paused');
@@ -881,14 +899,119 @@ describe('Automations list (first-release automations-inbox-01 and -02)', () => 
       screen.getAllByRole('menuitem').map((item) => item.textContent),
     ).toEqual(['Run now', 'Pause', 'Edit', 'Duplicate', 'Delete']);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Pause' }));
-    expect(toggle).toHaveBeenCalledWith({ target: 'on', enabled: false });
+    expect(toggle).toHaveBeenCalledWith(
+      { target: 'on', enabled: false },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
     fireEvent.click(
       screen.getByRole('button', { name: 'Actions for Off job' }),
     );
     fireEvent.click(screen.getByRole('menuitem', { name: 'Resume' }));
-    expect(toggle).toHaveBeenCalledWith({ target: 'off', enabled: true });
+    expect(toggle).toHaveBeenCalledWith(
+      { target: 'off', enabled: true },
+      expect.objectContaining({ onError: expect.any(Function) }),
+    );
     // Status is a word, not a control.
     expect(screen.queryByRole('button', { name: /^(on|off)$/i })).toBeNull();
+  });
+
+  test('a one-time automation that has run reads Done, offers no Pause or Resume, and sorts last', () => {
+    const at = Date.now() - 3_600_000;
+    schedulerHooks.jobs.data = [
+      job({
+        name: 'once',
+        displayName: 'Aaa once',
+        enabled: false,
+        schedule: { kind: 'at', timeMs: at, deleteAfterRun: true },
+        lastRun: new Date(at + 2_000).toISOString(),
+      }),
+      job({ name: 'paused', displayName: 'Zz paused', enabled: false }),
+      job({ name: 'active', displayName: 'Mm active' }),
+    ];
+    render(<ScheduleView />);
+    expect(
+      screen
+        .getAllByTestId(/^job-row-/)
+        .map((row) => row.querySelector('.automations-row__name')?.textContent),
+    ).toEqual(['Mm active', 'Zz paused', 'Aaa once']);
+    const row = screen.getByTestId('job-row-once');
+    expect(within(row).getByText('Done')).toBeTruthy();
+    expect(within(row).getByText(/^Ran /)).toBeTruthy();
+    expect(within(row).queryByText("Won't run while paused")).toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for Aaa once' }),
+    );
+    expect(
+      screen.getAllByRole('menuitem').map((item) => item.textContent),
+    ).toEqual(['Run now', 'Edit', 'Duplicate', 'Delete']);
+  });
+
+  test('a failed pause, resume or delete says so on the page', () => {
+    schedulerHooks.jobs.data = [
+      job({ name: 'on', displayName: 'On job' }),
+      job({ name: 'off', displayName: 'Off job', enabled: false }),
+    ];
+    const refuse = (_: unknown, options: { onError: (e: Error) => void }) =>
+      options.onError(new Error('Scheduler storage is unavailable.'));
+    toggleMutation.mutate = vi.fn(refuse);
+    deleteMutation.mutate = vi.fn(refuse);
+    render(<ScheduleView />);
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for On job' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Pause' }));
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /^Couldn't pause 'On job': /,
+    );
+    expect(toast.showToast).toHaveBeenLastCalledWith(
+      screen.getByRole('alert').textContent,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for Off job' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Resume' }));
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /^Couldn't resume 'Off job': /,
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for Off job' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+    expect(screen.getByRole('alert').textContent).toMatch(
+      /^Couldn't delete 'Off job': /,
+    );
+  });
+
+  test('while a pause or delete is in flight the row says so and its menu waits', () => {
+    schedulerHooks.jobs.data = [
+      job({ name: 'on', displayName: 'On job' }),
+      job({ name: 'gone', displayName: 'Gone job' }),
+    ];
+    toggleMutation.isPending = true;
+    toggleMutation.variables = { target: 'on', enabled: false };
+    const { rerender } = render(<ScheduleView />);
+    const row = screen.getByTestId('job-row-on');
+    expect(within(row).getByText('Pausing…')).toBeTruthy();
+    expect(row.getAttribute('aria-busy')).toBe('true');
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for On job' }));
+    expect(
+      (screen.getByRole('menuitem', { name: 'Pause' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole('menuitem', { name: 'Delete' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    closeMenu();
+    toggleMutation.isPending = false;
+    deleteMutation.isPending = true;
+    deleteMutation.variables = 'gone';
+    rerender(<ScheduleView />);
+    expect(
+      within(screen.getByTestId('job-row-gone')).getByText('Deleting…'),
+    ).toBeTruthy();
+    expect(
+      within(screen.getByTestId('job-row-on')).queryByText('Pausing…'),
+    ).toBeNull();
   });
 
   test('deleting asks first, naming the display name', () => {
@@ -1100,5 +1223,42 @@ describe('Next 7 days', () => {
     expect(screen.getByText("The next 7 days can't be shown")).toBeTruthy();
     expect(screen.queryByText('Nothing scheduled')).toBeNull();
     expect(screen.getByRole('button', { name: 'older' })).toBeTruthy();
+  });
+
+  test('a day chip opens its automation and moves focus to it', async () => {
+    vi.setSystemTime(new Date('2026-11-21T12:00:00.000Z'));
+    const digest = {
+      name: 'digest',
+      displayName: 'Daily repo digest',
+      provider: 'built-in',
+      enabled: true,
+      prompt: 'x',
+    };
+    seed([digest], {
+      '2026-11-16': [
+        {
+          ...digest,
+          weekOccurrences: {
+            times: ['2026-11-21T16:00:00.000Z'],
+            truncated: false,
+          },
+        },
+      ],
+      '2026-11-23': [
+        { ...digest, weekOccurrences: { times: [], truncated: false } },
+      ],
+    });
+    render(<ScheduleView />);
+    const chip = within(
+      screen.getByRole('list', { name: 'Next 7 days' }),
+    ).getByRole('button', { name: /Daily repo digest/ });
+    expect(chip.getAttribute('title')).toMatch(/ Daily repo digest$/);
+    const name = screen.getByRole('button', { name: 'Daily repo digest' });
+    expect(name.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(chip);
+    await waitFor(() =>
+      expect(name.getAttribute('aria-expanded')).toBe('true'),
+    );
+    await waitFor(() => expect(document.activeElement).toBe(name));
   });
 });

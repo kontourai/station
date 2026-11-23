@@ -34,6 +34,7 @@ function harness(
   const root = makeTempDir('station-list-outcomes-');
   const ledger = createSchedulerLedger({ directory: root });
   const outcomes: ScheduledConversationRunOutcome['kind'][] = [];
+  const schedule = vi.fn().mockResolvedValue(undefined);
   const scheduler = new BuiltinScheduler({
     ledger,
     turnAdapter: {
@@ -57,7 +58,7 @@ function harness(
         void task().catch(() => undefined);
         return true;
       },
-      schedule: vi.fn().mockResolvedValue(undefined),
+      schedule,
     } as never,
   });
   schedulers.push(scheduler);
@@ -86,7 +87,13 @@ function harness(
   };
   const listed = async (name: string) =>
     (await list()).find((job) => job.name === name)!;
-  return { ledger, scheduler, outcomes, list, listed };
+  const fatigueBells = () =>
+    schedule.mock.calls
+      .map(([, notification]) => notification)
+      .filter((notification) =>
+        String(notification.dedupeTag).startsWith('scheduler:fatigue:'),
+      );
+  return { ledger, scheduler, outcomes, list, listed, fatigueBells };
 }
 
 async function addTargeted(
@@ -251,5 +258,42 @@ describe('GET /jobs paused itself', () => {
     const job = await listed('digest');
     expect(job).toMatchObject({ enabled: false, consecutiveFailures: 2 });
     expect(job).not.toHaveProperty('pausedItself');
+  });
+});
+
+describe('runs whose outcome is unknown count toward pausing, and are said as such', () => {
+  const threshold = AUTOMATION_RUN_POLICY.fatigueFailureThreshold;
+
+  test('completed, unknown, unknown: two runs that did not work, shown as unknown', async () => {
+    const { scheduler, outcomes, listed } = harness();
+    await addTargeted(scheduler, 'digest');
+    outcomes.push('completed', 'indeterminate', 'indeterminate');
+    for (let run = 0; run < 3; run += 1) await scheduler.runJob('digest');
+    expect(await listed('digest')).toMatchObject({
+      enabled: true,
+      consecutiveFailures: 2,
+      recentOutcomes: {
+        outcomes: ['worked', 'unknown', 'unknown'],
+        more: false,
+      },
+    });
+  });
+
+  test(`${threshold} unknown runs pause it, and the notice does not call them failures`, async () => {
+    const { scheduler, outcomes, listed, fatigueBells } = harness();
+    await addTargeted(scheduler, 'digest');
+    outcomes.push(...Array(threshold).fill('indeterminate'));
+    for (let run = 0; run < threshold; run += 1)
+      await scheduler.runJob('digest');
+    expect(await listed('digest')).toMatchObject({
+      enabled: false,
+      pausedItself: { failures: threshold },
+    });
+    await vi.waitFor(() => expect(fatigueBells()).toHaveLength(1));
+    expect(fatigueBells()[0]).toMatchObject({
+      title: 'Automation "digest" paused itself',
+      body: `Its last ${threshold} runs didn't work. Fix it, then resume it.`,
+    });
+    expect(fatigueBells()[0].body).not.toMatch(/fail/i);
   });
 });

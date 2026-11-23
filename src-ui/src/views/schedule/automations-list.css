@@ -69,13 +69,24 @@
 }
 
 .automations-week__run {
+  display: block;
+  width: 100%;
   overflow: hidden;
   padding: var(--k-space-1) var(--k-space-2);
   border: 1px solid var(--k-line);
   border-radius: var(--k-radius-sm);
+  background: transparent;
+  color: var(--k-text);
+  font: inherit;
   font-size: var(--k-text-sm);
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: pointer;
+}
+
+.automations-week__run:hover {
+  border-color: var(--k-action);
 }
 
 .automations-week__time {
@@ -101,12 +112,29 @@
 .automations-next-up__more {
   display: flex;
   gap: var(--k-space-4);
-  padding: var(--k-space-3) var(--k-space-4);
+  width: 100%;
+  min-height: 44px;
+  align-items: center;
+  padding: var(--k-space-2) 0;
+  border: none;
   border-top: 1px solid var(--k-line);
+  background: transparent;
+  color: var(--k-text);
+  font: inherit;
+  text-align: left;
 }
 
-.automations-next-up__row:first-child {
+.automations-next-up__row {
+  cursor: pointer;
+}
+
+.automations-next-up__list > li:first-child > .automations-next-up__row {
   border-top: none;
+}
+
+/* The section's title names the strip on a desktop and "Next up" on a phone. */
+.automations-title--narrow {
+  display: none;
 }
 
 .automations-next-up__when {
@@ -468,27 +496,47 @@
     display: block;
   }
 
-  .automations-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas:
-      "main menu"
-      "when menu"
-      "runs status"
-      "detail detail";
-    row-gap: var(--k-space-2);
+  .automations-title--wide {
+    display: none;
   }
 
+  .automations-title--narrow {
+    display: inline;
+  }
+
+  /* The section card already insets the list; a row adds no side padding. */
+  .automations-row {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-areas:
+      "main main menu"
+      "when when menu"
+      "runs status menu"
+      "detail detail detail";
+    row-gap: var(--k-space-1);
+    padding: var(--k-space-3) 0;
+  }
+
+  .automations-row__menu {
+    align-self: center;
+    padding-left: var(--k-space-2);
+  }
+
+  /* "Weekdays at 8:00 AM · Next: Mon 8:00 AM" on one muted line. */
   .automations-row__when {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 0 var(--k-space-2);
+    display: block;
+    color: var(--k-text-muted);
+    font-size: var(--k-text-sm);
+  }
+
+  .automations-row__when > .automations-row__muted::before {
+    content: " · ";
   }
 
   .automations-row__runs {
     flex-direction: row;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--k-space-2) var(--k-space-3);
+    gap: var(--k-space-1) var(--k-space-3);
   }
 
   .automations-row__last-run {
@@ -501,6 +549,7 @@
 
   .automations-row__name {
     min-height: 44px;
+    text-align: left;
   }
 
   .automations-row__menu .action-overflow__trigger {
@@ -516,4 +565,8 @@
   .automations-empty__template {
     min-height: 44px;
   }
+}
+
+.automations-row__status--done .automations-row__status-dot {
+  background: var(--k-text-muted);
 }

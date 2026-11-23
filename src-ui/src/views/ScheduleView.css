@@ -6,19 +6,6 @@
   }
 }
 
-/* ── Stat Cards ── */
-
-.stat-card {
-  padding: 1rem 1.25rem;
-  min-width: 140px;
-  flex: 1;
-  /* A read-only figure: a flat panel with a tone edge, no hover lift. */
-  background: var(--k-panel);
-  border: 1px solid var(--k-line);
-  border-radius: 12px;
-  border-left: 4px solid var(--k-line);
-}
-
 /* ── Filter (shown only for a long list) ── */
 
 .schedule__filter {
@@ -547,10 +534,6 @@
   .schedule__field textarea,
   .schedule__field select {
     font-size: max(1rem, var(--k-text-md));
-  }
-
-  .stat-card {
-    min-width: 0;
   }
 
   .cron-editor__fields,

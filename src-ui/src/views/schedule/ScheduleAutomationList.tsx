@@ -14,6 +14,7 @@ import type { AgentData } from '../../contexts/AgentsContext';
 import {
   automationFlag,
   automationStatus,
+  hasFinished,
   lastOutcomeText,
   nextRunText,
   outcomesSummary,
@@ -91,6 +92,11 @@ export function OutcomeLegend({ jobs }: { jobs: readonly SchedulerJob[] }) {
   );
 }
 
+/** The row's element id, so another part of the page can bring it into view. */
+export function automationRowId(job: SchedulerJob): string {
+  return `automation-row-${job.provider}-${job.name}`;
+}
+
 export interface AutomationRowActions {
   onRun: (job: SchedulerJob) => void;
   onPause: (job: SchedulerJob, running: boolean) => void;
@@ -99,6 +105,18 @@ export interface AutomationRowActions {
   onDuplicate: (job: SchedulerJob) => void;
   onDelete: (job: SchedulerJob) => void;
 }
+
+/** A pause, resume or delete whose request is in flight. */
+export type PendingRowAction = Readonly<{
+  name: string;
+  action: 'pause' | 'resume' | 'delete';
+}>;
+
+const PENDING_WORDS: Record<PendingRowAction['action'], string> = {
+  pause: 'Pausing…',
+  resume: 'Resuming…',
+  delete: 'Deleting…',
+};
 
 export function ScheduleAutomationList({
   jobs,
@@ -110,6 +128,7 @@ export function ScheduleAutomationList({
   isRunning,
   getMissedCount,
   runPendingJob,
+  pendingAction,
   actions,
   now = Date.now(),
 }: {
@@ -123,6 +142,7 @@ export function ScheduleAutomationList({
   getMissedCount: (name: string) => number;
   /** Name of the job whose Run request is in flight, if any. */
   runPendingJob?: string;
+  pendingAction?: PendingRowAction;
   actions: AutomationRowActions;
   now?: number;
 }) {
@@ -134,7 +154,10 @@ export function ScheduleAutomationList({
         const label = jobLabel(job);
         const open = expanded === key;
         const running = isRunning(job.name);
-        const status = automationStatus(job, running);
+        const status = automationStatus(job, running, now);
+        const finished = hasFinished(job, now);
+        const pending =
+          pendingAction?.name === job.name ? pendingAction.action : undefined;
         const flag = automationFlag(job);
         const missed = getMissedCount(job.name);
         const detailId = `automation-detail-${job.provider}-${job.name}`;
@@ -143,7 +166,9 @@ export function ScheduleAutomationList({
           <li
             key={key}
             className="automations-row"
+            id={automationRowId(job)}
             data-testid={`job-row-${job.name}`}
+            aria-busy={pending ? true : undefined}
           >
             <div className="automations-row__main">
               <button
@@ -195,7 +220,7 @@ export function ScheduleAutomationList({
                 className="automations-row__status-dot"
                 aria-hidden="true"
               />
-              {status}
+              {pending ? PENDING_WORDS[pending] : status}
             </span>
             <div className="automations-row__menu">
               <ActionOverflowMenu
@@ -204,37 +229,49 @@ export function ScheduleAutomationList({
                   {
                     key: 'run',
                     label: 'Run now',
-                    disabled: running || runPendingJob === job.name,
+                    disabled:
+                      running ||
+                      runPendingJob === job.name ||
+                      pending === 'delete',
                     onSelect: () => actions.onRun(job),
                   },
-                  job.enabled
-                    ? {
-                        key: 'pause',
-                        label: 'Pause',
-                        onSelect: () => actions.onPause(job, running),
-                      }
-                    : {
-                        key: 'resume',
-                        label: 'Resume',
-                        onSelect: () => actions.onResume(job),
-                      },
+                  // A finished one-time automation has nothing to pause or
+                  // resume: turning it on would not run it again.
+                  ...(finished
+                    ? []
+                    : [
+                        job.enabled
+                          ? {
+                              key: 'pause',
+                              label: 'Pause',
+                              disabled: Boolean(pending),
+                              onSelect: () => actions.onPause(job, running),
+                            }
+                          : {
+                              key: 'resume',
+                              label: 'Resume',
+                              disabled: Boolean(pending),
+                              onSelect: () => actions.onResume(job),
+                            },
+                      ]),
                   {
                     key: 'edit',
                     label: 'Edit',
-                    haspopup: 'dialog',
+                    haspopup: 'dialog' as const,
                     onSelect: () => actions.onEdit(job),
                   },
                   {
                     key: 'duplicate',
                     label: 'Duplicate',
-                    haspopup: 'dialog',
+                    haspopup: 'dialog' as const,
                     onSelect: () => actions.onDuplicate(job),
                   },
                   {
                     key: 'delete',
                     label: 'Delete',
-                    tone: 'danger',
-                    haspopup: 'dialog',
+                    tone: 'danger' as const,
+                    haspopup: 'dialog' as const,
+                    disabled: Boolean(pending),
                     onSelect: () => actions.onDelete(job),
                   },
                 ]}
@@ -248,11 +285,13 @@ export function ScheduleAutomationList({
                     <dd>{job.prompt}</dd>
                   </dl>
                 )}
-                <JobDetail
-                  name={job.name}
-                  providerId={job.provider}
-                  autoOpenRun={autoOpenRun}
-                />
+                <section aria-label={`Runs of ${label}`}>
+                  <JobDetail
+                    name={job.name}
+                    providerId={job.provider}
+                    autoOpenRun={autoOpenRun}
+                  />
+                </section>
               </div>
             )}
           </li>

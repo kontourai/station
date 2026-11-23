@@ -16,11 +16,16 @@ and where results go, the schedule as a sentence ("Weekdays at 8:00 AM", with
 the zone named when it is not yours), the next run, and a strip of its last 12
 runs. A filled square worked, a red square with a dot failed, an outline was
 skipped because it was too late, and a dashed outline means Station cannot
-tell how it ended. The status reads **Active**, **Paused** or **Running**. A
-row can carry a flag: **Last 2 runs failed**, or **Paused itself after 5
-failed runs** when Station turned it off. Open **⋯** on a row for **Run now**,
-**Pause** or **Resume**, **Edit**, **Duplicate** and **Delete**. Select the
-name to see its instructions and run history.
+tell how it ended. The status reads **Active**, **Paused** or **Running**, or
+**Done** for a one-time automation that has had its run (it lists last, says
+when it ran, and has no Pause or Resume; **Run now** still runs it again). A
+row can carry a flag: **Last 2 runs didn't work**, or **Paused itself after 5
+runs that didn't work** when Station turned it off. "Didn't work" covers runs
+that failed and runs whose outcome Station cannot tell. Open **⋯** on a row
+for **Run now**, **Pause** or **Resume**, **Edit**, **Duplicate** and
+**Delete**; if one of them fails, the page says so. Select the name to see its
+instructions and run history, or select a run in **Next 7 days** to go to its
+automation.
 
 A filter appears once you have more than 15 automations. If the scheduler is
 stopped, or has stopped checking for due runs on time, the page says so above
@@ -133,9 +138,10 @@ read each card before confirming. The fix is tracked in
 
 - A run that fails is listed as failed and notifies you. The notice is generic;
   open Automations to see the jobs and runs you can access.
-- After **5 failed runs in a row**, Station pauses the automation and
-  notifies you once. Its row reads **Paused** with the flag **Paused itself
-  after 5 failed runs** until you resume it. A run that retried counts once.
+- After **5 runs in a row that didn't work** (failed, or ended with an
+  outcome Station cannot tell), Station pauses the automation and notifies you
+  once. Its row reads **Paused** with the flag **Paused itself after 5 runs
+  that didn't work** until you resume it. A run that retried counts once.
   A successful run resets the count, and so does resuming the automation.
 - If Station was not running when a chat automation was due and it is more
   than **6 hours** late, that run is recorded as missed instead of running

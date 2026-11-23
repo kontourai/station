@@ -13,6 +13,7 @@ import {
   nextRunText,
   outcomesSummary,
   scheduleSentence,
+  statusRank,
 } from '../views/schedule/automationRow';
 
 const job = (overrides: Partial<SchedulerJob>): SchedulerJob => ({
@@ -50,6 +51,19 @@ describe('scheduleSentence', () => {
     expect(
       scheduleSentence({ kind: 'cron', expr: '0 8 * * 1-5' }, 'Europe/London'),
     ).toBe('Weekdays at 8:00 AM, UTC');
+    // POSIX names invert the sign: Etc/GMT+5 is five hours behind UTC.
+    expect(
+      scheduleSentence(
+        { kind: 'cron', expr: '0 8 * * 1-5', timezone: 'Etc/GMT+5' },
+        'Europe/London',
+      ),
+    ).toBe('Weekdays at 8:00 AM, UTC\u22125');
+    expect(
+      scheduleSentence(
+        { kind: 'cron', expr: '0 8 * * 1-5', timezone: 'Etc/GMT-3' },
+        'Europe/London',
+      ),
+    ).toBe('Weekdays at 8:00 AM, UTC+3');
   });
 
   test('intervals and rules it cannot say plainly fall back honestly', () => {
@@ -87,19 +101,56 @@ describe('nextRunText', () => {
 });
 
 describe('status and flag', () => {
-  test('status is Active, Paused or Running, in words', () => {
-    expect(automationStatus(job({}), false)).toBe('Active');
-    expect(automationStatus(job({ enabled: false }), false)).toBe('Paused');
-    expect(automationStatus(job({}), true)).toBe('Running');
+  const now = Date.parse('2026-11-21T12:00:00.000Z');
+  test('status is Active, Paused, Running or Done, in words', () => {
+    expect(automationStatus(job({}), false, now)).toBe('Active');
+    expect(automationStatus(job({ enabled: false }), false, now)).toBe(
+      'Paused',
+    );
+    expect(automationStatus(job({}), true, now)).toBe('Running');
+  });
+
+  test('a one-time automation that has had its run is Done, on or off', () => {
+    const at = now - 3_600_000;
+    const ran = {
+      schedule: { kind: 'at' as const, timeMs: at },
+      lastRun: new Date(at + 5_000).toISOString(),
+    };
+    // Kept after its run (on), and turned off by "remove it after it runs".
+    expect(automationStatus(job(ran), false, now)).toBe('Done');
+    expect(automationStatus(job({ ...ran, enabled: false }), false, now)).toBe(
+      'Done',
+    );
+    expect(nextRunText(job({ ...ran, enabled: false }), now)).toMatch(/^Ran /);
+    expect(statusRank(job(ran), now)).toBe(2);
+    // A run by hand before its time leaves it waiting for that time.
+    const early = {
+      schedule: { kind: 'at' as const, timeMs: now + 3_600_000 },
+      lastRun: new Date(now - 60_000).toISOString(),
+      nextRun: new Date(now + 3_600_000).toISOString(),
+    };
+    expect(automationStatus(job(early), false, now)).toBe('Active');
+    expect(nextRunText(job(early), now)).toMatch(/^Next: /);
+    // Its time passed with no run at or after it: not finished.
+    expect(
+      automationStatus(
+        job({
+          schedule: { kind: 'at', timeMs: at },
+          lastRun: new Date(at - 60_000).toISOString(),
+        }),
+        false,
+        now,
+      ),
+    ).toBe('Active');
   });
 
   test('failures in a row are a flag; Station pausing itself replaces it', () => {
     expect(automationFlag(job({}))).toBeNull();
     expect(automationFlag(job({ consecutiveFailures: 1 }))).toBe(
-      'Last run failed',
+      "Last run didn't work",
     );
     expect(automationFlag(job({ consecutiveFailures: 2 }))).toBe(
-      'Last 2 runs failed',
+      "Last 2 runs didn't work",
     );
     expect(
       automationFlag(
@@ -109,7 +160,7 @@ describe('status and flag', () => {
           pausedItself: { failures: 5, at: '2026-11-21T02:00:00.000Z' },
         }),
       ),
-    ).toBe('Paused itself after 5 failed runs');
+    ).toBe("Paused itself after 5 runs that didn't work");
   });
 });
 

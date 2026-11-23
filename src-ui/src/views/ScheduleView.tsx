@@ -23,12 +23,15 @@ import {
 } from '../hooks/useScheduler';
 import { errorText } from '../utils/errorText';
 import { TableFilter } from './SortableTable';
+import { statusRank } from './schedule/automationRow';
 import {
+  automationRowId,
   OutcomeLegend,
+  type PendingRowAction,
   ScheduleAutomationList,
 } from './schedule/ScheduleAutomationList';
 import { ScheduleEmptyState } from './schedule/ScheduleEmptyState';
-import { ScheduleNextDays } from './schedule/ScheduleNextDays';
+import { NextDaysTitle, ScheduleNextDays } from './schedule/ScheduleNextDays';
 import { selectSchedulerFailure } from './schedule/utils';
 import './ScheduleView.css';
 import './page-layout.css';
@@ -110,17 +113,16 @@ export function ScheduleView() {
     return () => window.removeEventListener('popstate', sync);
   }, []);
 
-  // Running and active first, paused last; each group by the name people
-  // read, never the slug.
-  const orderedJobs = useMemo(
-    () =>
-      [...jobs].sort(
-        (left, right) =>
-          Number(!left.enabled) - Number(!right.enabled) ||
-          jobLabel(left).localeCompare(jobLabel(right)),
-      ),
-    [jobs],
-  );
+  // Active first, then paused, then finished one-time automations; each
+  // group by the name people read, never the slug.
+  const orderedJobs = useMemo(() => {
+    const now = Date.now();
+    return [...jobs].sort(
+      (left, right) =>
+        statusRank(left, now) - statusRank(right, now) ||
+        jobLabel(left).localeCompare(jobLabel(right)),
+    );
+  }, [jobs]);
   const filtering = jobs.length > FILTER_ABOVE;
   const visibleJobs = useMemo(() => {
     const query = filtering ? filterText.trim().toLowerCase() : '';
@@ -176,6 +178,44 @@ export function ScheduleView() {
     },
     [runJob, showToast, markErrorShown],
   );
+
+  // Pause, Resume and Delete answer the same way Run now does: a failure is
+  // said on the page and in a toast, never left to a silent refetch.
+  const changeJob = useCallback(
+    (job: SchedulerJob, action: PendingRowAction['action']) => {
+      const label = jobLabel(job);
+      setRunError(null);
+      const onError = (e: Error) => {
+        const message = `Couldn't ${action} '${label}': ${errorText(e)}`;
+        setRunError(message);
+        showToast(message);
+      };
+      if (action === 'delete') deleteJob.mutate(job.name, { onError });
+      else
+        toggleJob.mutate(
+          { target: job.name, enabled: action === 'resume' },
+          { onError },
+        );
+    },
+    [deleteJob, toggleJob, showToast],
+  );
+  const pendingAction: PendingRowAction | undefined = deleteJob.isPending
+    ? { name: String(deleteJob.variables), action: 'delete' }
+    : toggleJob.isPending && toggleJob.variables
+      ? {
+          name: toggleJob.variables.target,
+          action: toggleJob.variables.enabled ? 'resume' : 'pause',
+        }
+      : undefined;
+  // A day chip or Next up row opens its automation's row and moves there.
+  const [revealJob, setRevealJob] = useState<SchedulerJob | null>(null);
+  useEffect(() => {
+    if (!revealJob) return;
+    const row = document.getElementById(automationRowId(revealJob));
+    row?.scrollIntoView?.({ block: 'center' });
+    row?.querySelector<HTMLButtonElement>('.automations-row__name')?.focus();
+    setRevealJob(null);
+  }, [revealJob]);
 
   // Both scheduler reads failed. What we may say about that is derived from
   // the errors themselves, not assumed — see `selectSchedulerFailure`.
@@ -292,8 +332,17 @@ export function ScheduleView() {
             )
           ) : (
             <>
-              <PageSection title="Next 7 days" className="automations-section">
-                <ScheduleNextDays />
+              <PageSection
+                title={<NextDaysTitle />}
+                className="automations-section"
+              >
+                <ScheduleNextDays
+                  onOpen={(job) => {
+                    setFilterText('');
+                    setExpanded(`${job.provider}:${job.name}`);
+                    setRevealJob(job);
+                  }}
+                />
               </PageSection>
               <PageSection
                 title="All automations"
@@ -326,14 +375,12 @@ export function ScheduleView() {
                     isRunning={isRunning}
                     getMissedCount={getMissedCount}
                     runPendingJob={runPendingJob}
+                    pendingAction={pendingAction}
                     actions={{
                       onRun: startRun,
                       onPause: (job, running) => {
                         if (!running) {
-                          toggleJob.mutate({
-                            target: job.name,
-                            enabled: false,
-                          });
+                          changeJob(job, 'pause');
                           return;
                         }
                         setConfirmAction({
@@ -342,16 +389,12 @@ export function ScheduleView() {
                           variant: 'warning',
                           confirmLabel: 'Pause',
                           onConfirm: () => {
-                            toggleJob.mutate({
-                              target: job.name,
-                              enabled: false,
-                            });
+                            changeJob(job, 'pause');
                             setConfirmAction(null);
                           },
                         });
                       },
-                      onResume: (job) =>
-                        toggleJob.mutate({ target: job.name, enabled: true }),
+                      onResume: (job) => changeJob(job, 'resume'),
                       onEdit: (job) => {
                         if (authority)
                           schedulerJobDialogStore.open({ authority, job });
@@ -376,7 +419,7 @@ export function ScheduleView() {
                           variant: 'danger',
                           confirmLabel: 'Delete',
                           onConfirm: () => {
-                            deleteJob.mutate(job.name);
+                            changeJob(job, 'delete');
                             setConfirmAction(null);
                           },
                         });
