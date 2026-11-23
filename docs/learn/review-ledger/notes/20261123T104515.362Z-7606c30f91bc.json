@@ -1,0 +1,7 @@
+{
+  "revision": "59c24b6fcfb264f9897e1aa934a54e4d10d4eb75",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked the slash command hooks and draft passages: the SDK surface is unchanged; the composer now clears its saved draft after a slash command it answered, a UI behaviour the reference does not describe.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

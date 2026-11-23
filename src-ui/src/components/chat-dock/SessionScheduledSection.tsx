@@ -100,29 +100,31 @@ export function SessionScheduledSection({
         <h3 id="session-scheduled-title" className="session-scheduled__title">
           Automations
         </h3>
-        {targetsSupported && authority ? (
+        <span className="session-scheduled__links">
+          {targetsSupported && authority ? (
+            <button
+              type="button"
+              className="session-context-card__link session-scheduled__all"
+              onClick={() =>
+                wrap(() =>
+                  schedulerJobDialogStore.open({
+                    authority,
+                    prefill: { conversationId },
+                  }),
+                )
+              }
+            >
+              New automation
+            </button>
+          ) : null}
           <button
             type="button"
             className="session-context-card__link session-scheduled__all"
-            onClick={() =>
-              wrap(() =>
-                schedulerJobDialogStore.open({
-                  authority,
-                  prefill: { conversationId },
-                }),
-              )
-            }
+            onClick={() => wrap(() => navigate('/automations'))}
           >
-            New automation
+            All automations
           </button>
-        ) : null}
-        <button
-          type="button"
-          className="session-context-card__link session-scheduled__all"
-          onClick={() => wrap(() => navigate('/automations'))}
-        >
-          All automations
-        </button>
+        </span>
       </div>
       {shown.list.length === 0 ? null : (
         <ul className="session-scheduled__rows">

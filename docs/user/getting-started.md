@@ -725,6 +725,8 @@ chat dock is open to take it, Home keeps the message and says so.
 
 In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed chat-list bar),
 **⌘T**, and the floating button in the phone's Chats list open the same composer.
+Text you leave there without starting comes back the next time you open New chat
+for the same Project.
 **Explore agents** remains available for deliberate customization.
 
 Setup from Home continues in the chat dock. When you choose **Connect**,
@@ -893,6 +895,8 @@ and shows any refusal. On a touch row, the message appears below the row’s
 actions. On a row whose chat holds text you typed on this device but did not
 send, **Discard draft** clears that text; its toast offers **Undo** (or
 **⌘Z** / **Ctrl+Z**), which puts the text back.
+A slash command that runs, such as `/help` or `/new`, is not kept as a draft. One
+that does not run (unknown, or refused) stays in the composer to correct.
 
 With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Mark
