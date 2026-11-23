@@ -22,6 +22,7 @@ async function fixture(
     signal: AbortSignal,
   ) => NativeModelChannelRequest,
   retirement: Promise<void> = Promise.resolve(),
+  delegationRpc?: typeof request,
 ) {
   const home = temporary('native-model-stdio-');
   const temporaryRegistry = join(home, 'registry');
@@ -82,6 +83,7 @@ async function fixture(
       },
     },
     request,
+    delegationRpc,
   );
   onTestFinished(async () => {
     await stop();
@@ -179,6 +181,85 @@ test('real worker authenticates its scope and streams both native provider paths
     workerSettled: true,
     pending: 0,
   });
+});
+
+test('delegation RPC is unavailable without a separate host owner and never falls through to model admission', async () => {
+  const model = vi.fn(() => ({
+    response: Promise.resolve(new Response('model response')),
+    settled: Promise.resolve(),
+    invokeDelivery: delivery,
+  }));
+  const f = await fixture(model);
+  const response = await fetch(`${f.url}/station/delegation-rpc/v1`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${f.channel.token}` },
+    body: '{}',
+  });
+  expect(response.status).toBe(404);
+  expect(model).not.toHaveBeenCalled();
+  await f.channel.close();
+});
+
+test('real worker routes opt-in delegation RPC bytes to its separate owner without model headers or credentials', async () => {
+  const body = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 'rpc-one',
+    method: 'tools/list',
+    params: { text: 'native 😺' },
+  });
+  const model = vi.fn(() => {
+    throw new Error('RPC reached model admission');
+  });
+  const rpc = vi.fn((input: NativeModelRequest) => ({
+    response: Promise.resolve(
+      new Response(input.body.toString('utf8'), {
+        headers: {
+          'content-type': 'application/json',
+          'x-codex-turn-state': 'not-an-rpc-header',
+        },
+      }),
+    ),
+    settled: Promise.resolve(),
+    invokeDelivery: delivery,
+  }));
+  const f = await fixture(model, Promise.resolve(), rpc);
+  for (const [path, method] of [
+    ['/station/delegation-rpc/v1', 'GET'],
+    ['/station/delegation-rpc/v1?broader=true', 'POST'],
+    ['/station/delegation-rpc/v1/other', 'POST'],
+  ]) {
+    const refused = await fetch(`${f.url}${path}`, {
+      method,
+      headers: { authorization: `Bearer ${f.channel.token}` },
+    });
+    expect(refused.status).toBe(404);
+  }
+  expect(rpc).not.toHaveBeenCalled();
+  const response = await fetch(`${f.url}/station/delegation-rpc/v1`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${f.channel.token}`,
+      'content-type': 'application/json',
+      'anthropic-version': 'must-not-reach-rpc',
+    },
+    body,
+  });
+  expect(response.status).toBe(200);
+  expect(await response.text()).toBe(body);
+  expect(response.headers.has('x-codex-turn-state')).toBe(false);
+  expect(model).not.toHaveBeenCalled();
+  expect(rpc).toHaveBeenCalledOnce();
+  const sent = rpc.mock.calls[0]![0];
+  expect(sent.body.equals(Buffer.from(body))).toBe(true);
+  expect(sent.path).toBe('/station/delegation-rpc/v1');
+  expect(sent.method).toBe('POST');
+  expect(sent.headers).toContainEqual(['content-type', 'application/json']);
+  expect(
+    sent.headers.every(([name]) => ['accept', 'content-type'].includes(name)),
+  ).toBe(true);
+  expect(JSON.stringify(sent.headers)).not.toContain('must-not-reach-rpc');
+  expect(JSON.stringify(sent)).not.toContain(f.channel.token);
+  await f.channel.close();
 });
 
 test('oversized native request is refused before host admission and does not poison a later valid request', async () => {

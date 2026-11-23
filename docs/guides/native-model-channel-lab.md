@@ -37,6 +37,19 @@ re-enters that port. Finished response bytes or a retired worker do not release
 pending accounting. Unexpected channel loss aborts active request signals before
 waiting for worker cleanup. A failed or timed-out close remains a failure.
 
+The private bridge offers `POST /station/delegation-rpc/v1` when its host
+supplies a separate RPC callback. The default bridge serves model requests.
+The RPC route accepts the exact path without a query, authenticates the
+scoped bridge key, and forwards only Accept and Content-Type. The model
+owner receives no RPC bytes. RPC responses expose Content-Type only.
+Both request types share the existing byte and concurrency limits. Each
+actual response write checks the captured delivery port, and host settlement
+continues to own completion after a response is sent.
+
+The callback exposes transport. Parent issuance, broker configuration,
+effect admission, and model accounting require their own owners before the
+path can serve inherited delegation.
+
 The protocol limits requests to 2 MiB, frames to 3 MiB, channel lifetime to
 64 MiB, concurrent requests to four and total requests to 1,024. Response chunks
 are at most 64 KiB. These transport bounds do not establish token or fiscal

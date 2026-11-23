@@ -1,0 +1,31 @@
+{
+  "revision": "7fdf7dbf2a5bc3c1ec83bd483ea7067d20f2f210",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Traced the optional container callback through the live worker handshake, exact HTTP RPC path, separate host admission, and the same delivery and terminal ownership. The generated MCP topics passed their read-only check. Real-worker checks are queued. No native client, provider, inherited authority, or billing claim is made.","inputs":["docs/guides/native-model-channel-lab.md","src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts","src-server/services/connections/native-model-container.ts","src-server/services/connections/native-model-stdio-channel.ts","src-server/services/connections/native-model-stdio-protocol.ts","src-server/services/connections/native-model-stdio-worker.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed namespace ownership and cleanup claims. The container offers remote procedure transport only through an explicit host callback. Both callbacks retain exact daemon inspection, namespace engagement, cancellation, and retirement checks.","inputs":["src-server/services/connections/native-model-container.ts"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Reviewed namespace ownership and cleanup claims. The container offers remote procedure transport only through an explicit host callback. Both callbacks retain exact daemon inspection, namespace engagement, cancellation, and retirement checks.","inputs":["src-server/services/connections/native-model-container.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the documented native response and terminal accounting lifetimes. The channel routes model and RPC admission separately. Both return the existing owned request handle and every actual frame still checks captured delivery.","inputs":["src-server/services/connections/native-model-stdio-channel.ts"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Reviewed the documented native response and terminal accounting lifetimes. The channel routes model and RPC admission separately. Both return the existing owned request handle and every actual frame still checks captured delivery.","inputs":["src-server/services/connections/native-model-stdio-channel.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the contributor channel bounds and frame ownership. The opt-in bit and RPC frame are explicit. They use the existing body size, lifetime, shared concurrency and request limits.","inputs":["src-server/services/connections/native-model-stdio-protocol.ts"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Reviewed the contributor channel bounds and frame ownership. The opt-in bit and RPC frame are explicit. They use the existing body size, lifetime, shared concurrency and request limits.","inputs":["src-server/services/connections/native-model-stdio-protocol.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the exact opt-in path, scope-key authentication, header isolation and hop response. Disabled RPC stays unavailable and does not fall through to model admission.","inputs":["src-server/services/connections/native-model-stdio-worker.ts"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Reviewed the exact opt-in path, scope-key authentication, header isolation and hop response. Disabled RPC stays unavailable and does not fall through to model admission.","inputs":["src-server/services/connections/native-model-stdio-worker.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the real-worker suite claims against the added opt-in controls and retained model revocation and settlement cases. The new cases check unavailable defaults, fixed path, broker selection and credential and header isolation.","inputs":["src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Reviewed the real-worker suite claims against the added opt-in controls and retained model revocation and settlement cases. The new cases check unavailable defaults, fixed path, broker selection and credential and header isolation.","inputs":["src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts"]},
+
+    {"path":"docs/README.md","note":"Reviewed the contributor entry links and architecture scope after adding the optional RPC path to the guide. The required model callback alone still serves the default bridge. The guide owns the fixed RPC path, shared delivery limits, and authority qualifications.","inputs":["docs/guides/native-model-channel-lab.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the contributor entry links and architecture scope after adding the optional RPC path to the guide. The required model callback alone still serves the default bridge. The guide owns the fixed RPC path, shared delivery limits, and authority qualifications.","inputs":["docs/guides/native-model-channel-lab.md"]}
+  ]
+}
