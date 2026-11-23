@@ -1,0 +1,7 @@
+{
+  "revision": "f03efa36287f4492ff31d1211b568ba9de6b2509",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the held-row rule: it ends on the reader's own message, a request opening, closing the row, a chat switch, or a return to the end","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

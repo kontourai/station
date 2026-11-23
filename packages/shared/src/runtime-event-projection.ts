@@ -1867,6 +1867,9 @@ function createRuntimeMessageProjection(
         // — not before it.
         if (turnOpen) emitAssistantTurn();
         if (standingUnresolved) break;
+        // Closing the turn cleared its time; the notice keeps its own. Readers
+        // that merge rows by time place a row without one after all others.
+        stamp(ev.createdAt);
         pushMessage('user', [
           {
             type: 'text',

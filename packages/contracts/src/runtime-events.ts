@@ -669,6 +669,14 @@ export interface SessionStopSettledEvent extends CanonicalRuntimeEventBase {
    * forward sets it.
    */
   initiatedBy?: 'user' | 'stall';
+  /**
+   * Set by the command route when its person check
+   * (`personCredentialRequest`) passes for the Stop request. A
+   * delegation-kind device or an agent-originated request does not count: it
+   * is still `initiatedBy: 'user'` but carries no `byPerson`. An automation
+   * reads it to tell a person's Stop from its own budget interrupt.
+   */
+  byPerson?: true;
 }
 
 /**

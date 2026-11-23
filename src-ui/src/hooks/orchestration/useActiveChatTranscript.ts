@@ -349,26 +349,33 @@ export function isUnmatchedPendingRowStillPending(
 
 function mergeTranscriptMessages(...groups: ChatMessage[][]): ChatMessage[] {
   const seenIds = new Set<string>();
-  return groups
-    .flat()
-    .filter((message) => {
+  // A row with no usable time (none, or an unparseable date) keeps its place
+  // after the row before it in its own group, instead of sinking to the end
+  // or, as NaN, breaking the comparator. A group's leading untimed rows still
+  // sort last.
+  const timed = groups.flatMap((group) => {
+    let previous: number | undefined;
+    return group.map((message) => {
+      const own = message.timestamp;
+      if (typeof own === 'number' && Number.isFinite(own)) previous = own;
+      return { message, time: previous };
+    });
+  });
+  return timed
+    .filter(({ message }) => {
       if (!message.id) return true;
       if (seenIds.has(message.id)) return false;
       seenIds.add(message.id);
       return true;
     })
-    .map((message, inputIndex) => ({ message, inputIndex }))
+    .map((row, inputIndex) => ({ ...row, inputIndex }))
     .sort((left, right) => {
-      const leftTimestamp = left.message.timestamp;
-      const rightTimestamp = right.message.timestamp;
-      if (leftTimestamp === undefined && rightTimestamp === undefined) {
+      if (left.time === undefined && right.time === undefined) {
         return left.inputIndex - right.inputIndex;
       }
-      if (leftTimestamp === undefined) return 1;
-      if (rightTimestamp === undefined) return -1;
-      return (
-        leftTimestamp - rightTimestamp || left.inputIndex - right.inputIndex
-      );
+      if (left.time === undefined) return 1;
+      if (right.time === undefined) return -1;
+      return left.time - right.time || left.inputIndex - right.inputIndex;
     })
     .map(({ message }) => message);
 }

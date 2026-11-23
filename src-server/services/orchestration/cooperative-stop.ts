@@ -63,6 +63,8 @@ interface PendingTurnInterrupt {
    * thread that went quiet left the record armed indefinitely.
    */
   expiryTimer?: ReturnType<typeof setTimeout>;
+  /** The held Stop came from a person; see `SessionStopSettledEvent.byPerson`. */
+  byPerson?: true;
 }
 
 /**
@@ -259,7 +261,12 @@ export class CooperativeStop {
     }
     if (pending.turnId !== undefined && pending.turnId !== event.turnId) return;
     this.clearPendingTurnInterrupt(event.threadId);
-    this.dispatchDeferredInterrupt(adapter, event.threadId, event.turnId);
+    this.dispatchDeferredInterrupt(
+      adapter,
+      event.threadId,
+      event.turnId,
+      pending.byPerson === true,
+    );
   }
 
   /** Records a held Stop and arms its own expiry (see {@link PendingTurnInterrupt}). */
@@ -291,16 +298,21 @@ export class CooperativeStop {
     adapter: ProviderAdapterShape,
     threadId: string,
     turnId: string | undefined,
+    byPerson: boolean,
   ): void {
-    void this.interruptUserTurnCooperatively(adapter, threadId, turnId).catch(
-      (error) => {
-        this.deps.logger.warn('Deferred user stop could not be applied', {
-          provider: adapter.provider,
-          threadId,
-          error: errorMessage(error),
-        });
-      },
-    );
+    void this.interruptUserTurnCooperatively(
+      adapter,
+      threadId,
+      turnId,
+      'user',
+      byPerson,
+    ).catch((error) => {
+      this.deps.logger.warn('Deferred user stop could not be applied', {
+        provider: adapter.provider,
+        threadId,
+        error: errorMessage(error),
+      });
+    });
   }
 
   /**
@@ -342,7 +354,12 @@ export class CooperativeStop {
       return;
     }
     this.clearPendingTurnInterrupt(threadId);
-    this.dispatchDeferredInterrupt(adapter, threadId, turnId);
+    this.dispatchDeferredInterrupt(
+      adapter,
+      threadId,
+      turnId,
+      pending.byPerson === true,
+    );
   }
 
   /**
@@ -367,6 +384,8 @@ export class CooperativeStop {
     threadId: string,
     requestedTurnId?: string,
     initiatedBy: 'user' | 'stall' = 'user',
+    /** The Stop command came from a person (operator or device origin). */
+    byPerson = false,
   ): Promise<InterruptTurnResult> {
     const existing = this.cooperativeStops.get(threadId);
     if (existing) {
@@ -409,6 +428,7 @@ export class CooperativeStop {
       state,
       completed,
       initiatedBy,
+      byPerson,
     );
     this.cooperativeStops.set(threadId, state);
     try {
@@ -426,6 +446,7 @@ export class CooperativeStop {
     state: CooperativeStopTask,
     completed: Promise<void>,
     initiatedBy: 'user' | 'stall',
+    byPerson: boolean,
   ): Promise<StopSettlement> {
     const settlement = await new Promise<StopSettlement>((resolve) => {
       let settled = false;
@@ -489,6 +510,7 @@ export class CooperativeStop {
         method: 'session.stop-settled',
         outcome: 'cooperative',
         initiatedBy,
+        ...(byPerson ? { byPerson: true as const } : {}),
       });
       this.persistResumableStoppedSession(adapter.provider, threadId);
       return settlement;
@@ -506,6 +528,7 @@ export class CooperativeStop {
       method: 'session.stop-settled',
       outcome: 'forced',
       initiatedBy,
+      ...(byPerson ? { byPerson: true as const } : {}),
     });
     this.deps.publishEvent({
       eventId: crypto.randomUUID(),

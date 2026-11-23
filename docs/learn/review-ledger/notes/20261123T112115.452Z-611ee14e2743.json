@@ -1,0 +1,11 @@
+{
+  "revision": "f1d2ca0b7e20c959ac89165cb4e5ae1a87ff27fc",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Hold release keeps a reader who scrolled away from the held row in place; the citing pages still describe it.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Hold release keeps a reader who scrolled away from the held row in place; the citing pages still describe it.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Hold release keeps a reader who scrolled away from the held row in place; the citing pages still describe it.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

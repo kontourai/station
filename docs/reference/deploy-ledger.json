@@ -1,5 +1,98 @@
 [
   {
+    "timestampUtc": "2026-11-23T13:49:44Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261123.1",
+    "sha": "839a1e8b0a2f47a29efcc54ff9a165495b0dd218",
+    "artifactBuiltAt": "2026-11-23T12:59:12.104Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45178593921",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45178593921)"
+    ],
+    "changelog": {
+      "previousSha": "c4272d565947c19e3457942404e2f69065271377",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5501](https://github.com/kontourai/station/pull/5501) fix(ci): reconcile qualification health after Nightly",
+          "[#5500](https://github.com/kontourai/station/pull/5500) fix(automations): let a person's turn in an automation Session write to its own Task",
+          "[#5498](https://github.com/kontourai/station/pull/5498) fix(test): load the product cascade in Appearance keyboard checks"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
+    "timestampUtc": "2026-11-23T13:49:44Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261123.1",
+    "sha": "839a1e8b0a2f47a29efcc54ff9a165495b0dd218",
+    "artifactBuiltAt": "2026-11-23T12:59:11.346Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45178593921",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45178593921)"
+    ],
+    "changelog": {
+      "previousSha": "c4272d565947c19e3457942404e2f69065271377",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5501](https://github.com/kontourai/station/pull/5501) fix(ci): reconcile qualification health after Nightly",
+          "[#5500](https://github.com/kontourai/station/pull/5500) fix(automations): let a person's turn in an automation Session write to its own Task",
+          "[#5498](https://github.com/kontourai/station/pull/5498) fix(test): load the product cascade in Appearance keyboard checks"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
+    "timestampUtc": "2026-11-23T13:00:14Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261123.45178593921",
+    "sha": "839a1e8b0a2f47a29efcc54ff9a165495b0dd218",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45178593921",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261123.45178593921 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "c4272d565947c19e3457942404e2f69065271377",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5501](https://github.com/kontourai/station/pull/5501) fix(ci): reconcile qualification health after Nightly",
+          "[#5500](https://github.com/kontourai/station/pull/5500) fix(automations): let a person's turn in an automation Session write to its own Task",
+          "[#5498](https://github.com/kontourai/station/pull/5498) fix(test): load the product cascade in Appearance keyboard checks"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
     "timestampUtc": "2026-11-23T05:41:59Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261123",

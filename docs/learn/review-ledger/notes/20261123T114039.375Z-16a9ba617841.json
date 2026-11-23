@@ -1,0 +1,13 @@
+{
+  "revision": "217ec0c2b8769d0d2c9ac98629bf7514aeb2c454",
+
+  "notes": [
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"Only the byPerson doc comment was reworded (set by the command route when its person check passes); the citing pages make no claim about byPerson or how a Stop is classified.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Only the byPerson doc comment was reworded (set by the command route when its person check passes); the citing pages make no claim about byPerson or how a Stop is classified.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Only the byPerson doc comment was reworded (set by the command route when its person check passes); the citing pages make no claim about byPerson or how a Stop is classified.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Only the byPerson doc comment was reworded (set by the command route when its person check passes); the citing pages make no claim about byPerson or how a Stop is classified.","inputs":["packages/contracts/src/runtime-events.ts"]}
+  ]
+}

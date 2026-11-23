@@ -45,6 +45,7 @@ import {
 import type { TaskDispatcher } from '../services/projects/task-dispatcher.js';
 import type { TaskGraphService } from '../services/projects/task-graph-service.js';
 import { MonitorTaskTurnSupervisor } from '../services/scheduling/monitor-task-supervisor.js';
+import { AUTOMATION_PERSON_WAIT_CEILING_MS } from '../services/scheduling/person-wait.js';
 import type { Logger } from '../utils/logger.js';
 import { runWithUnattendedPrincipal } from './agents/unattended-principal-context.js';
 
@@ -149,6 +150,10 @@ export function createAutomationActionsRuntime(
   return new AutomationActionsRuntime(options, preview);
 }
 
+/** The intent reason when no one answered within the waiting ceiling. */
+const PERSON_WAIT_REASON = 'person_wait_ceiling';
+const PERSON_WAIT_MESSAGE = `Stopped: no one answered this automation’s request within ${AUTOMATION_PERSON_WAIT_CEILING_MS / 3_600_000} hours.`;
+
 type NativeAutomationIntent = AutomationActionIntent & {
   action: Extract<AutomationActionIntent['action'], { kind: 'dispatch-task' }>;
 };
@@ -230,10 +235,15 @@ class AutomationActionsRuntime implements AutomationActions {
           }
           return admission(input);
         }),
-      interruptTurn: (sessionId) =>
-        options.orchestration.interruptTurn(sessionId),
+      interruptTurn: (sessionId, cause) =>
+        cause === 'person-wait-ceiling'
+          ? this.stopForPersonWait(sessionId)
+          : options.orchestration.interruptTurn(sessionId),
       listEvents: (sessionId) =>
         options.eventStore.listEvents(sessionId).map((event) => event.payload),
+      // Time spent waiting for a person's answer is not working time; the
+      // waits together are bounded by the ceiling instead.
+      personWait: { ceilingMs: AUTOMATION_PERSON_WAIT_CEILING_MS },
     });
     if (!options.hosted) {
       try {
@@ -632,7 +642,7 @@ class AutomationActionsRuntime implements AutomationActions {
         input.payload.clientOrigin?.actor.kind === 'internal' &&
         this.currentRule(intent) &&
         intent.deadlineAt !== undefined &&
-        Date.now() < intent.deadlineAt &&
+        !this.deadlinePassed(intent) &&
         this.options.ledger().episode(intent.episodeKey) !== undefined
       )
         return undefined;
@@ -1180,9 +1190,14 @@ class AutomationActionsRuntime implements AutomationActions {
     const authority = intent.personTakeoverAt
       ? undefined
       : this.authority(intent);
-    const deadlinePassed =
-      intent.deadlineAt !== undefined && Date.now() >= intent.deadlineAt;
-    if (authority && (authority.kind !== 'current' || deadlinePassed)) {
+    const deadlinePassed = this.deadlinePassed(intent);
+    if (
+      authority?.kind === 'current' &&
+      (this.personWait(intent)?.waitedMs ?? 0) >=
+        AUTOMATION_PERSON_WAIT_CEILING_MS
+    )
+      await this.stopForPersonWait(sessionId);
+    else if (authority && (authority.kind !== 'current' || deadlinePassed)) {
       this.active.get(intent.intentId)?.abort();
       await this.options.orchestration
         .interruptTurn(sessionId)
@@ -1236,6 +1251,7 @@ class AutomationActionsRuntime implements AutomationActions {
           )
       : undefined;
     if (terminal && !noticePending) {
+      const turnId = terminal.turnId;
       ledger.updateIntent(
         intent.intentId,
         {
@@ -1243,7 +1259,16 @@ class AutomationActionsRuntime implements AutomationActions {
             terminal.method === 'turn.completed' &&
             terminal.finishReason !== 'cancelled'
               ? 'completed'
-              : 'failed',
+              : // Only a person's Stop records `byPerson`; the budget,
+                // a revocation, an engine failure or a restart never do.
+                events.some(
+                    (event) =>
+                      event.method === 'session.stop-settled' &&
+                      event.turnId === turnId &&
+                      event.byPerson === true,
+                  )
+                ? 'stopped'
+                : 'failed',
         },
         Date.now(),
       );
@@ -1252,6 +1277,59 @@ class AutomationActionsRuntime implements AutomationActions {
       return;
     }
     if (allowPlacement && intent.state === 'queued') this.submit(intent);
+  }
+
+  /** The time the action's Session has waited on a person, while supervised. */
+  private personWait(intent: AutomationActionIntent) {
+    return intent.sessionId
+      ? this.supervisor.personWait(intent.sessionId)
+      : undefined;
+  }
+
+  /**
+   * The wall budget measures time the Agent could work: the deadline moves
+   * later by the time spent waiting on a person, and does not pass while a
+   * request is open.
+   */
+  private deadlinePassed(intent: AutomationActionIntent): boolean {
+    if (intent.deadlineAt === undefined) return false;
+    const wait = this.personWait(intent);
+    if (wait?.waitingSince !== undefined) return false;
+    return Date.now() >= intent.deadlineAt + (wait?.waitedMs ?? 0);
+  }
+
+  /**
+   * No one answered the action's requests within
+   * {@link AUTOMATION_PERSON_WAIT_CEILING_MS} in total: the turn is
+   * interrupted with its own reason (not the budget, not a person's Stop),
+   * and the Session says why in Needs you.
+   */
+  private async stopForPersonWait(sessionId: string): Promise<void> {
+    const intentId = this.sessionIntents.get(sessionId);
+    const ledger = this.options.ledger();
+    const intent = intentId ? ledger.readIntent(intentId) : undefined;
+    if (
+      intent &&
+      !intent.personTakeoverAt &&
+      intent.reason !== PERSON_WAIT_REASON
+    ) {
+      ledger.updateIntent(
+        intent.intentId,
+        { reason: PERSON_WAIT_REASON },
+        Date.now(),
+      );
+      try {
+        this.options.orchestration.recordSessionBlocked({
+          threadId: sessionId,
+          message: PERSON_WAIT_MESSAGE,
+        });
+      } catch {
+        /* The intent still carries the reason. */
+      }
+    }
+    await this.options.orchestration
+      .interruptTurn(sessionId)
+      .catch(() => undefined);
   }
 
   close(): void {

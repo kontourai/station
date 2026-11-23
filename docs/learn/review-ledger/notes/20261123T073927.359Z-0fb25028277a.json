@@ -1,0 +1,7 @@
+{
+  "revision": "118885a904428b83efc585ce693754dfca2bd104",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Delivery outcome renamed to stopped; re-ran the origin/main client against a payload with stopped and it was accepted.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-route-support.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
