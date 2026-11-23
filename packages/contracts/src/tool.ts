@@ -404,6 +404,28 @@ export type ToolServerEventPollPage =
       events: Array<{ eventId: string; timestamp: string; data: unknown }>;
     };
 
+export type ToolServerEventStreamInput = Omit<
+  ToolServerEventPollInput,
+  'maxEvents'
+> & { heartbeatMs?: number };
+
+export type ToolServerEventStreamFrame =
+  | {
+      type: 'active';
+      cursor: string;
+      truncated: boolean;
+      heartbeatMs: number;
+    }
+  | {
+      type: 'event';
+      cursor: string;
+      eventId: string;
+      timestamp: string;
+      data: unknown;
+    }
+  | { type: 'heartbeat'; cursor: string }
+  | { type: 'ended'; reason: 'complete' | 'unavailable' };
+
 export interface ToolServerProbeResult {
   ok: boolean;
   error?: string;

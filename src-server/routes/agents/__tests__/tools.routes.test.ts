@@ -198,6 +198,55 @@ describe('Tool Routes', () => {
     expect(poll).not.toHaveBeenCalled();
   });
 
+  test('cancels a managed event stream before publishing a frame after operator loss', async () => {
+    const service = new MCPService(
+      new ConfigLoader({ projectHomeDir: makeTempDir('event-stream-route-') }),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      { warn: vi.fn() },
+    );
+    let operator = true;
+    let sourceSignal: AbortSignal | undefined;
+    vi.spyOn(service, 'readMCPEventStream').mockImplementation(
+      async (_server, _input, publish, signal) => {
+        sourceSignal = signal;
+        await publish({
+          type: 'active',
+          cursor: 'approved-cursor',
+          truncated: false,
+          heartbeatMs: 5000,
+        });
+        operator = false;
+        await publish({
+          type: 'event',
+          cursor: 'private-cursor',
+          eventId: 'private-event',
+          timestamp: '2026-11-23T18:00:00Z',
+          data: { outcome: 'private-outcome' },
+        });
+      },
+    );
+    const app = createToolRoutes(service, vi.fn(), {
+      async authorizeOperator() {
+        if (!operator) throw new Error('Operator required');
+      },
+    });
+    const response = await app.request('/mcp-1/events/stream', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ name: 'work.settled', cursor: null }),
+    });
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('event: active');
+    expect(body).toContain('approved-cursor');
+    expect(body).not.toContain('private-');
+    expect(sourceSignal?.aborted).toBe(true);
+  });
+
   test('serves only a resolver-approved local icon with private caching and nosniff', async () => {
     const asset = {
       body: Buffer.from('png'),

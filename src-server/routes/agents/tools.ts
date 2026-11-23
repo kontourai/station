@@ -3,7 +3,10 @@
  */
 
 import { principalIdMatchesKind } from '@kontourai/station-contracts/principal';
-import type { ToolDef } from '@kontourai/station-contracts/tool';
+import type {
+  ToolDef,
+  ToolServerEventStreamFrame,
+} from '@kontourai/station-contracts/tool';
 import { LegacyTrustReviewRequiredError } from '@kontourai/station-shared/integration-trust-overlay';
 import {
   canonicalDisabledMcpTools,
@@ -61,6 +64,7 @@ import {
   param,
   validate,
 } from '../schemas/schemas.js';
+import { streamSSE } from '../sse-response.js';
 import {
   changesAny,
   launchesCommand,
@@ -243,6 +247,10 @@ const eventPollInput = z.strictObject({
   arguments: z.record(z.string(), z.json()).optional(),
   maxEvents: z.number().int().min(1).max(100).optional(),
   maxAgeMs: z.number().int().positive().optional(),
+});
+
+const eventStreamInput = eventPollInput.omit({ maxEvents: true }).extend({
+  heartbeatMs: z.number().int().min(5000).max(30_000).optional(),
 });
 
 export function createToolRoutes(
@@ -669,6 +677,89 @@ export function createToolRoutes(
         c.req.raw.signal,
       );
       return c.json({ success: true, data });
+    }),
+  );
+
+  app.post('/:id/events/stream', (c) =>
+    eventRead(c, async (refusal) => {
+      const body = await readBoundedRequestBody(c.req.raw, 16 * 1024);
+      if (body.status === 'too-large')
+        return c.json(
+          { success: false, error: 'Event filters exceed 16 KiB.' },
+          413,
+        );
+      let input: unknown;
+      try {
+        if (body.status === 'ok') input = JSON.parse(body.body);
+      } catch {
+        return c.json(
+          { success: false, error: 'Invalid event stream request.' },
+          400,
+        );
+      }
+      const parsed = eventStreamInput.safeParse(input);
+      if (!parsed.success)
+        return c.json(
+          { success: false, error: 'Invalid event stream request.' },
+          400,
+        );
+      const denied = await refusal();
+      if (denied) return denied;
+
+      const response = streamSSE(c, async (stream) => {
+        const disconnected = new AbortController();
+        stream.onAbort(() => disconnected.abort());
+        const deadline = AbortSignal.timeout(60_000);
+        const signal = AbortSignal.any([
+          c.req.raw.signal,
+          disconnected.signal,
+          deadline,
+        ]);
+        if (signal.aborted) {
+          stream.abort();
+          return;
+        }
+        const stop = () => stream.abort();
+        signal.addEventListener('abort', stop, { once: true });
+        let active = false;
+        let ended = false;
+        const publish = async (frame: ToolServerEventStreamFrame) => {
+          if (ended || signal.aborted || stream.closed || stream.aborted)
+            return;
+          if (await refusal()) {
+            disconnected.abort();
+            return;
+          }
+          if (signal.aborted) return;
+          await stream.writeSSE({
+            event: frame.type,
+            data: JSON.stringify(frame),
+          });
+          active ||= frame.type === 'active';
+          ended ||= frame.type === 'ended';
+        };
+        try {
+          if (await refusal()) return;
+          await mcpService.readMCPEventStream(
+            param(c, 'id'),
+            parsed.data,
+            publish,
+            signal,
+          );
+          if (!ended)
+            await publish({
+              type: 'ended',
+              reason: active ? 'complete' : 'unavailable',
+            });
+        } catch {
+          await publish({ type: 'ended', reason: 'unavailable' });
+        } finally {
+          signal.removeEventListener('abort', stop);
+          disconnected.abort();
+        }
+      });
+      response.headers.set('Cache-Control', 'private, no-store');
+      return response;
     }),
   );
 

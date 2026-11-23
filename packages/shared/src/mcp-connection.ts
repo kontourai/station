@@ -6,6 +6,10 @@
  */
 
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type {
+  ToolServerEventStreamFrame,
+  ToolServerEventStreamInput,
+} from '@kontourai/station-contracts/tool';
 import {
   type AuthProvider,
   Client,
@@ -19,7 +23,9 @@ import {
   type Transport,
 } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
+import { z } from 'zod';
 import { spawnChildWorkload } from './child-workload.js';
+import { observeMcpEventStream } from './mcp-event-stream.js';
 import { isObjectRecord } from './object-record.js';
 import {
   type ClaudeDesktopConfig,
@@ -84,6 +90,9 @@ export type MCPElicitationRoute = (request: {
   signal: AbortSignal;
 }) => Promise<ElicitResult>;
 
+type EventStreamReceiver = (frame: ToolServerEventStreamFrame) => Promise<void>;
+type EventStreamScope = { receive: EventStreamReceiver; signal: AbortSignal };
+
 export interface MCPConnection {
   client: Client;
   serverId: string;
@@ -91,6 +100,11 @@ export interface MCPConnection {
   negotiation: MCPNegotiation;
   close: () => Promise<void>;
   disconnect: () => Promise<void>;
+  readEventStream?: (
+    input: ToolServerEventStreamInput,
+    receive: EventStreamReceiver,
+    signal: AbortSignal,
+  ) => Promise<void>;
   /**
    * Run `operation` with `route` answering an elicitation the server sends
    * while one of its requests is in flight. Present on owned connections.
@@ -180,6 +194,7 @@ const NON_ELICITING_METHODS_2026: ReadonlySet<string> = new Set([
   'completion/complete',
   'events/list',
   'events/poll',
+  'events/stream',
 ]);
 
 /** The JSON-RPC method each client helper sends. */
@@ -280,6 +295,7 @@ export function prepareMCPConnection(
   type ElicitationScope = { route: MCPElicitationRoute; open: boolean };
   const inFlight = new Set<{ scope: ElicitationScope | undefined }>();
   const elicitationScope = new AsyncLocalStorage<ElicitationScope>();
+  const eventScope = new AsyncLocalStorage<EventStreamScope>();
   function inFlightRequest<T>(operation: () => T): T {
     const scope = elicitationScope.getStore();
     const entry = { scope: scope?.open ? scope : undefined };
@@ -376,6 +392,7 @@ export function prepareMCPConnection(
               normalized,
               opts?.authProvider,
               opts?.authorizationFetch,
+              () => eventScope.getStore(),
             );
             const rawTransport = transport;
             const originalTransportClose =
@@ -560,6 +577,15 @@ export function prepareMCPConnection(
               disconnect: handle.close,
               isUsable: () => current() && phase === 'connected',
               localState: handle.inspect,
+              readEventStream: async (input, receive, signal) => {
+                await eventScope.run({ receive, signal }, () =>
+                  guardedClient.request(
+                    { method: 'events/stream', params: { ...input } },
+                    z.object({}),
+                    { signal, timeout: 65_000 },
+                  ),
+                );
+              },
               withElicitationRoute: async (route, operation) => {
                 const scope: ElicitationScope = { route, open: true };
                 try {
@@ -777,23 +803,32 @@ export const REQUIRES_AUTHORIZATION_FETCH = Symbol.for(
   'kontourai.station.oauth.requiresAuthorizationFetch',
 );
 
-// The current SDK omits Mcp-Name on Events poll requests.
-function withEventsPollTransport(fetch: FetchLike): FetchLike {
+// The current SDK omits Mcp-Name on named Events requests.
+function withEventsTransport(
+  fetch: FetchLike,
+  getStreamScope?: () => EventStreamScope | undefined,
+): FetchLike {
   return async (input, init) => {
     const headers = new Headers(init?.headers);
-    if (headers.get('mcp-method') !== 'events/poll') return fetch(input, init);
+    const method = headers.get('mcp-method');
+    if (method !== 'events/poll' && method !== 'events/stream')
+      return fetch(input, init);
+    if (typeof init?.body !== 'string')
+      throw new Error('Missing MCP Events request body');
+    const request: unknown = JSON.parse(init.body);
+    if (
+      !isObjectRecord(request) ||
+      request.method !== method ||
+      !isObjectRecord(request.params) ||
+      typeof request.params.name !== 'string' ||
+      (typeof request.id !== 'number' && typeof request.id !== 'string')
+    )
+      throw new Error('Invalid MCP Events request');
+    const {
+      id,
+      params: { name },
+    } = request;
     if (!headers.has('mcp-name')) {
-      if (typeof init?.body !== 'string')
-        throw new Error('Missing MCP poll request body');
-      const request: unknown = JSON.parse(init.body);
-      if (
-        !isObjectRecord(request) ||
-        request.method !== 'events/poll' ||
-        !isObjectRecord(request.params) ||
-        typeof request.params.name !== 'string'
-      )
-        throw new Error('Missing MCP event name');
-      const { name } = request.params;
       const plain =
         name.trim() === name &&
         /^[\x20-\x7e]+$/u.test(name) &&
@@ -803,19 +838,37 @@ function withEventsPollTransport(fetch: FetchLike): FetchLike {
         plain ? name : `=?base64?${Buffer.from(name).toString('base64')}?=`,
       );
     }
-    const response = await fetch(input, { ...init, headers });
-    if (!response.body) return response;
-    let bytes = 0;
-    const body = response.body.pipeThrough(
-      new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) {
-          bytes += chunk.byteLength;
-          if (bytes > 512 * 1024)
-            throw new Error('MCP poll response exceeds 512 KiB');
-          controller.enqueue(chunk);
-        },
+    const scope = method === 'events/stream' ? getStreamScope?.() : undefined;
+    const response = await fetch(input, {
+      ...init,
+      headers,
+      ...(scope && {
+        signal: init.signal
+          ? AbortSignal.any([init.signal, scope.signal])
+          : scope.signal,
       }),
-    );
+    });
+    if (!response.body) return response;
+    const receive = scope?.receive;
+    const streamed =
+      receive &&
+      response.ok &&
+      /^text\/event-stream\b/iu.test(
+        response.headers.get('content-type') ?? '',
+      );
+    let bytes = 0;
+    const body = streamed
+      ? observeMcpEventStream(response.body, { id, name }, receive)
+      : response.body.pipeThrough(
+          new TransformStream<Uint8Array, Uint8Array>({
+            transform(chunk, controller) {
+              bytes += chunk.byteLength;
+              if (bytes > 512 * 1024)
+                throw new Error('MCP Events response exceeds 512 KiB');
+              controller.enqueue(chunk);
+            },
+          }),
+        );
     return new Response(body, {
       headers: response.headers,
       status: response.status,
@@ -828,6 +881,7 @@ export function createMCPTransport(
   def: ToolDef,
   authProvider?: OAuthClientProvider | AuthProvider,
   authorizationFetch?: (fetch: FetchLike) => FetchLike,
+  getEventStreamScope?: () => EventStreamScope | undefined,
 ): Transport {
   if (
     authProvider &&
@@ -885,8 +939,9 @@ export function createMCPTransport(
       return new StreamableHTTPClientTransport(new URL(def.endpoint), {
         authProvider,
         requestInit: { redirect: 'error' },
-        fetch: withEventsPollTransport(
+        fetch: withEventsTransport(
           fetch ?? globalThis.fetch.bind(globalThis),
+          getEventStreamScope,
         ),
       });
     }

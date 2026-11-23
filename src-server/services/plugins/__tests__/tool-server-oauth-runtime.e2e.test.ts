@@ -257,6 +257,64 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
             },
           });
         }
+        if (request.headers.get('mcp-method') === 'events/stream') {
+          const { id, params } = z
+            .object({
+              id: z.number(),
+              params: z.object({
+                name: z.literal('work.settled'),
+                cursor: z.null(),
+                heartbeatMs: z.literal(5000),
+              }),
+            })
+            .parse(await request.json());
+          expect(request.headers.get('mcp-name')).toBe(params.name);
+          const frame = (
+            kind: string,
+            params: Record<string, unknown>,
+            key = id,
+          ) => ({
+            jsonrpc: '2.0',
+            method: `notifications/events/${kind}`,
+            params: {
+              ...params,
+              _meta: { 'io.modelcontextprotocol/subscriptionId': key },
+            },
+          });
+          const notifications = [
+            frame('active', {
+              cursor: 'start',
+              heartbeatMs: 5000,
+              truncated: false,
+            }),
+            frame(
+              'event',
+              {
+                name: params.name,
+                cursor: 'discard',
+                eventId: 'unrelated-event',
+                timestamp: '2026-11-23T18:00:00Z',
+                data: {},
+              },
+              id + 1,
+            ),
+            frame('event', {
+              name: params.name,
+              cursor: 'next',
+              eventId: 'settled-stream-1',
+              timestamp: '2026-11-23T18:00:00Z',
+              data: { outcome: 'completed' },
+            }),
+            frame('heartbeat', { cursor: 'next' }),
+            { jsonrpc: '2.0', id, result: { resultType: 'complete' } },
+          ];
+          return new Response(
+            notifications
+              .map((item) => `data: ${JSON.stringify(item)}\r\n\r\n`)
+              .join(''),
+            { headers: { 'content-type': 'text/event-stream' } },
+          );
+        }
         if (request.headers.get('mcp-method') === 'events/poll') {
           const { id, params } = z
             .object({
@@ -658,6 +716,39 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
         ],
       },
     });
+
+    const streamed = await app.request(
+      '/integrations/oauth-proof/events/stream',
+      {
+        method: 'POST',
+        headers: operatorHeaders(),
+        body: JSON.stringify({
+          name: 'work.settled',
+          cursor: null,
+          heartbeatMs: 5000,
+        }),
+      },
+      loopbackEnv(),
+    );
+    expect(streamed.status).toBe(200);
+    expect(streamed.headers.get('content-type')).toContain('text/event-stream');
+    expect(streamed.headers.get('cache-control')).toBe('private, no-store');
+    const frames = (await streamed.text())
+      .split('\n')
+      .filter((line) => line.startsWith('data: '))
+      .map((line) => JSON.parse(line.slice(6)));
+    expect(frames).toEqual([
+      { type: 'active', cursor: 'start', heartbeatMs: 5000, truncated: false },
+      {
+        type: 'event',
+        cursor: 'next',
+        eventId: 'settled-stream-1',
+        timestamp: '2026-11-23T18:00:00Z',
+        data: { outcome: 'completed' },
+      },
+      { type: 'heartbeat', cursor: 'next' },
+      { type: 'ended', reason: 'complete' },
+    ]);
 
     fixture.oversizeNextPoll();
     expect((await poll('start')).status).toBe(502);

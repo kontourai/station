@@ -2322,6 +2322,16 @@ Events support, `data.supported` is false. Station bounds the response while
 reading it and checks event count before returning the page. Polls do not
 create subscriptions.
 
+`POST /integrations/:id/events/stream` opens a bounded SSE reader for a named
+event on the same shared Streamable HTTP connection. Send `name`, a nullable
+`cursor` and optional `arguments`, `maxAgeMs` or `heartbeatMs` (5,000–30,000).
+The response publishes `active`, `event`, `heartbeat` and `ended` frames.
+Station binds frames to the upstream request and rechecks operator access
+before each write. Disconnecting cancels the upstream fetch. The reader
+closes after 60 seconds or its byte budget. Open another stream with the
+latest cursor to continue. A Station accepts up to four readers at once and
+one per integration.
+
 ### Discover transcript App tools
 
 `GET /integrations/:serverId/ui-tools` returns `{success: true, data: string[]}`

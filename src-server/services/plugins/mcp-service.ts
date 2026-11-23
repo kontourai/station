@@ -17,6 +17,8 @@ import type {
   ToolServerEventCatalog,
   ToolServerEventPollInput,
   ToolServerEventPollPage,
+  ToolServerEventStreamFrame,
+  ToolServerEventStreamInput,
 } from '@kontourai/station-contracts/tool';
 import {
   type MCPConnection,
@@ -1543,6 +1545,8 @@ export class MCPService {
    * Reuse the protocol-owning connection or acquire a short-lived connection
    * under the same integration custody fence.
    */
+  private readonly eventStreams = new Set<string>();
+
   private async withMcpConnection<T>(
     serverId: string,
     operation:
@@ -1551,7 +1555,7 @@ export class MCPService {
       | 'tool-call'
       | 'prompt-read'
       | 'event-read',
-    fn: (conn: MCPConnection) => Promise<T>,
+    fn: (conn: MCPConnection, assertCurrent: () => void) => Promise<T>,
     {
       openOnly = false,
       signal,
@@ -1559,6 +1563,17 @@ export class MCPService {
   ): Promise<T> {
     signal?.throwIfAborted();
     const claim = this.mcpCustody.acquire(serverId, 'app');
+    const run = async (conn: MCPConnection) => {
+      const assertCurrent = () => {
+        signal?.throwIfAborted();
+        if (!claim.isCurrent() || conn.isUsable?.() === false)
+          throw new MCPLocalCustodyError('stale');
+      };
+      assertCurrent();
+      const result = await fn(conn, assertCurrent);
+      assertCurrent();
+      return result;
+    };
     let failed = false;
     try {
       const def = await this.configLoader.loadIntegration(serverId);
@@ -1586,12 +1601,7 @@ export class MCPService {
       const active = this.mcpConfigs.get(serverId);
       if (active) {
         try {
-          if (active.isUsable?.() === false)
-            throw new MCPLocalCustodyError('stale');
-          const result = await fn(active);
-          if (!claim.isCurrent() || active.isUsable?.() === false)
-            throw new MCPLocalCustodyError('stale');
-          return result;
+          return await run(active);
         } catch (error) {
           if (error instanceof MCPAppsToolAccessError) throw error;
           throw captureToolServerOperationFailure(
@@ -1622,10 +1632,7 @@ export class MCPService {
         );
       }
       try {
-        const result = await fn(conn);
-        if (!claim.isCurrent() || conn.isUsable?.() === false)
-          throw new MCPLocalCustodyError('stale');
-        return result;
+        return await run(conn);
       } catch (error) {
         if (error instanceof MCPAppsToolAccessError) throw error;
         throw captureToolServerOperationFailure(
@@ -1962,6 +1969,42 @@ export class MCPService {
       },
       { signal },
     );
+  }
+
+  async readMCPEventStream(
+    serverId: string,
+    input: ToolServerEventStreamInput,
+    receive: (frame: ToolServerEventStreamFrame) => Promise<void>,
+    signal: AbortSignal,
+  ): Promise<void> {
+    if (this.eventStreams.has(serverId) || this.eventStreams.size >= 4)
+      throw new StationOwnedToolServerError(
+        'There are too many open event streams.',
+      );
+    this.eventStreams.add(serverId);
+    try {
+      await this.withMcpConnection(
+        serverId,
+        'event-read',
+        async (conn, assertCurrent) => {
+          if (!supportsMcpEvents(conn) || !conn.readEventStream)
+            throw new StationOwnedToolServerError(
+              'This tool server does not offer Events streams.',
+            );
+          await conn.readEventStream(
+            input,
+            async (frame) => {
+              assertCurrent();
+              await receive(frame);
+            },
+            signal,
+          );
+        },
+        { signal },
+      );
+    } finally {
+      this.eventStreams.delete(serverId);
+    }
   }
 
   private async assertMcpUiToolEnabled(
