@@ -14,6 +14,11 @@ afterEach(() => {
   setClientCredentialResolver(undefined);
 });
 
+let client = new QueryClient();
+function Wrapper({ children }: { children: ReactNode }) {
+  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+}
+
 const API = 'https://station.example.test';
 const scope = { apiBase: API, authorityKey: 'sign-in-readiness' };
 
@@ -77,14 +82,9 @@ test('a sign-in this client sees finish re-reads the engine connections without 
   vi.stubGlobal('fetch', fetchMock);
   // The engines read keeps its data for minutes; only the sign-in's own
   // refresh can bring the new sign-in state in.
-  const client = new QueryClient({
+  client = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: 5 * 60_000 } },
   });
-  function Wrapper({ children }: { children: ReactNode }) {
-    return (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
-    );
-  }
   const view = renderHook(
     () => ({
       engines: useEngineConnectionsQuery(),
