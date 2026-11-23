@@ -197,7 +197,10 @@ export function HomeStartComposer({
   projectSlug?: string;
 }) {
   const { namespace } = useAuthorityPersistence();
-  const { setDockState, isDockOpen } = useNavigation();
+  const { setDockState, isDockOpen, activeChat } = useNavigation();
+  // An open dock showing a chat has its own composer, so Home's steps aside.
+  // An open dock with no chat in it offers no composer, so Home keeps its own.
+  const dockHoldsChat = isDockOpen && Boolean(activeChat);
   const visualSkillsEnabled = useSurfaceVisibilityFlags().has(
     VISUAL_SKILLS_PREVIEW_ID,
   );
@@ -557,7 +560,7 @@ export function HomeStartComposer({
     ? 'Start your first conversation'
     : undefined;
   const startSurface = (
-    <div hidden={!projectSlug && isDockOpen}>
+    <div hidden={!projectSlug && dockHoldsChat}>
       <StartComposer
         compact={compact}
         heading={firstHeading}
@@ -813,7 +816,7 @@ export function HomeStartComposer({
   );
   return (
     <>
-      {firstHeading && !projectSlug && isDockOpen && <h1>{firstHeading}</h1>}
+      {firstHeading && !projectSlug && dockHoldsChat && <h1>{firstHeading}</h1>}
       {startSurface}
     </>
   );
