@@ -58,6 +58,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'notificationPreferences',
   'notifications',
   'operatingState',
+  'outsideClients',
   'plugins',
   'projectData',
   'projectS3Sources',
