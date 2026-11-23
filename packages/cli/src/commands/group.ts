@@ -6,10 +6,25 @@ import {
   getCliSessionGroup,
   listCliSessionGroups,
   parseCliSessionGroupInput,
+  parseCliSessionGroupSyncInput,
   runCliSessionGroup,
+  syncCliSessionGroup,
 } from '@kontourai/station-sdk/client';
 import { optionalValueFlag, type ParsedCoreArgs } from './core-api.js';
 import { terminalSafeJson, terminalSafeText } from './terminal-safe.js';
+
+async function withGroupInterrupt<T>(
+  action: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const stop = new AbortController();
+  const interrupt = () => stop.abort();
+  process.once('SIGINT', interrupt);
+  try {
+    return await action(stop.signal);
+  } finally {
+    process.removeListener('SIGINT', interrupt);
+  }
+}
 
 export async function runGroupCommand(
   apiBase: string,
@@ -18,6 +33,9 @@ export async function runGroupCommand(
   const [action, groupId, ...extra] = parsed.positionals;
   const create = action === 'session-create';
   const list = action === 'session-list';
+  const sync = action === 'session-sync';
+  const fromFile = create || sync;
+  const inspect = list || action === 'session-get';
   if (
     ![
       'session-create',
@@ -25,12 +43,13 @@ export async function runGroupCommand(
       'session-list',
       'session-run',
       'session-cancel',
+      'session-sync',
     ].includes(action ?? '') ||
     extra.length ||
     (create || list ? groupId !== undefined : !groupId)
   )
     throw new Error(
-      'Expected group session-create --file=<path>, session-list [--after=<group>], or session-get|session-run|session-cancel <group>.',
+      'Expected group session-create --file=<path>, session-list [--after=<group>], session-sync <group> --file=<path>, or session-get|session-run|session-cancel <group>.',
     );
   for (const flag of Object.keys(parsed.flags)) {
     if (
@@ -39,15 +58,19 @@ export async function runGroupCommand(
         'api-base',
         'station',
         'credential',
-        ...(create ? ['file'] : []),
+        ...(fromFile ? ['file'] : []),
         ...(list ? ['after'] : []),
+        ...(inspect ? ['include-context-sync'] : []),
       ].includes(flag) ||
       (parsed.repeatedFlags[flag]?.length ?? 0) > 1
     )
       throw new Error(`Unsupported or repeated session-group flag --${flag}.`);
   }
+  const inspectReceipt = parsed.flags['include-context-sync'];
+  if (typeof inspectReceipt === 'string')
+    throw new Error('--include-context-sync does not take a value.');
   let result: unknown;
-  if (create) {
+  if (fromFile) {
     const file = optionalValueFlag(parsed, 'file');
     if (!file) throw new Error('--file=<path> is required.');
     const descriptor = openSync(
@@ -80,30 +103,35 @@ export async function runGroupCommand(
     } finally {
       closeSync(descriptor);
     }
-    const input = parseCliSessionGroupInput(
-      JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)),
+    const input: unknown = JSON.parse(
+      new TextDecoder('utf-8', { fatal: true }).decode(bytes),
     );
-    result = await createCliSessionGroup(apiBase, input);
+    if (create) {
+      result = await createCliSessionGroup(
+        apiBase,
+        parseCliSessionGroupInput(input),
+      );
+    } else {
+      const syncInput = parseCliSessionGroupSyncInput(input);
+      result = await withGroupInterrupt((signal) =>
+        syncCliSessionGroup(apiBase, groupId!, syncInput, { signal }),
+      );
+    }
   } else if (list)
     result = await listCliSessionGroups(apiBase, {
       afterGroupId: optionalValueFlag(parsed, 'after'),
+      includeContextSync: inspectReceipt === true,
     });
   else if (action === 'session-get')
-    result = await getCliSessionGroup(apiBase, groupId!);
+    result = await getCliSessionGroup(apiBase, groupId!, {
+      includeContextSync: inspectReceipt === true,
+    });
   else if (action === 'session-cancel')
     result = await cancelCliSessionGroup(apiBase, groupId!);
-  else {
-    const stop = new AbortController();
-    const interrupt = () => stop.abort();
-    process.once('SIGINT', interrupt);
-    try {
-      result = await runCliSessionGroup(apiBase, groupId!, {
-        signal: stop.signal,
-      });
-    } finally {
-      process.removeListener('SIGINT', interrupt);
-    }
-  }
+  else
+    result = await withGroupInterrupt((signal) =>
+      runCliSessionGroup(apiBase, groupId!, { signal }),
+    );
   console.log(
     terminalSafeJson(result).split('\n').map(terminalSafeText).join('\n'),
   );

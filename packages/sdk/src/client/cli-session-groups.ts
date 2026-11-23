@@ -285,6 +285,11 @@ export async function cancelCliSessionGroup(
   return command(`${groupPath(apiBase, groupId)}/cancel`, {}, options);
 }
 
+/** Validate a local Session-group sync plan before sending it. */
+export function parseCliSessionGroupSyncInput(input: unknown) {
+  return syncInputSchema.parse(input);
+}
+
 /** Send bounded folded context to the retained member Sessions. */
 export async function syncCliSessionGroup(
   apiBase: string,
@@ -292,7 +297,7 @@ export async function syncCliSessionGroup(
   input: z.infer<typeof syncInputSchema>,
   options?: ClientRequestOptions,
 ): Promise<CliSessionGroupView> {
-  const sent = syncInputSchema.parse(input);
+  const sent = parseCliSessionGroupSyncInput(input);
   await requireCliSessionGroups(apiBase);
   const result = await command(`${groupPath(apiBase, groupId)}/sync`, sent, {
     timeoutMs: null,

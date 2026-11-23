@@ -902,8 +902,10 @@ const VERBS: Record<string, VerbSpec> = {
     targets: true,
     usage: [
       'station group session-create --file=<group.json> [--json]',
-      'station group session-list [--after=<group>] [--json]',
-      'station group session-get|session-run|session-cancel <group> [--json]',
+      'station group session-list [--after=<group>] [--include-context-sync] [--json]',
+      'station group session-get <group> [--include-context-sync] [--json]',
+      'station group session-run|session-cancel <group> [--json]',
+      'station group session-sync <group> --file=<sync.json> [--json]',
     ],
     actions: [
       'session-create',
@@ -911,10 +913,11 @@ const VERBS: Record<string, VerbSpec> = {
       'session-get',
       'session-run',
       'session-cancel',
+      'session-sync',
     ],
     detail: [
       'Requires the Session groups preview on a personal Station.',
-      'session-create records the plan. session-run can spend provider credits.',
+      'session-create records the plan. session-run and session-sync can spend provider credits.',
       'Ctrl-C requests interruption. It does not establish provider termination.',
       'Commands print terminal-safe JSON. Use session-get to inspect retained state.',
     ],
