@@ -5518,6 +5518,11 @@ export function createOrchestrationRoutes(
         );
       }),
     );
+    app.get('/session-groups', (c) =>
+      respondSessionGroup(c, (owner, binding, assertCurrent) =>
+        owner.list(binding, c.req.query('afterGroupId'), assertCurrent),
+      ),
+    );
     app.get('/session-groups/:groupId', (c) =>
       respondSessionGroup(c, (owner, binding) =>
         owner.view(param(c, 'groupId'), binding),

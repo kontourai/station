@@ -902,9 +902,16 @@ const VERBS: Record<string, VerbSpec> = {
     targets: true,
     usage: [
       'station group session-create --file=<group.json> [--json]',
+      'station group session-list [--after=<group>] [--json]',
       'station group session-get|session-run|session-cancel <group> [--json]',
     ],
-    actions: ['session-create', 'session-get', 'session-run', 'session-cancel'],
+    actions: [
+      'session-create',
+      'session-list',
+      'session-get',
+      'session-run',
+      'session-cancel',
+    ],
     detail: [
       'Requires the Session groups preview on a personal Station.',
       'session-create records the plan. session-run can spend provider credits.',

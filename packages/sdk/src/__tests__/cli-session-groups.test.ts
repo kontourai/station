@@ -8,6 +8,7 @@ import {
   cancelCliSessionGroup,
   createCliSessionGroup,
   getCliSessionGroup,
+  listCliSessionGroups,
   parseCliSessionGroupInput,
   runCliSessionGroup,
 } from '../client/cli-session-groups';
@@ -123,4 +124,18 @@ test('group requests use the advertised API and retain the zero-dispatch receipt
     { url: `${groupUrl}/run`, method: 'POST', body: {} },
     { url: `${groupUrl}/cancel`, method: 'POST', body: {} },
   ]);
+});
+
+test('listing encodes the cursor and handles a Station that only has the original group routes', async () => {
+  const fetchMock = vi.fn<typeof fetch>(async (url) => {
+    if (String(url) === handshakeUrl) return handshake(true);
+    expect(String(url)).toBe(`${groupsUrl}?afterGroupId=group%3Aprevious`);
+    return new Response('404 Not Found', { status: 404 });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  await expect(
+    listCliSessionGroups(apiBase, { afterGroupId: 'group:previous' }),
+  ).rejects.toThrow('Enable the preview on an updated personal Station');
+  expect(fetchMock).toHaveBeenCalledTimes(2);
 });

@@ -14,7 +14,10 @@ import type {
   FlowScheduleEvent,
 } from '@kontourai/flow-agents';
 import { canonicalJson } from '@kontourai/relay';
-import type { CliSessionGroupView } from '@kontourai/station-contracts/delegation-group';
+import type {
+  CliSessionGroupListPage,
+  CliSessionGroupView,
+} from '@kontourai/station-contracts/delegation-group';
 import {
   publishJsonFileWithOwnedLock,
   readJsonFile,
@@ -169,15 +172,24 @@ export class CliSessionGroups<T> {
     return join(this.root, `${id.parse(groupId)}.json`);
   }
 
-  private read(groupId: string, owner: string): GroupRecord {
+  private readStored(groupId: string): GroupRecord {
     const value = readJsonFile(this.path(groupId), null, {
       maxBytes: MAX_BYTES,
       label: 'CLI session group',
     });
     if (value === null) throw new CliSessionGroupUnavailable('group_not_found');
-    const record = recordSchema.parse(value);
+    return recordSchema.parse(value);
+  }
+
+  private read(groupId: string, owner: string): GroupRecord {
+    const record = this.readStored(groupId);
     if (record.groupId !== groupId || record.ownerKey !== digest(owner))
       throw new CliSessionGroupUnavailable('group_not_found');
+    this.validateRecord(record);
+    return record;
+  }
+
+  private validateRecord(record: GroupRecord): void {
     for (const seat of record.seats) this.parseInput(seat.input);
     if (
       new Set(record.seats.map((s) => s.seatId)).size !== record.seats.length ||
@@ -195,7 +207,6 @@ export class CliSessionGroups<T> {
       )
     )
       throw new CliSessionGroupUnavailable('group_storage_unavailable');
-    return record;
   }
 
   private async mutate<R>(
@@ -340,8 +351,58 @@ export class CliSessionGroups<T> {
     return this.view(groupId, owner);
   }
 
+  async list(
+    owner: string,
+    afterGroupId: string | undefined,
+    assertCurrent: () => void,
+  ): Promise<CliSessionGroupListPage> {
+    if (afterGroupId !== undefined) id.parse(afterGroupId);
+    const names = readdirSync(this.root)
+      .filter((name) => name.endsWith('.json'))
+      .sort();
+    if (names.length > 128)
+      throw new CliSessionGroupUnavailable('group_storage_unavailable');
+
+    const ownerKey = digest(owner);
+    const groups: CliSessionGroupView[] = [];
+    for (const name of names) {
+      const groupId = id.parse(name.slice(0, -5));
+      if (afterGroupId !== undefined && groupId <= afterGroupId) continue;
+      assertCurrent();
+      const record = this.readStored(groupId);
+      if (record.ownerKey !== ownerKey) continue;
+      if (record.groupId !== groupId)
+        throw new CliSessionGroupUnavailable('group_storage_unavailable');
+      const last = groups.at(-1);
+      if (groups.length === 16 && last)
+        return { groups, nextGroupId: last.groupId, hasMore: true };
+      this.validateRecord(record);
+      const view = await this.project(record);
+      assertCurrent();
+      const page = {
+        groups: [...groups, view],
+        nextGroupId: groupId,
+        hasMore: true,
+      };
+      if (
+        Buffer.byteLength(JSON.stringify({ success: true, data: page })) >
+        262_144
+      ) {
+        if (!last)
+          throw new CliSessionGroupUnavailable('group_response_too_large');
+        return { groups, nextGroupId: last.groupId, hasMore: true };
+      }
+      groups.push(view);
+    }
+    return { groups, nextGroupId: null, hasMore: false };
+  }
+
   async view(groupId: string, owner: string): Promise<CliSessionGroupView> {
-    const record = this.read(groupId, owner);
+    return this.project(this.read(groupId, owner));
+  }
+
+  private async project(record: GroupRecord): Promise<CliSessionGroupView> {
+    const { groupId } = record;
     const flow = record.flowReady
       ? await loadRun(groupId, join(this.root, groupId))
       : null;
