@@ -894,7 +894,13 @@
 
     "packages/sdk/src/client/project-room-coordinator.ts",
 
-    "packages/sdk/src/query-domains/projectRoomCoordinator.ts"
+    "packages/sdk/src/query-domains/projectRoomCoordinator.ts",
+
+    "packages/sdk/src/client/cli-session-groups.ts",
+
+    "packages/sdk/src/__tests__/cli-session-groups.test.ts",
+
+    "packages/contracts/src/delegation-group.ts"
   ],
 
   "checks": [

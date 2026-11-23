@@ -896,6 +896,22 @@ const VERBS: Record<string, VerbSpec> = {
       'Requires an interactive terminal. For scripting use sessions/approvals/chat.',
     ],
   },
+  group: {
+    group: 'Core Workspace',
+    summary: 'Create, inspect, and supervise personal Station Session groups',
+    targets: true,
+    usage: [
+      'station group session-create --file=<group.json> [--json]',
+      'station group session-get|session-run|session-cancel <group> [--json]',
+    ],
+    actions: ['session-create', 'session-get', 'session-run', 'session-cancel'],
+    detail: [
+      'Requires the Session groups preview on a personal Station.',
+      'session-create records the plan. session-run can spend provider credits.',
+      'Ctrl-C requests interruption. It does not establish provider termination.',
+      'Commands print terminal-safe JSON. Use session-get to inspect retained state.',
+    ],
+  },
   delegate: {
     group: 'Core Workspace',
     summary: 'Delegate tasks or continue conversations',

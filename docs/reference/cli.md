@@ -2636,6 +2636,24 @@ station voice delete-session <id> [--api-base=<url>]
 
 ---
 
+### `group`
+
+The **Session groups** preview on a personal Station adds four commands.
+
+```sh
+station group session-create --file=group.json
+station group session-get <group>
+station group session-run <group>
+station group session-cancel <group>
+```
+
+Create reads a bounded local JSON file and records the plan under its operation
+ID. Run dispatches ready Tasks through Station and can spend provider credits.
+Ctrl-C requests interruption. Inspect retained state with `session-get`.
+Cancellation closes admission and requests a stop for confirmed initial turns.
+See the [Session-group API](api.md#personal-session-group-preview) for the
+plan and authorization rules.
+
 ## Application Lifecycle
 
 ### `service`

@@ -423,6 +423,7 @@ const CORE_COMMANDS = [
   'approvals',
   'operate',
   'delegate',
+  'group',
   'projects',
   'tasks',
   'skills',

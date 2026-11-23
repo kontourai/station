@@ -77,6 +77,7 @@ import {
   executionEnvironment,
   rejectRetiredExecutionSelectors,
 } from './execution-target.js';
+import { runGroupCommand } from './group.js';
 import { INVOKED_CWD } from './helpers.js';
 import { isLoopbackSelfAuthEndpoint } from './local-self-auth.js';
 import { runMcpClientsCommand } from './mcp-clients.js';
@@ -1382,6 +1383,11 @@ export async function runCoreCommand(
 
   if (command === 'delegate') {
     await runDelegateCommand(apiBase, parsed);
+    return;
+  }
+
+  if (command === 'group') {
+    await runGroupCommand(apiBase, parsed);
     return;
   }
 
