@@ -1,0 +1,7 @@
+{
+  "revision": "48d3f86a1d5f9359e2ff9f3a9aa1d54ff4b1d1ce",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Re-reviewed after the null-Task guard: the automation-actions paragraph claims dispatcher, budget and inbox reuse only, still accurate.","inputs":["src-server/runtime/automation-actions-runtime.ts"]}
+  ]
+}
