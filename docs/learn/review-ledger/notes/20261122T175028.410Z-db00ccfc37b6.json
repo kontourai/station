@@ -1,0 +1,15 @@
+{
+  "revision": "1c6073d8ca9553fb3f7c34b8f9b3e7bfc9a43ee1",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Only the no-address readiness sentence changed, to name turning the connection off beside adding a URL or deleting it. Checked agent-configuration, connections, self-configuring-agent, config and the self-configuring-agent example: none quotes that sentence; they cite this provider for model selection, proxy routing and OpenAI-compatible setup, which are unchanged.","inputs":["src-server/providers/llm/openai-compat-provider.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Only the no-address readiness sentence changed, to name turning the connection off beside adding a URL or deleting it. Checked agent-configuration, connections, self-configuring-agent, config and the self-configuring-agent example: none quotes that sentence; they cite this provider for model selection, proxy routing and OpenAI-compatible setup, which are unchanged.","inputs":["src-server/providers/llm/openai-compat-provider.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Only the no-address readiness sentence changed, to name turning the connection off beside adding a URL or deleting it. Checked agent-configuration, connections, self-configuring-agent, config and the self-configuring-agent example: none quotes that sentence; they cite this provider for model selection, proxy routing and OpenAI-compatible setup, which are unchanged.","inputs":["src-server/providers/llm/openai-compat-provider.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Only the no-address readiness sentence changed, to name turning the connection off beside adding a URL or deleting it. Checked agent-configuration, connections, self-configuring-agent, config and the self-configuring-agent example: none quotes that sentence; they cite this provider for model selection, proxy routing and OpenAI-compatible setup, which are unchanged.","inputs":["src-server/providers/llm/openai-compat-provider.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Only the no-address readiness sentence changed, to name turning the connection off beside adding a URL or deleting it. Checked agent-configuration, connections, self-configuring-agent, config and the self-configuring-agent example: none quotes that sentence; they cite this provider for model selection, proxy routing and OpenAI-compatible setup, which are unchanged.","inputs":["src-server/providers/llm/openai-compat-provider.ts"]}
+  ]
+}

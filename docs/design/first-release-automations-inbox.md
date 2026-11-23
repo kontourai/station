@@ -27,7 +27,7 @@ Automations get a readable list and one page per automation, and the Inbox repla
 - The bell badge counts Needs you only (approvals, questions, device requests). Updates never raise it. The bell popover (a bottom sheet on a phone) answers Needs you items in place, shows the latest updates with one action each, and links to "Open inbox".
 - The Inbox page shows everything that wants you or just finished, one row per thing, with tabs All, Needs you and Snoozed, a project filter and search. The chat list in the dock uses the same status words and row menu, and its header reads "Chats", not "Inbox".
 - Home's "Waiting on you" shows the same Needs you rows (top 3 and "See all"), and "Finished recently" shows updates. Home adds no extra verbs.
-- One item has one status everywhere, as on the Tasks board: the status is the ladder's word, and flags are "Last reply may not have arrived", "Snoozed until Mon 9 AM" and "Last 2 runs failed". A chat appears once, under whichever group its status puts it in.
+- One item has one status everywhere, as on the Tasks board: the status is the ladder's word, and flags are "Last message may not have arrived", "Snoozed until Mon 9 AM" and "Last 2 runs failed". A chat appears once, under whichever group its status puts it in.
 
 ## Before and after
 
@@ -97,9 +97,9 @@ On a phone: A full-screen sheet with Cancel and Create pinned at the bottom. Tod
 3. **A read-back sentence plus the next three dates.** Kept from today's preview, which works well. _(layout; slice 5.15)_
 4. **An agent picker, with engine and model shown read-only.** _(layout; slice 5.15)_
 5. **"Where results go": Its own chat, or A new task in a project.** "This chat" is added when the form opens from a chat. The project option is behind a feature preview today. It ships only if a project schedule can be edited and deleted from Automations, which this slice settles first; otherwise the first release offers "Its own chat" only. _(layout, backend check first; slice 5.15)_
-6. **Name moves last and takes plain words, suggested from the instructions.** Today the name is a slug, and the Edit dialog has no Name field. This needs a display name separate from the slug. Until then, generate the slug from the name and keep it hidden. _(server work; slice 5.15)_
+6. **Name moves last and takes plain words, suggested from the instructions.** The Name field is the form's last field, and an empty one is suggested from the instructions. A job stores a display name beside its slug. Station derives the slug from the name and keeps it hidden. Edit has a Name field that renames without changing the slug or its runs. _(server work and Name on Edit: slice 0.18; order and suggestion from the instructions: layout, slice 5.15)_
 7. **Not on the form for v1: Retries and Retry delay, "Station engine, output file", the GitHub pull request monitor fields, and "Run with".** They are technical, and the first two apply only to file runs. _(layout; slice 5.15)_
-8. **"Once" defaults to tomorrow at 9:00 AM, and "Remove it after it runs" is unticked. No screen is specified for it.** Today a one-time run defaults to now with "Delete the job after it runs" ticked. _(copy; slice 0.18)_
+8. **"Once" defaults to tomorrow at 9:00 AM, and "Remove it after it runs" is unticked. No screen is specified for it.** Until the presets of change 2 exist, the default applies to the "One time" tab. _(copy; slice 0.18)_
 
 ### `automations-inbox-05` Automation that paused itself
 
@@ -138,7 +138,7 @@ On a phone: A bottom sheet.
 3. **Approve in place: the command, then Allow once, Deny or Open chat.** The inline approval component exists. _(layout; slice 4.15)_
 4. **Answer a question in place.** The inline reply component exists. _(layout; slice 4.15)_
 5. **Updates: one row per thing, with one action ("Sign in").** _(layout; slice 4.15)_
-6. **Done, with the flag "Last reply may not have arrived".** It replaces a separate "Delivery unconfirmed" lane. _(new screen state; slice 4.15)_
+6. **Done, with the flag "Last message may not have arrived".** It replaces a separate "Delivery unconfirmed" lane. _(new screen state; slice 4.15)_
 7. **"Mark updates done" replaces "Dismiss eligible items".** This is the bulk acknowledge. _(copy; slice 4.15)_
 
 ### `automations-inbox-11` Inbox
@@ -152,8 +152,8 @@ On a phone: The same page in one column.
 5. **A question is answered in the row.** _(layout; slice 4.14)_
 6. **The Updates group, with "Mark all done".** _(layout; slice 4.14)_
 7. **An automation failure says what failed and offers one step ("Sign in to Codex").** Today a failed-turn notification shows raw text about provider connections needing an application default. _(layout; slice 4.14)_
-8. **Raw server text is translated: "Couldn't start: two providers are turned on and neither is the default.", with "Choose a default".** Today the page shows raw server text. The mapping is new copy per failure code. "Choose a default" goes to Customize › Providers. _(copy; slice 0.17)_
-9. **Done, plus a flag, plus "Check".** It follows the Tasks board rule. _(layout; slice 0.16)_
+8. **Raw server text is translated: "Couldn't start: more than one model connection is turned on and Station can't tell which one to use.", with "Open model connections".** Today the page shows raw server text. The refusal carries no failure code, so the mapping keys on the two sentences the server throws for this condition, which the server and the UI share. The words hold for three or more connections and for an agent bound to one of them. "Open model connections" goes to Connections › Models, where a connection can be turned off; it does not promise a choice of default. The recorded text stays behind a closed Details. _(copy; slice 0.17)_
+9. **Done, plus a flag, plus "Check".** It follows the Tasks board rule. The flag reads "Last message may not have arrived": the thing in doubt is the person's message, not the agent's reply. The flag takes its own line under the row's status line, not the end of it, because Check is a control of its own and the status line sits inside the row's open button. _(layout; slice 0.16)_
 10. **A row ⋯ menu.** It opens the menu specified on the row actions screen. _(layout; slice 4.13)_
 11. **The gear opens Settings › Notifications.** The separate "Notification settings" link and "Dismiss eligible items" button are removed. _(layout; slice 4.14)_
 12. **One row per chat. The duplicate "Session failed" and "Turn Failed" pair collapses into one Failed row.** Today one failed run appears twice on the Notifications page. _(new screen state; slice 4.13)_
@@ -209,7 +209,7 @@ On a phone: The same sheet.
 | "Needs attention" section | Simplify | Was "Needs attention". Now "Needs you", matching Home and the Tasks board. |
 | Session failed and Turn Failed (two rows) | Simplify | Was two rows. Now one Failed row with a plain reason and one step. |
 | Turn Completed and "Your agent finished" | Simplify | Becomes Done, as the item's row and not an event. |
-| Delivery unconfirmed (Needs you lane) and Done (Just finished) | Simplify | Becomes Done plus the flag "Last reply may not have arrived" and Check. This follows the Tasks board rule. |
+| Delivery unconfirmed (Needs you lane) and Done (Just finished) | Simplify | Becomes Done plus the flag "Last message may not have arrived" and Check. This follows the Tasks board rule. |
 | "Waiting" for a scheduled item | Simplify | Was "Waiting". Now "Scheduled · 4 PM". It collided with "Waiting on you". |
 | Approval request and Input needed | Simplify | Was two phrasings. Now "Needs approval" and "Needs input", ladder words everywhere. |
 | Settle conversation, Dismiss from inbox, Hide from inbox and notification Dismiss | Simplify | Was four verbs. Now "Mark done", one verb for "I've handled this". |
@@ -243,7 +243,7 @@ On a phone: The same sheet.
 | Inbox rename, tabs, removing chips and dates | copy | Also layout. |
 | One row per item (merge the failed-session attention with the failed-turn notification) | new screen state | Dedupe by conversation. |
 | Failure reason in plain words plus one step | copy | A map per failure code. |
-| "Last reply may not have arrived" as a flag | new screen state | A change to the status lane. |
+| "Last message may not have arrived" as a flag | new screen state | A change to the status lane. |
 | "Mark done" acts as Settle where that exists, and as Dismiss otherwise | new screen state |  |
 | One snooze preset list | copy |  |
 | Bell badge counts Needs you only | new screen state |  |

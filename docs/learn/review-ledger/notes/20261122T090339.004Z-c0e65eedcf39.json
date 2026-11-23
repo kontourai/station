@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Glossary edit adds the automation display name; no context-map route changes.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]}
+  ]
+}

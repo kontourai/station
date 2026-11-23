@@ -682,9 +682,9 @@ approval paths; these hooks do not establish external policy enforcement.
 | `beforeToolCall` | Before any tool executes | Checks auto-approve and the untrusted-content permission; triggers approval flow if needed |
 | `afterToolCall` | After a tool returns | Debug logging; marks the turn when the result came from an integration classified untrusted, or from the HTTP request built-in |
 | `endInvocation` | Once when the turn ends, including on error and abort | Releases the turn's untrusted-content state; the conversation's mark stays until a person clears it |
-| `afterInvocation` | After the full turn completes | Updates conversation stats (tokens, cost, tool call count) in the memory adapter |
+| `afterInvocation` | After the full turn completes | Updates conversation stats (turns, tool call count, tokens, cost) in the memory adapter |
 
-`afterInvocation` also enriches the last assistant message with model metadata and pricing from the Bedrock model catalog.
+`afterInvocation` also enriches the last assistant message with model metadata and pricing from the Bedrock model catalog. A turn whose model reported no usage still counts as a turn with its tool calls; its token counts and cost stay absent and read "Not reported". A failed turn with nothing reported records nothing; one that failed after reporting usage keeps its tokens. The Strands framework reports no error to the hook (it fires on success, failure and a cancelled invocation alike), so there a turn that ends without an assistant answer counts as failed. VoltAgent ends a stream whose provider sent an error with an output whose finish reason is `error`, which the adapter passes on as a failure. A person's Stop, or any abort, ends a VoltAgent turn with no output and is not counted (VoltAgent can also deliver an abort after a turn completed, which must not count again). The usage passed on is the turn's total over all model steps, so a turn that called tools counts every step.
 
 ---
 

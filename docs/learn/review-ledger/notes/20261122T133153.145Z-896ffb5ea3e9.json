@@ -1,0 +1,7 @@
+{
+  "revision": "b78420825342ac366cf00977a2a36b2fc40ec1a9",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"The default Agent claim (inventory and Basis previews) is unaffected; the test change only adds an assertion that the built-in agent records its prompt and tool estimate.","inputs":["docs/design/mcp-ui-host.md","src-server/runtime/agents/__tests__/runtime-default-agent.test.ts"]}
+  ]
+}

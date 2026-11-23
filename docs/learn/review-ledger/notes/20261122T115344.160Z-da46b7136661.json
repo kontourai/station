@@ -1,0 +1,9 @@
+{
+  "revision": "1f969537d3735b7e015ed450225c0c03e4b9672e",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked acquisition claims: only the schema-failure sentence's mirror wording changed; status codes, bodies and recording are unchanged.","inputs":["src-server/routes/projects/repository-acquisition-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked acquisition claims: only the schema-failure sentence's mirror wording changed; status codes, bodies and recording are unchanged.","inputs":["src-server/routes/projects/repository-acquisition-routes.ts"]}
+  ]
+}

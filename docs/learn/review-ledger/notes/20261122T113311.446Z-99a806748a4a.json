@@ -1,0 +1,17 @@
+{
+  "revision": "585ca3253dc90307bec889826e45a58c0013ef94",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Re-checked after the spec change: still one added tool server editor test (Secret bindings open, summary scrolled into view, Reconnect clicked); no documented behavior, coverage row or capture content changes.","inputs":["tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Re-checked after the spec change: still one added tool server editor test (Secret bindings open, summary scrolled into view, Reconnect clicked); no documented behavior, coverage row or capture content changes.","inputs":["tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Re-checked after the spec change: still one added tool server editor test (Secret bindings open, summary scrolled into view, Reconnect clicked); no documented behavior, coverage row or capture content changes.","inputs":["tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Re-checked after the spec change: still one added tool server editor test (Secret bindings open, summary scrolled into view, Reconnect clicked); no documented behavior, coverage row or capture content changes.","inputs":["tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Re-checked after the spec change: still one added tool server editor test (Secret bindings open, summary scrolled into view, Reconnect clicked); no documented behavior, coverage row or capture content changes.","inputs":["tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Re-checked after the spec change: still one added tool server editor test (Secret bindings open, summary scrolled into view, Reconnect clicked); no documented behavior, coverage row or capture content changes.","inputs":["tests/connections-crud.spec.ts"]}
+  ]
+}

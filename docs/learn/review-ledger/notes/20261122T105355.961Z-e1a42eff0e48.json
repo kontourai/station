@@ -1,0 +1,27 @@
+{
+  "revision": "964b25938ee78097f1082ea04a4dc5688145d04b",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Checked against the glossary change: the map routes contexts and names no Arrangement persistence or maximize claim, so it is unaffected","inputs":["CONTEXT-MAP.md","docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"Checked against the glossary change: no claim about Arrangement persistence or maximize; unaffected","inputs":["CONTEXT.md","docs/glossary.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-checked after the keyboard shortcuts guide changed: it cites the guide for Undo and makes no claim about dismissal Undo lifetime or the retired command","inputs":["docs/architecture/abstraction-review.md","docs/guides/keyboard-shortcuts.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the Shortcut preferences paragraph against shortcutPreferences.ts: still separate overrides and skills through the device store; the read-time carry-over of a retired command's key changes no claim here","inputs":["docs/architecture/module-map.md","src-ui/src/settings/shortcutPreferences.ts"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Checked Arrangement against region-arrangement-record.ts: persisted per device still holds for placement, size and visibility; maximize is no longer stored, which this entry does not claim either way (the glossary carries the exception)","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/regions/region-arrangement-record.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Corrected the earlier note that called this page checked: the inbox section named a configurable inbox Undo shortcut that no longer exists; it now names Undo last action, reachable while the dismissal toast is shown, for Dismiss and Hide","inputs":["docs/design/chat-composer.md"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Re-checked against RegionModelContext.tsx after cross-tab adoption changed: no claim about restoring a maximize from the saved record or another tab","inputs":["docs/design/pane-relationships.md","src-ui/src/contexts/RegionModelContext.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Arrangement row, state table and Persistence section now say the record writes maximized as false and never reads it, adoption keeps this tab's own maximize while its region still shows something, an earlier build's true reads as false, and only Chat's maximize has a URL form so a maximized non-Chat region reloads at normal size; checked against region-arrangement-record.ts, RegionModelContext.tsx and their tests","inputs":["docs/design/placement.md","src-ui/src/contexts/RegionModelContext.tsx","src-ui/src/contexts/__tests__/RegionModelContext-arrangement-record.test.tsx","src-ui/src/regions/__tests__/region-arrangement-record.test.ts","src-ui/src/regions/region-arrangement-record.ts"]},
+
+    {"path":"docs/glossary.md","note":"Arrangement entry now says a maximize is not persisted, matching region-arrangement-record.ts","inputs":["docs/glossary.md"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Undo the last action now says presses reach only notices still on screen, only the latest dismissal keeps its notice, a dismissed conversation is restored from inbox search afterwards, and a key saved for the retired inbox Undo carries to Undo last action; checked against inbox-dismissals.tsx, shortcutPreferences.ts and inbox-dismissal.test.tsx, and in a running instance (search shows a Dismissed section with Restore)","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/__tests__/inbox-dismissal.test.tsx","src-ui/src/settings/shortcutPreferences.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Corrected the earlier unchanged-wording note: the shortcut restores a dismissal only while its toast is shown; after that, inbox search lists it under Dismissed with Restore to inbox, confirmed in a running instance","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-dismissal.test.tsx"]}
+  ]
+}

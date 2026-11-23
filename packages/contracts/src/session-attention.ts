@@ -282,6 +282,8 @@ export const SESSION_STATUS_WORDS = {
   scheduled: 'Waiting',
   draft: 'Draft',
   done: 'Done',
+  /** A completed turn whose reply stopped at the engine's output limit. */
+  cutOff: 'Cut off',
   idle: 'Idle',
 } as const;
 
@@ -356,7 +358,9 @@ export function sessionLadderWord(
     case 'Draft':
       return SESSION_STATUS_WORDS.draft;
     case 'Completed':
-      return SESSION_STATUS_WORDS.done;
+      return session.lastTurnCutOff
+        ? SESSION_STATUS_WORDS.cutOff
+        : SESSION_STATUS_WORDS.done;
     case 'Ready':
       return SESSION_STATUS_WORDS.idle;
   }

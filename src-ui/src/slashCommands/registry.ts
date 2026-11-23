@@ -25,7 +25,8 @@ export type SlashCommandContext = {
   sendMessage: (content: string) => Promise<void>;
   autocomplete: {
     openModel: () => void;
-    openNewChat: () => void;
+    /** The surface's New chat action; absent where there is none. */
+    openNewChat?: () => void;
     closeCommand: () => void;
     closeAll: () => void;
   };

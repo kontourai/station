@@ -17,6 +17,15 @@ status and attempt, and **Load result** when that receipt has a saved result.
 A job whose stored record needs repair appears separately for the Station
 operator, with a job ID for recovery. Healthy automations remain available.
 
+## Name and one-time runs
+
+Give an automation a name in plain words, such as "Daily briefing". You can
+rename it later in **Edit**; its runs and history stay with it.
+
+**One time** runs an automation once, at 9:00 AM tomorrow unless you pick
+another time. **Remove it after it runs** starts unticked, so the automation
+stays in the list with its run.
+
 ## Where an automation runs
 
 Choose **Run in** when you create one:

@@ -1,0 +1,9 @@
+{
+  "revision": "6b72d68b53ec2c968fc297876e388dc8715645d5",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked the New Project repository steps: after a failure the URL field and Acquire are brought into view, and a reused checkout clears an earlier reason. The described steps still hold.","inputs":["src-ui/src/components/modals/NewProjectRepositorySource.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the New Project repository steps: after a failure the URL field and Acquire are brought into view, and a reused checkout clears an earlier reason. The described steps still hold.","inputs":["src-ui/src/components/modals/NewProjectRepositorySource.tsx"]}
+  ]
+}

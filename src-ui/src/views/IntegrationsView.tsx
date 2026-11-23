@@ -310,7 +310,7 @@ export function IntegrationsView({
   }, [hasUnsavedIntegrationDraft, onDirtyChange]);
 
   return (
-    <>
+    <div className="integration-editor-stack">
       <SplitPaneLayout
         label="connections / tools"
         title="Tool servers"
@@ -445,6 +445,6 @@ export function IntegrationsView({
           }}
         />
       )}
-    </>
+    </div>
   );
 }

@@ -617,7 +617,9 @@ eligibility and execution identity. The timestamp stays on that action row. Chil
 when its execution ends; its result remains separate and can report unfinished work.
 
 Choosing on a chip does not start an engine; a choice is remembered (Agent per
-context, Model per binding, project as the dock's binding). A Project set to
+context, Model per binding; Home's project is its own pick for this tab and
+Station access, and writes nothing the dock reads; the dock's draft opens on the
+dock's own binding, the project last chosen in the dock). A Project set to
 **Last model used in this project** puts the model its person's last chat there
 started with (server-recorded, per Agent) above that memory, and its approval
 layer replaces the personal default in **Permissions**
@@ -756,7 +758,11 @@ caller. A failed turn's error card also offers **Troubleshoot this**, outside a
 replay, to a caller who may start a chat: it opens a new Station Assistant
 conversation seeded with the error and this conversation's ids
 ([troubleshoot with an agent](troubleshoot-in-app.md)), and sends nothing to
-this one. A failed retry from the picker keeps the last answer for that
+this one. After a reload, or on another device, the newest turn's error card
+is rebuilt from its stored failure with the same actions; an older failure the
+person has moved past shows its message without Send again. Send again resends
+only the failed turn's own message: a turn the engine opened has no message of
+its own, so its card offers no Send again. A failed retry from the picker keeps the last answer for that
 conversation. Not gated: the app-wide New chat entry points (toolbar,
 shortcut, inbox, task switcher), because the answer is per conversation, and
 Fork from turn (and Regenerate and Edit and resend, which fork the same way),
@@ -1688,8 +1694,9 @@ re-read runs. Full-size cards in the desktop and mobile Inbox share the title an
 column. Status and one time align on the right. Hover or keyboard focus exposes
 the desktop row actions. A touch row keeps the agent named beside its mark.
 Dismissal offers a
-transient Undo toast and the configurable inbox Undo shortcut. Native editor
-and terminal undo retain their keys.
+transient Undo toast, which **Undo last action** (⌘Z / Ctrl+Z, rebindable)
+also reaches while the toast is shown. Native editor and terminal undo retain
+their keys.
 
 With the preview on, Settle is the one way to put an owned conversation away:
 its row offers no Dismiss. A third-party Session of this host offers **Hide**
@@ -1699,7 +1706,8 @@ beside the settled records), so it is hidden on every device of that person.
 It stays hidden through its status updates and returns when the row is no
 longer third-party (adopted into Station), which also clears the record, or
 when the person restores it from search, where hidden rows are listed as
-Hidden. Hide and Restore share the dismissal Undo toast and shortcut. A host
+Hidden. Hide and Restore share the dismissal Undo toast and **Undo last
+action**. A host
 whose work-state read carries no `hidden` map, and a row from another Station,
 keep local Dismiss. Existing local third-party dismissals of this host move to
 the host when it first offers hiding and are then removed from the browser; a

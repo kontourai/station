@@ -20,6 +20,10 @@ import {
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { describeReadFailure, ErrorState } from '../../components/state';
 import { plural } from '../../utils/plural';
+import {
+  type KnowledgeScanResult,
+  knowledgeScanResultText,
+} from '../project-settings/utils';
 import { ProjectKnowledgeDocGroup } from './ProjectKnowledgeDocGroup';
 import { ProjectKnowledgeNamespaceConfig } from './ProjectKnowledgeNamespaceConfig';
 import { ProjectKnowledgeRulesEditor } from './ProjectKnowledgeRulesEditor';
@@ -75,10 +79,9 @@ export function ProjectKnowledgeSection({
   const [showScanDialog, setShowScanDialog] = useState(false);
   const [scanInclude, setScanInclude] = useState('');
   const [scanExclude, setScanExclude] = useState('');
-  const [scanResult, setScanResult] = useState<{
-    indexed: number;
-    skipped: number;
-  } | null>(null);
+  const [scanResult, setScanResult] = useState<KnowledgeScanResult | null>(
+    null,
+  );
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
   const [dirOpen, setDirOpen] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(true);
@@ -376,8 +379,7 @@ export function ProjectKnowledgeSection({
 
       {scanResult && (
         <div className="project-page__scan-result">
-          <CheckGlyph /> Indexed {scanResult.indexed} files, skipped{' '}
-          {scanResult.skipped}
+          <CheckGlyph /> {knowledgeScanResultText(scanResult)}
         </div>
       )}
 

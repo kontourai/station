@@ -1225,7 +1225,10 @@ export function mapClaudeSdkMessage({
           ? 'other'
           : message.stop_reason === 'tool_use'
             ? 'tool-calls'
-            : 'stop',
+            : // The reply stopped at the output limit: it is incomplete.
+              message.stop_reason === 'max_tokens'
+              ? 'max-tokens'
+              : 'stop',
         outputText:
           message.type === 'result' && 'result' in message
             ? message.result

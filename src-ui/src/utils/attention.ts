@@ -11,6 +11,7 @@ import type {
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
 import { notificationCategoryLabel } from './notificationLabels';
+import { describeProviderDefaultFailure } from './providerDefaultFailure';
 import { NO_FAILURE_DETAIL_RECORDED } from './sessionFailure';
 
 /**
@@ -217,6 +218,30 @@ export { NO_FAILURE_DETAIL_RECORDED } from './sessionFailure';
  */
 export function sessionFailureCause(item: SessionFailedAttentionItem): string {
   return item.body ?? NO_FAILURE_DETAIL_RECORDED;
+}
+
+/**
+ * What a failed-session row shows: plain words for a cause Station can name,
+ * with the recorded text kept under Details and, where one step fixes it, that
+ * step. A cause nobody has named renders as recorded, with no Details.
+ */
+export interface SessionFailureExplanation {
+  cause: string;
+  /** The recorded text, only when `cause` is a translation of it. */
+  details?: string;
+  action?: { label: string; href: string };
+}
+
+export function explainSessionFailure(
+  item: SessionFailedAttentionItem,
+): SessionFailureExplanation {
+  const provider = item.body ? describeProviderDefaultFailure(item.body) : null;
+  if (!provider || !item.body) return { cause: sessionFailureCause(item) };
+  return {
+    cause: provider.summary,
+    details: item.body,
+    action: { label: provider.actionLabel, href: provider.actionHref },
+  };
 }
 
 /**

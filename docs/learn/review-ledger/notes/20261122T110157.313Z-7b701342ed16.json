@@ -1,0 +1,7 @@
+{
+  "revision": "297d94bd66b3a4df8d9c48acc81269ee89123e28",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Links to connections.md only; the changed camera-API sentence does not affect its machine-relationship claims.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

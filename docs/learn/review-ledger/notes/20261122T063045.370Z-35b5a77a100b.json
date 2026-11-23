@@ -1,0 +1,7 @@
+{
+  "revision": "43984b24fef216b82a179674f66432259a25223d",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"#5389 adds one packages/shared export, ./usage-lineage-fold (foldLineageUsageEvents, EngineUsageAggregate, LineageUsageAggregate), documented in docs/reference/shared.md. Checked this document's claims about the shared package's exports and subpath use; none lists every subpath or is affected, so no prose change.","inputs":["docs/guides/responsive-ui.md","packages/shared/package.json#/exports"]}
+  ]
+}

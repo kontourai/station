@@ -215,8 +215,12 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
   const [saveError, setSaveError] = useState<string | null>(null);
   const projectOverviewOn = useProjectOverviewPreview();
   const projectCoordination = useProjectCoordinationPreview();
+  const schedulesOn = previewFlags.has('project-schedules');
+  // A rail item whose panel is behind a preview off would open a blank page.
   const settingsSections = PROJECT_SETTINGS_SECTIONS.filter(
-    ([id]) => projectCoordination || !PROJECT_COORDINATION_SECTIONS.has(id),
+    ([id]) =>
+      (projectCoordination || !PROJECT_COORDINATION_SECTIONS.has(id)) &&
+      (schedulesOn || id !== 'schedules'),
   );
   const agentFeedback = previewFlags.has(PULL_REQUEST_FEEDBACK_PREVIEW_ID);
   const roomCoordinator = previewFlags.has(PROJECT_ROOM_COORDINATOR_PREVIEW_ID);
@@ -982,7 +986,7 @@ export function ProjectSettingsView({ slug }: { slug: string }) {
             className="project-settings__panel"
             hidden={activeSection !== 'schedules'}
           >
-            {project && previewFlags.has('project-schedules') && (
+            {project && schedulesOn && (
               <ProjectSchedulesSection
                 projectId={project.id}
                 projectName={form.name}

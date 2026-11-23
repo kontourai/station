@@ -1,0 +1,7 @@
+{
+  "revision": "5598bc766c8f64d2b501c83c0cce06304c25b3ef",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Slice 0.5 fix round reviewed against this document: /clear answered in the dispatcher and never forwarded (ACP still receives every command), /new refusing text and leaving an imported view like the New chat button, Claude Code max_tokens results completing as max-tokens, Send again offered only for the failed turn's own message, and the Cut off rung following Done's resumable-delegation lane rule. Its finish-reason paragraphs describe the /chat route's stream and dedup, unchanged; no module ownership moved.","inputs":["docs/architecture/module-map.md","src-server/providers/__tests__/claude-adapter-events.test.ts","src-server/providers/adapters/claude-adapter-events.ts","src-ui/src/components/conversation/ConversationBody.tsx","src-ui/src/views/home/work-status.ts"]}
+  ]
+}

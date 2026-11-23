@@ -94,7 +94,7 @@ test('Schedule calendar and executions fit phone and desktop in both themes', as
         <Tabs id="schedule-views" aria-label="Schedule view" activeKey={pane}
           activation="manual" onSelect={setPane} items={[{key:'week',label:'Calendar'},{key:'exec',label:'Executions'}]} />
         <div role="tabpanel" aria-labelledby={tabElementId('schedule-views',pane)} id={tabPanelElementId('schedule-views',pane)}>
-          {pane==='week' ? <ScheduleWeek/> : <ScheduleExecutions runs={${JSON.stringify([run])}} loading={false} unavailable={false} selectedId={selectedId} onSelect={onSelect}/>}
+          {pane==='week' ? <ScheduleWeek/> : <ScheduleExecutions runs={${JSON.stringify([run])}} jobs={[]} loading={false} unavailable={false} selectedId={selectedId} onSelect={onSelect}/>}
         </div>
       </main>;
     }

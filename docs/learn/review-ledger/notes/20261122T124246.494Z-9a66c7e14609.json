@@ -1,0 +1,7 @@
+{
+  "revision": "67bc53f6e0384566a0842a955240ff3d0ace0b25",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Rechecked InboxRow.css (#5398 fix round): the Check touch floor adds no motion; swipe and enter motion unchanged.","inputs":["docs/design/motion.md","src-ui/src/components/inbox-row/InboxRow.css"]}
+  ]
+}

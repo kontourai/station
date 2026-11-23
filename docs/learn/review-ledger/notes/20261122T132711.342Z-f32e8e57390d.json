@@ -1,0 +1,7 @@
+{
+  "revision": "b78420825342ac366cf00977a2a36b2fc40ec1a9",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Re-read Get Conversation Statistics and the default-Agent builder paragraph against conversation-manager.ts (window resolved only from a model the newest engine reported after a change; unknown prompt absent), usage-lineage-fold.ts (model and context since the last engine change; Sessions without events change nothing) and runtime-default-agent.ts (records its prompt and tool estimate). The edited sentences say exactly that.","inputs":["docs/reference/api.md","src-server/runtime/agents/runtime-default-agent.ts","src-server/runtime/conversation/conversation-manager.ts"]}
+  ]
+}
