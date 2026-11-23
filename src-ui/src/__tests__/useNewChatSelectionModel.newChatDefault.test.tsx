@@ -356,6 +356,48 @@ describe('the default for new chats', () => {
       reason: 'first-signed-in',
     });
     expect(view.result.current.defaultSelection.agent?.slug).toBe('claude');
+    // The chip and the tag name a row the menu shows, beside the authored
+    // Agent.
+    const rows = view.result.current.viewModel.flatList.map(
+      (agent) => agent.slug,
+    );
+    expect(rows).toContain('claude');
+    expect(rows).toContain('reviewer');
+  });
+
+  test('the selected and tagged Agent is always a row the menu shows', () => {
+    state.config = {
+      defaultModel: '',
+      newChatDefault: { agent: 'claude', reason: 'first-signed-in' },
+    };
+    signedIn(engine('claude', 'Claude Code'), engine('codex', 'Codex'));
+    const alias = {
+      ...engineAgent('claude', 'Claude Code', true),
+      engineDefault: true,
+    } as AgentData;
+    const reviewer = {
+      slug: agentId('reviewer'),
+      name: 'Reviewer',
+      available: true,
+      execution: { agentConnectionId: engineConnectionId('claude') },
+    } as AgentData;
+    for (const agents of [
+      [STATION, reviewer, alias, engineAgent('codex', 'Codex', true)],
+      [
+        STATION,
+        engineAgent('claude', 'Claude Code', true),
+        engineAgent('codex', 'Codex', true),
+      ],
+    ]) {
+      const view = renderSelection(agents);
+      const rows = view.result.current.viewModel.flatList.map(
+        (agent) => agent.slug,
+      );
+      expect(view.result.current.defaultSelection.agent?.slug).toBe('claude');
+      expect(rows).toContain(view.result.current.defaultSelection.agent?.slug);
+      expect(rows).toContain(view.result.current.newChatDefaultSlug);
+      cleanup();
+    }
   });
 
   test('nothing is recorded while the engine first in line is not yet selectable', () => {

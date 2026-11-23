@@ -493,27 +493,43 @@ function newChatOrderKey(agent: AgentData): string {
 }
 
 /**
- * The runnable Agents the fixed order can pick, in that order. An engine's own
- * alias row is left out only when another of that engine's own Agents stands
- * in for it; an Agent someone authored on the engine never removes the
- * engine from the order.
+ * Whether an engine's own alias row (`engineDefault`) is folded away: another
+ * of that engine's own Agents stands in for it, or the alias cannot start and
+ * an Agent someone authored runs on the same engine connection (the
+ * archive#3027(c) dead row). A runnable alias stays: an authored Agent never
+ * takes its engine away. One rule for the picker's rows and the fixed order,
+ * so the default for new chats is always a row the picker shows.
  */
+function aliasFoldedAway(
+  agents: Iterable<AgentData>,
+): (agent: AgentData) => boolean {
+  const engineOwned = new Set<string>();
+  const anyBound = new Set<string>();
+  for (const agent of agents) {
+    const connectionId = agent.execution?.agentConnectionId;
+    if (agent.engineDefault || !connectionId) continue;
+    anyBound.add(connectionId);
+    if (isEngineProvenanceAgent(agent)) engineOwned.add(connectionId);
+  }
+  return (agent) => {
+    const connectionId = agent.execution?.agentConnectionId;
+    if (!agent.engineDefault || !connectionId) return false;
+    return (
+      engineOwned.has(connectionId) ||
+      (anyBound.has(connectionId) && !agentRunnability(agent).runnable)
+    );
+  };
+}
+
+/** The runnable Agents the fixed order can pick, in that order. */
 function newChatOrder(agents: readonly AgentData[]): AgentData[] {
-  const replaced = new Set(
-    agents
-      .filter((agent) => !agent.engineDefault && isEngineProvenanceAgent(agent))
-      .map((agent) => agent.execution?.agentConnectionId)
-      .filter(Boolean),
-  );
+  const folded = aliasFoldedAway(agents);
   return agents
     .filter(
       (agent) =>
         agentRunnability(agent).runnable &&
         newChatOrderRank(agent) !== undefined &&
-        !(
-          agent.engineDefault &&
-          replaced.has(agent.execution?.agentConnectionId)
-        ),
+        !folded(agent),
     )
     .sort(
       (a, b) =>
@@ -772,25 +788,13 @@ export function buildNewChatModalViewModel({
     }
   }
   // archive#3027(c): an engine-default alias row exists to say "this engine
-  // has no authored Agent yet". Once an authored Agent bound to the same
-  // engine connection is in scope, the alias would sit as a permanently dead
-  // row beside the live one — hide it. Purely derived state: deleting the
-  // authored Agent un-hides the alias on the next build. Derived from the
-  // pre-search eligible set so typing a query matching only the alias cannot
-  // resurrect it.
-  const authoredBoundConnectionIds = new Set<string>();
-  for (const agent of eligibleAgents.values()) {
-    const boundConnectionId = agent.execution?.agentConnectionId;
-    if (!agent.engineDefault && boundConnectionId) {
-      authoredBoundConnectionIds.add(boundConnectionId);
-    }
-  }
-  const isDemotedAliasRow = (agent: AgentData) =>
-    Boolean(
-      agent.engineDefault &&
-        agent.execution?.agentConnectionId &&
-        authoredBoundConnectionIds.has(agent.execution.agentConnectionId),
-    );
+  // has no authored Agent yet". Once an Agent bound to the same engine
+  // connection stands in for it, the alias would sit as a dead row beside the
+  // live one — hide it (`aliasFoldedAway`, the rule the default for new chats
+  // also uses). Purely derived state: deleting that Agent un-hides the alias
+  // on the next build. Derived from the pre-search eligible set so typing a
+  // query matching only the alias cannot resurrect it.
+  const isDemotedAliasRow = aliasFoldedAway(eligibleAgents.values());
   const filtered = [...eligibleAgents.values()].filter(
     (agent) =>
       !isDemotedAliasRow(agent) &&

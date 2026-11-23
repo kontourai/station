@@ -6715,6 +6715,9 @@ view lists `social` only for a browser on that computer and otherwise carries
 `socialSignIn: 'needs-browser-on-host'`. Responses are parsed
 strictly against `@kontourai/station-contracts/engine-sign-in`, and every
 caller supplies a captured `ApiRequestScope`.
+When an attempt turns `succeeded`, a Station-run sign-in turns `completed`, or
+a check answers `authenticated`, these hooks re-read engine readiness (Agents,
+the picker catalog and the connection reads), as the engine status event does.
 
 ## Guided engine setup queries
 
