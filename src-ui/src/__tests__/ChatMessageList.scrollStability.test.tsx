@@ -581,19 +581,33 @@ describe('a finger on the transcript', () => {
     geometry.scrollHeight = 2_400;
     deliverResize(lastRowGrowsTo(scroller, 500));
     expect(scroller.scrollTop).toBe(1_600);
-    // New content is followed again.
+    // A new answer arriving while held is not followed either.
     geometry.scrollHeight = 2_500;
+    const answer = { role: 'assistant' as const, timestamp: 99 };
+    rerender({
+      ...withDisclosure,
+      activeSession: {
+        ...base,
+        messages: [...base.messages, { ...answer, content: 'a new answer' }],
+      },
+    });
+    expect(scroller.scrollTop).toBe(1_600);
+    // Back at the end, new content is followed again.
+    scroller.scrollTop = 2_500 - geometry.clientHeight;
+    fireEvent.scroll(scroller);
+    geometry.scrollHeight = 2_700;
     rerender({
       ...withDisclosure,
       activeSession: {
         ...base,
         messages: [
           ...base.messages,
-          { role: 'assistant', content: 'a new answer', timestamp: 99 },
+          { ...answer, content: 'a new answer' },
+          { ...answer, content: 'another answer', timestamp: 100 },
         ],
       },
     });
-    expect(scroller.scrollTop).toBe(2_500);
+    expect(scroller.scrollTop).toBe(2_700);
   });
 
   test('untouched late growth is followed, after an incidental press too', () => {
