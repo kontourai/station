@@ -322,6 +322,10 @@ describe('the quiet sidebar preview', () => {
       name: 'Customize, needs attention',
     });
     expect(customize.querySelector('.sidebar__quiet-dot')).not.toBeNull();
+    // The words are for assistive technology; the row still reads Customize.
+    expect(customize.querySelector('.sidebar__project-name')?.textContent).toBe(
+      'Customize',
+    );
   });
 
   test('a failed tool probe also raises the Customize dot', async () => {

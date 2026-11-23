@@ -30,6 +30,7 @@ interface QuietSidebarPartProps {
 
 function QuietRow({
   label,
+  accessibleLabel = label,
   icon,
   current,
   collapsed,
@@ -37,6 +38,8 @@ function QuietRow({
   onSelect,
 }: {
   label: string;
+  /** The row's name when it says more than its visible label. */
+  accessibleLabel?: string;
   icon: ReactNode;
   current: boolean;
   collapsed: boolean;
@@ -50,8 +53,8 @@ function QuietRow({
         current ? ' sidebar__project-btn--active' : ''
       }`}
       aria-current={current ? 'page' : undefined}
-      aria-label={label}
-      title={collapsed ? label : undefined}
+      aria-label={accessibleLabel}
+      title={collapsed ? accessibleLabel : undefined}
       onClick={onSelect}
     >
       <span className="sidebar__nav-icon" aria-hidden="true">
@@ -95,7 +98,8 @@ function QuietFooter({
         <QuietRow
           // The dot's meaning joins the name: a dot alone says nothing to
           // assistive technology.
-          label={
+          label={customize.label()}
+          accessibleLabel={
             needsAttention
               ? `${customize.label()}, needs attention`
               : customize.label()
