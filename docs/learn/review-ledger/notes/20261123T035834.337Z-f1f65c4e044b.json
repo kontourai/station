@@ -1,0 +1,7 @@
+{
+  "revision": "732047bdc164c30d27041d2a531f70734e1bda76",
+
+  "notes": [
+    {"path":"docs/guides/plugins.md","note":"Unchanged from the Apps slice head; its in-app steps name Apps › Library → New plugin, which PluginManagementView offers in the combined tree.","inputs":["docs/guides/plugins.md"]}
+  ]
+}
