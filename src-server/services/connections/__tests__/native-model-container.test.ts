@@ -1,7 +1,7 @@
 import { ChildProcess } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { PassThrough, type Writable } from 'node:stream';
-import { afterEach, expect, onTestFinished, test, vi } from 'vitest';
+import { beforeEach, expect, onTestFinished, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   spawnOwnedChild,
@@ -21,7 +21,7 @@ const temp = trackTempDirs({ lifetime: 'file' });
 const imageId = `sha256:${'a'.repeat(64)}`;
 const containerId = 'b'.repeat(64);
 
-afterEach(() => vi.resetAllMocks());
+beforeEach(() => vi.resetAllMocks());
 
 function gate() {
   let release!: () => void;
