@@ -73,7 +73,8 @@ The separate brokered request profile is also dormant. It replaces native tool
 declarations with the host's selected MCP tools, keeps the requested model and
 output cap, and accepts only text plus matched calls and results in the
 Station delegation namespace. Requests with unknown, duplicate, or incomplete
-tool history are refused. An explicit no-tools choice remains in force.
+tool history are refused. For Responses requests, an explicit no-tools choice
+remains in force.
 The host still needs a current parent grant, effect authority, and a reservation
 for each physical attempt before forwarding these bytes.
 
