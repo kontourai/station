@@ -1,4 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
+import { chatBelongsToStation } from '../../connections/station-state';
+import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useOutboundQueueSnapshot } from '../../hooks/useOutboundQueueSnapshot';
 import type { ChatSession, FileAttachment } from '../../types';
 import {
@@ -11,6 +19,11 @@ import {
   observeContextBoundary,
   useContextBoundaryRecovery,
 } from './conversationContextBoundaryUiState';
+
+interface ForkSourceView {
+  id: string;
+  conversationId?: string;
+}
 
 export interface ForkFollowUp {
   mode: 'regenerate' | 'edit';
@@ -36,11 +49,15 @@ export function useConversationBoundaryDialogs({
   activeSession,
   allSessions,
   contextBoundaryAuthority,
+  forkScope,
+  forkViewId,
 }: {
   apiBase: string;
   activeSession: ChatSession | null;
   allSessions: ChatSession[];
   contextBoundaryAuthority?: ContextBoundaryAuthority;
+  forkScope?: string;
+  forkViewId?: string;
 }) {
   const handoffReturnFocusRef = useRef<HTMLButtonElement | null>(null);
   const [handoffSource, setHandoffSource] = useState<{
@@ -85,13 +102,72 @@ export function useConversationBoundaryDialogs({
   }>({ pending: false, error: null });
   const forkAbortRef = useRef<AbortController | null>(null);
   const forkGenerationRef = useRef(0);
-  const cancelFork = useCallback(() => {
+  const forkIntentRef = useRef<{
+    view: ForkSourceView;
+    scope: string | undefined;
+    isAuthorityCurrent: () => boolean;
+    selectingDestination: boolean;
+    unsubscribe: () => void;
+  } | null>(null);
+  const retireFork = useCallback(() => {
     forkGenerationRef.current += 1;
+    forkIntentRef.current?.unsubscribe();
+    forkIntentRef.current = null;
     forkAbortRef.current?.abort();
     forkAbortRef.current = null;
+  }, []);
+  useLayoutEffect(() => retireFork, [retireFork]);
+  const cancelFork = useCallback(() => {
+    retireFork();
     setForkOperation({ pending: false, error: null });
     setForkSource(null);
+  }, [retireFork]);
+  const isForkIntentCurrent = useCallback(() => {
+    const intent = forkIntentRef.current;
+    if (!intent?.isAuthorityCurrent()) return false;
+    const chat = activeChatsStore.getSnapshot()[intent.view.id];
+    return Boolean(
+      chat &&
+        chatBelongsToStation(chat) &&
+        chat.conversationId === intent.view.conversationId,
+    );
   }, []);
+  useLayoutEffect(() => {
+    const intent = forkIntentRef.current;
+    if (
+      intent &&
+      (!isForkIntentCurrent() ||
+        (!intent.selectingDestination &&
+          (intent.scope !== forkScope ||
+            (forkViewId && forkViewId !== intent.view.id))))
+    ) {
+      cancelFork();
+    }
+  }, [cancelFork, forkScope, forkViewId, isForkIntentCurrent]);
+  const beginForkIntent = (
+    view: ForkSourceView,
+    isAuthorityCurrent: () => boolean,
+  ) => {
+    cancelFork();
+    forkIntentRef.current = {
+      view,
+      scope: forkScope,
+      isAuthorityCurrent,
+      selectingDestination: false,
+      // Observe removal before a close/reopen can reuse the same local ID.
+      unsubscribe: activeChatsStore.subscribe(() => {
+        if (!isForkIntentCurrent()) cancelFork();
+      }),
+    };
+    return forkGenerationRef.current;
+  };
+  const moveForkIntentToLiveView = (view: ForkSourceView) => {
+    if (forkIntentRef.current) forkIntentRef.current.view = view;
+  };
+  const selectForkDestination = () => {
+    if (forkIntentRef.current)
+      forkIntentRef.current.selectingDestination = true;
+  };
   const [contextResetSource, setContextResetSource] = useState<{
     id: string;
   } | null>(null);
@@ -237,6 +313,10 @@ export function useConversationBoundaryDialogs({
     forkAbortRef,
     forkGenerationRef,
     cancelFork,
+    beginForkIntent,
+    isForkIntentCurrent,
+    moveForkIntentToLiveView,
+    selectForkDestination,
     contextResetSource,
     setContextResetSource,
     contextBoundaryAuthority,

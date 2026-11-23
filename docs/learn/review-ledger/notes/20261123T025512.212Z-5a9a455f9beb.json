@@ -1,0 +1,7 @@
+{
+  "revision": "875849d1fd185cc33012d9f26c6e05c3f641c035",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the source-chat close and timeline return through the dock intent and store, and local cancellation through abort, generation fencing and the retained server idempotency key. Real local held-chunk browser witness failed on main and passed with this fix.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}
