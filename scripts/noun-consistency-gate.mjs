@@ -363,6 +363,19 @@ export const RETIRED_USER_TERMS = Object.freeze([
     use: 'Wake now',
     pattern: /\bunsnooz(?:e|ed|ing)\b/i,
   },
+  // The dock's list reads Chats; Inbox becomes the attention page's word.
+  // Only phrases that can name nothing but the dock list are listed: "Search
+  // inbox" or "Refresh inbox" could be the page's own once it is the Inbox.
+  {
+    term: 'Show inbox',
+    use: 'Show chats',
+    pattern: /\b(?:show|hide) inbox\b/i,
+  },
+  {
+    term: 'Inbox chats',
+    use: 'Chats',
+    pattern: /\binbox chats\b/i,
+  },
 ]);
 
 /** The retired user-facing terms the gate enforces today. */

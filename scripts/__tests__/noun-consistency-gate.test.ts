@@ -465,6 +465,8 @@ describe('noun-consistency-gate', () => {
       'Restore to inbox': 'Restore to inbox',
       'Discard unsent draft': 'Discard unsent draft',
       Unsnooze: 'Unsnooze',
+      'Show inbox': 'Show inbox',
+      'Inbox chats': 'Inbox chats',
     };
     // Plural and lowercase forms of the same terms.
     const VARIANTS: Record<string, string> = {
@@ -495,6 +497,8 @@ describe('noun-consistency-gate', () => {
       'Restore to inbox': 'restore to the inbox',
       'Discard unsent draft': 'discard unsent drafts',
       Unsnooze: 'Unsnoozing…',
+      'Show inbox': 'Hide inbox, 2 need you',
+      'Inbox chats': 'inbox chats',
     };
     /** Retired by a slice that removed every use, so enforced now. */
     const ACTIVE = [
@@ -504,6 +508,8 @@ describe('noun-consistency-gate', () => {
       'Restore to inbox',
       'Discard unsent draft',
       'Unsnooze',
+      'Show inbox',
+      'Inbox chats',
     ];
 
     it('pins the retired terms, independently of the script', () => {
