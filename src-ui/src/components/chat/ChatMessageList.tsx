@@ -790,8 +790,9 @@ function ChatMessageListComponent({
   // A turn still streaming outside the rows: its pill shows from the model
   // its start asked for, so the answer does not move down when it ends.
   const liveSessionId = activeSession.currentSessionId ?? activeSession.id;
-  const liveRequestedModel =
-    activeSession.orchestrationModel ?? activeSession.model;
+  // Only what a started turn asked for: `model` can be a composer pick that
+  // was never sent.
+  const liveRequestedModel = activeSession.orchestrationModel;
   const liveModelChange = useMemo(
     () =>
       isStreaming

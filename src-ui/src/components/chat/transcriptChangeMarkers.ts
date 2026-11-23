@@ -45,9 +45,45 @@ export interface RecordedTurn {
   engine?: TurnProvenanceEngine;
   /** True once the turn ended and its record is final. */
   settled: boolean;
+  /**
+   * The engine moved this turn onto another model than it asked for (a
+   * turn-scope `model.rerouted`). What ran is then not on record, so the
+   * turn compares with nothing, in either direction.
+   */
+  rerouted?: true;
 }
 
-function recordedTurn(message: ChatMessage): RecordedTurn {
+type RerouteKey = string;
+const rerouteKey = (sessionId: string, turnId: string): RerouteKey =>
+  `${sessionId}\u0000${turnId}`;
+
+/** The engine reroutes the rows recorded, by session and turn. */
+function reroutedTurns(messages: readonly ChatMessage[]): Set<RerouteKey> {
+  const keys = new Set<RerouteKey>();
+  for (const message of messages)
+    for (const part of message.contentParts ?? []) {
+      const reroute = part.modelReroute;
+      if (reroute?.scope === 'turn' && reroute.turnId)
+        keys.add(rerouteKey(reroute.sessionId, reroute.turnId));
+    }
+  return keys;
+}
+
+/** A reroute line that changes the session's model or names no turn. */
+function isSessionReroute(message: ChatMessage): boolean {
+  return (
+    message.contentParts?.some(
+      (part) =>
+        part.modelReroute !== undefined &&
+        (part.modelReroute.scope === 'session' || !part.modelReroute.turnId),
+    ) ?? false
+  );
+}
+
+function recordedTurn(
+  message: ChatMessage,
+  rerouted: ReadonlySet<RerouteKey> = new Set(),
+): RecordedTurn {
   const envelope = isSupportedTurnProvenanceEnvelope(message.provenance)
     ? message.provenance
     : undefined;
@@ -55,8 +91,14 @@ function recordedTurn(message: ChatMessage): RecordedTurn {
     envelope?.requestedModel.state === 'observed'
       ? envelope.requestedModel.value
       : message.model;
+  const sessionId = envelope?.sessionId ?? message.sessionId;
   return {
-    sessionId: envelope?.sessionId ?? message.sessionId,
+    sessionId,
+    ...(sessionId &&
+    message.turnId &&
+    rerouted.has(rerouteKey(sessionId, message.turnId))
+      ? { rerouted: true as const }
+      : {}),
     ...(requested ? { requested } : {}),
     ...(envelope?.reportedModel.state === 'observed'
       ? { reported: envelope.reportedModel.value }
@@ -73,10 +115,11 @@ function recordedTurn(message: ChatMessage): RecordedTurn {
  * what ran: the engine's own report when both turns have one, else what
  * Station asked for when neither has one. One report without the other is
  * not comparable (an alias against a resolved id), and a turn that recorded
- * no model at all breaks the comparison. A turn still running has only what
- * was asked for, compared with what the previous turn asked for; once it
- * ends, the rule above applies, so the pill names what ran, or goes away
- * when the same model ran.
+ * no model at all, or that the engine rerouted, breaks the comparison. A
+ * turn still running has only what was asked for: it is compared with what
+ * the previous turn asked for only when that turn has no report either (an
+ * engine that never reports per turn); otherwise nothing shows until it
+ * ends. Once it ends, the rule above applies.
  */
 export function modelChangeBetween(
   previous: RecordedTurn | undefined,
@@ -84,6 +127,8 @@ export function modelChangeBetween(
 ): TranscriptModelChange | undefined {
   if (!previous?.sessionId || previous.sessionId !== current.sessionId)
     return undefined;
+  if (previous.rerouted || current.rerouted) return undefined;
+  if (!current.settled && previous.reported) return undefined;
   const [from, to] = !current.settled
     ? [previous.requested, current.requested]
     : previous.reported && current.reported
@@ -106,23 +151,30 @@ function sessionTimes(messages: readonly ChatMessage[]) {
   return times;
 }
 
+interface ResetStart {
+  policy: ConversationContextBoundaryPolicy;
+  consumedAt: number;
+}
+
 /**
  * A switch row is drawn only for a switch that ran: a turn of the target
  * Session started after the switch was recorded. A record whose target is a
- * fresh-context Session that had already run turns before it is a refused
- * switch (the server reuses that Session), never a switch.
+ * fresh context's Session that was already in use (the reset was consumed
+ * before the switch was recorded) is a refused switch: the server reuses
+ * that Session. That is read from the reset rows, which cover the whole
+ * conversation, and compares two server times, so it holds before older
+ * pages load and on every device.
  */
 function switchRan(
   handoff: ConversationHandoffProjection,
   times: ReadonlyMap<string, number[]>,
-  resetSessions: ReadonlySet<string>,
+  resets: ReadonlyMap<string, ResetStart>,
 ): boolean {
   const at = Date.parse(handoff.createdAt);
-  const turns = times.get(handoff.sessionId) ?? [];
   if (Number.isNaN(at)) return false;
-  if (resetSessions.has(handoff.sessionId) && turns.some((t) => t < at))
-    return false;
-  return turns.some((t) => t >= at);
+  const reset = resets.get(handoff.sessionId);
+  if (reset && !(reset.consumedAt >= at)) return false;
+  return (times.get(handoff.sessionId) ?? []).some((t) => t >= at);
 }
 
 /**
@@ -134,6 +186,7 @@ export function lastRecordedTurn(
   messages: readonly ChatMessage[],
   facts: ReadonlyMap<number, TranscriptChangeFacts>,
 ): RecordedTurn | undefined {
+  const rerouted = reroutedTurns(messages);
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!message) continue;
@@ -141,8 +194,9 @@ export function lastRecordedTurn(
       (part) => part.conversationHandoff || part.conversationContextBoundary,
     );
     if (boundary && !facts.get(index)?.hidden) return undefined;
+    if (isSessionReroute(message)) return undefined;
     if (message.role === 'assistant' && message.turnId)
-      return recordedTurn(message);
+      return recordedTurn(message, rerouted);
   }
   return undefined;
 }
@@ -152,20 +206,23 @@ export function transcriptChangeFacts(
   messages: readonly ChatMessage[],
 ): ReadonlyMap<number, TranscriptChangeFacts> {
   const times = sessionTimes(messages);
-  const resets = new Map<string, ConversationContextBoundaryPolicy>();
+  const rerouted = reroutedTurns(messages);
+  const resets = new Map<string, ResetStart>();
   for (const message of messages)
-    for (const part of message.contentParts ?? [])
-      if (part.conversationContextBoundary)
-        resets.set(
-          part.conversationContextBoundary.successorSessionId,
-          part.conversationContextBoundary.policy,
-        );
+    for (const part of message.contentParts ?? []) {
+      const boundary = part.conversationContextBoundary;
+      if (boundary)
+        resets.set(boundary.successorSessionId, {
+          policy: boundary.policy,
+          consumedAt: Date.parse(boundary.consumedAt),
+        });
+    }
 
   // A turn can span rows (a steer splits it); its record is the settled one.
   const byTurn = new Map<string, RecordedTurn>();
   for (const message of messages) {
     if (message.role !== 'assistant' || !message.turnId) continue;
-    const turn = recordedTurn(message);
+    const turn = recordedTurn(message, rerouted);
     if (turn.settled || !byTurn.has(message.turnId))
       byTurn.set(message.turnId, turn);
   }
@@ -184,11 +241,11 @@ export function transcriptChangeFacts(
     )?.conversationHandoff;
     const reset = parts.some((part) => part.conversationContextBoundary);
     if (handoff) {
-      if (!switchRan(handoff, times, new Set(resets.keys()))) {
+      if (!switchRan(handoff, times, resets)) {
         set(index, { hidden: true });
         return;
       }
-      const startedFrom = resets.get(handoff.sessionId);
+      const startedFrom = resets.get(handoff.sessionId)?.policy;
       set(index, {
         ...(lastEngine ? { previousEngine: lastEngine } : {}),
         ...(startedFrom ? { startedFrom } : {}),
@@ -203,12 +260,16 @@ export function transcriptChangeFacts(
       markerDrawn = true;
       return;
     }
+    // A session-wide reroute changes the model without the person: the next
+    // turn compares with nothing before it.
+    if (isSessionReroute(message)) previous = undefined;
     if (markerDrawn) set(index, { afterMarker: true });
     markerDrawn = false;
     if (message.role !== 'assistant' || !message.turnId) return;
     if (seen.has(message.turnId)) return;
     seen.add(message.turnId);
-    const current = byTurn.get(message.turnId) ?? recordedTurn(message);
+    const current =
+      byTurn.get(message.turnId) ?? recordedTurn(message, rerouted);
     const change = modelChangeBetween(previous, current);
     if (change) set(index, { modelChange: change });
     if (current.engine) lastEngine = current.engine;

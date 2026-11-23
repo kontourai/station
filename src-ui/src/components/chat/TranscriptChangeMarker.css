@@ -35,7 +35,10 @@
   max-width: 100%;
   padding: var(--k-space-1) var(--k-space-3);
   border: var(--k-border-thin, 1px) solid var(--k-line);
-  border-radius: var(--k-radius-pill, 999px);
+  /* Fully round. The kit has no pill radius token yet (radius family open in
+     #4690), and Station's own --radius-pill is a legacy token new rules may
+     not reference (component-style hygiene). */
+  border-radius: 999px;
   background: var(--k-panel);
   color: var(--k-text);
   font-weight: 500;

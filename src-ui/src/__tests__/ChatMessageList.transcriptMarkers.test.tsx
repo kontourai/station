@@ -272,6 +272,39 @@ describe('chat-24 transcript markers', () => {
     expect(markers(container, 'engine')).toHaveLength(0);
   });
 
+  test('a refused switch stays hidden when the reused Session’s earlier turns are on an older page', () => {
+    // The reset rows cover the whole conversation; the turns do not, until
+    // older pages load.
+    const handoff = REFUSED.handoffs[0] as ConversationHandoffProjection;
+    const at = Date.parse(handoff.createdAt);
+    const reused = REFUSED.events.filter(
+      ({ event }) => event.threadId === handoff.sessionId && event.turnId,
+    );
+    const paged: CapturedWindow = {
+      ...REFUSED,
+      events: [
+        ...REFUSED.events.filter(
+          ({ event }) =>
+            !(
+              event.threadId === handoff.sessionId &&
+              Date.parse(event.createdAt) < at
+            ),
+        ),
+        ...reused.map(({ sequence, event }, offset) => ({
+          sequence: sequence + 1000,
+          event: {
+            ...event,
+            eventId: `${event.eventId}-again`,
+            turnId: `${event.turnId}-again`,
+            createdAt: new Date(at + 60_000 + offset).toISOString(),
+          },
+        })),
+      ],
+    };
+    const { container } = renderTranscript(paged, transcript(paged));
+    expect(container.textContent).not.toContain('Switched to');
+  });
+
   test('a later message in the reused Session does not turn a refused switch into one', () => {
     // After the refused switch the person writes again: that turn runs in
     // the fresh context's Session the refused record names, on the old Agent.
@@ -379,6 +412,50 @@ describe('chat-24 transcript markers', () => {
               }
             : event,
         ),
+      );
+      expect(markers(container, 'model')).toHaveLength(0);
+    });
+
+    test('a turn the engine rerouted compares with nothing, before or after it', () => {
+      // Codex (codex-adapter-notifications.ts `codexModelReroute`): asked for
+      // A, then B with the engine rerouting it back to A for that turn, then
+      // A again. Codex reports no per-turn model, so a pill on either side
+      // would name a model that did not run.
+      const window = rootOnly(REFUSED);
+      const turns = turnStarts(window).map((event) => event.turnId);
+      expect(turns.length).toBeGreaterThanOrEqual(3);
+      const rerouted = turns.at(-2);
+      const { container } = renderTranscript(
+        window,
+        transcript(window, (event) => {
+          const asked = event.turnId === rerouted ? 'gpt-b' : 'gpt-a';
+          const base = isTurnEvent(event)
+            ? {
+                ...event,
+                provider: 'codex',
+                metadata: { ...event.metadata, effectiveModel: asked },
+              }
+            : { ...event, provider: 'codex' };
+          if (event.method === 'turn.started' && event.turnId === rerouted)
+            return [
+              base as RecordedEvent,
+              {
+                ...event,
+                eventId: `${event.eventId}-reroute`,
+                method: 'model.rerouted',
+                provider: 'codex',
+                fromModel: 'gpt-b',
+                toModel: 'gpt-a',
+                trigger: 'availability',
+                scope: 'turn',
+                turnId: event.turnId,
+              } as unknown as RecordedEvent,
+            ];
+          return base as RecordedEvent;
+        }),
+      );
+      expect(container.textContent).toContain(
+        'Model switched from gpt-b to gpt-a',
       );
       expect(markers(container, 'model')).toHaveLength(0);
     });
@@ -556,33 +633,64 @@ describe('chat-24 transcript markers', () => {
     expect(markers(container, 'model')).toHaveLength(0);
   });
 
-  test('a turn still streaming shows its pill from the model it asked for', () => {
-    const window = rootOnly(COMPLETED);
-    const [, second] = turnStarts(window);
-    // The settled turn carries the engine's own report; the running one has
-    // only what it asked for, compared with what the previous turn asked for.
-    const settled = transcript(window, (event) =>
-      event.method === 'turn.completed'
-        ? {
-            ...event,
-            metadata: { ...event.metadata, reportedModel: 'scripted-echo-ran' },
-          }
-        : event,
-    ).filter((message) => message.turnId !== second?.turnId);
-    const { container, getByTestId } = renderTranscript(window, settled, {
-      orchestrationSessionStarted: true,
-      orchestrationTurnOpen: true,
-      orchestrationModel: 'scripted-showcase',
-      currentSessionId: rootSession(window),
-    } as Partial<ChatSession>);
-    const [model] = markers(container, 'model');
-    expect(model?.textContent).toBe(
-      'Model: Scripted Echo →  to Scripted ShowcaseSame engine, same memory.',
-    );
-    expect(
-      (model as Node).compareDocumentPosition(getByTestId('streaming-row')) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+  describe('a turn still streaming', () => {
+    const live = (
+      reported: string | undefined,
+      overrides: Partial<ChatSession> = {
+        orchestrationModel: 'scripted-showcase',
+      } as Partial<ChatSession>,
+    ) => {
+      const window = rootOnly(COMPLETED);
+      const [, second] = turnStarts(window);
+      const settled = transcript(window, (event) =>
+        event.method === 'turn.completed' && reported
+          ? {
+              ...event,
+              metadata: { ...event.metadata, reportedModel: reported },
+            }
+          : event,
+      ).filter((message) => message.turnId !== second?.turnId);
+      return renderTranscript(window, settled, {
+        orchestrationSessionStarted: true,
+        orchestrationTurnOpen: true,
+        currentSessionId: rootSession(window),
+        ...overrides,
+      } as Partial<ChatSession>);
+    };
+
+    test('on an engine that never reports per turn, shows its pill from the model it asked for', () => {
+      const { container, getByTestId } = live(undefined);
+      const [model] = markers(container, 'model');
+      expect(model?.textContent).toBe(
+        'Model: Scripted Echo →  to Scripted ShowcaseSame engine, same memory.',
+      );
+      expect(
+        (model as Node).compareDocumentPosition(getByTestId('streaming-row')) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    });
+
+    test('on an engine that reports per turn, shows nothing until the turn ends', () => {
+      // Asked for differs from what the previous turn asked for, and the
+      // previous turn reported the very model now asked for: a pill here
+      // would vanish at completion.
+      const { container } = live('scripted-showcase');
+      expect(
+        container.querySelector('[data-testid="streaming-row"]'),
+      ).toBeTruthy();
+      expect(markers(container, 'model')).toHaveLength(0);
+    });
+
+    test('a composer pick that was never sent is not what the turn asked for', () => {
+      const { container } = live(undefined, {
+        orchestrationModel: undefined,
+        model: 'scripted-showcase',
+      } as Partial<ChatSession>);
+      expect(
+        container.querySelector('[data-testid="streaming-row"]'),
+      ).toBeTruthy();
+      expect(markers(container, 'model')).toHaveLength(0);
+    });
   });
 
   test('on a phone, no exchange rule is drawn straight after a change marker', () => {
