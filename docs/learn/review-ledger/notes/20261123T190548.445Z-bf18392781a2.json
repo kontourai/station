@@ -1,0 +1,61 @@
+{
+  "revision": "3601605a9f7a52763aa8049394d3cbc5a5e125bd",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Checked the group syntax, plan file bounds, selected credential and terminal-safe read. The registered command and credential test passed. The CLI documentation heading now matches the help registry and the standalone parity checks passed.","inputs":["docs/reference/cli.md","packages/cli/src/cli.ts","packages/cli/src/commands/core.ts","packages/cli/src/help.ts","packages/cli/src/commands/group.ts","packages/cli/src/__tests__/group.test.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the new request and projection shapes against the personal Session-group route and public handshake. Both focused SDK tests passed, including an old host refusal and a successful zero-dispatch projection through the four supported operations.","inputs":["docs/reference/sdk.md","src-server/routes/orchestration/orchestration.ts","src-server/runtime/routes/runtime-routes.ts","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/orchestration-service.ts","packages/sdk/src/client/cli-session-groups.ts","packages/sdk/src/__tests__/cli-session-groups.test.ts","packages/contracts/src/delegation-group.ts"]},
+
+    {"path":"README.md","note":"Reviewed the new group verb, chosen Station, bounded local plan and retained output against command registration. The other documented CLI verbs and targeting rules are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the new group verb, chosen Station, bounded local plan and retained output against command registration. The other documented CLI verbs and targeting rules are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Reviewed the new group verb, chosen Station, bounded local plan and retained output against command registration. The other documented CLI verbs and targeting rules are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the new group verb, chosen Station, bounded local plan and retained output against command registration. The other documented CLI verbs and targeting rules are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed the new group verb, chosen Station, bounded local plan and retained output against command registration. The other documented CLI verbs and targeting rules are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the Session-group entries through capability discovery and the typed create, read, run and cancel wrappers. Existing SDK integration and capability workflows retain their scope.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the Session-group entries through capability discovery and the typed create, read, run and cancel wrappers. Existing SDK integration and capability workflows retain their scope.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"README.md","note":"Reviewed command registration and target authorization references. The group verb enters the normal core command and credential path. Existing boot, recovery, and help routing are unchanged.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Reviewed command registration and target authorization references. The group verb enters the normal core command and credential path. Existing boot, recovery, and help routing are unchanged.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Reviewed command registration and target authorization references. The group verb enters the normal core command and credential path. Existing boot, recovery, and help routing are unchanged.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Reviewed command registration and target authorization references. The group verb enters the normal core command and credential path. Existing boot, recovery, and help routing are unchanged.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"Reviewed command registration and target authorization references. The group verb enters the normal core command and credential path. Existing boot, recovery, and help routing are unchanged.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed command registration and target authorization references. The group verb enters the normal core command and credential path. Existing boot, recovery, and help routing are unchanged.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed command registration and target authorization references. The group verb enters the normal core command and credential path. Existing boot, recovery, and help routing are unchanged.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/user/native-recovery.md","note":"Reviewed command registration and target authorization references. The group verb enters the normal core command and credential path. Existing boot, recovery, and help routing are unchanged.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed command registration and target authorization references. The group verb enters the normal core command and credential path. Existing boot, recovery, and help routing are unchanged.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"examples/getting-started-starter/README.md","note":"Reviewed command registration and target authorization references. The group verb enters the normal core command and credential path. Existing boot, recovery, and help routing are unchanged.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed command registration and target authorization references. The group verb enters the normal core command and credential path. Existing boot, recovery, and help routing are unchanged.","inputs":["packages/cli/src/cli.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the shared CLI API boundary and help routing. The group branch uses the same resolved Station and credential selection before handing off to its typed SDK calls.","inputs":["packages/cli/src/commands/core.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the shared CLI API boundary and help routing. The group branch uses the same resolved Station and credential selection before handing off to its typed SDK calls.","inputs":["packages/cli/src/commands/core.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Reviewed the shared CLI API boundary and help routing. The group branch uses the same resolved Station and credential selection before handing off to its typed SDK calls.","inputs":["packages/cli/src/commands/core.ts"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Verified that the group help entry names the four registered actions, personal preview and managed target handling. The standalone CLI documentation parity check passed.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Verified that the group help entry names the four registered actions, personal preview and managed target handling. The standalone CLI documentation parity check passed.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Verified that the group help entry names the four registered actions, personal preview and managed target handling. The standalone CLI documentation parity check passed.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Verified that the group help entry names the four registered actions, personal preview and managed target handling. The standalone CLI documentation parity check passed.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the public client entry points in the API reference. The group functions use the same handshake capability and authenticated route wrappers as the rest of the client. The exports grant no authority.","inputs":["packages/sdk/src/client/index.ts"]}
+  ]
+}

@@ -268,7 +268,11 @@
 
     "packages/cli/src/commands/conversation.ts",
 
-    "packages/cli/src/commands/import-progress.ts"
+    "packages/cli/src/commands/import-progress.ts",
+
+    "packages/cli/src/commands/group.ts",
+
+    "packages/cli/src/__tests__/group.test.ts"
   ],
 
   "checks": [
