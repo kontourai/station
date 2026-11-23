@@ -22,9 +22,11 @@
  *
  * Approvals (A.5, ruling R4). Station answers a permission ask only `once`
  * or `reject`, never `always`: "allow for this session" is a grant this
- * session keeps, scoped to what was asked (OpenCode's `save` patterns, else
- * the exact resources), answered `once` each time and dropped when the
- * approval mode changes. A request resolves when the engine says it was
+ * session keeps for the ask's whole action (every later `shell` ask, say,
+ * whatever its commands), as the ACP adapter's per-tool grant covers every
+ * later call of the tool. It is answered `once` each time and dropped when
+ * the approval mode changes; it never answers an ask the configuration-edit
+ * guard gives a person. A request resolves when the engine says it was
  * answered (`permission.replied`, `form.replied`), so its acknowledgement is
  * the engine's; an execution that ends drops its pending asks silently, so
  * they close then, and a late answer is refused without reaching OpenCode.
@@ -422,8 +424,6 @@ interface PendingRequest {
   /** The OpenCode session that asked (this one, or a child). */
   readonly sessionId: string;
   readonly action?: string;
-  /** What an "allow for this session" grant of it covers. */
-  readonly patterns?: readonly string[];
   readonly form?: InputRequestForm;
   readonly turnId?: string;
   decided?: OpenCodeNativeDecision;
@@ -447,7 +447,6 @@ interface NativeAsk {
   readonly sessionId: string;
   readonly action: string;
   readonly resources: readonly string[];
-  readonly save: readonly string[];
   readonly toolCallId: string | undefined;
   /** The message of the tool call that asked (`source.messageID`). */
   readonly messageId: string | undefined;
@@ -542,8 +541,9 @@ export class OpenCodeNativeSession {
   private readonly parts = new Map<string, TextPart>();
   private readonly requests = new Map<string, PendingRequest>();
   /**
-   * Session grants (R4): the action and the patterns allowed for it,
-   * answered `once` each time; cleared when the approval mode changes.
+   * Session grants (R4): each covers every later ask for its action (its
+   * patterns are `*`), answered `once` each time; cleared when the approval
+   * mode changes.
    */
   private readonly grants: SessionGrant[] = [];
   /** Asks Station is answering itself (or deciding), by native id. */
@@ -1102,13 +1102,16 @@ export class OpenCodeNativeSession {
       pending.decided = undefined;
       throw error;
     }
-    // Scoped as OpenCode would save it: the ask's `save` patterns, else its
-    // exact resources. Most tools ask with `save: ["*"]` (2.3.0 governed
-    // capture: edit), so for them a grant covers the whole action, as
-    // OpenCode's own "always" would; shell saves a command prefix
-    // (`echo *`).
-    if (decision === 'acceptForSession' && pending.action && pending.patterns)
-      this.grants.push({ action: pending.action, patterns: pending.patterns });
+    // The per-tool grant the contract gives an unscoped session answer
+    // (`sessionGrantScope` absent): every later ask for this action, not
+    // just OpenCode's `save` patterns for this one, which for shell are a
+    // command prefix (`gh search *`) that the next command rarely shares. A
+    // `rule` answer never reaches here (orchestration makes it a one-call
+    // accept for an adapter that does not declare it), and `server` is the
+    // Station browser's. The configuration-edit guard still runs before a
+    // grant answers (`openCodeNativeAskAnswer`).
+    if (decision === 'acceptForSession' && pending.action)
+      this.grants.push({ action: pending.action, patterns: ['*'] });
   }
 
   // --- Lifecycle --------------------------------------------------------
@@ -2402,9 +2405,6 @@ export class OpenCodeNativeSession {
       sessionId,
       action,
       resources,
-      save: (ownArray(data.save) ?? []).filter(
-        (item): item is string => typeof item === 'string',
-      ),
       toolCallId: readString(ownRecord(data.source)?.id),
       messageId: readString(ownRecord(data.source)?.messageID),
       files: (ownArray(ownRecord(data.metadata)?.files) ?? []).flatMap(
@@ -3032,7 +3032,7 @@ export class OpenCodeNativeSession {
     ask: NativeAsk,
     note: { autoAnswerFailed?: string; guardianReason?: string } = {},
   ): void {
-    const { nativeId, sessionId, action, resources, save } = ask;
+    const { nativeId, sessionId, action, resources } = ask;
     const own = sessionId === this.sessionId;
     const turnId = own ? this.activeTurnId : undefined;
     const pending: PendingRequest = {
@@ -3041,9 +3041,6 @@ export class OpenCodeNativeSession {
       eventId: crypto.randomUUID(),
       sessionId,
       action,
-      ...(save.length > 0 || resources.length > 0
-        ? { patterns: save.length > 0 ? save : resources }
-        : {}),
       ...(turnId ? { turnId } : {}),
     };
     this.requests.set(nativeId, pending);

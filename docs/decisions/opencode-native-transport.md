@@ -305,9 +305,15 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   plugins) without asking (`openCodeNativeAskNeedsPerson`, the native
   counterpart of the ACP path's `openCodeEditNeedsPerson`). Otherwise, a
   session grant or the mode (full access answers everything, Auto answers
-  `edit`) answers `once`. Otherwise a person decides, except in a delegated
-  session whose delegation sets `denyApprovals`: nobody can answer it, so the
-  ask is rejected at once with the delegated denial as OpenCode's feedback,
+  `edit`) answers `once`. "Allow for this session" (`acceptForSession`
+  without a `sessionGrantScope`) grants the ask's whole action, as the ACP
+  adapter's per-tool grant does. Granted on a `shell` ask, it answers every
+  later `shell` ask whatever its commands, not only those matching
+  OpenCode's `save` patterns for the answered ask (for shell, a command
+  prefix such as `gh search *`). A `rule` answer is a one-call accept here,
+  because only the Claude adapter declares it. Otherwise a person decides,
+  except in a delegated session whose delegation sets `denyApprovals`:
+  nobody can answer it, so the ask is rejected at once with the delegated denial as OpenCode's feedback,
   at the point where the ACP adapter declines it (after the policy, a grant
   and the mode). Such a session's questions are cancelled, as ACP declines
   them. Station never answers `always` (ruling R4).
@@ -411,8 +417,8 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   new agent's rules. `subagent` stays rejected under Ask and Auto, but a `subtask: true`
   command starts a child without that permission, and its asks are governed
   this way.
-  "Allow for this session" is a grant the adapter holds, scoped to the asked
-  patterns, and dropped when the mode changes.
+  "Allow for this session" is a grant the adapter holds for the asked
+  action, and dropped when the mode changes.
 - **Before a governed start**, the #3924 project-code scan runs, then Station
   reads the agent's rules and the saved approvals. It refuses the start if a
   saved allow would let a governed action run without asking. A governed
