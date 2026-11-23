@@ -336,6 +336,23 @@ test('a zero-dispatch group refuses startup through the real run route', async (
   expect(f.adapter.turns).toEqual([]);
 });
 
+function readAcceptedMember(
+  f: Awaited<ReturnType<typeof fixture>>,
+  path: string,
+) {
+  return vi.waitFor(
+    async () => {
+      const response = await f.app.request(path);
+      expect(response.status).toBe(200);
+      const { data } = (await response.json()) as { data: CliSessionGroupView };
+      const handle = data.members[0]?.handle;
+      expect(handle?.initialTurnId).toEqual(expect.any(String));
+      return handle!;
+    },
+    { timeout: 5000 },
+  );
+}
+
 test('cancelling a running group interrupts only its accepted initial turn', async () => {
   const f = await fixture();
   f.adapter.holdTurns = true;
@@ -347,19 +364,7 @@ test('cancelling a running group interrupts only its accepted initial turn', asy
     signal: controller.signal,
   });
   try {
-    const accepted = await vi.waitFor(
-      async () => {
-        const response = await f.app.request(path);
-        expect(response.status).toBe(200);
-        const { data } = (await response.json()) as {
-          data: CliSessionGroupView;
-        };
-        const handle = data.members[0]?.handle;
-        expect(handle?.initialTurnId).toEqual(expect.any(String));
-        return handle!;
-      },
-      { timeout: 5000 },
-    );
+    const accepted = await readAcceptedMember(f, path);
     const response = await f.app.request(`${path}/cancel`, { method: 'POST' });
     expect(response.status).toBe(200);
     expect((await running).status).toBe(200);
@@ -369,6 +374,34 @@ test('cancelling a running group interrupts only its accepted initial turn', asy
   } finally {
     controller.abort();
     await running;
+  }
+}, 30_000);
+
+test('disconnecting a group run requests an exact stop for the accepted initial turn', async () => {
+  const f = await fixture();
+  f.adapter.holdTurns = true;
+  const group = await create(f, 1);
+  const path = `/api/orchestration/session-groups/${group.groupId}`;
+  const controller = new AbortController();
+  const running = f.app.request(`${path}/run`, {
+    method: 'POST',
+    signal: controller.signal,
+  });
+  try {
+    const accepted = await readAcceptedMember(f, path);
+    controller.abort();
+    expect((await running).status).toBe(403);
+    await vi.waitFor(
+      () =>
+        expect(f.adapter.interrupts).toEqual([
+          { sessionId: accepted.sessionId, turnId: accepted.initialTurnId },
+        ]),
+      { timeout: 5000 },
+    );
+  } finally {
+    controller.abort();
+    await running;
+    await Promise.allSettled(f.pendingDispatches);
   }
 }, 30_000);
 

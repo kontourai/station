@@ -1,4 +1,4 @@
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   CliSessionGroupListPage,
@@ -46,6 +46,7 @@ function fixture() {
     await service.shutdown();
   });
   let current = true;
+  let checkCurrent = (_request: Request) => {};
   const delegateTask = vi.fn();
   const app = createOrchestrationRoutes(service, {
     cliSessionGroups: { home, preview },
@@ -54,7 +55,10 @@ function fixture() {
     getUserId: () => 'owner',
     callerBindingForRequest: (request) =>
       request.headers.get('fixture-credential') ?? undefined,
-    isRequestPrincipalCurrent: () => current,
+    isRequestPrincipalCurrent: (request) => {
+      checkCurrent(request);
+      return current;
+    },
     delegateTask,
   });
   const body = {
@@ -94,6 +98,9 @@ function fixture() {
       registry.setEnabled('cli-session-groups', enabled),
     revoke: () => {
       current = false;
+    },
+    setCurrentCheck: (check: typeof checkCurrent) => {
+      checkCurrent = check;
     },
   };
 }
@@ -201,4 +208,48 @@ test('group listing pages only the current credential’s retained groups', asyn
   f.revoke();
   expect((await list()).status).toBe(403);
   expect(f.delegateTask).not.toHaveBeenCalled();
+});
+
+test('revoking the credential at cancellation publication leaves the prior group record', async () => {
+  const f = fixture();
+  await f.setPreview(true);
+  const created = await f.create();
+  expect(created.status).toBe(200);
+  const { data } = (await created.json()) as { data: CliSessionGroupView };
+  let sawStagedCancellation = false;
+  f.setCurrentCheck((request) => {
+    if (!new URL(request.url).pathname.endsWith('/cancel')) return;
+    const staged = readdirSync(f.root).find(
+      (name) =>
+        name.startsWith(`${data.groupId}.json.`) && name.endsWith('.tmp'),
+    );
+    if (!staged) return;
+    expect(
+      JSON.parse(readFileSync(join(f.root, staged), 'utf8')),
+    ).toMatchObject({
+      cancelled: true,
+    });
+    sawStagedCancellation = true;
+    f.revoke();
+  });
+
+  const response = await f.app.request(
+    `/session-groups/${data.groupId}/cancel`,
+    {
+      method: 'POST',
+      headers: { 'fixture-credential': 'credential-one' },
+    },
+  );
+  expect(response.status).toBe(403);
+  expect(await response.json()).toMatchObject({
+    code: 'group_authority_required',
+  });
+  expect(sawStagedCancellation).toBe(true);
+  const record = JSON.parse(
+    readFileSync(join(f.root, `${data.groupId}.json`), 'utf8'),
+  );
+  expect(record).toMatchObject({ cancelled: false, revision: data.revision });
+  expect(readdirSync(f.root).filter((name) => name.endsWith('.tmp'))).toEqual(
+    [],
+  );
 });

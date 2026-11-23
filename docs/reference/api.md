@@ -1598,8 +1598,13 @@ Running a group can spend provider credits. A completed dependency requires
 positive terminal evidence for that member's accepted initial turn.
 `POST /api/orchestration/session-groups/:groupId/cancel` closes further
 admission and requests stops for the group's confirmed initial turns.
-Station retains one stop intent per accepted member and rechecks authority
-before the provider interrupt and any escalation.
+Station rechecks the live request before committing the cancellation.
+It retains one stop intent per accepted member and rechecks credential and
+preview authority before the provider interrupt and any escalation. Losing the
+run connection stops new admission for that run. Station can still request
+interruption for its confirmed initial turns while that credential remains
+current. Exact group stops require the current provider Session.
+Deferred interrupts and owned cascades use their separate Session owners.
 Missing acceptance or stop evidence remains unconfirmed. Paired callers need
 `orchestration:read` for inspection and `orchestration:operate` for mutations.
 
