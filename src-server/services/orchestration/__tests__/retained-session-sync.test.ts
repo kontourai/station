@@ -198,20 +198,22 @@ async function fixture(persistSession = true, adapterStopTimeoutMs?: number) {
   return { adapter, service, input, registry };
 }
 
+function deferred<T = void>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 function holdRuntimePreflight(adapter: SyncAdapter) {
-  let arrived!: () => void;
-  let release!: () => void;
-  const entered = new Promise<void>((resolve) => {
-    arrived = resolve;
-  });
-  const pending = new Promise<void>((resolve) => {
-    release = resolve;
-  });
+  const entered = deferred();
+  const pending = deferred();
   vi.spyOn(adapter, 'assertContextSyncRuntime').mockImplementation(async () => {
-    arrived();
-    await pending;
+    entered.resolve();
+    await pending.promise;
   });
-  return { entered, release };
+  return { entered: entered.promise, release: pending.resolve };
 }
 
 test.each(['prompt/client-turn', 'context'] as const)(
@@ -355,14 +357,13 @@ test('a held interrupt cannot hold the accepted sync open or release its activat
   f.adapter.completeTurns = false;
   const controller = new AbortController();
   const deadline = new Error('sync caller expired');
-  const interruptResponse =
-    Promise.withResolvers<ProviderInterruptTurnResult>();
+  const interruptResponse = deferred<ProviderInterruptTurnResult>();
   const interrupt = vi
     .spyOn(f.adapter, 'interruptTurn')
     .mockReturnValue(interruptResponse.promise);
   const observe = f.service.readSessionEventPage.bind(f.service);
-  const observationEntered = Promise.withResolvers<void>();
-  const allowObservation = Promise.withResolvers<void>();
+  const observationEntered = deferred();
+  const allowObservation = deferred();
   vi.spyOn(f.service, 'readSessionEventPage').mockImplementation(
     async (...args) => {
       observationEntered.resolve();
@@ -419,8 +420,8 @@ test.each([true, false])(
   async (confirmed) => {
     const f = await fixture();
     const controller = new AbortController();
-    const finalStopEntered = Promise.withResolvers<void>();
-    const allowFinalStop = Promise.withResolvers<void>();
+    const finalStopEntered = deferred();
+    const allowFinalStop = deferred();
     const originalStop = f.adapter.stopSession.bind(f.adapter);
     let stopCount = 0;
     vi.spyOn(f.adapter, 'stopSession').mockImplementation(async (threadId) => {
