@@ -2386,6 +2386,54 @@ describe('useActiveChatTranscript', () => {
     expect(rows.indexOf('Second')).toBeGreaterThan(rows.indexOf('marker'));
   });
 
+  test('an untimed row last in its group takes the row before it, not a later group row', async () => {
+    const rerouted = event('e3', 'model.rerouted', {
+      fromModel: 'model-a',
+      toModel: 'model-b',
+      trigger: 'availability',
+      scope: 'session',
+    });
+    fetchWindow.mockResolvedValueOnce({
+      protocolVersion: 1,
+      watermark: 3,
+      hasMore: false,
+      // Another group's row, later than everything the projection holds.
+      contextBoundaries: [
+        {
+          boundaryId: 'boundary-later',
+          successorSessionId: 'thread-1',
+          policy: 'empty-next-cold-start',
+          priorTranscriptInjected: false,
+          consumedAt: '2026-08-09T00:00:30.000Z',
+        },
+      ],
+      events: [
+        event('e1', 'turn.started', { turnId: 'turn-1', prompt: 'First' }),
+        event('e2', 'turn.completed', {
+          turnId: 'turn-1',
+          outputText: 'First answer',
+        }),
+        // Last in the projection, with a date that cannot be read.
+        { ...rerouted, event: { ...rerouted.event, createdAt: 'not a date' } },
+      ],
+    });
+    const { result } = renderHook(() =>
+      useActiveChatTranscript('http://station.test', baseSession),
+    );
+    await waitFor(() => expect(result.current.settled).toBe(true));
+    const rows = result.current.messages.map((message) => {
+      const type = message.contentParts?.[0]?.type;
+      if (type === 'conversation-context-boundary') return 'boundary';
+      return message.role === 'system' || type !== 'text'
+        ? 'marker'
+        : message.content;
+    });
+    // The row before it (First answer) lends its time, which is earlier than
+    // the boundary's; the next row's time (none in its group) would sink it
+    // past the boundary.
+    expect(rows).toEqual(['First', 'First answer', 'marker', 'boundary']);
+  });
+
   test('station#3415: a durable mid-turn compaction reaches the dock as a system row after its one-row turn', async () => {
     fetchWindow.mockResolvedValueOnce({
       protocolVersion: 1,
