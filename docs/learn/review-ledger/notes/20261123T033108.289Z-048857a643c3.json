@@ -1,0 +1,7 @@
+{
+  "revision": "b7842ea6259f3c32384ab50d256e7bd07f692f7c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the held-row rule (Scroll to bottom from hold start, tail not followed while held) and the status room staying while the rail steps come down","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}
