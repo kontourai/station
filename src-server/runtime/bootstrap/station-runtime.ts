@@ -6322,6 +6322,8 @@ export class StationRuntime {
           this.orchestrationService.resolveSessionActingPrincipal(threadId),
         delegatedAppearanceOwner: (threadId) =>
           this.orchestrationService.delegatedAppearanceOwner?.(threadId),
+        stationControlActingPrincipal: (threadId) =>
+          this.orchestrationService.stationControlActingPrincipal(threadId),
         firstStartedMetadataOfThread: (threadId) =>
           this.orchestrationService.firstStartedMetadataOfThread(threadId),
       },

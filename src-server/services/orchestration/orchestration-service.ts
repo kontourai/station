@@ -651,6 +651,7 @@ import {
   readThreadUsageTree,
   type ThreadUsageTreeReadOutcome,
 } from './thread-usage-tree-read.js';
+import { isPersonAuthoredTurn } from './turn-authorship.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
 import {
@@ -2627,6 +2628,8 @@ export class OrchestrationService {
     { ownerId: string; parentSessionId: string; clientTurnId: string }
   >();
   private readonly coordinatorToolGenerations = new Map<string, number>();
+  /** Automation Sessions a person took over (#4511); see `recordPersonTakeover`. */
+  private readonly personTakeovers = new Set<string>();
   /**
    * Turn progress + turn-stall observation (epic archive#4024, archive#4116):
    * owns the stall watchdog, per-thread windows, and the process-local
@@ -16400,6 +16403,44 @@ export class OrchestrationService {
       if (this.delegatedAppearance.get(threadId) === grant)
         this.delegatedAppearance.delete(threadId);
     };
+  }
+
+  /**
+   * #4511: a person took over this automation Session. Recorded by the
+   * automation runtime at each of that person's turn admissions, so a restart
+   * that forgets it restores it before the person's next turn starts.
+   */
+  recordPersonTakeover(threadId: string): void {
+    this.personTakeovers.add(threadId);
+  }
+
+  /**
+   * The principal a Station Control call from this Session acts for. Usually
+   * the recorded acting principal. In an automation Session a person took
+   * over, whose start acts for no one, the turn that person typed and that is
+   * running now acts for the Session's recorded owner, as any chat Session
+   * does: only the owner, or a device of the owner's account, may send a turn
+   * into it. Any other turn (the automation's own, an engine-opened one, a
+   * later wake) and the time between turns act for no one.
+   */
+  stationControlActingPrincipal(
+    threadId: string,
+  ): import('./session-authorization.js').SessionActingPrincipal | undefined {
+    const recorded = this.resolveSessionActingPrincipal(threadId);
+    if (recorded || !this.personTakeovers.has(threadId)) return recorded;
+    const store = this.options.eventStore;
+    const started = store?.latestOwnTurnStarted(threadId)?.payload;
+    if (
+      !store ||
+      !started?.turnId ||
+      !isPersonAuthoredTurn(started) ||
+      this.activeTurnIdOfThread(threadId) !== started.turnId
+    )
+      return undefined;
+    const owner = store.findSessionOwnerAttribution(threadId).ownerUserId;
+    return owner === undefined
+      ? undefined
+      : { id: owner, source: 'session-owner' };
   }
 
   delegatedAppearanceOwner(threadId: string): string | undefined {

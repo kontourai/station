@@ -195,7 +195,12 @@ export function stationControlCallerRecordSources(runtime: {
     OrchestrationService,
     'resolveSessionActingPrincipal' | 'firstStartedMetadataOfThread'
   > &
-    Partial<Pick<OrchestrationService, 'delegatedAppearanceOwner'>>;
+    Partial<
+      Pick<
+        OrchestrationService,
+        'delegatedAppearanceOwner' | 'stationControlActingPrincipal'
+      >
+    >;
   eventStore?: {
     conversationForSession(
       sessionId: string,
@@ -212,7 +217,9 @@ export function stationControlCallerRecordSources(runtime: {
 }): StationControlCallerRecordSources {
   return {
     actingPrincipal: (sessionId) =>
-      runtime.orchestrationService.resolveSessionActingPrincipal(sessionId),
+      runtime.orchestrationService.stationControlActingPrincipal
+        ? runtime.orchestrationService.stationControlActingPrincipal(sessionId)
+        : runtime.orchestrationService.resolveSessionActingPrincipal(sessionId),
     delegatedAppearanceOwner: (sessionId) =>
       runtime.orchestrationService.delegatedAppearanceOwner?.(sessionId),
     startedMetadata: (sessionId) =>

@@ -33,6 +33,7 @@ import { NotificationService } from '../../../services/notifications/notificatio
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
+import { UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION } from '../../../services/orchestration/session-owner-attribution.js';
 import { taskQuestionWakeKey } from '../../../services/orchestration/task-question-wake.js';
 import { composeTaskDispatcher } from '../../../services/projects/task-dispatch-composition.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
@@ -331,7 +332,7 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     };
 
     /** A Task dispatched to an agent: the lead Session, bound to the room. */
-    const dispatchedTask = async () => {
+    const dispatchedTask = async (options: { unattributed?: boolean } = {}) => {
       const task = await taskGraph.createTask({
         projectId: PROJECT,
         title: 'Ship the fix',
@@ -345,6 +346,10 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
         sourceSurface: 'task-memory-engine-test',
         fullAccessGrant: null,
         ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID,
+        // As an automation rule starts its Task: it acts for no person.
+        ...(options.unattributed
+          ? { ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION }
+          : {}),
       } as never);
       if (dispatched.kind !== 'dispatched')
         throw new Error(`dispatch was ${dispatched.kind}`);
@@ -985,5 +990,97 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     } finally {
       support.taskFollowUpWake = undefined;
     }
+  });
+  test("a person's own turn in a taken-over automation Session acts for its owner; no other turn does (#4511)", async () => {
+    const e = await setup();
+    const { taskId, sessionId } = await e.dispatchedTask({
+      unattributed: true,
+    });
+    const call = await e.connect(sessionId);
+    const roleRequired = 'station_control_role_required';
+    const calls = async () => ({
+      summary: await call('task_summary_update', {
+        text: 'Concluded: nothing to change.',
+        baseRevision: 0,
+      }),
+      record: await call('task_record', {
+        kind: 'decision',
+        key: 'outcome',
+        text: 'An open fix already exists.',
+      }),
+      reply: await call('task_thread_reply', {
+        threadId: 'no-thread',
+        deliveryKey: 'no-delivery',
+        body: 'Seen.',
+      }),
+      brief: await call('get_task_brief'),
+    });
+    const refusedEverywhere = async () => {
+      for (const [name, result] of Object.entries(await calls()))
+        expect(result.body?.code, name).toBe(roleRequired);
+    };
+    let tick = 0;
+    const turn = (fields: Record<string, unknown>) => {
+      tick += 1;
+      const turnId = `${sessionId}-automation-turn-${tick}`;
+      e.store.appendEvent({
+        threadId: sessionId,
+        turnId,
+        provider: 'codex',
+        eventId: `${turnId}:start`,
+        method: 'turn.started',
+        createdAt: new Date(Date.UTC(2026, 10, 22, 0, 0, tick)).toISOString(),
+        prompt: 'Continue',
+        ...fields,
+      } as never);
+      return turnId;
+    };
+    const end = (turnId: string) =>
+      e.store.appendEvent({
+        threadId: sessionId,
+        turnId,
+        provider: 'codex',
+        eventId: `${turnId}:done`,
+        method: 'turn.completed',
+        createdAt: new Date(Date.UTC(2026, 10, 22, 0, 1, tick)).toISOString(),
+        finishReason: 'stop',
+      } as never);
+
+    // The automation's own turn, before any takeover: refused.
+    const automationTurn = turn({});
+    await refusedEverywhere();
+    end(automationTurn);
+
+    // A person typed a turn but nobody took the Session over: refused.
+    const untaken = turn({ authoredBy: 'person' });
+    await refusedEverywhere();
+    end(untaken);
+    expect(e.stored(taskId).summary).toBeUndefined();
+
+    // The automation runtime records the takeover at the person's admission.
+    e.orchestration.recordPersonTakeover(sessionId);
+    const personTurn = turn({ authoredBy: 'person' });
+    const allowed = await calls();
+    expect(allowed.summary.body).toMatchObject({
+      status: 'updated',
+      taskId,
+      summary: { revision: 1, text: 'Concluded: nothing to change.' },
+    });
+    expect(allowed.record.body).toMatchObject({ status: 'recorded' });
+    expect(allowed.reply.body?.code).not.toBe(roleRequired);
+    expect(allowed.brief.isError, JSON.stringify(allowed.brief.body)).toBe(
+      false,
+    );
+    expect(e.orchestration.stationControlActingPrincipal(sessionId)).toEqual({
+      id: LOCAL_OPERATOR_PRINCIPAL_ID,
+      source: 'session-owner',
+    });
+
+    // Between turns, and in a later turn no person typed: refused again.
+    end(personTurn);
+    await refusedEverywhere();
+    turn({});
+    await refusedEverywhere();
+    expect(e.stored(taskId).summary?.revision).toBe(1);
   });
 });

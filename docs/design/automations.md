@@ -248,6 +248,11 @@ The retained Task/Session binding keeps this boundary after an action settles
 and after a runtime restart. A missing binding or failed hand-over or approval
 write refuses the turn before provider send; it cannot preserve inherited Auto
 as a fallback. The person can retry once persistence is available.
+In Station Control, the turn that person typed acts for the Session's
+recorded owner while it runs, as in any chat Session, so the Agent can write
+its own Task's memory and threads then. The automation's own turns, an
+engine-opened turn and the time between turns act for no one, so those tools
+refuse there.
 
 When an action creates its Task it captures an immutable
 `AutomationTaskMandate`: the rule name and id, source, episode (and operator
@@ -359,7 +364,11 @@ failed, a Task still `in_progress` moves to `review` so a person sees the
 result; nothing else would move it, since the Session acts for no person. A
 Task that is blocked, or whose Session a person took over before the turn
 ended, keeps its status. A green run closes
-the episode and prevents later placement for it.
+the episode and prevents later placement for it. A first turn a person
+stops ends as `turn.aborted`, so the action and its delivery read `failed`
+and it has used the episode's attempt. The wall-clock budget keeps running
+while a Task waits for an approval, so an unattended `ask` rule can spend
+its budget waiting.
 
 These Tasks can diagnose the normalized failing run. The quoted `head_sha` is
 source evidence, not proof that the execution workspace is that exact checkout.
