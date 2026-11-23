@@ -7319,7 +7319,9 @@ Each accepts `ClientRequestOptions`. A rule's `action.projectId` and a grant's
 `projectId` may be a Project's id or slug; the returned rule carries the id.
 
 `listAutomationDeliveries` returns `AutomationDeliveryPage` with `deliveries`
-and `polls`, including partial coverage and source failures. Each delivery may
+and `polls`, including partial coverage and source failures. A delivery's
+`outcome` is `interrupted` when a person stopped the turn it started; the
+client does not validate outcomes, so an older client lists the value as is. Each delivery may
 carry `decisions`: one `AutomationRuleDecision` per matched `observe` or `live`
 rule with its mode, outcome (`would-start`, `suppressed` with a reason, or
 `intent-retained`) and a bounded action snapshot. `listAutomationRules` and

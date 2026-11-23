@@ -82,6 +82,30 @@ class RecordingAdapter extends GateTestAdapter {
     invocationId?: string;
   }[] = [];
   readonly starts: ProviderSessionStartInput[] = [];
+  /**
+   * Hold its Sessions live and answer an interrupt as an engine does: cancel
+   * the turn and abort it.
+   */
+  acknowledgeInterrupts = false;
+  override async hasSession(threadId: string) {
+    return this.acknowledgeInterrupts
+      ? this.starts.some((start) => start.threadId === threadId)
+      : super.hasSession(threadId);
+  }
+  override async interruptTurn(threadId: string, turnId?: string) {
+    if (!this.acknowledgeInterrupts || !turnId)
+      return super.interruptTurn(threadId, turnId);
+    this.events.push({
+      method: 'turn.aborted',
+      eventId: `aborted-${turnId}`,
+      provider: this.provider,
+      threadId,
+      turnId,
+      createdAt: new Date().toISOString(),
+      reason: 'interrupted',
+    } as CanonicalRuntimeEvent);
+    return { outcome: 'cancelled' as const, turnId };
+  }
   override async startSession(input: ProviderSessionStartInput) {
     this.starts.push(input);
     const session = await super.startSession(input);
@@ -177,6 +201,8 @@ async function world(
     startEngine?: string;
     /** Who answers the ACP connection's approvals (`acpApprovalControl`). */
     acpControl?: 'station' | 'requests' | 'engine';
+    /** The action's wall budget (default one minute). */
+    maxWallRuntimeMs?: number;
   } = {},
 ) {
   const ruleModes = options.ruleModes ?? ['live'];
@@ -228,7 +254,11 @@ async function world(
           projectId: options.actionProject ?? projects.listProjects()[0]!.id,
           agentId: FIXTURE_TASK_AGENT,
           instructions: 'Investigate the failure.',
-          budget: { maxTurns: 1, maxTokens: 20000, maxWallRuntimeMs: 60000 },
+          budget: {
+            maxTurns: 1,
+            maxTokens: 20000,
+            maxWallRuntimeMs: options.maxWallRuntimeMs ?? 60000,
+          },
           ...(options.approvalMode
             ? { approvalMode: options.approvalMode }
             : {}),
@@ -2519,4 +2549,254 @@ test('a Task blocked by the rule being disabled keeps blocked when the stopped t
   });
   await w.runtime.tick();
   expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('blocked');
+});
+
+// ── A person's Stop, and the wall budget paused while a person is awaited ──
+
+const MINUTE = 60_000;
+
+/** The single intent's episode and delivery, as Settings and the CLI read them. */
+function settled(w: World, intent: AutomationActionIntent) {
+  return {
+    state: w.ledger.readIntent(intent.intentId)?.state,
+    reason: w.ledger.readIntent(intent.intentId)?.reason,
+    delivery: w.ledger
+      .listDeliveries()
+      .find(({ deliveryKey }) => deliveryKey === intent.deliveryKey)?.outcome,
+    episodes: w.ledger.listOpenEpisodes(),
+  };
+}
+
+test("a person's Stop of the automation's first turn reads interrupted, not failed, and uses the attempt as a failure does", async () => {
+  const w = await world({ maxAttempts: 1 });
+  const intent = await running(w);
+  // Invoking the Agent used the episode's only attempt.
+  expect(w.ledger.listOpenEpisodes()).toEqual([
+    expect.objectContaining({ state: 'exhausted', attemptCount: 1 }),
+  ]);
+  w.adapter.acknowledgeInterrupts = true;
+  await w.service.dispatch(
+    { type: 'interruptTurn', threadId: intent.sessionId! },
+    { clientOrigin: PERSON_ORIGIN },
+  );
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(intent.sessionId!, ['turn.aborted']),
+    ).toBeTruthy(),
+  );
+  await w.runtime.tick();
+  const after = settled(w, intent);
+  expect(after).toMatchObject({
+    state: 'interrupted',
+    delivery: 'interrupted',
+  });
+  // The attempt was used when the Agent was invoked: the episode reads as it
+  // does after a failure, and no start-failed Retry is offered.
+  expect(after.episodes).toEqual([
+    expect.objectContaining({ state: 'exhausted', attemptCount: 1 }),
+  ]);
+  expect(after.episodes[0]).not.toHaveProperty('startFailed');
+  // The Task still moves to review.
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('review');
+});
+
+test("an Agent's or server's Stop of the automation turn is not a person's: it still reads failed", async () => {
+  const w = await world({ maxAttempts: 1 });
+  const intent = await running(w);
+  w.adapter.acknowledgeInterrupts = true;
+  await w.service.dispatch(
+    { type: 'interruptTurn', threadId: intent.sessionId! },
+    { clientOrigin: INTERNAL_ORIGIN },
+  );
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(intent.sessionId!, ['turn.aborted']),
+    ).toBeTruthy(),
+  );
+  await w.runtime.tick();
+  expect(settled(w, intent)).toMatchObject({
+    state: 'failed',
+    delivery: 'failed',
+  });
+});
+
+test('an engine failure of the automation turn still reads failed', async () => {
+  const w = await world({ maxAttempts: 1 });
+  const intent = await running(w);
+  w.adapter.events.push({
+    method: 'runtime.error',
+    eventId: 'engine-failed',
+    provider: w.adapter.provider,
+    threadId: intent.sessionId!,
+    turnId: intent.turnId!,
+    createdAt: new Date().toISOString(),
+    message: 'engine crashed',
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(intent.sessionId!, ['runtime.error']),
+    ).toBeTruthy(),
+  );
+  await w.runtime.tick();
+  expect(settled(w, intent)).toMatchObject({
+    state: 'failed',
+    delivery: 'failed',
+  });
+});
+
+test('a revocation that stops the automation turn still reads failed', async () => {
+  const w = await world({ approvalMode: 'auto', maxAttempts: 1 });
+  const intent = await running(w);
+  await setRuleMode(w, w.rule.id, 'off');
+  await w.runtime.tick();
+  await endFirstTurn(w, intent, {
+    method: 'turn.aborted',
+    reason: 'interrupted',
+  });
+  await w.runtime.tick();
+  expect(settled(w, intent)).toMatchObject({
+    state: 'failed',
+    reason: 'policy_changed',
+    delivery: 'failed',
+  });
+});
+
+/**
+ * A world on a fake clock (real time still advances it, so the engine and
+ * inbox keep working), with a one-hour wall budget.
+ */
+async function hourBudget() {
+  vi.useFakeTimers({
+    shouldAdvanceTime: true,
+    toFake: ['Date', 'setTimeout', 'clearTimeout'],
+  });
+  cleanup.unshift(async () => {
+    vi.useRealTimers();
+  });
+  const w = await world({ maxWallRuntimeMs: 60 * MINUTE });
+  const intent = await running(w);
+  const interrupts = vi.spyOn(w.service, 'interruptTurn');
+  return { w, intent, interrupts };
+}
+
+async function pushEvent(
+  w: World,
+  intent: AutomationActionIntent,
+  event: Record<string, unknown> & { method: string; eventId: string },
+) {
+  w.adapter.events.push({
+    provider: w.adapter.provider,
+    threadId: intent.sessionId!,
+    turnId: intent.turnId!,
+    createdAt: new Date().toISOString(),
+    ...event,
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore
+        .listEvents(intent.sessionId!)
+        .some(({ payload }) => payload.eventId === event.eventId),
+    ).toBe(true),
+  );
+}
+
+const openApproval = (w: World, intent: AutomationActionIntent, id: string) =>
+  pushEvent(w, intent, {
+    method: 'request.opened',
+    eventId: `opened-${id}`,
+    requestId: id,
+    requestType: 'approval',
+    title: 'Run a command',
+  });
+const answerApproval = (w: World, intent: AutomationActionIntent, id: string) =>
+  pushEvent(w, intent, {
+    method: 'request.resolved',
+    eventId: `resolved-${id}`,
+    requestId: id,
+    status: 'approved',
+  });
+
+test('50 minutes waiting on an approval and 20 minutes working stay inside a one-hour wall budget', async () => {
+  const { w, intent, interrupts } = await hourBudget();
+  await openApproval(w, intent, 'approval-1');
+  await vi.advanceTimersByTimeAsync(50 * MINUTE);
+  await w.runtime.tick();
+  await answerApproval(w, intent, 'approval-1');
+  await vi.advanceTimersByTimeAsync(20 * MINUTE);
+  await w.runtime.tick();
+  expect(interrupts).not.toHaveBeenCalled();
+  expect(w.ledger.readIntent(intent.intentId)?.state).toBe('running');
+  // The budget still runs out after 60 minutes of work.
+  await vi.advanceTimersByTimeAsync(41 * MINUTE);
+  expect(interrupts).toHaveBeenCalledWith(intent.sessionId);
+});
+
+test('a turn that works past its wall budget with no request open is interrupted at the budget', async () => {
+  const { w, intent, interrupts } = await hourBudget();
+  await vi.advanceTimersByTimeAsync(59 * MINUTE);
+  expect(interrupts).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(2 * MINUTE);
+  expect(interrupts).toHaveBeenCalledWith(intent.sessionId);
+  await endFirstTurn(w, intent, {
+    method: 'turn.aborted',
+    reason: 'interrupted',
+  });
+  expect(settled(w, intent)).toMatchObject({
+    state: 'failed',
+    delivery: 'failed',
+  });
+  expect(settled(w, intent).reason).toBeUndefined();
+});
+
+test('an approval nobody answers is interrupted at the waiting ceiling, with its own reason', async () => {
+  const { w, intent, interrupts } = await hourBudget();
+  await openApproval(w, intent, 'approval-never');
+  await vi.advanceTimersByTimeAsync(24 * 60 * MINUTE - MINUTE);
+  await w.runtime.tick();
+  expect(interrupts).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(2 * MINUTE);
+  expect(interrupts).toHaveBeenCalledWith(intent.sessionId);
+  expect(w.ledger.readIntent(intent.intentId)?.reason).toBe(
+    'person_wait_ceiling',
+  );
+  const blocked = w.eventStore
+    .listEvents(intent.sessionId!)
+    .map((event) => event.payload)
+    .filter((event) => event.method === 'session.state-changed')
+    .at(-1) as { sessionState?: string; reason?: string } | undefined;
+  expect(blocked).toMatchObject({
+    sessionState: 'blocked',
+    reason:
+      'Stopped: no one answered this automation’s request within 24 hours.',
+  });
+  await endFirstTurn(w, intent, {
+    method: 'turn.aborted',
+    reason: 'interrupted',
+  });
+  expect(settled(w, intent)).toMatchObject({
+    state: 'failed',
+    reason: 'person_wait_ceiling',
+    delivery: 'failed',
+  });
+});
+
+test('a restart while an approval is open keeps the remaining wall budget', async () => {
+  const { w, intent, interrupts } = await hourBudget();
+  await vi.advanceTimersByTimeAsync(10 * MINUTE);
+  await openApproval(w, intent, 'approval-restart');
+  await vi.advanceTimersByTimeAsync(30 * MINUTE);
+  // Closing the old runtime interrupts its supervised turns, as a shutdown
+  // does today; the fake engine keeps the turn, so count only what follows.
+  w.rebootController();
+  interrupts.mockClear();
+  await w.runtime.tick();
+  await vi.advanceTimersByTimeAsync(20 * MINUTE);
+  await w.runtime.tick();
+  await answerApproval(w, intent, 'approval-restart');
+  // 10 minutes worked before the wait: 50 remain, not 60 and not none.
+  await vi.advanceTimersByTimeAsync(49 * MINUTE);
+  await w.runtime.tick();
+  expect(interrupts).not.toHaveBeenCalled();
+  await vi.advanceTimersByTimeAsync(2 * MINUTE);
+  expect(interrupts).toHaveBeenCalledWith(intent.sessionId);
 });

@@ -11886,6 +11886,12 @@ export class OrchestrationService {
           }
         }
         case 'interruptTurn': {
+          // A person's Stop (operator or device origin) is recorded as such
+          // on `session.stop-settled`, so an automation can tell it from its
+          // own budget interrupt, which never reaches this command.
+          const byPerson =
+            classifyTurnDispatchOrigin(undefined, context?.clientOrigin) ===
+            'interactive';
           const pendingStart = this.engineStartCancels.get(command.threadId);
           if (
             pendingStart &&
@@ -11975,6 +11981,7 @@ export class OrchestrationService {
                 ? { clientTurnId: command.clientTurnId }
                 : {}),
               ...(command.turnId ? { turnId: command.turnId } : {}),
+              ...(byPerson ? { byPerson: true as const } : {}),
             });
             this.persistReceipt(receipt);
             const pending: InterruptTurnResult = {
@@ -11995,6 +12002,8 @@ export class OrchestrationService {
               adapter,
               command.threadId,
               command.turnId,
+              'user',
+              byPerson,
             );
           if (
             interrupted.outcome === 'cooperative' ||

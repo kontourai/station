@@ -669,6 +669,14 @@ export interface SessionStopSettledEvent extends CanonicalRuntimeEventBase {
    * forward sets it.
    */
   initiatedBy?: 'user' | 'stall';
+  /**
+   * Set when the Stop command came from a person: an operator or paired
+   * device client origin, the classification a turn's `interactive`
+   * dispatch origin uses. A Stop sent by an Agent or a server caller is
+   * still `initiatedBy: 'user'` but carries no `byPerson`. An automation
+   * reads it to tell a person's Stop from its own budget interrupt.
+   */
+  byPerson?: true;
 }
 
 /**

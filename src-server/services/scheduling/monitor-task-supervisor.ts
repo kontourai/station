@@ -6,6 +6,7 @@ import {
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
 import type { EventBus } from '../orchestration/event-bus.js';
 import type { OrchestrationTurnAdmission } from '../orchestration/orchestration-service.js';
+import { foldPersonWait, type PersonWait } from './person-wait.js';
 import type {
   AttachedMonitorTrigger,
   MonitorTerminal,
@@ -19,6 +20,8 @@ type MonitorSession = {
   limits: { maxTurns: number; maxTokens: number };
   signal: AbortSignal;
   deadlineTimer?: ReturnType<typeof setTimeout>;
+  /** Set once a limit stopped the turn, so later events do not stop it again. */
+  stopped?: boolean;
   initialTurnId?: string;
   /** Latest canonical terminal event for this Task's observed turns. */
   terminalAt?: number;
@@ -30,12 +33,31 @@ type MonitorSession = {
   }) => void;
 };
 
+/** Why the supervisor interrupted a turn. */
+export type MonitorStopCause = 'limit' | 'person-wait-ceiling';
+
 type MonitorTaskTurnSupervisorOptions = {
   eventBus: EventBus;
   registerTurnAdmission: (admission: OrchestrationTurnAdmission) => () => void;
-  interruptTurn: (sessionId: string) => Promise<unknown>;
+  interruptTurn: (
+    sessionId: string,
+    cause: MonitorStopCause,
+  ) => Promise<unknown>;
   listEvents: (sessionId: string) => readonly CanonicalRuntimeEvent[];
+  /**
+   * Pause the wall deadline while the Session waits on a person (an open
+   * blocking approval or input request), and interrupt the turn once the
+   * waits add up to `ceilingMs`. Absent: the deadline is wall-clock time.
+   */
+  personWait?: { ceilingMs: number };
 };
+const PERSON_WAIT_METHODS = new Set<CanonicalRuntimeEvent['method']>([
+  'request.opened',
+  'request.resolved',
+  'turn.completed',
+  'turn.aborted',
+  'session.exited',
+]);
 
 /**
  * Owns the narrow execution envelope for an externally-triggered Task.  It
@@ -73,12 +95,7 @@ export class MonitorTaskTurnSupervisor {
     if (current) return;
     const session: MonitorSession = { ...input };
     this.sessions.set(input.sessionId, session);
-    if (Number.isFinite(input.deadlineAt)) {
-      session.deadlineTimer = setTimeout(
-        () => this.stop(session),
-        Math.max(0, input.deadlineAt - Date.now()),
-      );
-    }
+    this.schedule(session);
     if (input.signal.aborted) this.stop(session);
     else
       input.signal.addEventListener('abort', () => this.stop(session), {
@@ -110,14 +127,19 @@ export class MonitorTaskTurnSupervisor {
     session.limits = next.limits;
     if (next.deadlineAt !== session.deadlineAt) {
       session.deadlineAt = next.deadlineAt;
-      if (session.deadlineTimer) clearTimeout(session.deadlineTimer);
-      session.deadlineTimer = Number.isFinite(next.deadlineAt)
-        ? setTimeout(
-            () => this.stop(session),
-            Math.max(0, next.deadlineAt - Date.now()),
-          )
-        : undefined;
+      session.stopped = false;
+      this.schedule(session);
     }
+  }
+
+  /**
+   * The time this Session has waited on a person, when the supervisor
+   * pauses for it and supervises the Session; otherwise undefined.
+   */
+  personWait(sessionId: string, now = Date.now()): PersonWait | undefined {
+    if (!this.options.personWait || !this.sessions.has(sessionId))
+      return undefined;
+    return foldPersonWait(this.options.listEvents(sessionId), now);
   }
 
   abandon(sessionId: string): void {
@@ -190,7 +212,7 @@ export class MonitorTaskTurnSupervisor {
       if (!session) return [];
       const usage = this.usage(session);
       const exceeded =
-        Date.now() >= session.deadlineAt ||
+        this.deadlinePassed(session) ||
         session.signal.aborted ||
         (usage !== undefined &&
           (usage.turns >= session.limits.maxTurns ||
@@ -229,7 +251,7 @@ export class MonitorTaskTurnSupervisor {
     const usage = this.usage(session);
     if (
       session.signal.aborted ||
-      Date.now() >= session.deadlineAt ||
+      this.deadlinePassed(session) ||
       (usage !== undefined &&
         (usage.turns >= session.limits.maxTurns ||
           usage.tokens >= session.limits.maxTokens))
@@ -262,6 +284,10 @@ export class MonitorTaskTurnSupervisor {
   }
 
   private observe(event: CanonicalRuntimeEvent): void {
+    if (this.options.personWait && PERSON_WAIT_METHODS.has(event.method)) {
+      const session = this.sessions.get(event.threadId);
+      if (session) this.schedule(session);
+    }
     if (event.method === 'turn.started') this.observeTurnStarted(event);
     else if (event.method === 'token-usage.updated') this.observeUsage(event);
     else if (
@@ -331,9 +357,63 @@ export class MonitorTaskTurnSupervisor {
       .filter((event) => (event.turnId ? turns.has(event.turnId) : false));
   }
 
-  private stop(session: MonitorSession): void {
+  /**
+   * The wall deadline, moved later by the time spent waiting on a person.
+   * While a request is open the clock is paused, so it has not passed.
+   */
+  private deadlinePassed(session: MonitorSession, now = Date.now()): boolean {
+    const wait = this.personWait(session.sessionId, now);
+    if (!wait) return now >= session.deadlineAt;
+    if (wait.waitingSince !== undefined) return false;
+    return now >= session.deadlineAt + wait.waitedMs;
+  }
+
+  /**
+   * (Re)arms the one timer for a Session: the deadline while the Agent can
+   * work, or the waiting ceiling while a person's answer is awaited. It
+   * re-reads the event log when it fires, so a missed event cannot stop a
+   * turn early.
+   */
+  private schedule(session: MonitorSession): void {
     if (session.deadlineTimer) clearTimeout(session.deadlineTimer);
     session.deadlineTimer = undefined;
-    void this.options.interruptTurn(session.sessionId).catch(() => undefined);
+    if (this.sessions.get(session.sessionId) !== session || session.stopped)
+      return;
+    const now = Date.now();
+    const wait = this.personWait(session.sessionId, now);
+    const ceilingMs = this.options.personWait?.ceilingMs;
+    if (wait?.waitingSince !== undefined && ceilingMs !== undefined) {
+      if (wait.waitedMs >= ceilingMs) {
+        this.stop(session, 'person-wait-ceiling');
+        return;
+      }
+      session.deadlineTimer = setTimeout(
+        () => this.schedule(session),
+        ceilingMs - wait.waitedMs,
+      );
+      return;
+    }
+    const deadlineAt = session.deadlineAt + (wait?.waitedMs ?? 0);
+    if (!Number.isFinite(deadlineAt)) return;
+    if (wait && now >= deadlineAt) {
+      this.stop(session);
+      return;
+    }
+    session.deadlineTimer = setTimeout(
+      () => (wait ? this.schedule(session) : this.stop(session)),
+      Math.max(0, deadlineAt - now),
+    );
+  }
+
+  private stop(
+    session: MonitorSession,
+    cause: MonitorStopCause = 'limit',
+  ): void {
+    if (session.deadlineTimer) clearTimeout(session.deadlineTimer);
+    session.deadlineTimer = undefined;
+    session.stopped = true;
+    void this.options
+      .interruptTurn(session.sessionId, cause)
+      .catch(() => undefined);
   }
 }
