@@ -1,0 +1,7 @@
+{
+  "revision": "576020c3b0a4e162fc6b4dbef408159aa3fd5607",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Read the chat-composer pending-list section: a read that fails every attempt shows the Couldn't load inbox entries line; the snapshot reader no longer registers a query function, so an invalidation can no longer fail the list's read by itself. Documented behavior unchanged and now accurate.","inputs":["src-ui/src/hooks/useConversationInboxSnapshot.ts"]}
+  ]
+}

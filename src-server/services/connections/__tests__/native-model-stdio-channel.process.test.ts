@@ -1,7 +1,9 @@
+import { once } from 'node:events';
 import { mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { expect, onTestFinished, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { onNdjsonLines } from '../../../utils/ndjson-lines.js';
 import {
   spawnOwnedChild,
   terminateProcessTree,
@@ -22,6 +24,7 @@ async function fixture(
     signal: AbortSignal,
   ) => NativeModelChannelRequest,
   retirement: Promise<void> = Promise.resolve(),
+  delegationRpc?: typeof request,
 ) {
   const home = temporary('native-model-stdio-');
   const temporaryRegistry = join(home, 'registry');
@@ -82,6 +85,7 @@ async function fixture(
       },
     },
     request,
+    delegationRpc,
   );
   onTestFinished(async () => {
     await stop();
@@ -96,6 +100,98 @@ async function fixture(
     stop,
     closed,
     diagnostic: () => diagnostic,
+    home,
+    registry: temporaryRegistry,
+  };
+}
+
+function spawnRpcRelay(f: Awaited<ReturnType<typeof fixture>>) {
+  return spawnOwnedChild(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      resolve(import.meta.dirname, '../native-model-stdio-worker.ts'),
+      '--delegation-rpc-client',
+    ],
+    {
+      registryDir: f.registry,
+      env: {
+        PATH: `${dirname(process.execPath)}:/usr/bin:/bin`,
+        HOME: f.home,
+        STATION_NATIVE_RPC_URL: `${f.url}/station/delegation-rpc/v1`,
+        STATION_NATIVE_RPC_KEY: f.channel.token,
+        ...(process.env.SystemRoot
+          ? { SystemRoot: process.env.SystemRoot }
+          : {}),
+      },
+    },
+  );
+}
+
+async function rpcClient(f: Awaited<ReturnType<typeof fixture>>) {
+  const owner = spawnRpcRelay(f);
+  const { stdin, stdout, stderr } = owner.proc;
+  if (!stdin || !stdout || !stderr)
+    throw new Error('RPC client pipes unavailable');
+  const pending = new Map<
+    string,
+    { resolve(value: unknown): void; reject(error: unknown): void }
+  >();
+  let bytes = 0;
+  for (const stream of [stdout, stderr])
+    stream.on('data', (chunk: Buffer) => {
+      bytes += chunk.byteLength;
+      if (bytes > 64 * 1024) void terminateProcessTree(owner.proc);
+    });
+  onNdjsonLines(stdout, (line) => {
+    const packet = JSON.parse(line);
+    const key = JSON.stringify(packet.id);
+    const waiting = pending.get(key);
+    if (waiting) {
+      pending.delete(key);
+      waiting.resolve(packet);
+    } else {
+      // Surface a foreign packet as observed output; the fixture must not hide a relay leak.
+      for (const waiter of pending.values()) waiter.resolve(packet);
+      pending.clear();
+    }
+  });
+  const closed = new Promise<void>((resolve, reject) => {
+    owner.proc.once('error', reject);
+    owner.proc.once('close', (code) => {
+      for (const waiter of pending.values())
+        waiter.reject(new Error(`RPC client closed (${code})`));
+      pending.clear();
+      resolve();
+    });
+  });
+  let stopping: Promise<void> | undefined;
+  const stop = () =>
+    (stopping ??= (async () => {
+      stdin.end();
+      await terminateProcessTree(owner.proc, {
+        graceMs: 1000,
+        killConfirmMs: 1000,
+      });
+      await closed;
+      owner.release();
+    })());
+  onTestFinished(stop);
+  return {
+    stop,
+    request(message: {
+      jsonrpc: '2.0';
+      id: string | number;
+      method: string;
+      params?: unknown;
+    }) {
+      const result = new Promise<unknown>((resolve, reject) =>
+        pending.set(JSON.stringify(message.id), { resolve, reject }),
+      );
+      stdin.write(`${JSON.stringify(message)}\n`);
+      return result;
+    },
   };
 }
 
@@ -179,6 +275,220 @@ test('real worker authenticates its scope and streams both native provider paths
     workerSettled: true,
     pending: 0,
   });
+});
+
+test('delegation RPC is unavailable without a separate host owner and never falls through to model admission', async () => {
+  const model = vi.fn(() => ({
+    response: Promise.resolve(new Response('model response')),
+    settled: Promise.resolve(),
+    invokeDelivery: delivery,
+  }));
+  const f = await fixture(model);
+  const response = await fetch(`${f.url}/station/delegation-rpc/v1`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${f.channel.token}` },
+    body: '{}',
+  });
+  expect(response.status).toBe(404);
+  expect(model).not.toHaveBeenCalled();
+  await f.channel.close();
+});
+
+test('real worker routes opt-in delegation RPC bytes to its separate owner without model headers or credentials', async () => {
+  const body = JSON.stringify({
+    jsonrpc: '2.0',
+    id: 'rpc-one',
+    method: 'tools/list',
+    params: { text: 'native 😺' },
+  });
+  const model = vi.fn(() => {
+    throw new Error('RPC reached model admission');
+  });
+  const rpc = vi.fn((input: NativeModelRequest) => ({
+    response: Promise.resolve(
+      new Response(input.body.toString('utf8'), {
+        headers: {
+          'content-type': 'application/json',
+          'x-codex-turn-state': 'not-an-rpc-header',
+        },
+      }),
+    ),
+    settled: Promise.resolve(),
+    invokeDelivery: delivery,
+  }));
+  const f = await fixture(model, Promise.resolve(), rpc);
+  for (const [path, method] of [
+    ['/station/delegation-rpc/v1', 'GET'],
+    ['/station/delegation-rpc/v1?broader=true', 'POST'],
+    ['/station/delegation-rpc/v1/other', 'POST'],
+  ]) {
+    const refused = await fetch(`${f.url}${path}`, {
+      method,
+      headers: { authorization: `Bearer ${f.channel.token}` },
+    });
+    expect(refused.status).toBe(404);
+  }
+  expect(rpc).not.toHaveBeenCalled();
+  const response = await fetch(`${f.url}/station/delegation-rpc/v1`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${f.channel.token}`,
+      'content-type': 'application/json',
+      'anthropic-version': 'must-not-reach-rpc',
+    },
+    body,
+  });
+  expect(response.status).toBe(200);
+  expect(await response.text()).toBe(body);
+  expect(response.headers.has('x-codex-turn-state')).toBe(false);
+  expect(model).not.toHaveBeenCalled();
+  expect(rpc).toHaveBeenCalledOnce();
+  const sent = rpc.mock.calls[0]![0];
+  expect(sent.body.equals(Buffer.from(body))).toBe(true);
+  expect(sent.path).toBe('/station/delegation-rpc/v1');
+  expect(sent.method).toBe('POST');
+  expect(sent.headers).toContainEqual(['content-type', 'application/json']);
+  expect(
+    sent.headers.every(([name]) => ['accept', 'content-type'].includes(name)),
+  ).toBe(true);
+  expect(JSON.stringify(sent.headers)).not.toContain('must-not-reach-rpc');
+  expect(JSON.stringify(sent)).not.toContain(f.channel.token);
+  await f.channel.close();
+});
+
+test('real stdio relay negotiates and returns exact numeric/string RPC identities through the separate broker', async () => {
+  const initialize = {
+    jsonrpc: '2.0' as const,
+    id: 7,
+    method: 'initialize',
+    params: {
+      protocolVersion: '2025-03-26',
+      capabilities: {},
+      clientInfo: { name: 'fixture', version: '1' },
+    },
+  };
+  const list = { jsonrpc: '2.0' as const, id: '7', method: 'tools/list' };
+  const replies = [
+    {
+      jsonrpc: '2.0',
+      id: 7,
+      result: {
+        protocolVersion: '2025-03-26',
+        capabilities: { tools: {} },
+        serverInfo: { name: 'owned-broker', version: '1' },
+      },
+    },
+    { jsonrpc: '2.0', id: '7', result: { tools: [] } },
+  ];
+  const model = vi.fn(() => {
+    throw new Error('RPC reached model owner');
+  });
+  const rpc = vi.fn((input: NativeModelRequest) => {
+    const message = JSON.parse(input.body.toString('utf8'));
+    expect(message).toEqual(rpc.mock.calls.length === 1 ? initialize : list);
+    return {
+      response: Promise.resolve(
+        Response.json(replies[rpc.mock.calls.length - 1]),
+      ),
+      settled: Promise.resolve(),
+      invokeDelivery: delivery,
+    };
+  });
+  const f = await fixture(model, Promise.resolve(), rpc);
+  const client = await rpcClient(f);
+  expect(await client.request(initialize)).toEqual(replies[0]);
+  expect(await client.request(list)).toEqual(replies[1]);
+  expect(rpc).toHaveBeenCalledTimes(2);
+  expect(model).not.toHaveBeenCalled();
+  await client.stop();
+  await f.channel.close();
+});
+
+test.each(['wrong-id-type', 'result-and-error'] as const)(
+  'stdio relay withholds a broker response with %s',
+  async (defect) => {
+    const rpc = vi.fn(() => ({
+      response: Promise.resolve(
+        Response.json(
+          defect === 'wrong-id-type'
+            ? { jsonrpc: '2.0', id: '1', result: {} }
+            : {
+                jsonrpc: '2.0',
+                id: 1,
+                result: {},
+                error: { code: -32603, message: 'not a result' },
+              },
+        ),
+      ),
+      settled: Promise.resolve(),
+      invokeDelivery: delivery,
+    }));
+    const f = await fixture(
+      () => {
+        throw new Error('RPC reached model owner');
+      },
+      Promise.resolve(),
+      rpc,
+    );
+    const client = await rpcClient(f);
+    await expect(
+      client.request({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+    ).rejects.toThrow('RPC client closed');
+    expect(rpc).toHaveBeenCalledOnce();
+    await client.stop();
+    await f.channel.close();
+  },
+);
+
+test('ending the relay input retires a reply blocked on unread stdout', async () => {
+  const reply = {
+    jsonrpc: '2.0',
+    id: 1,
+    result: 'a'.repeat(NATIVE_MODEL_CHANNEL_LIMITS.bodyBytes - 1_024),
+  };
+  const rpc = vi.fn(() => ({
+    response: Promise.resolve(Response.json(reply)),
+    settled: Promise.resolve(),
+    invokeDelivery: delivery,
+  }));
+  const f = await fixture(
+    () => {
+      throw new Error('RPC reached model owner');
+    },
+    Promise.resolve(),
+    rpc,
+  );
+  const owner = spawnRpcRelay(f);
+  const { stdin, stdout, stderr } = owner.proc;
+  if (!stdin || !stdout || !stderr)
+    throw new Error('RPC client pipes unavailable');
+  const closed = once(owner.proc, 'close');
+  let retirement: Promise<void> | undefined;
+  const stop = () =>
+    (retirement ??= (async () => {
+      stdout.destroy();
+      stderr.destroy();
+      await terminateProcessTree(owner.proc, {
+        graceMs: 1_000,
+        killConfirmMs: 1_000,
+      });
+      await closed;
+      owner.release();
+    })());
+  onTestFinished(stop);
+
+  const readable = once(stdout, 'readable');
+  stdin.write('{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n');
+  await readable;
+  expect(stdout.readableLength).toBeGreaterThan(0);
+  expect(stdout.readableLength).toBeLessThan(reply.result.length);
+  expect(rpc).toHaveBeenCalledOnce();
+  stdin.end();
+  await vi.waitFor(() => expect(owner.proc.exitCode).toBe(1), {
+    timeout: 2_000,
+  });
+  await stop();
+  await f.channel.close();
 });
 
 test('oversized native request is refused before host admission and does not poison a later valid request', async () => {

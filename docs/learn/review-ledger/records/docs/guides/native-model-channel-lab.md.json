@@ -20,6 +20,12 @@
 
     "src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts",
 
+    "src-server/runtime/conversation/bounded-provider-json.ts",
+
+    "src-server/runtime/conversation/native-text-model-request.ts",
+
+    "src-server/runtime/conversation/__tests__/native-text-model-request.test.ts",
+
     "scripts/child-work-native-model-channel-lab.ts",
 
     "scripts/lib/local-collaboration-process.mjs",
@@ -32,11 +38,7 @@
 
     "scripts/child-work-native-container-lifecycle-lab.ts",
 
-    "src-server/runtime/conversation/bounded-provider-json.ts",
-
-    "src-server/runtime/conversation/native-text-model-request.ts",
-
-    "src-server/runtime/conversation/__tests__/native-text-model-request.test.ts"
+    "src-server/services/connections/native-delegation-rpc-client.ts"
   ],
 
   "checks": []

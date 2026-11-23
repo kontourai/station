@@ -54,7 +54,11 @@
 
     "src-server/services/consent/consent-transactions.ts",
 
-    "src-server/services/consent/__tests__/consent-transactions.test.ts"
+    "src-server/services/consent/__tests__/consent-transactions.test.ts",
+
+    "src-server/services/outside-agent/active-work.ts",
+
+    "src-server/services/orchestration/session-activity-reader.ts"
   ],
 
   "checks": [

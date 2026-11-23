@@ -37,6 +37,27 @@ re-enters that port. Finished response bytes or a retired worker do not release
 pending accounting. Unexpected channel loss aborts active request signals before
 waiting for worker cleanup. A failed or timed-out close remains a failure.
 
+The private bridge offers `POST /station/delegation-rpc/v1` when its host
+supplies a separate RPC callback. The default bridge serves model requests.
+The RPC route accepts the exact path without a query, authenticates the
+scoped bridge key, and forwards only Accept and Content-Type. The model
+owner receives no RPC bytes. RPC responses expose Content-Type only.
+Both request types share the existing byte and concurrency limits. Each
+actual response write checks the captured delivery port, and host settlement
+continues to own completion after a response is sent.
+
+The worker also has an internal stdio relay mode for an explicitly bound
+loopback broker. The relay carries the scoped key in its environment and
+forwards requests through the fixed RPC path. It bounds requests, concurrency,
+and output. A reply must name the exact request ID, including its type, and
+contain either a result or an error. An invalid reply closes the relay.
+The request deadline includes writing the reply to the relay's stdout pipe.
+Input closure or deadline expiry cancels pending relay requests and closes
+the pipe even when its reader stops draining.
+
+Parent issuance, native launcher configuration, effect admission, and model
+accounting still require their own owners before serving inherited delegation.
+
 The protocol limits requests to 2 MiB, frames to 3 MiB, channel lifetime to
 64 MiB, concurrent requests to four and total requests to 1,024. Response chunks
 are at most 64 KiB. These transport bounds do not establish token or fiscal
@@ -114,7 +135,9 @@ unqualified.
 The [real-worker process tests](../../src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts)
 cover authentication, Unicode/binary framing, request limits, private-byte
 withholding after revocation, cancellation before delayed cleanup, and retained
-terminal/accounting ownership. Bypassing only the body-delivery check exposed
+terminal/accounting ownership. The relay test closes stdin while a valid RPC
+reply is blocked on unread stdout and verifies that the relay exits before
+forced cleanup. Bypassing only the body-delivery check exposed
 23 private bytes in the stronger test; later response failure could not hide it.
 
 The isolated lab exercises real read-only-root and network refusal, private

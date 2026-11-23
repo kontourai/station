@@ -55,6 +55,10 @@ export class NativeModelStdioChannel {
       request: NativeModelRequest,
       signal: AbortSignal,
     ) => NativeModelChannelRequest,
+    private readonly delegationRpc?: (
+      request: NativeModelRequest,
+      signal: AbortSignal,
+    ) => NativeModelChannelRequest,
   ) {
     this.#send = nativeModelFrameWriter(peer.input);
     void peer.settled.then(
@@ -96,6 +100,7 @@ export class NativeModelStdioChannel {
           const pending = this.#respond(
             { ...frame, body: Buffer.from(frame.body, 'base64') },
             controller.signal,
+            frame.type,
           );
           this.#active.set(frame.id, { controller, settled: pending });
           void pending
@@ -132,7 +137,11 @@ export class NativeModelStdioChannel {
       if (this.#failure) throw this.#failure;
     })();
     void this.settled.catch(() => {});
-    void this.#send({ type: 'init', token: this.token }).catch((error) => {
+    void this.#send({
+      type: 'init',
+      token: this.token,
+      ...(delegationRpc ? { delegationRpc: true as const } : {}),
+    }).catch((error) => {
       this.#failure = error;
       this.#rejectReady(error);
       peer.output.destroy(
@@ -161,11 +170,17 @@ export class NativeModelStdioChannel {
   async #respond(
     input: NativeModelRequest,
     signal: AbortSignal,
+    kind: 'request' | 'delegation-rpc',
   ): Promise<void> {
     let result: NativeModelChannelRequest | undefined;
     try {
       signal.throwIfAborted();
-      const handle = this.request(input, signal);
+      if (kind === 'delegation-rpc' && !this.delegationRpc)
+        throw new Error('native_delegation_rpc_unavailable');
+      const handle =
+        kind === 'delegation-rpc'
+          ? this.delegationRpc!(input, signal)
+          : this.request(input, signal);
       result = handle;
       void handle.settled.catch((error) => {
         this.#failure ??= error;
@@ -177,13 +192,15 @@ export class NativeModelStdioChannel {
       });
       const response = await handle.response;
       signal.throwIfAborted();
-      const headers = [...response.headers.entries()].filter(([name]) =>
-        [
-          'content-type',
-          'x-request-id',
-          'openai-processing-ms',
-          'x-codex-turn-state',
-        ].includes(name),
+      const headers = [...response.headers.entries()].filter(
+        ([name]) =>
+          name === 'content-type' ||
+          (kind === 'request' &&
+            [
+              'x-request-id',
+              'openai-processing-ms',
+              'x-codex-turn-state',
+            ].includes(name)),
       );
       await this.#send(
         { type: 'head', id: input.id, status: response.status, headers },

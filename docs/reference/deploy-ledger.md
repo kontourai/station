@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-23T19:56:44Z | nightly-npm | 0.12.0-nightly.20261123.45253065268 | `0db85c4` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45253065268) |
 | 2026-11-23T13:49:44Z | nightly-desktop | 0.2.0-nightly.20261123.1 | `839a1e8` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45178593921) |
 | 2026-11-23T13:49:44Z | nightly-android | 0.2.0-nightly.20261123.1 | `839a1e8` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45178593921) |
 | 2026-11-23T13:00:14Z | nightly-npm | 0.12.0-nightly.20261123.45178593921 | `839a1e8` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45178593921) |
@@ -545,6 +546,38 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-23T19:56:44Z · nightly-npm · 0.12.0-nightly.20261123.45253065268
+
+- Ship SHA: `0db85c43f969e1a903eb3ed9d05d25e0fb0534a6`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261123.45253065268 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `839a1e8` ([full sha](https://github.com/kontourai/station/commit/839a1e8b0a2f47a29efcc54ff9a165495b0dd218)):
+
+**Features**
+
+- [#5514](https://github.com/kontourai/station/pull/5514) feat: show automations with the next seven days and recent outcomes
+- [#5510](https://github.com/kontourai/station/pull/5510) feat(projects): add scoped WebMCP sharing and align Project actions
+
+**Fixes**
+
+- [#5513](https://github.com/kontourai/station/pull/5513) fix(chat): stop the pending list's second reader from breaking the inbox read
+- [#5509](https://github.com/kontourai/station/pull/5509) fix(consent): isolate pending outside-agent approvals
+- [#5508](https://github.com/kontourai/station/pull/5508) fix(mcp): honor access token expiry for authorization-code-only servers
+- [#5512](https://github.com/kontourai/station/pull/5512) fix: bind portable delegation attempts to tool restrictions
+- [#5507](https://github.com/kontourai/station/pull/5507) fix: bind child tool restrictions to durable create claims
+- [#5503](https://github.com/kontourai/station/pull/5503) fix(automations): record a person's Stop as stopped and pause the budget while a Task waits on a person
+- [#5502](https://github.com/kontourai/station/pull/5502) fix(chat): keep the transcript still when a status appears and when a row is opened at the end
+
+**Other**
+
+- [#5511](https://github.com/kontourai/station/pull/5511) refactor: share authorized Task delegation dispatch
+- [#5505](https://github.com/kontourai/station/pull/5505) perf(chat): reduce history reads before follow-up sends
+- [#5504](https://github.com/kontourai/station/pull/5504) chore(ci): empty the qualification known-failures list of entries whose issues closed
 
 ## 2026-11-23T13:49:44Z · nightly-desktop · 0.2.0-nightly.20261123.1
 

@@ -8,7 +8,7 @@ import {
 import { mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
-import type { SQLOutputValue } from 'node:sqlite';
+import type { SQLOutputValue, StatementSync } from 'node:sqlite';
 import {
   awaitTurnResolution,
   createPreparedTurnClaim,
@@ -1844,6 +1844,7 @@ const { DatabaseSync } = require('node:sqlite') as {
       run: (...args: unknown[]) => unknown;
       get: (...args: unknown[]) => Record<string, SQLOutputValue> | undefined;
       all: (...args: unknown[]) => Record<string, SQLOutputValue>[];
+      iterate: StatementSync['iterate'];
     };
     close(): void;
     function(
@@ -8541,6 +8542,49 @@ export class EventStore {
       thread_id: string;
     }>;
     return rows.map((row) => row.thread_id);
+  }
+
+  /** Scoped metadata candidates only. The grant reader checks each current lineage before admitting it. */
+  *iterateOwnedActiveWorkCandidates(
+    ownerId: string,
+    projectId: string | undefined,
+  ): Iterable<string> {
+    const rows = this.readStatement(
+      `SELECT DISTINCT thread_id FROM orchestration_events
+        WHERE method IN ('session.started', 'session.configured')
+          AND json_valid(payload)
+          AND json_type(payload, '$.metadata.userId') = 'text'
+          AND json_extract(payload, '$.metadata.userId') = ?
+          AND (json_type(payload, '$.metadata.delegation') IS NULL
+            OR json_extract(payload, '$.metadata.delegation.environmentKind') = 'current')
+          AND json_extract(payload, '$.metadata.localProjectId')
+            ${projectId === undefined ? 'IS NULL' : '= ?'}
+        ORDER BY thread_id`,
+    ).iterate(ownerId, ...(projectId === undefined ? [] : [projectId]));
+    for (const row of rows) {
+      if (typeof row.thread_id === 'string') yield row.thread_id;
+    }
+  }
+
+  /** A past host start or full-access decision remains relevant after the current posture narrows. */
+  hasHostAccessHistory(threadId: string): boolean {
+    return (
+      this.readStatement(
+        `SELECT 1 FROM orchestration_events
+        WHERE thread_id = ?
+          AND method IN ('session.started', 'session.approval-mode-set', 'session.configured', 'turn.started')
+          AND json_valid(payload)
+          AND (
+            (method = 'session.started'
+              AND json_extract(payload, '$.metadata.stationConfinement') = 'host')
+            OR (method = 'session.approval-mode-set'
+              AND json_extract(payload, '$.approvalMode') = 'never')
+            OR (method IN ('session.configured', 'turn.started')
+              AND json_extract(payload, '$.metadata.approvalMode') = 'never')
+          )
+        LIMIT 1`,
+      ).get(threadId) !== undefined
+    );
   }
 
   /** Navigation reads indexed metadata without tools or files; later pages can omit the initial count. */
