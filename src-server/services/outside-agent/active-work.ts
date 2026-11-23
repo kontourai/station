@@ -64,6 +64,7 @@ export function createOutsideActiveWorkReader(
         .digest();
     let cursor: ReturnType<typeof decodeActivityCursor>;
     if (input.cursor !== undefined) {
+      const invalid = new ProtocolError(-32602, 'Invalid active-work cursor');
       const [raw, signature, ...rest] = input.cursor.split('.');
       if (
         !raw ||
@@ -73,11 +74,12 @@ export function createOutsideActiveWorkReader(
         !timingSafeEqual(
           cursorSignature(raw),
           Buffer.from(signature, 'base64url'),
-        ) ||
-        !(cursor = decodeActivityCursor(raw))
+        )
       ) {
-        throw new ProtocolError(-32602, 'Invalid active-work cursor');
+        throw invalid;
       }
+      cursor = decodeActivityCursor(raw);
+      if (!cursor) throw invalid;
     }
 
     const admittedTarget = (threadId: string) => {
