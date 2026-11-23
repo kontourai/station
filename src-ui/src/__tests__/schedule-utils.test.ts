@@ -1,3 +1,6 @@
+/**
+ * @vitest-environment jsdom
+ */
 import { describe, expect, test, vi } from 'vitest';
 import {
   browserTimeZone,
@@ -5,51 +8,10 @@ import {
   WEEKDAY_MORNING_CRON,
   weekdayMorningSchedule,
 } from '../components/scheduler/scheduleValue';
-import {
-  buildEnrichedSchedulerJobs,
-  getScheduleStarterTemplates,
-  getScheduleStatusLabel,
-  getScheduleStatusTone,
-} from '../views/schedule/utils';
+import { scheduleSentence } from '../views/schedule/automationRow';
+import { getScheduleStarterTemplates } from '../views/schedule/utils';
 
 describe('schedule utils', () => {
-  test('buildEnrichedSchedulerJobs merges provider stats by job name', () => {
-    expect(
-      buildEnrichedSchedulerJobs({
-        jobs: [{ id: '1', name: 'daily', enabled: true } as any],
-        stats: {
-          providers: {
-            local: {
-              jobs: [{ name: 'daily', total: 4, success_rate: 75 }],
-            },
-          },
-        },
-      }),
-    ).toEqual([
-      expect.objectContaining({
-        name: 'daily',
-        successRate: 75,
-      }),
-    ]);
-  });
-
-  test('getScheduleStatus helpers derive scheduler state consistently', () => {
-    expect(
-      getScheduleStatusTone({
-        statusError: false,
-        daemonOk: true,
-        schedulerHealthy: false,
-      }),
-    ).toBe('warning');
-    expect(
-      getScheduleStatusLabel({
-        statusError: false,
-        daemonOk: true,
-        schedulerHealthy: false,
-      }),
-    ).toBe('Degraded');
-  });
-
   test('getScheduleStarterTemplates returns starter schedules', () => {
     const templates = getScheduleStarterTemplates();
     expect(templates).toHaveLength(4);
@@ -101,11 +63,16 @@ describe('starter schedules keep their local meaning in any zone', () => {
     for (const template of getScheduleStarterTemplates()) {
       expect(template.schedule.kind).toBe('cron');
       if (template.schedule.kind !== 'cron') continue;
-      // The hour a reader sees in `meta` is the hour in the expression. A
-      // UTC-shifted preset could not satisfy this in most of the world.
+      // The hour a reader sees on the empty page is the hour in the
+      // expression. A UTC-shifted preset could not satisfy this in most of
+      // the world.
       const localHour = Number(template.schedule.expr.split(' ')[1]);
-      const metaHour = /(\d+):00 (AM|PM)/.exec(template.meta);
-      expect(metaHour, `no hour in "${template.meta}"`).not.toBeNull();
+      const shown = scheduleSentence(
+        template.schedule,
+        template.schedule.timezone,
+      );
+      const metaHour = /(\d+):00 (AM|PM)/.exec(shown);
+      expect(metaHour, `no hour in "${shown}"`).not.toBeNull();
       const expected =
         metaHour![2] === 'PM' && metaHour![1] !== '12'
           ? Number(metaHour![1]) + 12
