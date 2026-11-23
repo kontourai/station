@@ -165,8 +165,10 @@ identifiers, not tokens, so the middleware does not match them. Their prefix
 keeps the host CLI from reading an ID that starts with `--` as a flag. Present invalid
 bearers on the isolated router receive `error="invalid_token"` in the 401
 challenge; anonymous requests retain the resource-metadata challenge without
-that error. Session termination returns HTTP 404 / JSON-RPC `-32001` for a pending
-JSON response, or closes an already-open SSE response, and releases call capacity.
+that error. Session termination before a POST response returns HTTP 404 /
+JSON-RPC `-32001` and releases call capacity. Once the router has returned
+a response, Station closes a revoked stream without sending more data. A held database write lock
+at ingress returns HTTP 503 without waiting to charge the request budget.
 Open GET channels share the session's 30-minute cap since the last HTTP request;
 stream activity does not extend it. Reconnect before that cap. R6 must mount the
 authenticating router in the same change that removes the compiled guard.

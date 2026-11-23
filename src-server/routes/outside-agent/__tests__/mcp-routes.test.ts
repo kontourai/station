@@ -190,6 +190,84 @@ describe('outside-agent MCP transport and live authority', () => {
     ).toBe(401);
   });
 
+  test('a grant revoked on another connection while reading the request returns a session error', async () => {
+    const f = await fixture();
+    const tokens = f.grant();
+    const { session, response } = await f.initialize(tokens.accessToken);
+    await response.text();
+    const other = OutsideAgentGrantStore.open(f.home, { ...f.store.options });
+    try {
+      const grant = other.access(tokens.accessToken, resource)!;
+      const body = new ReadableStream<Uint8Array>(
+        {
+          pull(controller) {
+            other.revoke(grant.id, grant.version);
+            controller.enqueue(
+              new TextEncoder().encode(
+                JSON.stringify({
+                  jsonrpc: '2.0',
+                  id: 1,
+                  method: 'tools/call',
+                  params: { name: 'get_project', arguments: { slug: 'alpha' } },
+                }),
+              ),
+            );
+            controller.close();
+          },
+        },
+        { highWaterMark: 0 },
+      );
+      const init = {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${tokens.accessToken}`,
+          'content-type': 'application/json',
+          'mcp-session-id': session,
+          'mcp-protocol-version': '2025-11-25',
+        },
+        body,
+        duplex: 'half',
+      };
+      const refused = await f.request('/mcp', init);
+      expect(refused.status).toBe(404);
+      expect(await payload(refused)).toMatchObject({
+        error: { code: -32001, message: 'Session not found' },
+      });
+      expect(f.source.getProject).not.toHaveBeenCalled();
+    } finally {
+      other.close();
+    }
+  });
+
+  test('a grant revoked on another connection during dispatch returns a session error', async () => {
+    const f = await fixture();
+    const tokens = f.grant();
+    const { session, response } = await f.initialize(tokens.accessToken);
+    await response.text();
+    const other = OutsideAgentGrantStore.open(f.home, { ...f.store.options });
+    try {
+      const grant = other.access(tokens.accessToken, resource)!;
+      const project = f.projects[0]!;
+      f.source.getProject.mockImplementationOnce(() => {
+        other.revoke(grant.id, grant.version);
+        return project;
+      });
+      const refused = await f.rpc(
+        tokens.accessToken,
+        'tools/call',
+        { name: 'get_project', arguments: { slug: 'alpha' } },
+        session,
+      );
+      expect(f.source.getProject).toHaveBeenCalledOnce();
+      expect(refused.status).toBe(404);
+      expect(await payload(refused)).toMatchObject({
+        error: { code: -32001, message: 'Session not found' },
+      });
+    } finally {
+      other.close();
+    }
+  });
+
   test.each(['revoke', 'narrow', 'expiry', 'authority'] as const)(
     '%s after read but before outward emission suppresses content, including across store connections',
     async (action) => {
@@ -734,15 +812,56 @@ test('junk bearer ingress is bounded before access or CORS reads; refused floods
   expect(access).not.toHaveBeenCalled();
   expect(policy).not.toHaveBeenCalled();
   expect(
-    prepare.mock.calls.every(([sql]) =>
-      /^SELECT .*outside_oauth_budgets/.test(sql),
+    prepare.mock.calls.every(
+      ([sql]) =>
+        sql === 'PRAGMA busy_timeout' ||
+        /^SELECT .*outside_oauth_budgets/.test(sql),
     ),
   ).toBe(true);
   expect(
     exec.mock.calls.every(([sql]) =>
-      ['BEGIN IMMEDIATE', 'COMMIT'].includes(sql),
+      [
+        'BEGIN IMMEDIATE',
+        'COMMIT',
+        'PRAGMA busy_timeout=0',
+        'PRAGMA busy_timeout=5000',
+      ].includes(sql),
     ),
   ).toBe(true);
+});
+
+test('outside MCP refuses a held ingress-budget lock without a full SQLite busy wait', async () => {
+  const f = await fixture();
+  const tokens = f.grant();
+  const { session, response } = await f.initialize(tokens.accessToken);
+  await response.text();
+  const other = new DatabaseSync(
+    join(f.home, 'authentication/outside-agent-oauth.sqlite'),
+  );
+  try {
+    other.exec('BEGIN IMMEDIATE');
+    try {
+      const started = performance.now();
+      const refused = await f.rpc(
+        tokens.accessToken,
+        'tools/list',
+        {},
+        session,
+      );
+      expect(refused.status).toBe(503);
+      expect(performance.now() - started).toBeLessThan(2_000);
+      expect(await refused.json()).toEqual({
+        error: 'temporarily_unavailable',
+      });
+    } finally {
+      other.exec('ROLLBACK');
+    }
+    const retried = await f.rpc(tokens.accessToken, 'tools/list', {}, session);
+    expect(retried.status).toBe(200);
+    expect((await payload(retried)).result.tools).toHaveLength(2);
+  } finally {
+    other.close();
+  }
 });
 
 test('access and the one-second session recheck read without a write lock or expiry sweep', async () => {
