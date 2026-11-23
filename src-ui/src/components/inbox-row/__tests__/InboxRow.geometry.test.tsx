@@ -53,8 +53,9 @@ import { ChatDockInboxPanel } from '../../chat-dock/ChatDockInboxPanel';
 import { InboxRow } from '../../chat-dock/ChatDockInboxRows';
 import { ChatDockMobileHeader } from '../../chat-dock/ChatDockMobileHeader';
 import { MobileInboxPanel } from '../../chat-dock/MobileInboxPanel';
+import { snoozeChoices } from '../snooze-presets';
 
-// Inbox scope now reads Projects through the shared query boundary.
+// Chat list scope now reads Projects through the shared query boundary.
 function render(ui: ReactElement) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -184,7 +185,7 @@ function panelMarkup(
   );
   // Expand the two collapsed sections the way a user does, so the slim
   // rows are in the measured markup.
-  for (const name of [/^Snoozed/, /^Settled/]) {
+  for (const name of [/^Snoozed/, /^(Settled|Earlier)/]) {
     const toggle = screen.queryByRole('button', { name });
     if (toggle?.getAttribute('aria-expanded') === 'false')
       fireEvent.click(toggle);
@@ -218,13 +219,13 @@ function sheetMarkup(
       workFacts={work.facts}
     />,
   );
-  for (const name of [/^Snoozed/, /^Settled/]) {
+  for (const name of [/^Snoozed/, /^(Settled|Earlier)/]) {
     const toggle = screen.queryByRole('button', { name });
     if (toggle?.getAttribute('aria-expanded') === 'false')
       fireEvent.click(toggle);
   }
   if (searchVisible)
-    fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Search chats' }));
   const markup = document.body.innerHTML;
   unmount();
   return markup;
@@ -279,7 +280,7 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           );
           await settle(pg);
           const search = pg.getByRole('searchbox', {
-            name: width === 390 ? 'Search chats and tasks' : 'Search inbox',
+            name: width === 390 ? 'Search chats and tasks' : 'Search chats',
           });
           const searchBox = (await search.boundingBox())!;
           expect(searchBox.height).toBeGreaterThanOrEqual(
@@ -373,7 +374,6 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           item={row}
           isCurrent={false}
           isSnoozed={false}
-          isOpenChat
           now={NOW}
           onActivate={vi.fn()}
           hoverCard={false}
@@ -825,7 +825,8 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             ),
           };
         });
-        expect(measured.targets.length).toBeGreaterThanOrEqual(2);
+        // The row's one ⋯ menu, and a Draft's in-place Discard beside it.
+        expect(measured.targets.length).toBeGreaterThanOrEqual(1);
         for (const [position, target] of measured.targets.entries()) {
           // Inside the row's own box: never the row above or below.
           expect(target.top, `${target.label} top`).toBeGreaterThanOrEqual(
@@ -1120,12 +1121,11 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           item={ITEMS[1]}
           isCurrent={false}
           isSnoozed={false}
-          isOpenChat
           now={NOW}
           chrome="touch"
           onActivate={vi.fn()}
           onSnoozeWake={vi.fn()}
-          onCloseChat={vi.fn()}
+          done={{ done: false, onSelect: vi.fn() }}
         />
       </QueryClientProvider>,
     );
@@ -1153,11 +1153,11 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         );
       }
       expect(labels).toEqual([
-        '1 hour',
-        '3 hours',
-        'Tomorrow 9am',
-        'Next Monday 9am',
-        'Close chat',
+        'Open chat',
+        'Mark done',
+        ...snoozeChoices(NOW).map(
+          (choice) => `${choice.label}, ${choice.hint}`,
+        ),
       ]);
     } finally {
       await pg.close();

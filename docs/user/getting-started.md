@@ -723,8 +723,8 @@ started. If you close the dock's draft instead, the message comes back to Home
 as you left it in the dock, the same way as a draft from setup (below). If no
 chat dock is open to take it, Home keeps the message and says so.
 
-In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed Inbox bar),
-**⌘T**, and the floating button in the phone Inbox open the same composer.
+In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed chat-list bar),
+**⌘T**, and the floating button in the phone's Chats list open the same composer.
 **Explore agents** remains available for deliberate customization.
 
 Setup from Home continues in the chat dock. When you choose **Connect**,
@@ -814,29 +814,29 @@ the dock’s chat list.
 At the end of first-run setup, **Take the tour** and **Connect another device**
 are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step. If your organization's policy allows only this computer to connect, **Connect another device** is turned off and shows the policy's message, with a **Get help** link when the policy has one.
 
-On a phone, the dock starts at **Inbox** unless you open a specific
+On a phone, the dock starts at **Chats** unless you open a specific
 conversation. A conversation opens full screen; **Restore chat size** in the
 chat bar shrinks it to a peek and **Full screen chat** grows it back or opens it
 directly from the collapsed bar. The menu drawer lists places and Projects.
-The chat bar's Inbox icon returns to the work list; the chat title stays
+The chat bar’s **Chat list** button returns to the work list; the chat title stays
 as context. Search opens from the magnifier. Your search, list position and
 unsent message stay in place when switching back to a conversation. Collapsing a conversation keeps its title in the bar. Tap the title to resume it.
-Use the floating **New chat** button in Inbox, the compose icon on the collapsed Inbox bar, or **New chat** in Chat actions. The three-dot menu holds chat actions, including **This chat**:
+Use the floating **New chat** button in Chats, the compose icon on the collapsed chat-list bar, or **New chat** in Chat actions. The three-dot menu holds chat actions, including **This chat**:
 the chat's workspace, branch and changed files, status, background tasks and
 linked pull requests, each opening its own view. On a computer, a wide dock
 shows the same panel beside the transcript, and a narrower one puts it behind
 a chip in the dock header. The app header keeps connection health, the drawer, and the Station switcher above the dock in full screen. **Projects** has the same add control
 for creating a project, including a short first-project prompt when empty.
 
-On a phone, pull down from the top of Inbox, Home’s **Recent work**, or the
-Project **Tasks** list. Release when the ring fills. Use **Refresh inbox** in Inbox actions or the refresh button beside **Recent work** on Home. A floating status pill shows what’s refreshing.
+On a phone, pull down from the top of Chats, Home’s **Recent work**, or the
+Project **Tasks** list. Release when the ring fills. Use **Refresh chats** in Chat list actions or the refresh button beside **Recent work** on Home. A floating status pill shows what’s refreshing.
 
-Each chat appears once in Inbox and on Home, under the group its status puts it
+Each chat appears once in Chats and on Home, under the group its status puts it
 in. When this device sent a message whose delivery Station can't confirm, the
 row keeps that status and adds **Last message may not have arrived** with **Check**,
 which asks Station once and says what it found. It never sends the message again.
 
-In **Inbox**, delegated work folds under its recorded parent.
+In **Chats**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
 visible. Authorized work chats appear under their Task, including independent
 Agent requests and linked conversations. A chat associated with several Tasks
@@ -856,23 +856,29 @@ conversations. Hover an agent icon to read its name. To browse
 chats from a side dock, open **More dock actions** and choose **Open chat…**.
 The picker opens over the current dock placement.
 
-To clear your inbox, hover a conversation on desktop and choose **× Dismiss
-from inbox**. On mobile, hold a conversation or choose **Select conversations** from Inbox actions. Choose **Details** for one selected row to open its actions. The bottom tray shows which actions apply to the selection. Use **Filter inbox** for Station, Project and status. On narrow phones, Search and Filter are in Inbox actions. With **Sheet gestures preview** enabled in Settings → Advanced →
+Each row's **⋯** menu holds its actions in one order: **Open chat**, **Mark
+done** (or **Reopen** once it is done), **Snooze** with its choices (In 1 hour,
+This evening, Tomorrow morning, Next week, each with the time it ends; **Wake
+now** once snoozed), and **Discard draft** when the row has a draft. On a phone
+the same actions are in the row's Details sheet. Closing a chat is not an inbox
+action; close it from the open chat. On mobile, hold a conversation or choose **Select conversations** from Chat list actions. Choose **Details** for one selected row to open its actions. The bottom tray offers **Snooze** and **Mark done** for the selection. Use **Filter chats** for Station, Project and status. On narrow phones, Search and Filter are in Chat list actions. With **Sheet gestures preview** enabled in Settings → Advanced →
 Developer tools, swipe left to reveal labelled actions; the row follows your
 finger and snaps open when released. Only one row's actions stay revealed.
-**Snooze** opens duration choices, and **Dismiss** hides the conversation.
-Swiping itself never runs an action. Dismissal leaves running work and history intact.
+**Snooze** opens duration choices, and **Mark done** puts the conversation away.
+Swiping itself never runs an action. Mark done leaves running work and history intact.
 Choose **Undo** in the toast, or press **⌘Z** / **Ctrl+Z** outside an editor
-while the toast is shown. After the toast has gone, search the inbox for the
-conversation, find it under **Dismissed** in the results, and choose
-**Restore to inbox**.
-Dismissal is saved on this browser/device, like Snooze. A changed status, a
+while the toast is shown; a **Mark done** on several selected rows has one
+Undo for all of them. After the toast has gone, search the inbox for the
+conversation, find it under **Marked done** in the results, and choose
+**Reopen** from its menu.
+Without the Open and Settled inbox preview, Mark done is saved on this
+browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
 conversation back; streaming progress during the same running turn does not.
 A turn the engine opens on its own, such as its reply when background work
 finishes, does not bring it back unless that turn fails, stops or needs you.
 Hidden **Third-party** sessions stay hidden through external updates until you
-restore them or bring them into Station.
+reopen them or bring them into Station.
 
 If this browser cannot save Snooze, the choice still holds for the current
 page session. Saved snoozes update other open tabs of this browser.
@@ -884,25 +890,31 @@ shows the pending message. Undo keeps
 the Draft; leaving that control or switching Station or account also cancels
 the pending deletion. After the window, Station asks the server to discard it
 and shows any refusal. On a touch row, the message appears below the row’s
-actions. Discarding an **unsent draft** clears the text you typed on this device.
+actions. On a row whose chat holds text you typed on this device but did not
+send, **Discard draft** clears that text; its toast offers **Undo** (or
+**⌘Z** / **Ctrl+Z**), which puts the text back.
 
 With **Open and Settled inbox** enabled in Feature previews, unfinished
-conversations stay **Open** after an Agent finishes a turn. Choose **Settle**
-when the conversation's work is done, or **Reopen** to bring it back. Closed
+conversations stay **Open** after an Agent finishes a turn. Choose **Mark
+done** when the conversation's work is done, or **Reopen** to bring it back. Closed
 Tasks follow their existing close-on-merge setting; standalone linked PRs do
 not settle a conversation automatically. Sending a message reopens a settled
 conversation, as does a question, a failure or a stop; the end of a settled
 conversation shows when you settled it and a **Reopen**. Settlement syncs across your devices
-and is separate from dismissal or deletion. **Working** holds running and
+and is separate from deletion. **Working** holds running and
 monitoring chats and armed check-backs, which show **Waiting**; **Needs attention** takes priority whenever input is owed.
 Drafts appear as a pencil on the chat row in its current status. Collapse a
 shelf to move it below expanded work. Shelf menus let you move sections up or
-down, with that order saved on this device. **Settled** is last by default.
+down, with that order saved on this device. **Settled** is last by default
+(**Earlier** with the preview off).
 
-With the preview on, **Settle** is how you put away your own conversations,
-so their rows have no **Dismiss**. A **Third-party** session offers **Hide**
-instead; it stays hidden on all your devices, through its updates, until you
-bring it into Station or search for it and choose **Restore to inbox**.
+With the preview on, **Mark done** settles your own conversations, so it
+syncs across your devices. Work still running, or waiting for an answer from
+you, cannot be settled yet: Mark done hides it on this browser instead, and
+its notice says so ("Hidden on this device. It still needs you."). It comes
+back when it next changes. On a **Third-party** session, Mark done hides it on all your devices, through
+its updates, until you bring it into Station or search for it and choose
+**Reopen**.
 Sessions you dismissed on this browser before move to your hidden list once.
 **Settled** and **Third-party** show the last seven days; choose **Show older**
 for the rest. Search always finds everything.
@@ -1564,7 +1576,7 @@ short recovery message, with diagnostics in Details where available.
 
 The session reader and coding tabs use the same reply controls as the dock.
 Shared Task history keeps the records already loaded when an earlier page fails;
-use **Retry** to read that page again. Inbox search, snooze, dismissal and Undo
+use **Retry** to read that page again. Chats search, snooze, Mark done and Undo
 work across its desktop and mobile layouts.
 
 Open the help menu and choose **Troubleshoot with an agent**, or search the
@@ -1707,10 +1719,13 @@ permission has recorded request evidence, its row offers **Approve once** and
 **Deny**; **Details** shows the full request first. Both answer that exact
 request version, once. A review request with recorded evidence offers
 **Inspect request** instead, where **Request identity** shows its exact record.
-A row's ⋯ menu holds **Dismiss**, and **Snooze** when the Attention snooze
-preview is on.
+A row's ⋯ menu holds **Mark done**, and **Snooze** (the same choices as the
+chat inbox) when the Attention snooze preview is on. Mark done there waits behind its notice's **Undo** (or **⌘Z**) and is sent
+when the notice closes; reload, close the tab or switch Station before then and the
+item is not marked done (a background tab keeps the notice open). A failed run shows once:
+its row stands for the failed message too, and Mark done marks both done.
 
-A conversation’s Inbox row also shows the request and **Approve once** or
+A conversation’s Chats row also shows the request and **Approve once** or
 **Deny** when Station can inspect one exact request and you can answer it.
 Open the chat from its row to review an approval when those controls are
 unavailable.

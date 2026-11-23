@@ -345,6 +345,8 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
 export const PRODUCT_E2E_EXECUTION_PROFILE = {
   parallelWorkers: 2,
   parallelSafetyExceptions: {
+    'tests/chat-dock-row-menu.spec.ts':
+      'Every API read is a page.route installed per page by mockChatShell and the shared stored-conversation fixture; Mark done and snooze write only this browser context’s storage.',
     'tests/new-project-choices.spec.ts':
       'Read-only live shell and new-project form; writes only this browser context’s device-local inbox scope and theme.',
     'tests/chat-history-reopen.spec.ts':
@@ -407,6 +409,8 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/chat-history-reopen.spec.ts',
     // Every API read is a route of mockChatShell and the spec's own fixtures.
     'tests/chat-dock-inbox-open.spec.ts',
+    // Same: mockChatShell plus the shared stored-conversation fixture.
+    'tests/chat-dock-row-menu.spec.ts',
     'tests/mobile-dock-clearance.spec.ts',
     'tests/accessibility-core.spec.ts',
     'tests/status-token-contrast.spec.ts',
@@ -1258,6 +1262,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       '#4794/#4795 on a real Station: server read markers drive sidebar bold and clear for a second client; keyboard Up/Down/Enter; phone channel list pushes a full-screen channel, send, thread page, Back restores the list scroll; no horizontal scroll at 390 and 360.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/chat-dock-row-menu.spec.ts',
+    bucket: 'product',
+    surface: 'Chat',
+    tierTarget: 'full',
+    primary: false,
+    rationale:
+      '#5452: a Chats row is acted on through its ⋯ menu only, so the menu is driven end to end: Mark done and its Undo, a snooze from the one list, and Wake now.',
     exceptions: [],
   },
   {

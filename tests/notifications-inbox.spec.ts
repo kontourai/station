@@ -517,7 +517,7 @@ test.describe('Failed-session notifications on a phone (#3203)', () => {
       expect(box?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
     }
     for (const button of await page
-      .getByRole('button', { name: 'Dismiss' })
+      .getByRole('button', { name: 'Mark done' })
       .all()) {
       const box = await button.boundingBox();
       expect(box?.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);

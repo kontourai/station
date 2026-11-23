@@ -140,7 +140,7 @@ describe('AttentionHistoryItem — session-failed kind', () => {
   // archive#1914: the popover's own Dismiss for a derived kind, wired
   // independently of the notification-delete `onDismiss` prop — there is no
   // notification id for a session-failed item to route through it.
-  test('Dismiss acknowledges the item by its own id, not via onDismiss', () => {
+  test('Mark done acknowledges the item by its own id, not via onDismiss', () => {
     const onDismiss = vi.fn();
     render(
       <AttentionHistoryItem
@@ -153,7 +153,7 @@ describe('AttentionHistoryItem — session-failed kind', () => {
       />,
     );
 
-    chooseRowAction('Dismiss');
+    chooseRowAction('Mark done');
 
     expect(acknowledge).toHaveBeenCalledWith('session-failed:thread-boom');
     expect(onDismiss).not.toHaveBeenCalled();
@@ -270,8 +270,8 @@ describe('AttentionHistoryItem — dismiss affordance', () => {
       />,
     );
 
-    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
-    chooseRowAction('Dismiss');
+    expect(screen.queryByRole('button', { name: 'Mark done' })).toBeNull();
+    chooseRowAction('Mark done');
     expect(onDismiss).toHaveBeenCalledWith('notif-1');
   });
 
@@ -287,7 +287,7 @@ describe('AttentionHistoryItem — dismiss affordance', () => {
       />,
     );
 
-    expect(openRowAction('Dismiss').disabled).toBe(true);
+    expect(openRowAction('Mark done').disabled).toBe(true);
   });
 });
 

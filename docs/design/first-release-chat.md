@@ -224,7 +224,7 @@ On a phone: The same menu above the keyboard.
 
 On a phone: The inbox list with a visible ⋯ on each row and the same sheet.
 
-1. **The row ⋯ menu: Open chat, Mark done, Snooze ▸, and Discard draft (danger, only when a draft exists).** Mark done replaces Settle, Dismiss from inbox and Hide from inbox, and Reopen undoes it. Snooze uses one shared list (In 1 hour, This evening, Tomorrow morning, Next week), and Wake now replaces Unsnooze. Close is not on the row. It belongs to the open chat (⌘W). _(copy; slice 4.13)_
+1. **The row ⋯ menu: Open chat, Mark done, Snooze ▸, and Discard draft (danger, only when a draft exists).** Mark done replaces Settle, Dismiss from inbox and Hide from inbox, and Reopen undoes it. Snooze uses one shared list (In 1 hour, This evening, Tomorrow morning, Next week), and Wake now replaces Unsnooze. Close is not on the row. It belongs to the open chat (⌘W). The snooze list sits in the same menu under "Snooze until" rather than a flyout (see `automations-inbox-13` change 1). _(copy; slice 4.13)_
 
 ### `chat-19` Command palette, This chat group
 
@@ -375,7 +375,7 @@ On a phone: Same content in one column.
 | Delegated-task origin (disabled row) | Simplify | Becomes a header subtitle "from <parent chat>". |
 | Coordinator actions | Keep | Unchanged. Backend check: the exact set. |
 | New chat (header, inbox, sidebar) | Keep | The inbox button is removed. |
-| Refresh inbox | Remove | The inbox is live. |
+| Refresh chats | Remove | The inbox is live. |
 | Move to Left, Right or Bottom, Add pane…, Restore size, Full screen, Switch to a pane | Remove | Removed from the chat menu. They become dock layout controls on the dock handle or window controls. |
 | Clear project scope | Simplify | Becomes an inbox filter chip. |
 | Open project | Simplify | Becomes the project crumb in the toolbar. |

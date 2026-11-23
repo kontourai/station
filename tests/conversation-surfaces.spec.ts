@@ -858,7 +858,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
       ).toContainText('Current chat is ready.');
       const inbox = await ensureConnectionInboxOpen(page);
       if (layout === 'mobile')
-        await inbox.getByRole('button', { name: 'Search inbox' }).click();
+        await inbox.getByRole('button', { name: 'Search chats' }).click();
       const search = inbox.getByRole('searchbox');
       if (layout === 'mobile') await expect(search).toBeFocused();
       await search.fill('First cold');
@@ -918,16 +918,17 @@ for (const layout of ['desktop', 'mobile'] as const) {
             .click();
           await page
             .getByRole('dialog')
-            .getByRole('button', { name: '1 hour', exact: true })
+            .getByRole('button', { name: /^In 1 hour,/ })
             .click();
         } else {
           await firstRow.hover();
           await inbox
-            .getByRole('button', { name: 'Snooze ' + firstTitle, exact: true })
+            .getByRole('button', {
+              name: 'Actions for ' + firstTitle,
+              exact: true,
+            })
             .click();
-          await page
-            .getByRole('menuitem', { name: '1 hour', exact: true })
-            .click();
+          await page.getByRole('menuitem', { name: /^In 1 hour,/ }).click();
         }
         const snoozed = inbox.getByRole('button', { name: /^Snoozed/ });
         await expect(snoozed).toContainText('1');
@@ -936,9 +937,12 @@ for (const layout of ['desktop', 'mobile'] as const) {
           await firstRow.hover();
           await inbox
             .getByRole('button', {
-              name: 'Unsnooze ' + firstTitle,
+              name: 'Actions for ' + firstTitle,
               exact: true,
             })
+            .click();
+          await page
+            .getByRole('menuitem', { name: 'Wake now', exact: true })
             .click();
         } else {
           await inbox
@@ -946,7 +950,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
             .click();
           await page
             .getByRole('dialog')
-            .getByRole('button', { name: 'Unsnooze', exact: true })
+            .getByRole('button', { name: 'Wake now', exact: true })
             .click();
         }
         await expect(firstRow).toBeVisible();
@@ -960,15 +964,18 @@ for (const layout of ['desktop', 'mobile'] as const) {
           await details.click();
           await page
             .getByRole('dialog')
-            .getByRole('button', { name: 'Dismiss from inbox', exact: true })
+            .getByRole('button', { name: 'Mark done', exact: true })
             .click();
         } else {
           await firstRow.hover();
           await inbox
             .getByRole('button', {
-              name: 'Dismiss ' + firstTitle + ' from inbox',
+              name: 'Actions for ' + firstTitle,
               exact: true,
             })
+            .click();
+          await page
+            .getByRole('menuitem', { name: 'Mark done', exact: true })
             .click();
         }
         await page.getByRole('button', { name: 'Undo', exact: true }).click();

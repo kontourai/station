@@ -88,7 +88,7 @@ const discardFixture = `
     root.render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}>
       <NavigationProvider><main style={{padding:12}}>
         <InboxRow item={draft} now={Date.now()} chrome="touch" actionsInDetails={inDetails}
-          isCurrent={false} isSnoozed={false} isOpenChat={false} onActivate={()=>{}}
+          isCurrent={false} isSnoozed={false} onActivate={()=>{}}
           onDraftDiscarded={()=>window.discarded++}/>
       </main></NavigationProvider>
     </QueryClientProvider>);
@@ -187,7 +187,7 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await mount(page, true);
     const cdp = await page.context().newCDPSession(page);
-    const inbox = page.getByRole('region', { name: 'Inbox', exact: true });
+    const inbox = page.getByRole('region', { name: 'Chats', exact: true });
     const row = inbox.getByRole('button', { name: /^Review the inbox\b/ });
     const cue = inbox.locator('.list-refresh__pull');
     const rowTravel = async () =>
@@ -207,7 +207,7 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
       );
     const status = inbox.locator('.list-refresh__status');
     const pill = status.locator('.list-refresh__pill');
-    const menu = inbox.getByRole('button', { name: 'Inbox actions' });
+    const menu = inbox.getByRole('button', { name: 'Chat list actions' });
     const target = await menu.boundingBox();
     expect(target?.height).toBeGreaterThanOrEqual(44);
     expect(target?.width).toBeGreaterThanOrEqual(44);
@@ -222,7 +222,7 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
       .toBe('none');
     const rowTop = (await row.boundingBox())?.y ?? 0;
     await setUpdating(true);
-    await expectBrowser(pill).toHaveText('Refreshing inbox…');
+    await expectBrowser(pill).toHaveText('Refreshing chats…');
     await pill.evaluate(async (element) => {
       await Promise.all(
         element.getAnimations().map((animation) => animation.finished),
@@ -290,7 +290,7 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
         expect(await refreshes()).toBe(0);
       },
     });
-    await expectBrowser(pill).toHaveText('Refreshing inbox…');
+    await expectBrowser(pill).toHaveText('Refreshing chats…');
     await expectBrowser(pill.locator('.live-status-glyph__orbit')).toHaveCSS(
       'animation-name',
       'live-status-orbit',
@@ -301,15 +301,15 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
 
     await swipe(cdp, page, 0, 110);
     await menu.press('Enter');
-    await page.getByRole('menuitem', { name: 'Refresh inbox' }).click();
+    await page.getByRole('menuitem', { name: 'Refresh chats' }).click();
     expect(await refreshes()).toBe(1);
     await page.evaluate(() => Reflect.get(window, 'finishInboxRefresh')(true));
     await expectBrowser(pill).toHaveText('Updated');
     await expectBrowser(row).toBeVisible();
 
-    await inbox.getByRole('button', { name: 'Inbox actions' }).click();
-    await page.getByRole('menuitem', { name: 'Refresh inbox' }).click();
-    await expectBrowser(pill).toHaveText('Refreshing inbox…');
+    await inbox.getByRole('button', { name: 'Chat list actions' }).click();
+    await page.getByRole('menuitem', { name: 'Refresh chats' }).click();
+    await expectBrowser(pill).toHaveText('Refreshing chats…');
     await page.evaluate(() => Reflect.get(window, 'finishInboxRefresh')(false));
     await expectBrowser(pill).toHaveText('Couldn’t refresh');
     await expectBrowser(row).toBeVisible();
@@ -386,7 +386,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await rail.waitFor({ state: 'hidden' });
     await swipe(cdp, page, -90);
     await rail
-      .getByRole('button', { name: 'Dismiss Review the inbox from inbox' })
+      .getByRole('button', { name: 'Mark Review the inbox done' })
       .click();
     await page
       .getByRole('button', { name: /^Review the inbox\b/ })
@@ -403,7 +403,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await rail
       .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
       .click();
-    await page.getByRole('menuitem', { name: '1 hour', exact: true }).waitFor();
+    await page.getByRole('menuitem', { name: /^In 1 hour/ }).waitFor();
     await page.keyboard.press('Escape');
     await expect
       .poll(() =>
@@ -413,7 +413,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await rail
       .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
       .click();
-    await page.getByRole('menuitem', { name: '1 hour', exact: true }).click();
+    await page.getByRole('menuitem', { name: /^In 1 hour/ }).click();
     await expectBrowser(
       page.getByRole('button', { name: /^Plan the next release\b/ }),
     ).toBeFocused();
@@ -439,7 +439,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
         })
         .count(),
     ).toBe(1);
-    await page.getByRole('button', { name: 'Search inbox' }).focus();
+    await page.getByRole('button', { name: 'Search chats' }).focus();
     await expect
       .poll(() => page.locator('.inbox-row__swipe-actions:visible').count())
       .toBe(0);
@@ -480,19 +480,15 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       .getByRole('button', { name: /^Review the inbox/ })
       .click({ button: 'right' });
     await page.getByRole('button', { name: 'Details', exact: true }).click();
-    await page
-      .getByRole('button', { name: 'Dismiss from inbox', exact: true })
-      .click();
-    await page.getByRole('button', { name: 'Search inbox' }).click();
+    await page.getByRole('button', { name: 'Mark done', exact: true }).click();
+    await page.getByRole('button', { name: 'Search chats' }).click();
     await page.getByRole('searchbox').fill('Review the inbox');
-    await page.getByRole('region', { name: /Dismissed/ }).waitFor();
+    await page.getByRole('region', { name: /Marked done/ }).waitFor();
     await page
       .getByRole('button', { name: /^Review the inbox/ })
       .click({ button: 'right' });
     await page.getByRole('button', { name: 'Details', exact: true }).click();
-    await page
-      .getByRole('button', { name: 'Restore to inbox', exact: true })
-      .click();
+    await page.getByRole('button', { name: 'Reopen', exact: true }).click();
     await page.getByRole('button', { name: /^Review the inbox\b/ }).waitFor();
 
     const artifacts = resolve('.surface/inbox-dismiss-swipe');
@@ -523,7 +519,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
               document.activeElement.blur();
           });
           const dismiss = page.getByRole('button', {
-            name: 'Dismiss Review the inbox from inbox',
+            name: 'Actions for Review the inbox',
           });
           expect(
             await dismiss.evaluate((el) =>
@@ -532,7 +528,8 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
           ).toBe(true);
           expect(
             await dismiss.evaluate(
-              (el) => getComputedStyle(el.parentElement!).opacity,
+              (el) =>
+                getComputedStyle(el.closest('.inbox-row__actions')!).opacity,
             ),
           ).toBe('0');
           await page
@@ -543,7 +540,8 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
           await dismiss.waitFor({ state: 'visible' });
           expect(
             await dismiss.evaluate(
-              (el) => getComputedStyle(el.parentElement!).opacity,
+              (el) =>
+                getComputedStyle(el.closest('.inbox-row__actions')!).opacity,
             ),
           ).toBe('1');
         }

@@ -113,6 +113,7 @@ export function AttentionCard({
   focused = false,
   context = [],
   menuItems,
+  onMarkDone,
 }: {
   item: AttentionItem;
   focused?: boolean;
@@ -125,6 +126,12 @@ export function AttentionCard({
    * visible dismiss exactly as it was.
    */
   menuItems?: readonly RowMenuItem[];
+  /**
+   * The inbox page's Mark done, which holds the write behind an Undo and
+   * also marks done the notifications this row stands for. Absent, the menu
+   * writes at once.
+   */
+  onMarkDone?: (item: AttentionItem) => void;
 }) {
   const cardRef = useRef<HTMLElement>(null);
   const menuMode = menuItems !== undefined;
@@ -142,7 +149,9 @@ export function AttentionCard({
             label: DISMISS_NOTIFICATION_ACTION.label,
             disabled: dismissNotification.isPending,
             onSelect: () =>
-              dismissNotification.mutate(item.source.notificationId),
+              onMarkDone
+                ? onMarkDone(item)
+                : dismissNotification.mutate(item.source.notificationId),
           },
         ]
       : isAcknowledgeableAttentionItem(item)
@@ -151,7 +160,8 @@ export function AttentionCard({
               id: 'dismiss',
               label: ACKNOWLEDGE_ATTENTION_ACTION.label,
               disabled: acknowledge.isPending,
-              onSelect: () => acknowledge.mutate(item.id),
+              onSelect: () =>
+                onMarkDone ? onMarkDone(item) : acknowledge.mutate(item.id),
             },
           ]
         : [];
@@ -177,7 +187,7 @@ export function AttentionCard({
                 {formatNotificationTime(item.updatedAt)}
               </time>
               {menuMode ? (
-                <RowMenu items={[...(menuItems ?? []), ...dismissItems]} />
+                <RowMenu items={[...dismissItems, ...(menuItems ?? [])]} />
               ) : null}
             </span>
           </div>
