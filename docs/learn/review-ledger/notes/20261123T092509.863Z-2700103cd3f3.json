@@ -1,0 +1,9 @@
+{
+  "revision": "aec95c3fe3e35f0ed9802565ba6e6ca54ca281ce",
+
+  "notes": [
+    {"path":"docs/guides/releasing.md","note":"Traced the release guide against the watchdog trigger and job. It observes completed Main: Qualification and Nightly runs on main, plus its hourly and manual entry points. The same-repository job guard, credential-free default-branch checkout and run-evidence reconciliation still govern each observation. The Nightly cadence and release gates remain documented in their existing owners.","inputs":["docs/guides/releasing.md",".github/workflows/qualification-health.yml"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the testing guide against the updated workflow assertion. UI-only main pushes still use full qualification. Qualification completion still reaches Main: Qualification health and Main: Health, with Nightly completion added as a separate observer event on main.","inputs":["scripts/__tests__/ci-workflow-contract.test.ts"]}
+  ]
+}
