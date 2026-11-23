@@ -151,7 +151,10 @@ import {
   type DelegationStagedFiles,
   materializeDelegationFiles,
 } from '../services/orchestration/delegation-files.js';
-import { assertInheritedDelegationToolPolicy } from '../services/orchestration/delegation-tool-policy.js';
+import {
+  assertInheritedDelegationToolPolicy,
+  captureInheritedDelegationToolContext,
+} from '../services/orchestration/delegation-tool-policy.js';
 import {
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
   type DispatchCwdAdmission,
@@ -5727,7 +5730,11 @@ export async function delegateTask(
 ): Promise<DelegatedTaskHandle> {
   assertInheritedDelegationToolPolicy(input.delegation);
   input = snapshotTurnSubmissionFields(
-    { ...input, clientTurnId: input.clientTurnId ?? randomUUID() },
+    {
+      ...input,
+      clientTurnId: input.clientTurnId ?? randomUUID(),
+      delegation: captureInheritedDelegationToolContext(input.delegation),
+    },
     ['target', 'createRequestIntent', 'taskRoomAttachments'],
   );
   if (input.taskRoomAttachments?.length && !input.taskRoomInvocationAdmission)

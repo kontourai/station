@@ -18733,16 +18733,26 @@ describe('OrchestrationService', () => {
       const reached = new Promise<void>((resolve) => {
         entered = resolve;
       });
-      const read = service.readSession.bind(service);
+      const listSessions = claude.listSessions.bind(claude);
       const spy = vi
-        .spyOn(service, 'readSession')
-        .mockImplementationOnce(async (...args) => {
+        .spyOn(claude, 'listSessions')
+        .mockImplementationOnce(async () => {
+          const sessions = await listSessions();
+          expect(sessions.some((session) => session.threadId === threadId)).toBe(
+            true,
+          );
           entered();
           await held;
-          return read(...args);
+          return sessions;
         });
       const pending = service.dispatch({ type: 'sendTurn', input: original });
-      await reached;
+      await Promise.race([
+        reached,
+        pending.then(() => {
+          throw new Error('Send settled before adapter discovery');
+        }),
+      ]);
+      expect(claude.sendTurn).not.toHaveBeenCalled();
       original.modelOptions!.effort = 'high';
       original.input = 'B';
       original.ambientContext = 'context B';
