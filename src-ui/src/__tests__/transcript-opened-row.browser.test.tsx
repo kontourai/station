@@ -193,6 +193,41 @@ for (const [name, viewport] of [
     }
   });
 
+  // A reader who left the end, held row or not, is not taken back to it by a
+  // send or a request: Scroll to bottom stays to tell them it is there.
+  test.each([
+    ['a request opens during a hold', true, 'request'],
+    ['the reader sends during a hold', true, 'send'],
+    ['a request opens with no hold', false, 'request'],
+  ] as const)(
+    `(${name}) a reader far up stays put when %s`,
+    async (_label, hold, event) => {
+      const { browser, page, errors } = await tailFixture(viewport, 30);
+      try {
+        await settledAtTail(page);
+        if (hold) await openAndGrow(page);
+        const log = (await page
+          .getByRole('log', { name: 'Conversation transcript' })
+          .boundingBox())!;
+        await page.mouse.move(log.x + log.width / 2, log.y + log.height / 2);
+        await page.mouse.wheel(0, -3000);
+        await expect.poll(() => distanceFromEnd(page)).toBeGreaterThan(2_000);
+        await page.waitForTimeout(400);
+        await frames(page);
+        await expect.poll(() => scrollToBottom(page).count()).toBe(1);
+        if (event === 'request') await call(page, '__setRequest', 'approval');
+        else await call(page, '__sendUser', 'My own new question');
+        await frames(page);
+        await page.waitForTimeout(300);
+        expect(await distanceFromEnd(page), 'not moved').toBeGreaterThan(2_000);
+        expect(await scrollToBottom(page).count()).toBe(1);
+        expect(errors).toEqual([]);
+      } finally {
+        await browser.close();
+      }
+    },
+  );
+
   test(`(${name}) closing the held row ends the hold`, async () => {
     const { browser, page, errors } = await tailFixture(viewport);
     try {

@@ -996,10 +996,13 @@ function ChatMessageListComponent({
     releaseReaderHold();
   }, [activeSession.id, releaseReaderHold]);
   // What needs the reader ends a hold and brings the end into view: their own
-  // message (a send, a queued follow-up delivered) and a request opening.
+  // message (a send, a queued follow-up delivered) and a request opening. A
+  // reader who scrolled away from the held row stays where they are, as with
+  // no hold: Scroll to bottom still shows.
   const releaseHoldToLatest = useCallback(() => {
     if (!readerHoldRef.current) return false;
     releaseReaderHold();
+    if (isUserScrolledUpRef.current) return false;
     isUserScrolledUpRef.current = false;
     setIsUserScrolledUp(false);
     return true;
