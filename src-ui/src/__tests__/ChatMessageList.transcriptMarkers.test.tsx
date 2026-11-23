@@ -460,6 +460,72 @@ describe('chat-24 transcript markers', () => {
       expect(markers(container, 'model')).toHaveLength(0);
     });
 
+    /**
+     * Codex turns on the refused window's first Session asking for `asks`
+     * (one model per turn), with a `model.rerouted` in the turn at `at`.
+     */
+    function codexTurns(
+      asks: readonly string[],
+      at: number,
+      reroute: { from: string; to: string; scope: 'turn' | 'session' },
+    ) {
+      const window = rootOnly(REFUSED);
+      const turns = turnStarts(window).map((event) => event.turnId);
+      expect(turns.length).toBe(asks.length);
+      return renderTranscript(
+        window,
+        transcript(window, (event) => {
+          const index = turns.indexOf(event.turnId);
+          const base = isTurnEvent(event)
+            ? {
+                ...event,
+                provider: 'codex',
+                metadata: { ...event.metadata, effectiveModel: asks[index] },
+              }
+            : { ...event, provider: 'codex' };
+          if (event.method === 'turn.started' && index === at)
+            return [
+              base as RecordedEvent,
+              {
+                ...event,
+                eventId: `${event.eventId}-reroute`,
+                method: 'model.rerouted',
+                provider: 'codex',
+                fromModel: reroute.from,
+                toModel: reroute.to,
+                trigger: 'availability',
+                scope: reroute.scope,
+                turnId: event.turnId,
+              } as unknown as RecordedEvent,
+            ];
+          return base as RecordedEvent;
+        }),
+      );
+    }
+
+    test('a session-scope reroute: no pill on its turn or any later turn of the session', () => {
+      // Asked A, then B (moved back to A for the rest of the session), then B
+      // three more times: none of the B turns ran B.
+      const { container } = codexTurns(
+        ['gpt-a', 'gpt-b', 'gpt-b', 'gpt-b', 'gpt-b'],
+        1,
+        { from: 'gpt-b', to: 'gpt-a', scope: 'session' },
+      );
+      expect(container.textContent).toContain('for the rest of this session');
+      expect(markers(container, 'model')).toHaveLength(0);
+    });
+
+    test('a later request after a session-scope reroute is not "from" a model that never ran', () => {
+      // A, B rerouted to A for the session, then C: a "B → C" pill would
+      // name B, which never ran.
+      const { container } = codexTurns(
+        ['gpt-a', 'gpt-b', 'gpt-b', 'gpt-b', 'gpt-c'],
+        1,
+        { from: 'gpt-b', to: 'gpt-a', scope: 'session' },
+      );
+      expect(markers(container, 'model')).toHaveLength(0);
+    });
+
     test('a reroute inside one turn keeps its own line and adds no model pill', () => {
       // Codex: `model/rerouted` → `model.rerouted`, scope turn
       // (codex-adapter-notifications.ts `codexModelReroute`); both turns

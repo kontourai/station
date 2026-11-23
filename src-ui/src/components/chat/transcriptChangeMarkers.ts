@@ -57,16 +57,39 @@ type RerouteKey = string;
 const rerouteKey = (sessionId: string, turnId: string): RerouteKey =>
   `${sessionId}\u0000${turnId}`;
 
-/** The engine reroutes the rows recorded, by session and turn. */
+/**
+ * The turns a reroute names, whatever its scope: that turn did not run on
+ * what it asked for.
+ */
 function reroutedTurns(messages: readonly ChatMessage[]): Set<RerouteKey> {
   const keys = new Set<RerouteKey>();
   for (const message of messages)
     for (const part of message.contentParts ?? []) {
       const reroute = part.modelReroute;
-      if (reroute?.scope === 'turn' && reroute.turnId)
+      if (reroute?.turnId)
         keys.add(rerouteKey(reroute.sessionId, reroute.turnId));
     }
   return keys;
+}
+
+/**
+ * Session-scope reroutes by session, with the turn each names: from that
+ * turn on, the engine runs the session on its own pick, so no later turn of
+ * the session ran what it asked for either.
+ */
+function sessionReroutes(
+  messages: readonly ChatMessage[],
+): Map<string, Set<string | undefined>> {
+  const sessions = new Map<string, Set<string | undefined>>();
+  for (const message of messages)
+    for (const part of message.contentParts ?? []) {
+      const reroute = part.modelReroute;
+      if (reroute?.scope !== 'session') continue;
+      const turns = sessions.get(reroute.sessionId) ?? new Set();
+      turns.add(reroute.turnId);
+      sessions.set(reroute.sessionId, turns);
+    }
+  return sessions;
 }
 
 /** A reroute line that changes the session's model or names no turn. */
@@ -187,6 +210,7 @@ export function lastRecordedTurn(
   facts: ReadonlyMap<number, TranscriptChangeFacts>,
 ): RecordedTurn | undefined {
   const rerouted = reroutedTurns(messages);
+  const sessionScoped = sessionReroutes(messages);
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index];
     if (!message) continue;
@@ -195,8 +219,14 @@ export function lastRecordedTurn(
     );
     if (boundary && !facts.get(index)?.hidden) return undefined;
     if (isSessionReroute(message)) return undefined;
-    if (message.role === 'assistant' && message.turnId)
-      return recordedTurn(message, rerouted);
+    if (message.role === 'assistant' && message.turnId) {
+      const turn = recordedTurn(message, rerouted);
+      // The last turn is at or after any reroute of its session that the
+      // rows hold, so a session-scope one covers it.
+      return turn.sessionId && sessionScoped.has(turn.sessionId)
+        ? { ...turn, rerouted: true }
+        : turn;
+    }
   }
   return undefined;
 }
@@ -207,6 +237,9 @@ export function transcriptChangeFacts(
 ): ReadonlyMap<number, TranscriptChangeFacts> {
   const times = sessionTimes(messages);
   const rerouted = reroutedTurns(messages);
+  const sessionScoped = sessionReroutes(messages);
+  // Sessions the walk has passed a session-scope reroute in.
+  const reroutedSessions = new Set<string>();
   const resets = new Map<string, ResetStart>();
   for (const message of messages)
     for (const part of message.contentParts ?? []) {
@@ -261,15 +294,25 @@ export function transcriptChangeFacts(
       return;
     }
     // A session-wide reroute changes the model without the person: the next
-    // turn compares with nothing before it.
+    // turn compares with nothing before it, and nor does any later one.
     if (isSessionReroute(message)) previous = undefined;
+    for (const part of parts)
+      if (part.modelReroute?.scope === 'session')
+        reroutedSessions.add(part.modelReroute.sessionId);
     if (markerDrawn) set(index, { afterMarker: true });
     markerDrawn = false;
     if (message.role !== 'assistant' || !message.turnId) return;
     if (seen.has(message.turnId)) return;
     seen.add(message.turnId);
-    const current =
+    const recorded =
       byTurn.get(message.turnId) ?? recordedTurn(message, rerouted);
+    const sessionId = recorded.sessionId;
+    if (sessionId && sessionScoped.get(sessionId)?.has(message.turnId))
+      reroutedSessions.add(sessionId);
+    const current =
+      sessionId && reroutedSessions.has(sessionId)
+        ? { ...recorded, rerouted: true as const }
+        : recorded;
     const change = modelChangeBetween(previous, current);
     if (change) set(index, { modelChange: change });
     if (current.engine) lastEngine = current.engine;
