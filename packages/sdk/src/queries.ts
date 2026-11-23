@@ -87,6 +87,7 @@ export {
   deleteAgent,
   type ModelCapabilitiesEnvelope,
   materializeEngineAgent,
+  type RecordNewChatDefaultResult,
   recordFirstRunDecision,
   submitToolApproval,
   type UpdateAppConfigResult,

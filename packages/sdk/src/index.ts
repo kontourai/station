@@ -809,6 +809,7 @@ export {
   type ReadinessTrustGapVM,
   type ReadinessTrustReportVM,
   type ReconnectEngineMcpServerInput,
+  type RecordNewChatDefaultResult,
   type RegistryCatalogTab,
   type RelationGraphLink,
   type RemoteEnvironmentAuthenticationRequired,
