@@ -14,6 +14,7 @@ export const TABLED_CAPABILITY_FLAGS: readonly string[] = Object.freeze([
   'coordinatorSession',
   'eventStreamResume',
   'followUpAttachments',
+  'newChatDefault',
   'privateMemoryReview',
   'privateOperationalOutcomes',
   'projectSchedules',

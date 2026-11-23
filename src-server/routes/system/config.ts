@@ -14,8 +14,10 @@ import {
   type AppConfig,
   appConfigSemanticError,
   describeFirstRunTransitionViolation,
+  describeNewChatDefaultViolation,
   type FirstRunTransitionRequest,
   firstRunStateForTransition,
+  type NewChatDefault,
 } from '@kontourai/station-contracts/config';
 import {
   FLEET_CONTRIBUTION_SCOPE_KEY,
@@ -629,6 +631,19 @@ export function createConfigRoutes(
             success: false,
             error:
               'firstRun records a first-run decision and is written through POST /config/first-run; no settings were saved.',
+          },
+          400,
+        );
+      }
+      // Same shape: a first-signed-in default is recorded once, and that rule
+      // lives on its own endpoint.
+      if (Object.hasOwn(body as object, 'newChatDefault')) {
+        configOps.add(1, { op: 'update_app_new_chat_default_refused' });
+        return c.json(
+          {
+            success: false,
+            error:
+              'newChatDefault is written through POST /config/new-chat-default; no settings were saved.',
           },
           400,
         );
@@ -1313,6 +1328,55 @@ export function createConfigRoutes(
       if (error instanceof ManagedSettingLockedError)
         return managedSettingRefusal(c, error);
       logger.error('Failed to record the first-run decision', { error });
+      return c.json({ success: false, error: errorMessage(error) }, 500);
+    }
+  });
+
+  /**
+   * Record the default for new chats (`AppConfig.newChatDefault`).
+   *
+   * `{ agent, reason: 'first-signed-in' }` is written only while no default
+   * exists, checked inside the serialized config write, so two devices
+   * choosing at once, or an engine that becomes ready later, cannot replace
+   * it: the loser gets 409 with the default that stands. `reason: 'chosen'`
+   * always replaces it. The Agent is not looked up: a default whose Agent is
+   * later deleted is kept and passed over at start, and readers handle that.
+   */
+  app.post('/new-chat-default', async (c) => {
+    try {
+      configOps.add(1, { op: 'update_new_chat_default' });
+      const body = await c.req.json().catch(() => undefined);
+      const malformed = describeNewChatDefaultViolation(undefined, body);
+      if (malformed) {
+        configOps.add(1, { op: 'update_new_chat_default_refused' });
+        return c.json({ success: false, error: malformed }, 400);
+      }
+      const next = body as NewChatDefault;
+      let standing: NewChatDefault | undefined;
+      const updated = await configLoader.mutateAppConfig((current) => {
+        if (describeNewChatDefaultViolation(current.newChatDefault, next)) {
+          standing = current.newChatDefault;
+          return {};
+        }
+        return { newChatDefault: { agent: next.agent, reason: next.reason } };
+      });
+      if (standing) {
+        configOps.add(1, { op: 'update_new_chat_default_kept' });
+        return c.json(
+          {
+            success: false,
+            error: 'This Station already has a default for new chats.',
+            data: standing,
+          },
+          409,
+        );
+      }
+      eventBus?.emit(SERVER_EVENTS.CONFIG_CHANGED, { source: 'config' });
+      return c.json({ success: true, data: updated.newChatDefault });
+    } catch (error: unknown) {
+      if (error instanceof ManagedSettingLockedError)
+        return managedSettingRefusal(c, error);
+      logger.error('Failed to record the default for new chats', { error });
       return c.json({ success: false, error: errorMessage(error) }, 500);
     }
   });

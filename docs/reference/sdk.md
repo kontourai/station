@@ -2141,6 +2141,15 @@ shape and rules). An error answer rejects rather than resolving as no branding.
 
 Fetches app configuration.
 
+### `useNewChatDefaultCapability()` and `useRecordNewChatDefaultMutation()`
+
+`useNewChatDefaultCapability()` reads whether the host advertises
+`newChatDefault`; `null` means its handshake could not be read.
+`useRecordNewChatDefaultMutation()` posts `{ agent, reason }` to
+[`POST /config/new-chat-default`](api.md#default-for-new-chats) and refreshes
+the config read. It resolves `{ recorded, newChatDefault }`: `recorded: false`
+is the host keeping the default that already stood (its 409), not a failure.
+
 ### `useStatsQuery(agentSlug, conversationId, config?)`
 
 Fetches conversation stats. Disabled when either param is undefined. The

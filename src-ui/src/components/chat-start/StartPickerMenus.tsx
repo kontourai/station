@@ -120,6 +120,7 @@ export function StartPickerMenus({
         layer={layer}
         groups={viewModel.groups}
         flatList={viewModel.flatList}
+        newChatDefaultSlug={selection.newChatDefaultSlug}
         selectedSlug={start.agent?.slug}
         loading={runtimeLoading || modelsLoading}
         error={setupError}

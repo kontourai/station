@@ -49,6 +49,7 @@ const KIRO: AgentData = {
 function renderRows(
   agents: AgentData[],
   model: (agent: AgentData) => { label: string; unavailable: boolean },
+  newChatDefaultSlug?: string,
 ) {
   return render(
     <AgentPickerGroups
@@ -62,6 +63,7 @@ function renderRows(
       onOpenModel={() => {}}
       fixDisabledFor={() => undefined}
       onFix={() => {}}
+      newChatDefaultSlug={newChatDefaultSlug}
     />,
   );
 }
@@ -76,6 +78,26 @@ function row(slug: string): HTMLElement {
 afterEach(cleanup);
 
 describe('Agent picker row presentation', () => {
+  test('the Agent the default for new chats names, and only it, is tagged', () => {
+    renderRows(
+      [PROXIED_CLAUDE, REVIEWER_ON_PROXY, KIRO],
+      () => ({ label: 'Opus', unavailable: false }),
+      REVIEWER_ON_PROXY.slug,
+    );
+    expect(
+      within(row(REVIEWER_ON_PROXY.slug)).getByText('Default for new chats'),
+    ).toBeTruthy();
+    expect(screen.getAllByText('Default for new chats')).toHaveLength(1);
+  });
+
+  test('with no default recorded, no row is tagged', () => {
+    renderRows([PROXIED_CLAUDE, KIRO], () => ({
+      label: 'Opus',
+      unavailable: false,
+    }));
+    expect(screen.queryByText('Default for new chats')).toBeNull();
+  });
+
   test('shows the detected coding app mark and respects custom artwork', async () => {
     const gemini: AgentData = {
       slug: agentId('gemini-default'),

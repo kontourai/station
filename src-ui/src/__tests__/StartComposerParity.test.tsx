@@ -106,6 +106,9 @@ vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => state.device,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  // #5401: no host records a default here; the fixed-order pick applies.
+  useNewChatDefaultCapability: () => ({ data: false }),
+  useRecordNewChatDefaultMutation: () => ({ mutate: () => undefined }),
   useFeaturePreviewsQuery: () => ({ data: state.featurePreviews }),
   useSshEnvironmentsQuery: () => ({
     data: state.environments,

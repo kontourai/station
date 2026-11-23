@@ -3111,8 +3111,8 @@ sanitizer and serialized config mutation. The response contains the public
 updated `data`, optional `ignoredKeys`, and an activation receipt when relevant.
 Ordinary success is 200; persisted changes awaiting activation can return 202.
 A field being present in `AppConfig` does not mean this generic endpoint may
-write it: first-run decisions and revisioned log-level changes have separate
-routes, and contribution/full-access choices have additional checks. A
+write it: first-run decisions, the default for new chats and revisioned
+log-level changes have separate routes, and contribution/full-access choices have additional checks. A
 `confinedNetwork` whose shape or any `allowedHosts` entry the egress broker
 cannot read is refused with 400 and nothing is saved (#4769).
 A change to a setting the managed policy locks is refused before any other
@@ -3132,6 +3132,30 @@ may lower tiers, including to Off. An internal-agent request cannot write these 
 addresses fail before persistence. Product destination changes fence the old
 queue and requests; saved collector changes require restart activation. See
 [telemetry settings](config.md#telemetry-destinations) for the exact fields.
+
+### Default for new chats
+
+```http
+POST /config/new-chat-default
+```
+
+```json
+{ "agent": "codex", "reason": "first-signed-in" }
+```
+
+The [route](../../src-server/routes/system/config.ts) records
+`AppConfig.newChatDefault`, the Agent new chats on this Station start with when
+nothing closer names one (`GET /config/app` reports it). The body has exactly
+`agent`, a clean Agent id, and `reason`: `first-signed-in` when Station picks
+the first engine that can run a chat, in the fixed order Claude Code, Codex,
+other engines, Station's own engine; `chosen` when a person picks it. A
+`first-signed-in` record is written only while none exists, checked inside the
+serialized config write: a later one answers 409 with the default that stands
+in `data`, and nothing changes. `chosen` always replaces it. A malformed body
+answers 400. The Agent is not looked up, so a default whose Agent was later
+deleted stays recorded; the composer passes over an Agent that cannot start and
+keeps the record. `PUT /config/app` refuses `newChatDefault` with 400. Hosts
+that serve the route advertise the `newChatDefault` capability flag.
 
 ### Broker restore publication policy
 

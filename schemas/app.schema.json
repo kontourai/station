@@ -495,6 +495,22 @@
         }
       }
     },
+    "newChatDefault": {
+      "description": "The agent new chats on this Station start with when nothing closer names one, and why: the first engine signed in, or a person's choice. Absent means Station has not chosen one yet.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agent", "reason"],
+      "properties": {
+        "agent": {
+          "type": "string",
+          "pattern": "^[a-z](?:[a-z0-9-]{0,62}[a-z0-9])?$"
+        },
+        "reason": {
+          "type": "string",
+          "enum": ["first-signed-in", "chosen"]
+        }
+      }
+    },
     "userProfile": {
       "description": "First-run 'About you' answers (station#2652). Absent means the questions were skipped or unanswered, and Station injects nothing.",
       "type": "object",

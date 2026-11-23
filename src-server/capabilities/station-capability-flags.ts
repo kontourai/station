@@ -183,6 +183,10 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // (src-server/routes/projects/project-library-routes.ts). Hosted
   // deployments withdraw it: see servesProjectLibrary.
   projectLibrary: true,
+  // #5401: POST /config/new-chat-default (src-server/routes/system/
+  // config.ts) records the default for new chats. Served in every deployment
+  // mode; a client records the default only on this flag.
+  newChatDefault: true,
 };
 
 /** Deployment facts that decide whether a build-supported route can serve. */

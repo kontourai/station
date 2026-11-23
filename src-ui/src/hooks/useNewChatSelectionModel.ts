@@ -52,6 +52,7 @@ import type {
 } from '../utils/modelCapabilities';
 import { profileCompatibilityReason } from '../utils/modelCapabilities';
 import { useLastChosenModelMap } from './lastChosenModel';
+import { useRecordNewChatDefault } from './useRecordNewChatDefault';
 
 const EMPTY_CONNECTIONS: never[] = [];
 
@@ -394,6 +395,20 @@ export function useNewChatSelectionModel({
       selectedProjectConfig?.agents,
     ],
   );
+  // The Station's default for new chats (#5401), recorded once from the
+  // fixed order and read after every closer default below.
+  const newChatDefaultSlug = appConfig?.newChatDefault?.agent;
+  useRecordNewChatDefault({
+    stored: appConfig ? appConfig.newChatDefault : null,
+    agents: modalAgents,
+    agentConnections,
+    settled:
+      !!pickerCatalog &&
+      !catalogFetching &&
+      !!agentCatalog.data &&
+      !agentCatalog.isFetching &&
+      agentCatalog.catalogState !== 'reconciling',
+  });
   const defaultSelection = resolveNewChatDefaultSelection({
     flatList: viewModel.flatList,
     agentConnections,
@@ -410,6 +425,7 @@ export function useNewChatSelectionModel({
       ),
       selectedProjectConfig?.defaultAgent,
       layout?.defaultAgent,
+      newChatDefaultSlug,
     ]),
 
     lastChosenModelByBinding,
@@ -623,6 +639,8 @@ export function useNewChatSelectionModel({
   return {
     viewModel,
     defaultSelection,
+    /** The Agent the Station's default for new chats names, if one is recorded. */
+    newChatDefaultSlug,
     agentConnections,
     modelConnections,
     acpConnections,

@@ -23,6 +23,7 @@ Home becomes the only first-run screen, with no wizard, and connecting a phone t
 - Home shows the composer plus a short list of what Station found on the computer. Each row offers one step the person takes, such as Add or Sign in. Nothing found is configured until the person adds it.
 - Customize › Overview, and the "what can run now" table at the top of Customize › Engines, is where setup lives afterwards.
 - Station saves a Default for new chats: the first signed-in engine, in fixed order (Claude Code, Codex, then the others), using that engine's current model. It never changes because another engine becomes ready.
+- The default is one per Station and names an agent, not a model. A new chat reads it after the person's own last choice, the project's default agent and the view's default agent. Station's own engine comes after every other engine in the fixed order. When the default's engine is signed out or removed, a new chat starts on the first engine in that order that can run, and the saved default is kept.
 - Every detected and ready engine appears in the picker. Its Agent is created the first time the engine is used, not as a ticked batch.
 - Station's own agent runs on the same engine as the default for new chats until the person changes it in Settings.
 - When engines are installed but none is signed in, the Start button becomes "Sign in and start", and the message is kept.

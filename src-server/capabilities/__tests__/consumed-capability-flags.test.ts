@@ -20,6 +20,7 @@ import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { RecipientStore } from '../../analytics/recipient-store.js';
 import type { EnrollmentActor } from '../../analytics/source-enrollment-store.js';
 import { SourceEnrollmentStore } from '../../analytics/source-enrollment-store.js';
+import { ConfigLoader } from '../../domain/config-loader.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import { MemoryReviewService } from '../../knowledge-store/memory-review.js';
@@ -37,6 +38,7 @@ import { createSessionPersonActivityRoutes } from '../../routes/orchestration/se
 import { createProjectRoomRoutes } from '../../routes/projects/project-room-routes.js';
 import { createPullRequestFeedbackRoutes } from '../../routes/pull-requests/pull-request-feedback.js';
 import { createReadMarkerRoutes } from '../../routes/read-markers/read-marker-routes.js';
+import { createConfigRoutes } from '../../routes/system/config.js';
 import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
@@ -903,6 +905,34 @@ const CONSUMED_FLAGS: Record<
     });
     return (await routes.request('/activity')).status === 200;
   },
+  // POST /config/new-chat-default records the default wherever the runtime
+  // mounts the config routes, which it does in every deployment mode.
+  newChatDefault: async () => {
+    const loader = new ConfigLoader({
+      projectHomeDir: makeTempDir('new-chat-default-flag-'),
+      watchFiles: false,
+    });
+    try {
+      await loader.loadAppConfig();
+      const routes = createConfigRoutes(loader, {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      } as never);
+      const response = await routes.request('/new-chat-default', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ agent: 'codex', reason: 'first-signed-in' }),
+      });
+      return (
+        response.status === 200 &&
+        (await loader.loadAppConfig()).newChatDefault?.agent === 'codex'
+      );
+    } finally {
+      loader.dispose();
+    }
+  },
   // POST /api/diagnostics/troubleshoot/prepare writes a run and answers the
   // seed wherever the runtime mounts it with a troubleshoot service.
   troubleshootPrepare: async () => {
@@ -1032,6 +1062,7 @@ describe('consumed capability flags match what their routes serve', () => {
     pullRequestFeedback: { personal: true, hosted: false },
     projectLibrary: { personal: true, hosted: false },
     troubleshootPrepare: { personal: true, hosted: true },
+    newChatDefault: { personal: true, hosted: true },
   };
 
   test('every flag a deployment withdraws has a row', () => {

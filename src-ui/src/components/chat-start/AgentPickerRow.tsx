@@ -1,3 +1,4 @@
+import { Badge } from '@kontourai/ui/react';
 import { Fragment } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
@@ -59,6 +60,7 @@ function AgentPickerRow({
   fixLabel,
   fixDisabled,
   onFix,
+  isNewChatDefault = false,
 }: {
   agent: AgentData;
   isSelected: boolean;
@@ -76,6 +78,8 @@ function AgentPickerRow({
   fixLabel?: 'Enable' | 'Connect' | 'Set up';
   fixDisabled?: boolean;
   onFix: (route: AgentFixRoute) => void;
+  /** The Station's recorded default for new chats names this Agent. */
+  isNewChatDefault?: boolean;
 }) {
   const unavailability = resolveNewChatAgentUnavailability(agent);
   // archive#3843: the picker and the Agents list mount the SAME cell, so they
@@ -148,6 +152,9 @@ function AgentPickerRow({
             <span className="new-chat-modal__agent-engine" title={engineLabel}>
               <span className="engine-chip__pill">{engineLabel}</span>
             </span>
+          )}
+          {isNewChatDefault && (
+            <Badge value="Default for new chats" tone="neutral" />
           )}
           {/* A state only when nothing else on the row says it. "Ready" is
               what an enabled row says by being choosable, and a row that
@@ -270,6 +277,7 @@ export function AgentPickerGroups({
   selectionOnly,
   fixDisabledFor,
   onFix,
+  newChatDefaultSlug,
 }: {
   groups: AgentPickerGroup[];
   flatList: AgentData[];
@@ -284,6 +292,8 @@ export function AgentPickerGroups({
   selectionOnly?: boolean;
   fixDisabledFor: (agent: AgentData) => boolean | undefined;
   onFix: (agent: AgentData, route: AgentFixRoute) => void;
+  /** The Agent the Station's default for new chats names, if one is recorded. */
+  newChatDefaultSlug?: string;
 }) {
   return (
     <>
@@ -315,6 +325,7 @@ export function AgentPickerGroups({
                 selectionOnly={selectionOnly}
                 fixDisabled={fixDisabledFor(agent)}
                 onFix={(route) => onFix(agent, route)}
+                isNewChatDefault={agent.slug === newChatDefaultSlug}
               />
             );
           })}

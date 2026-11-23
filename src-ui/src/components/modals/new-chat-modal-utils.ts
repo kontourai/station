@@ -474,6 +474,51 @@ interface NewChatModalViewModel {
   compatibilityMessage?: string;
 }
 
+/**
+ * Where an Agent stands in the order Station picks a default for new chats
+ * in: Claude Code, Codex, the other engines as listed, then Station's own
+ * engine. `undefined` for an Agent someone authored: Station never picks one
+ * of those for a person.
+ */
+function newChatDefaultRank(agent: AgentData): number | undefined {
+  if (isStationAgentIdentity(agent.slug)) return 3;
+  if (!isEngineProvenanceAgent(agent)) return undefined;
+  if (agent.engineId === 'claude') return 0;
+  if (agent.engineId === 'codex') return 1;
+  return 2;
+}
+
+/**
+ * The first engine that can run a chat, in fixed order: what Station records
+ * as the default for new chats when it has none, and what a new chat starts
+ * on until that record exists. An engine's own Agent that another Agent on
+ * the same engine stands in for is not a row in any picker, so it is never
+ * picked.
+ */
+export function firstSignedInAgent(
+  agents: readonly AgentData[],
+): AgentData | undefined {
+  const replaced = new Set(
+    agents
+      .filter((agent) => !agent.engineDefault)
+      .map((agent) => agent.execution?.agentConnectionId)
+      .filter(Boolean),
+  );
+  let best: AgentData | undefined;
+  let bestRank = Number.POSITIVE_INFINITY;
+  for (const agent of agents) {
+    if (!agentRunnability(agent).runnable) continue;
+    if (agent.engineDefault && replaced.has(agent.execution?.agentConnectionId))
+      continue;
+    const rank = newChatDefaultRank(agent);
+    if (rank !== undefined && rank < bestRank) {
+      best = agent;
+      bestRank = rank;
+    }
+  }
+  return best;
+}
+
 export function resolveNewChatDefaultSelection({
   flatList,
   agentConnections,
@@ -498,10 +543,13 @@ export function resolveNewChatDefaultSelection({
     ? flatList.find((candidate) => candidate.slug === preferredAgentSlug)
     : undefined;
   // Quick-start consumers need a runnable recommendation. The draft can show a preferred Agent needing repair.
+  // With nothing preferred, the fixed order, never list position: a list
+  // ordered by recency would move the default as engines come and go.
   const agent =
     preferredAgent && agentRunnability(preferredAgent).runnable
       ? preferredAgent
-      : flatList.find((candidate) => agentRunnability(candidate).runnable);
+      : (firstSignedInAgent(flatList) ??
+        flatList.find((candidate) => agentRunnability(candidate).runnable));
   const runtimeConnection = agentConnections.find(
     (connection) => connection.id === agent?.execution?.agentConnectionId,
   );
