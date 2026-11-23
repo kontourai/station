@@ -253,10 +253,13 @@ Session's context began with content nobody on the owner's side wrote, such
 as a failed run's logs. The Session still acts for no one. While the turn
 the person typed is running, it holds one narrow grant: the tools that only
 read or write the Session's own Task (`task_summary_update`, `task_record`,
-`get_task_brief`, `task_thread_list`, `task_thread_reply` and
-`task_thread_resolve`, marked `ownTask` in the policy table) work on the
-Task the automation created for it. Everything else stays refused there,
-including automation proposals, Project notes, delegation and messages. The
+`get_task_brief`, `task_thread_list` and `task_thread_reply`, marked
+`ownTask` in the policy table) work on the Task the automation created for
+it. Resolving a review thread stays with a person, so `task_thread_resolve`
+is not in the grant. Everything else stays refused there, including
+automation proposals, Project notes, delegation and messages. The Task brief
+is assembled with the Session's recorded owner's read access, as it was when
+the automation dispatched it. The
 automation's own turns, an engine-opened turn and the time between turns get
 no grant. The Task's records name the Session as their author, not the
 person.
@@ -374,11 +377,7 @@ Agent) keeps it. A person's takeover does not change this: once the
 automation's dispatched turn has ended, the Task reads `review` whether or not
 a person has since continued the Session, and a person who continues afterwards
 works in a Task that already awaits review. A green run closes
-the episode and prevents later placement for it. A first turn a person
-stops ends as `turn.aborted`, so the action and its delivery read `failed`
-and it has used the episode's attempt. The wall-clock budget keeps running
-while a Task waits for an approval, so an unattended `ask` rule can spend
-its budget waiting.
+the episode and prevents later placement for it.
 
 These Tasks can diagnose the normalized failing run. The quoted `head_sha` is
 source evidence, not proof that the execution workspace is that exact checkout.

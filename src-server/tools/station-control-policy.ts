@@ -1288,7 +1288,6 @@ export const STATION_CONTROL_TOOL_POLICY = {
   task_thread_resolve: {
     assurance: 'any',
     role: 'self',
-    ownTask: true,
     toolClass: 'bounded-write',
     personOnly: 'never',
     routes: [post('/api/orchestration/station-control/task-thread-resolve')],

@@ -1014,6 +1014,11 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
         body: 'Seen.',
       }),
       brief: await call('get_task_brief'),
+      // Closing a person's review thread is not in the grant (#4511).
+      resolve: await call('task_thread_resolve', {
+        threadId: 'no-thread',
+        reason: 'Addressed.',
+      }),
     });
     const refusedEverywhere = async () => {
       for (const [name, result] of Object.entries(await calls()))
@@ -1082,6 +1087,9 @@ describe('an engine keeps Task memory through its own MCP connection', () => {
     });
     expect(allowed.record.body).toMatchObject({ status: 'recorded' });
     expect(allowed.reply.body?.code).not.toBe(roleRequired);
+    // Replying is allowed; resolving a thread is refused exactly as before
+    // the takeover, so a person still closes their own review threads.
+    expect(allowed.resolve.body?.code).toBe(roleRequired);
     expect(allowed.brief.isError, JSON.stringify(allowed.brief.body)).toBe(
       false,
     );
