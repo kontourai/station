@@ -12960,8 +12960,25 @@ export class OrchestrationService {
           // #4518: under a managed ceiling below Auto the answer would switch
           // the engine to acceptEdits past the ceiling, so it is downgraded
           // to the one-call accept too.
+          // An `all` answer is the widest session choice. An adapter that
+          // does not declare it takes the plain per-tool grant, which is
+          // narrower: the scope is dropped before anything reads the answer,
+          // so it is judged (an edit-mode answer included) exactly as an
+          // unscoped session answer.
+          const allElsewhere =
+            command.sessionGrantScope === 'all' &&
+            !adapter.metadata.sessionGrantScopes?.includes('all');
+          const requestedScope = allElsewhere
+            ? undefined
+            : command.sessionGrantScope;
           const editModeAnswer = this.isEditModeSessionAnswer(
-            command,
+            allElsewhere
+              ? {
+                  threadId: command.threadId,
+                  requestId: command.requestId,
+                  decision: command.decision,
+                }
+              : command,
             adapter.provider,
           )
             ? context?.approvalModeAuthority === true &&
@@ -12986,9 +13003,7 @@ export class OrchestrationService {
           // old `/tool-approval` path did. Passed only when there is one, so
           // an adapter never sees a context it cannot use.
           const grantScope =
-            decision === 'acceptForSession'
-              ? command.sessionGrantScope
-              : undefined;
+            decision === 'acceptForSession' ? requestedScope : undefined;
           const requestContext =
             inputForm || context?.clientOrigin || grantScope
               ? {

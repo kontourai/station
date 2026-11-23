@@ -465,6 +465,17 @@ its request sheet's overflow item, #3331) and inbox card label it:
   session and no authored server using the id. It is offered beside the
   per-tool grant, never instead of it, and changes nothing in the #90 N2
   auto-approval rule.
+- A request an adapter marks `sessionGrantAll: true` (OpenCode, native or
+  over ACP, and ACP; never a request addressed to a person) also offers the
+  widest choice, "Allow everything for this session", read by
+  `toolRequestAllGrantFromPayload` and answered with `acceptForSession` plus
+  the typed `sessionGrantScope: 'all'`. The adapter keeps one session-wide
+  grant and answers every later request with allow-once, after Station's
+  rejections and staged policy, never for a request addressed to a person,
+  an OpenCode configuration edit Station gives a person, or a delegated
+  child that may not grant approvals; a change of approval mode drops it.
+  An adapter that does not declare the scope receives the plain per-tool
+  answer.
 - A plain Claude file edit (Edit, Write, MultiEdit, NotebookEdit), outside plan
   mode and full access, allows the call and forwards only the engine's
   `acceptEdits` mode change ("Auto-accept file edits for this session"). The

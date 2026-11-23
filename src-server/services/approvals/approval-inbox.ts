@@ -17,7 +17,9 @@ import {
 } from '@kontourai/station-shared/input-request';
 import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
+  SESSION_ALL_GRANT_LABEL,
   STATION_BROWSER_SERVER_GRANT_LABEL,
+  toolRequestAllGrantFromPayload,
   toolRequestFromPayload,
   toolRequestGrantLabel,
   toolRequestIsPlanReview,
@@ -296,7 +298,9 @@ export class ApprovalInboxNotificationProvider
           ? { sessionGrantScope: 'server' as const }
           : actionId === ACCEPT_RULE_FOR_SESSION_ACTION
             ? { sessionGrantScope: 'rule' as const }
-            : {}),
+            : actionId === ACCEPT_ALL_FOR_SESSION_ACTION
+              ? { sessionGrantScope: 'all' as const }
+              : {}),
       };
       await (clientOrigin
         ? this.deps.orchestrationService.dispatch(command, { clientOrigin })
@@ -682,6 +686,15 @@ export function wireApprovalInboxNotifications(
                       },
                     ]
                   : []),
+                ...(toolRequestAllGrantFromPayload(event.payload)
+                  ? [
+                      {
+                        id: ACCEPT_ALL_FOR_SESSION_ACTION,
+                        label: SESSION_ALL_GRANT_LABEL,
+                        variant: 'secondary' as const,
+                      },
+                    ]
+                  : []),
                 { id: 'decline', label: 'Deny', variant: 'danger' },
               ],
         dedupeTag: buildOrchestrationRequestKey(event),
@@ -1012,6 +1025,8 @@ function parseInboxTarget(notification: Notification): InboxTarget | null {
 const ACCEPT_SERVER_FOR_SESSION_ACTION = 'acceptForSessionServer';
 /** The inbox action of the command-prefix session grant. */
 const ACCEPT_RULE_FOR_SESSION_ACTION = 'acceptForSessionRule';
+/** The inbox action of the session-wide grant. */
+const ACCEPT_ALL_FOR_SESSION_ACTION = 'acceptForSessionAll';
 
 function mapOrchestrationDecision(
   actionId: string,
@@ -1019,7 +1034,8 @@ function mapOrchestrationDecision(
   if (
     actionId === 'acceptForSession' ||
     actionId === ACCEPT_SERVER_FOR_SESSION_ACTION ||
-    actionId === ACCEPT_RULE_FOR_SESSION_ACTION
+    actionId === ACCEPT_RULE_FOR_SESSION_ACTION ||
+    actionId === ACCEPT_ALL_FOR_SESSION_ACTION
   ) {
     return 'acceptForSession';
   }

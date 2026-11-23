@@ -24,12 +24,15 @@
  * or `reject`, never `always`: "allow for this session" is a grant this
  * session keeps for the ask's whole action (every later `shell` ask, say,
  * whatever its commands), as the ACP adapter's per-tool grant covers every
- * later call of the tool. It is answered `once` each time and dropped when
- * the approval mode changes; it never answers an ask the configuration-edit
- * guard gives a person. A request resolves when the engine says it was
- * answered (`permission.replied`, `form.replied`), so its acknowledgement is
- * the engine's; an execution that ends drops its pending asks silently, so
- * they close then, and a late answer is refused without reaching OpenCode.
+ * later call of the tool; with `sessionGrantScope: 'all'` it covers every
+ * later ask. Either is answered `once` each time and dropped when the
+ * approval mode changes. Neither answers an ask the configuration-edit guard
+ * gives a person, nor one addressed to a person (`toolRequestNeedsPerson`),
+ * and a session answer to such an ask grants nothing. A request resolves
+ * when the engine says it was answered (`permission.replied`,
+ * `form.replied`), so its acknowledgement is the engine's; an execution that
+ * ends drops its pending asks silently, so they close then, and a late
+ * answer is refused without reaching OpenCode.
  */
 import crypto from 'node:crypto';
 import { isAbsolute } from 'node:path';
@@ -38,6 +41,7 @@ import type { EngineCommandOutcome } from '@kontourai/station-contracts/engine-c
 import type {
   InputRequestContent,
   InputRequestForm,
+  SessionGrantScope,
 } from '@kontourai/station-contracts/input-request';
 import {
   ACP_SESSION_REWOUND_CODE,
@@ -424,6 +428,11 @@ interface PendingRequest {
   /** The OpenCode session that asked (this one, or a child). */
   readonly sessionId: string;
   readonly action?: string;
+  /**
+   * Addressed to a person (`toolRequestNeedsPerson`): a session answer to
+   * it is a one-call accept and grants nothing.
+   */
+  readonly needsPerson?: true;
   readonly form?: InputRequestForm;
   readonly turnId?: string;
   decided?: OpenCodeNativeDecision;
@@ -546,6 +555,11 @@ export class OpenCodeNativeSession {
    * mode changes.
    */
   private readonly grants: SessionGrant[] = [];
+  /**
+   * The session-wide grant (`sessionGrantScope: 'all'`): every later ask a
+   * grant may answer. Cleared with {@link grants}.
+   */
+  private allGranted = false;
   /** Asks Station is answering itself (or deciding), by native id. */
   /**
    * A turn stopped before anything ran it whose prompt Station could not
@@ -637,7 +651,10 @@ export class OpenCodeNativeSession {
     mode: AcpAppliedApprovalMode | undefined,
     agentRules?: readonly OpenCodeNativeRule[],
   ): void {
-    if (mode !== this.deps.approvalMode) this.grants.splice(0);
+    if (mode !== this.deps.approvalMode) {
+      this.grants.splice(0);
+      this.allGranted = false;
+    }
     this.deps.approvalMode = mode;
     this.deps.agentRules = agentRules;
   }
@@ -1042,6 +1059,7 @@ export class OpenCodeNativeSession {
     context?: {
       inputContent?: InputRequestContent;
       expectedRequestEventId?: string;
+      sessionGrantScope?: SessionGrantScope;
     },
   ): Promise<void> {
     const pending = this.requests.get(requestId);
@@ -1108,9 +1126,13 @@ export class OpenCodeNativeSession {
     // command prefix (`gh search *`) that the next command rarely shares. A
     // `rule` answer never reaches here (orchestration makes it a one-call
     // accept for an adapter that does not declare it), and `server` is the
-    // Station browser's. The configuration-edit guard still runs before a
-    // grant answers (`openCodeNativeAskAnswer`).
-    if (decision === 'acceptForSession' && pending.action)
+    // Station browser's. `all` grants every later ask instead. The
+    // configuration-edit guard still runs before a grant answers
+    // (`openCodeNativeAskAnswer`). A session answer to an ask addressed to a
+    // person grants nothing, so a later one is still put to a person.
+    if (decision !== 'acceptForSession' || pending.needsPerson) return;
+    if (context?.sessionGrantScope === 'all') this.allGranted = true;
+    else if (pending.action)
       this.grants.push({ action: pending.action, patterns: ['*'] });
   }
 
@@ -2544,9 +2566,12 @@ export class OpenCodeNativeSession {
             mode: this.deps.approvalMode,
             agentRules: undefined,
             request,
-            granted: this.grants.some((grant) =>
-              openCodeGrantCovers(grant, request),
-            ),
+            granted:
+              !this.askNeedsPerson(ask) &&
+              (this.allGranted ||
+                this.grants.some((grant) =>
+                  openCodeGrantCovers(grant, request),
+                )),
             configNeedsPerson,
           });
       if (decided === 'person') this.toPerson(ask, { guardianReason });
@@ -3027,6 +3052,18 @@ export class OpenCodeNativeSession {
     this.openPermission(ask, note);
   }
 
+  /**
+   * Whether an ask is addressed to a person (`toolRequestNeedsPerson`: a
+   * plan exit, a question, a Station authority change), by its action or
+   * the tool it came from. No session grant answers it.
+   */
+  private askNeedsPerson(ask: NativeAsk): boolean {
+    return (
+      toolRequestNeedsPerson(ask.action) ||
+      toolRequestNeedsPerson(this.askingTool(ask)?.name)
+    );
+  }
+
   /** Show an ask to the person as an approval request. */
   private openPermission(
     ask: NativeAsk,
@@ -3035,12 +3072,14 @@ export class OpenCodeNativeSession {
     const { nativeId, sessionId, action, resources } = ask;
     const own = sessionId === this.sessionId;
     const turnId = own ? this.activeTurnId : undefined;
+    const needsPerson = this.askNeedsPerson(ask);
     const pending: PendingRequest = {
       kind: 'permission',
       nativeId,
       eventId: crypto.randomUUID(),
       sessionId,
       action,
+      ...(needsPerson ? { needsPerson: true as const } : {}),
       ...(turnId ? { turnId } : {}),
     };
     this.requests.set(nativeId, pending);
@@ -3067,6 +3106,8 @@ export class OpenCodeNativeSession {
           ...(toolCallId ? { toolCallId } : {}),
           rawInput: { action, resources },
           ...(action === 'edit' ? { toolKind: 'edit' } : {}),
+          // This session honours `sessionGrantScope: 'all'`.
+          ...(needsPerson ? {} : { sessionGrantAll: true }),
           ...(own
             ? {}
             : {

@@ -341,11 +341,13 @@ export interface ProviderAdapterMetadata {
   /** Native process sandbox can enforce Station's independent-review policy. */
   reviewIsolation?: 'read-only';
   /**
-   * The narrowing session-grant scopes this adapter honours. Absent: none.
-   * A `rule` answer to an adapter that does not declare it is a one-call
-   * accept, because the adapter would read it as its wider per-tool grant.
+   * The session-grant scopes this adapter honours. Absent: none. A `rule`
+   * answer to an adapter that does not declare it is a one-call accept,
+   * because the adapter would read it as its wider per-tool grant. An `all`
+   * answer to one that does not declare it is the per-tool grant, which is
+   * narrower.
    */
-  sessionGrantScopes?: readonly 'rule'[];
+  sessionGrantScopes?: readonly ('rule' | 'all')[];
   /**
    * Positive declaration of model omission and override behavior at each
    * lifecycle point. Absence is intentionally fail-closed for model input.
@@ -665,7 +667,8 @@ export interface ProviderAdapterShape {
        * command prefixes the engine suggested. Honoured only by the Claude
        * adapter, and only for a request that offered that scope (otherwise a
        * one-call accept); other adapters ignore it and grant as
-       * `acceptForSession` always did.
+       * `acceptForSession` always did. `all` reaches only an adapter that
+       * declares it (`metadata.sessionGrantScopes`): the session-wide grant.
        */
       sessionGrantScope?: SessionGrantScope;
     },

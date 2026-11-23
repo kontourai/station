@@ -340,6 +340,8 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
     engineId: engineId('opencode'),
     connectionBacking: 'acp-registry',
     approvalAcknowledgement: 'engine',
+    // Both transports keep a session-wide grant (`sessionGrantScope: 'all'`).
+    sessionGrantScopes: ['all'],
     // Native sessions apply a catalog-checked model before the next prompt.
     // ACP fallback keeps its original model and refuses a changed selector.
     modelLaunch: {
@@ -1929,6 +1931,9 @@ export class OpenCodeAdapter implements ProviderAdapterShape {
         : {}),
       ...(context?.expectedRequestEventId !== undefined
         ? { expectedRequestEventId: context.expectedRequestEventId }
+        : {}),
+      ...(context?.sessionGrantScope !== undefined
+        ? { sessionGrantScope: context.sessionGrantScope }
         : {}),
     });
   }

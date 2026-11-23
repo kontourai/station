@@ -881,6 +881,15 @@ export interface AcpSessionRecord {
    * Dies with the session.
    */
   approvedTools: Set<string>;
+  /**
+   * The session-wide grant (`sessionGrantScope: 'all'`): every later request
+   * a grant may answer, never one addressed to a person (`needsPerson`,
+   * which includes the #3924 configuration-edit guard) nor one in a
+   * delegated session that may not grant approvals. Checked Station-side
+   * after authored policy, like the mode; dropped when the approval mode
+   * changes.
+   */
+  allApproved?: boolean;
   preToolPolicy?: StagedPreToolPolicyEvaluator;
   staleToolPolicyTurnId?: string;
   delegation?: InvocationContext['delegation'];
@@ -1514,6 +1523,8 @@ export class AcpAdapter implements ProviderAdapterShape {
     // #2880: the protocol has no acknowledgement of a decision; delivery is
     // not reported.
     approvalAcknowledgement: 'none' as const,
+    // `sessionGrantScope: 'all'`: the session-wide grant (`allApproved`).
+    sessionGrantScopes: ['all'] as const,
     displayName: 'Custom engine',
     description:
       'Custom engine connections launched from a configured command (e.g. Kiro), driven through the canonical ACP adapter seam.',
@@ -3285,6 +3296,8 @@ export class AcpAdapter implements ProviderAdapterShape {
           ? { ok: true }
           : await this.relaunchOnApprovalFloor(record, floor);
       if (switched.ok) {
+        // The session-wide grant was given under the mode it replaces.
+        if (record.approvalMode !== applied) record.allApproved = false;
         record.approvalMode = applied;
         // A credential re-establishment restarts from `recoveryStart`; it
         // must come back in the mode the session runs now.
@@ -3749,6 +3762,12 @@ export class AcpAdapter implements ProviderAdapterShape {
     } else if (effective === 'acceptForSession' && pending.toolName) {
       record.approvedTools.add(pending.toolName);
     }
+    // `all` also grants every later request a grant may answer.
+    if (
+      effective === 'acceptForSession' &&
+      context?.sessionGrantScope === 'all'
+    )
+      record.allApproved = true;
     pending.resolve(
       effective === 'acceptForSession' && pending.governedEdit
         ? 'accept'
@@ -5079,6 +5098,22 @@ export class AcpAdapter implements ProviderAdapterShape {
         }
       }
 
+      // The session-wide grant ("Allow everything for this session"): every
+      // request the grant may answer, after authored policy as above, never
+      // one addressed to a person (a plan exit, a question, a governed
+      // OpenCode configuration edit) nor in a delegated session that may not
+      // grant approvals. Answered with the agent's allow-once option.
+      if (
+        !needsPerson &&
+        !record.delegation?.denyApprovals &&
+        record.allApproved
+      ) {
+        const grantedOutcome = mapAcpDecisionToOutcome('accept', answerOptions);
+        if (grantedOutcome.outcome !== 'cancelled') {
+          return { outcome: grantedOutcome };
+        }
+      }
+
       // #2933: a delegated child that may not grant approvals reaches here
       // when a tool-level grant or the approval guardian's allow (#2947) let
       // a plan exit past the staged evaluator's
@@ -5095,6 +5130,10 @@ export class AcpAdapter implements ProviderAdapterShape {
 
       const requestId = crypto.randomUUID();
       const origin = this.requestOrigin(record);
+      // A session answer to it is a one-call accept that grants nothing.
+      const answeredOnce =
+        needsPerson ||
+        (kas && !answerOptions.some(({ kind }) => kind === 'allow_once'));
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
@@ -5122,6 +5161,9 @@ export class AcpAdapter implements ProviderAdapterShape {
           ...(engineToolKind(toolKind)
             ? { toolKind: engineToolKind(toolKind) }
             : {}),
+          // This adapter honours `sessionGrantScope: 'all'`; never offered
+          // for a request addressed to a person.
+          ...(answeredOnce ? {} : { sessionGrantAll: true }),
           options: answerOptions,
         },
       });
@@ -5134,10 +5176,7 @@ export class AcpAdapter implements ProviderAdapterShape {
             ? { openedInTurnId: record.activeTurnId }
             : {}),
           ...(toolName ? { toolName } : {}),
-          ...(needsPerson ||
-          (kas && !answerOptions.some(({ kind }) => kind === 'allow_once'))
-            ? { needsPerson: true as const }
-            : {}),
+          ...(answeredOnce ? { needsPerson: true as const } : {}),
           ...(governedEdit ? { governedEdit: true as const } : {}),
           ...(origin ? { origin } : {}),
         });

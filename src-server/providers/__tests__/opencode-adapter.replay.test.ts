@@ -2376,6 +2376,240 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     ]);
   });
 
+  /** Every reply Station sent, as [native id, body]. */
+  const repliesOf = (h: Awaited<ReturnType<typeof setup>>) =>
+    h.replay
+      .made('POST', '/api/session/:id/permission/:id/reply')
+      .map((reply) => [reply.path.split('/').at(-2), reply.body]);
+
+  test('allowing everything for the session answers later asks for other actions `once`, without asking', async () => {
+    const h = await setup({ scenario: 'governed' });
+    await h.start({ approvalMode: 'ask' });
+    const edit = await h.turn('DO_EDIT one');
+    const editAsk = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === edit.turnId,
+    );
+    // Station offers it: the session marks the request.
+    expect(editAsk).toMatchObject({ payload: { sessionGrantAll: true } });
+    await h.adapter.respondToRequest(
+      'thread-1',
+      editAsk.requestId as string,
+      'acceptForSession',
+      { sessionGrantScope: 'all' },
+    );
+    await h.waitFor(completedFor(edit.turnId));
+    for (const input of ['DO_BASH two', 'DO_BASH three', 'DO_LS four']) {
+      const turn = await h.turn(input);
+      await h.waitFor(completedFor(turn.turnId));
+    }
+    expect(opened(h.events).map((event) => event.requestId)).toEqual([
+      EDIT_ASK,
+    ]);
+    expect(repliesOf(h)).toEqual([
+      [EDIT_ASK, { decision: 'once' }],
+      [SHELL_TWO_ASK, { decision: 'once' }],
+      [SHELL_THREE_ASK, { decision: 'once' }],
+      [LS_FOUR_ASK, { decision: 'once' }],
+    ]);
+    expect(
+      h.replay.requests.some((request) =>
+        JSON.stringify(request.body ?? null).includes('always'),
+      ),
+    ).toBe(false);
+  });
+
+  test('allowing everything for the session still puts a configuration edit and a person-addressed ask to the person', async () => {
+    const h = await setup({
+      scenario: 'governed',
+      rewrite: asksRewritten({
+        [SHELL_TWO_ASK]: {
+          action: 'edit',
+          resources: ['.opencode/plugin/pwn.ts'],
+          save: ['*'],
+        },
+        // A Station authority change is addressed to a person.
+        [SHELL_THREE_ASK]: {
+          action: 'station-control_update_config',
+          resources: ['*'],
+          save: ['*'],
+        },
+      }),
+    });
+    await h.start({ approvalMode: 'ask' });
+    const edit = await h.turn('DO_EDIT one');
+    const editAsk = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === edit.turnId,
+    );
+    await h.adapter.respondToRequest(
+      'thread-1',
+      editAsk.requestId as string,
+      'acceptForSession',
+      { sessionGrantScope: 'all' },
+    );
+    await h.waitFor(completedFor(edit.turnId));
+    const plugin = await h.turn('DO_BASH two');
+    const pluginAsk = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === plugin.turnId,
+    );
+    expect(pluginAsk).toMatchObject({ requestId: SHELL_TWO_ASK });
+    await h.adapter.respondToRequest(
+      'thread-1',
+      pluginAsk.requestId as string,
+      'decline',
+    );
+    await h.waitFor(completedFor(plugin.turnId));
+    const authority = await h.turn('DO_BASH three');
+    const authorityAsk = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === authority.turnId,
+    );
+    expect(authorityAsk).toMatchObject({ requestId: SHELL_THREE_ASK });
+    // Not offered for a person-addressed ask.
+    expect(
+      (authorityAsk.payload as Record<string, unknown>).sessionGrantAll,
+    ).toBeUndefined();
+    await h.adapter.respondToRequest(
+      'thread-1',
+      authorityAsk.requestId as string,
+      'decline',
+    );
+    await h.waitFor(completedFor(authority.turnId));
+    // Positive control: an ordinary ask is still answered by the grant.
+    const ls = await h.turn('DO_LS four');
+    await h.waitFor(completedFor(ls.turnId));
+    expect(repliesOf(h)).toEqual([
+      [EDIT_ASK, { decision: 'once' }],
+      [SHELL_TWO_ASK, { decision: 'reject' }],
+      [SHELL_THREE_ASK, { decision: 'reject' }],
+      [LS_FOUR_ASK, { decision: 'once' }],
+    ]);
+  });
+
+  test('a session answer to a person-addressed ask grants nothing: the next one is asked again', async () => {
+    const authority = {
+      action: 'station-control_update_config',
+      resources: ['*'],
+      save: ['*'],
+    };
+    const h = await setup({
+      scenario: 'governed',
+      rewrite: asksRewritten({
+        [SHELL_TWO_ASK]: authority,
+        [SHELL_THREE_ASK]: authority,
+      }),
+    });
+    await h.start({ approvalMode: 'ask' });
+    const edit = await h.turn('DO_EDIT one');
+    const editAsk = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === edit.turnId,
+    );
+    await h.adapter.respondToRequest(
+      'thread-1',
+      editAsk.requestId as string,
+      'accept',
+    );
+    await h.waitFor(completedFor(edit.turnId));
+    const first = await h.turn('DO_BASH two');
+    const firstAsk = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === first.turnId,
+    );
+    await h.adapter.respondToRequest(
+      'thread-1',
+      firstAsk.requestId as string,
+      'acceptForSession',
+    );
+    await h.waitFor(completedFor(first.turnId));
+    const again = await h.turn('DO_BASH three');
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.turnId === again.turnId,
+      ),
+    ).toMatchObject({ requestId: SHELL_THREE_ASK });
+    expect(repliesOf(h)).toEqual([
+      [EDIT_ASK, { decision: 'once' }],
+      [SHELL_TWO_ASK, { decision: 'once' }],
+    ]);
+  });
+
+  test("an 'all' answer to a person-addressed ask grants nothing: a later ordinary ask is still asked", async () => {
+    const h = await setup({
+      scenario: 'governed',
+      rewrite: asksRewritten({
+        [SHELL_TWO_ASK]: {
+          action: 'station-control_update_config',
+          resources: ['*'],
+          save: ['*'],
+        },
+      }),
+    });
+    await h.start({ approvalMode: 'ask' });
+    const edit = await h.turn('DO_EDIT one');
+    const editAsk = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === edit.turnId,
+    );
+    await h.adapter.respondToRequest(
+      'thread-1',
+      editAsk.requestId as string,
+      'accept',
+    );
+    await h.waitFor(completedFor(edit.turnId));
+    const authority = await h.turn('DO_BASH two');
+    const authorityAsk = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === authority.turnId,
+    );
+    // Not offered, but a client could still send it.
+    await h.adapter.respondToRequest(
+      'thread-1',
+      authorityAsk.requestId as string,
+      'acceptForSession',
+      { sessionGrantScope: 'all' },
+    );
+    await h.waitFor(completedFor(authority.turnId));
+    const shell = await h.turn('DO_BASH three');
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.turnId === shell.turnId,
+      ),
+    ).toMatchObject({ requestId: SHELL_THREE_ASK });
+    expect(repliesOf(h)).toEqual([
+      [EDIT_ASK, { decision: 'once' }],
+      [SHELL_TWO_ASK, { decision: 'once' }],
+    ]);
+  });
+
+  test('allowing everything for the session ends when the approval mode changes', async () => {
+    const h = await setup({ scenario: 'governed' });
+    await h.start({ approvalMode: 'ask' });
+    const edit = await h.turn('DO_EDIT one');
+    const editAsk = await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.turnId === edit.turnId,
+    );
+    await h.adapter.respondToRequest(
+      'thread-1',
+      editAsk.requestId as string,
+      'acceptForSession',
+      { sessionGrantScope: 'all' },
+    );
+    await h.waitFor(completedFor(edit.turnId));
+    const again = await h.turn('DO_BASH two', { approvalMode: 'auto' });
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.turnId === again.turnId,
+      ),
+    ).toMatchObject({ requestId: SHELL_TWO_ASK });
+  });
+
   test('an automatic answer OpenCode refuses is put to the person instead of leaving the ask hidden', async () => {
     const h = await setup({
       scenario: 'governed',

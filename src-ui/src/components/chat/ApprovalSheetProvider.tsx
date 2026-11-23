@@ -25,7 +25,13 @@ import { ApprovalSheetContext } from './ApprovalSheetContext';
 import { RequestSheet } from './RequestSheet';
 import { type ToolApprovalOutcome, ToolCallDisplay } from './ToolCallDisplay';
 
-type SheetAction = 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny';
+type SheetAction =
+  | 'once'
+  | 'trust'
+  | 'trust-server'
+  | 'trust-rule'
+  | 'trust-all'
+  | 'deny';
 
 const MAX_REMEMBERED = 256;
 const remember = (set: Set<string>, key: string) => {

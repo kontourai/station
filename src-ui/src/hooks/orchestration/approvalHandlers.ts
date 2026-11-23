@@ -11,7 +11,9 @@ import {
 } from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
+  SESSION_ALL_GRANT_LABEL,
   STATION_BROWSER_SERVER_GRANT_LABEL,
+  toolRequestAllGrantFromPayload,
   toolRequestDisplayName,
   toolRequestFromPayload,
   toolRequestGrantLabel,
@@ -228,6 +230,9 @@ export function raiseRequestOpenedToast(
         ? { serverGrantLabel: STATION_BROWSER_SERVER_GRANT_LABEL }
         : {}),
       ...ruleGrantLabelView(event.payload),
+      ...(toolRequestAllGrantFromPayload(event.payload)
+        ? { allGrantLabel: SESSION_ALL_GRANT_LABEL }
+        : {}),
     },
     station,
   );
@@ -243,6 +248,8 @@ type ApprovalToastView = {
   serverGrantLabel?: string;
   /** Set only when the request offers the command-prefix grant. */
   ruleGrantLabel?: string;
+  /** Set only when the request offers the session-wide grant. */
+  allGrantLabel?: string;
 };
 
 function ruleGrantLabelView(payload: Record<string, unknown> | undefined): {
@@ -265,7 +272,7 @@ function showApprovalToast(
   const needsContentLoad = requestNeedsContentLoad(event, station);
   const answer = (
     decision: 'accept' | 'acceptForSession' | 'decline',
-    sessionGrantScope?: 'server' | 'rule',
+    sessionGrantScope?: 'server' | 'rule' | 'all',
   ) => {
     const chat = chatStore.getChatForExecutionSession(event.threadId);
     if (
@@ -330,6 +337,7 @@ function showApprovalToast(
             view.grantLabel,
             view.serverGrantLabel,
             view.ruleGrantLabel,
+            view.allGrantLabel,
           ).options
       ).map((option) => ({
         label: option.label,
@@ -411,7 +419,7 @@ async function answerFromToast(
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
   view: ApprovalToastView,
   decision: 'accept' | 'acceptForSession' | 'decline',
-  sessionGrantScope?: 'server' | 'rule',
+  sessionGrantScope?: 'server' | 'rule' | 'all',
   station?: StationStateScope,
 ) {
   const chatStore = activeChatsStore.forStation(station);

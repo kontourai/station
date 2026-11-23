@@ -1014,7 +1014,7 @@ requests through simulated process streams; they are not a live Codex receipt.
   "threadId": "string, required, min length 1",
   "requestId": "string, required, min length 1 — from the request.opened event",
   "decision": "'accept' | 'acceptForSession' | 'decline' | 'cancel'",
-  "sessionGrantScope": "'server' | 'rule', optional, only with acceptForSession",
+  "sessionGrantScope": "'server' | 'rule' | 'all', optional, only with acceptForSession",
   "expectedRequestEventId": "string, optional — the exact request.opened event answered",
   "viewedContentDigest": "'sha256-<hex>', required to allow a request with spilledContent"
 }
@@ -1183,6 +1183,23 @@ an engine that does not declare the scope (every engine but Claude), is a
 one-call accept, never a wider grant. A prefix containing `*` or `"` is
 not offered. The inbox offers it as the
 `acceptForSessionRule` action.
+
+`sessionGrantScope: 'all'` ("Allow everything for this session") widens an
+`acceptForSession` answer to every later request in that Session that a
+grant may answer. It is for a Session that cannot run at full access, such
+as a confined, automation-dispatched one, and changes neither its
+confinement nor its approval mode. An OpenCode Session (native or over ACP)
+and an ACP Session offer it on a request whose `request.opened` payload
+carries `sessionGrantAll: true`, which the adapter sets itself, never for a
+request addressed to a person (a plan exit, a question, a Station authority
+change). The adapter keeps the grant itself and answers each later request
+once (never OpenCode's `always`), after Station's own rejections and staged
+policy, and never for a request addressed to a person, an OpenCode
+configuration edit Station gives a person, or a delegated child that may not
+grant approvals. A change of approval mode drops it. An engine that does
+not declare the scope (Claude, Codex and the others) takes the answer as the
+plain per-tool `acceptForSession`, which is narrower. The inbox offers it
+as the `acceptForSessionAll` action.
 
 A Claude Session also treats these as escalations that always prompt, even
 under a tool grant or an agent's `autoApprove` of `*` (#2932): the sandbox

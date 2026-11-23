@@ -310,7 +310,12 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   adapter's per-tool grant does. Granted on a `shell` ask, it answers every
   later `shell` ask whatever its commands, not only those matching
   OpenCode's `save` patterns for the answered ask (for shell, a command
-  prefix such as `gh search *`). A `rule` answer is a one-call accept here,
+  prefix such as `gh search *`). With `sessionGrantScope: 'all'` ("Allow
+  everything for this session", offered on every ask not addressed to a
+  person) the grant covers every later ask. Neither grant answers an ask
+  addressed to a person (`toolRequestNeedsPerson`: a plan exit, a question,
+  a Station authority change), and a session answer to one is a one-call
+  accept that grants nothing. A `rule` answer is a one-call accept here,
   because only the Claude adapter declares it. Otherwise a person decides,
   except in a delegated session whose delegation sets `denyApprovals`:
   nobody can answer it, so the ask is rejected at once with the delegated denial as OpenCode's feedback,
@@ -418,7 +423,8 @@ Natively ([rules](../../src-server/services/acp/opencode-approval-native.ts)):
   command starts a child without that permission, and its asks are governed
   this way.
   "Allow for this session" is a grant the adapter holds for the asked
-  action, and dropped when the mode changes.
+  action ("Allow everything for this session": for every ask), and dropped
+  when the mode changes.
 - **Before a governed start**, the #3924 project-code scan runs, then Station
   reads the agent's rules and the saved approvals. It refuses the start if a
   saved allow would let a governed action run without asking. A governed

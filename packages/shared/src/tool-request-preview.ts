@@ -338,6 +338,9 @@ export type ToolRequestServerGrant = 'server' | 'none';
 export const STATION_BROWSER_SERVER_GRANT_LABEL =
   'Allow the Station browser for this session';
 
+/** The words of the session-wide grant (`sessionGrantScope: 'all'`), on every surface. */
+export const SESSION_ALL_GRANT_LABEL = 'Allow everything for this session';
+
 /**
  * #2932: the reason fields of a Claude Code `can_use_tool` frame that Agent
  * SDK 0.3.278 does not hand to `canUseTool`. `decisionReasonType` is the
@@ -912,6 +915,25 @@ export function toolRequestServerGrantFromPayload(
     toolKind: payload?.toolKind,
     authenticStationBrowser: payload?.stationBrowserServer,
   });
+}
+
+/**
+ * Whether the request also offers the session-wide grant: answered with
+ * `acceptForSession` and the typed `sessionGrantScope: 'all'`, it lets the
+ * adapter answer every later ask in the session that a grant may answer.
+ * Only where the adapter that opened the request marked it
+ * (`sessionGrantAll: true`, which an adapter sets only when it honours the
+ * scope; never engine-supplied), and only where a session answer is offered
+ * at all: never for a request addressed to a person (a plan exit, a
+ * question, a Station authority change).
+ */
+export function toolRequestAllGrantFromPayload(
+  payload: Record<string, unknown> | undefined,
+): boolean {
+  return (
+    payload?.sessionGrantAll === true &&
+    toolRequestSessionGrantFromPayload(payload) !== 'none'
+  );
 }
 
 /** `toolRequestSessionGrant` over a whole `request.opened` payload. */
