@@ -375,6 +375,17 @@ export interface ToolCredentialOwnership {
   allowInstanceFallback?: boolean;
 }
 
+export type ToolServerEventCatalog =
+  | { supported: false }
+  | {
+      supported: true;
+      events: Array<{
+        name: string;
+        title?: string;
+        description?: string;
+      }>;
+    };
+
 export interface ToolServerProbeResult {
   ok: boolean;
   error?: string;

@@ -5,6 +5,7 @@ import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { IntegrationAccountSection } from './IntegrationAccountSection';
+import { IntegrationEventsSection } from './IntegrationEventsSection';
 import { IntegrationTrustReview } from './IntegrationTrustReview';
 import { IntegrationTrustSection } from './IntegrationTrustSection';
 import { OAuthClientSection } from './OAuthClientSection';
@@ -224,6 +225,15 @@ export function IntegrationEditorPanel({
           </span>
         )}
       </div>
+
+      {!isNew &&
+        !isRuntimeManaged &&
+        !secretBindingRequireSave &&
+        editForm.enabled !== false &&
+        editForm.transport === 'streamable-http' &&
+        !editForm.credentialOwnership && (
+          <IntegrationEventsSection integrationId={editForm.id} />
+        )}
 
       <div className="agent-editor__section">
         <div className="agent-editor__section-header">

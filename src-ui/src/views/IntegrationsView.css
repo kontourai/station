@@ -8,6 +8,10 @@
   cursor: pointer;
 }
 
+.integration-event-catalog {
+  overflow-wrap: anywhere;
+}
+
 .integration-trust-history {
   padding-inline-start: var(--k-space-5);
   font-size: var(--k-text-md);

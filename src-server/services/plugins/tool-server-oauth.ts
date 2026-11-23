@@ -49,7 +49,8 @@ export type ToolServerOperation =
   | 'connect'
   | 'resource-read'
   | 'tool-call'
-  | 'prompt-read';
+  | 'prompt-read'
+  | 'event-read';
 
 const TOOL_SERVER_OPERATION_MESSAGES: Record<ToolServerOperation, string> = {
   authorize: 'Tool server authorization could not be started',
@@ -59,6 +60,7 @@ const TOOL_SERVER_OPERATION_MESSAGES: Record<ToolServerOperation, string> = {
   'resource-read': 'MCP UI resource read failed',
   'tool-call': 'MCP tool call failed',
   'prompt-read': 'MCP prompt read failed',
+  'event-read': 'MCP event discovery failed',
 };
 
 export class ToolServerOperationError extends Error {
