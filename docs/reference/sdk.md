@@ -449,6 +449,16 @@ Station does not deliver it (`not-delivered`); older hosts omit it.
 only for an integration whose `trustReview` this host returned. It
 invalidates the integrations queries.
 
+## Session-group preview
+
+`createCliSessionGroup`, `getCliSessionGroup`, `runCliSessionGroup` and
+`cancelCliSessionGroup` are exported from `@kontourai/station-sdk/client`.
+The client checks the Station's `cliSessionGroups` capability before sending
+a group request. The personal Station must also have the preview enabled.
+`parseCliSessionGroupInput` validates a local plan before creation.
+Use [the group projection](api.md#personal-session-group-preview) to inspect
+the original member identities, dispatch limit, and observed completion.
+
 ## Integration capability status and Task write-back
 
 The SDK root exports `fetchIntegrationStatus(apiBase, options?)` and

@@ -485,6 +485,22 @@
       "exempt": "local-host",
       "reason": "Acts on this machine's install, not a Station API."
     },
+    "group session-cancel": {
+      "exempt": "person-only",
+      "reason": "The Session groups preview uses the verified personal Station credential. Session-authored Station Control callers cannot operate these routes."
+    },
+    "group session-create": {
+      "exempt": "person-only",
+      "reason": "The Session groups preview uses the verified personal Station credential. Session-authored Station Control callers cannot operate these routes."
+    },
+    "group session-get": {
+      "exempt": "person-only",
+      "reason": "The Session groups preview uses the verified personal Station credential. Session-authored Station Control callers cannot operate these routes."
+    },
+    "group session-run": {
+      "exempt": "person-only",
+      "reason": "The Session groups preview uses the verified personal Station credential. Session-authored Station Control callers cannot operate these routes."
+    },
     "home backup": {
       "exempt": "local-host",
       "reason": "Station home backup/restore/reset on disk."
