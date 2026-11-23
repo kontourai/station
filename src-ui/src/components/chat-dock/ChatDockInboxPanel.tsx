@@ -163,14 +163,14 @@ function ChatDockInboxPanelImpl({
       ref={panelRef}
       data-coarse-pointer={coarsePointer || undefined}
       className={`chat-dock-inbox${exiting ? ' chat-dock-inbox--exiting' : ''}`}
-      aria-label="Inbox chats"
+      aria-label="Chats"
       tabIndex={-1}
     >
       <div className="filter-toolbar chat-dock-inbox__toolbar">
         <Input
           type="search"
-          aria-label="Search inbox"
-          placeholder="Search inbox"
+          aria-label="Search chats"
+          placeholder="Search chats"
           value={query}
           onChange={(event) => setQuery(event.target.value)}
         />
@@ -181,7 +181,7 @@ function ChatDockInboxPanelImpl({
         {sync && (sync.failed || sync.refresh?.recovering) && (
           <ErrorState
             variant="compact"
-            title="Couldn’t refresh the inbox."
+            title="Couldn’t refresh the chats."
             description={
               hasAnyItems ? 'Showing the last known list.' : undefined
             }
@@ -260,7 +260,7 @@ function ChatDockInboxPanelImpl({
       </div>
       {sync && (
         <ListRefreshStatus
-          activity="Refreshing inbox…"
+          activity="Refreshing chats…"
           phase={sync.refresh?.phase}
           updating={sync.updating && (hasAnyItems || !sync.pending)}
         />

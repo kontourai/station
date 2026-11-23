@@ -250,8 +250,8 @@ export function ChatDockMobileHeader({
             ref={inboxTriggerRef}
             variant="ghost"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
-            aria-label="Inbox"
-            title="Back to Inbox"
+            aria-label="Chats"
+            title="Back to Chats"
             data-no-dock-drag=""
             onClick={onToggleInbox}
           >
@@ -306,10 +306,10 @@ export function ChatDockMobileHeader({
                   onToggleInbox();
                 }}
               >
-                Inbox
+                Chats
               </button>
             ) : inboxActive ? (
-              'Inbox'
+              'Chats'
             ) : (
               (childTrail ?? sessionTitle)
             )}

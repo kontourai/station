@@ -648,8 +648,8 @@ When the chat pane is narrow, the status and scroll control are centered
 together in a row above the settings. In a dock too short to show the transcript
 (the composer has priority), there is nothing to scroll back to, so Scroll to
 bottom is not shown and a row left with no status or scheduled notes takes no height. Scroll-button hover changes its background
-without enlarging its target. The desktop header exposes Hide inbox /
-Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
+without enlarging its target. The desktop header exposes Hide chats /
+Show chats directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
 Pending tool permissions feed Needs approval; questions and forms feed Needs
 answer. Permission takes priority when both wait. The action opens the

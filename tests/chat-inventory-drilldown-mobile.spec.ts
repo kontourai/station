@@ -241,7 +241,7 @@ test.describe('Chat inventory item drill-down on a phone', () => {
           header.locator('.chat-dock__mobile-identity'),
         );
         const actionBoxes = [
-          await box(header.getByRole('button', { name: 'Inbox', exact: true })),
+          await box(header.getByRole('button', { name: 'Chats', exact: true })),
           await box(
             header.getByRole('button', {
               name: 'Restore chat size',

@@ -676,9 +676,10 @@ function openForeignChatInPulseBoundDock() {
 
 function clickDockedNewChat() {
   fireEvent.click(
-    within(
-      screen.getByRole('complementary', { name: 'Inbox chats' }),
-    ).getByRole('button', { name: 'New chat' }),
+    within(screen.getByRole('complementary', { name: 'Chats' })).getByRole(
+      'button',
+      { name: 'New chat' },
+    ),
   );
 }
 
@@ -851,7 +852,7 @@ test('a phone opens its dock at the inbox without adding a modal layer', async (
   openChatA();
   navigationStore.navigate('/', { dock: 'open' });
   renderDockedPane();
-  const inbox = await screen.findByRole('region', { name: 'Inbox' });
+  const inbox = await screen.findByRole('region', { name: 'Chats' });
   expect(inbox.closest('.chat-dock__workspace')).not.toBeNull();
   expect(screen.queryByRole('dialog', { name: 'Chats and tasks' })).toBeNull();
   expect(screen.getByRole('button', { name: /^Pulse chat\b/ })).toBeTruthy();
@@ -867,11 +868,11 @@ test('returning to the inbox keeps the reader mounted and preserves its unsent t
   });
   fireEvent.change(composer, { target: { value: 'Keep this draft' } });
   fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
-  const inbox = await screen.findByRole('region', { name: 'Inbox' });
+  const inbox = await screen.findByRole('region', { name: 'Chats' });
   expect(composer.isConnected).toBe(true);
   expect(composer.closest('[hidden]')).not.toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
-  expect(screen.queryByRole('region', { name: 'Inbox' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Chats' })).toBeNull();
   expect(inbox.isConnected).toBe(true);
   expect(screen.getByRole('textbox', { name: 'Chat composer' })).toBe(composer);
   expect((composer as HTMLTextAreaElement).value).toBe('Keep this draft');
@@ -1208,7 +1209,7 @@ test.each([false, true])(
       fireEvent.click(
         screen.getByRole('button', { name: 'Open task switcher' }),
       );
-      await screen.findByRole('region', { name: 'Inbox' });
+      await screen.findByRole('region', { name: 'Chats' });
       expect(pickerProps.at(-1)!.historyActive).toBe(false);
     }
 
@@ -1372,7 +1373,7 @@ test('the ambient Inbox revokes foreground ownership and clears covered answer s
   expect(isChatInForeground(ids)).toBe(true);
   expect(selection.toString()).toBe('Ready for review.');
   fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
-  await screen.findByRole('region', { name: 'Inbox' });
+  await screen.findByRole('region', { name: 'Chats' });
   expect(isChatInForeground(ids)).toBe(false);
   expect(selection.isCollapsed).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
@@ -1387,7 +1388,7 @@ test('the Inbox does not accept a drop for the hidden chat or retain its drag af
   await act(async () => {});
   expect(dragFileOverPane()).toBe(true);
   fireEvent.click(screen.getByRole('button', { name: 'Open task switcher' }));
-  await screen.findByRole('region', { name: 'Inbox' });
+  await screen.findByRole('region', { name: 'Chats' });
   expect(dragFileOverPane()).toBe(false);
   expect(screen.queryByTestId('chat-pane-file-drop-overlay')).toBeNull();
 });
@@ -1427,7 +1428,7 @@ test('a real failed history open stays at Inbox instead of falling back to the i
   fireEvent.click(saved);
   await act(async () => {});
   expect(openConversationAction).toHaveBeenCalledOnce();
-  expect(screen.getByRole('region', { name: 'Inbox' })).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'Chats' })).toBeTruthy();
   expect(navigationStore.getSnapshot().activeChat).toBe('chat-a');
 });
 
@@ -1875,9 +1876,10 @@ test('the header shows no project destination while a draft is open', async () =
   await act(async () => {});
   expect(screen.queryByRole('button', { name: /^New chats:/ })).toBeNull();
   expect(
-    within(
-      screen.getByRole('complementary', { name: 'Inbox chats' }),
-    ).getByRole('button', { name: 'New chat' }),
+    within(screen.getByRole('complementary', { name: 'Chats' })).getByRole(
+      'button',
+      { name: 'New chat' },
+    ),
   ).toBeTruthy();
   act(() => {
     dispatchNewChatIntent({});

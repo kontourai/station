@@ -5,12 +5,12 @@ test('new project icon choices and Home scope render at desktop and phone widths
   page,
 }, testInfo) => {
   await page.goto('/?dock=open');
-  const showInbox = page.getByRole('button', { name: /^Show inbox/ });
+  const showInbox = page.getByRole('button', { name: /^Show chats/ });
   await expect(
-    showInbox.or(page.getByRole('button', { name: /^Hide inbox/ })),
+    showInbox.or(page.getByRole('button', { name: /^Hide chats/ })),
   ).toBeVisible();
   if (await showInbox.isVisible()) await showInbox.click();
-  const scope = page.getByRole('combobox', { name: 'Inbox scope' });
+  const scope = page.getByRole('combobox', { name: 'Chat list scope' });
   await expect(scope).toHaveValue('current-project');
   await scope.selectOption('all');
   await expect(scope).toHaveValue('all');
@@ -19,7 +19,7 @@ test('new project icon choices and Home scope render at desktop and phone widths
       await page.setViewportSize({ width, height: width === 1440 ? 900 : 915 });
       await page.goto('/?dock=open');
       const mobileInbox = page.getByRole('button', {
-        name: 'Inbox',
+        name: 'Chats',
         exact: true,
       });
       await expect

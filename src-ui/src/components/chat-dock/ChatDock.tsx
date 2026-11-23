@@ -857,7 +857,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const refreshInbox = useCallback(
     async (recover: boolean) => {
       if (!requestAuthority?.isCurrent()) {
-        throw new Error('Inbox connection changed');
+        throw new Error('Chat list connection changed');
       }
       if (recover) resyncOrchestrationEventStream(apiBase);
       await refreshListQueries(
@@ -2165,7 +2165,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           {
             key: 'refresh-inbox',
             group: 'switch',
-            label: 'Refresh inbox',
+            label: 'Refresh chats',
             glyph: <RefreshGlyph />,
             onSelect: () => inboxRefresh.run(),
           },
@@ -4593,7 +4593,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       {isMobile && (
                         <LazyBoundary
                           load={loadMobileInboxPanel}
-                          surface={{ id: 'mobile-inbox', label: 'Inbox' }}
+                          surface={{ id: 'mobile-inbox', label: 'Chats' }}
                           componentProps={{
                             open: workspaceShown && mobileInboxShown,
                             toolsHost: mobileInboxToolsHost,
@@ -4627,7 +4627,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                           }}
                           pending={
                             mobileInboxShown ? (
-                              <SkeletonBlock label="Loading inbox" />
+                              <SkeletonBlock label="Loading chats" />
                             ) : null
                           }
                         />

@@ -371,7 +371,7 @@ On a phone: Same content in one column.
 | Delegated-task origin (disabled row) | Simplify | Becomes a header subtitle "from <parent chat>". |
 | Coordinator actions | Keep | Unchanged. Backend check: the exact set. |
 | New chat (header, inbox, sidebar) | Keep | The inbox button is removed. |
-| Refresh inbox | Remove | The inbox is live. |
+| Refresh chats | Remove | The inbox is live. |
 | Move to Left, Right or Bottom, Add pane…, Restore size, Full screen, Switch to a pane | Remove | Removed from the chat menu. They become dock layout controls on the dock handle or window controls. |
 | Clear project scope | Simplify | Becomes an inbox filter chip. |
 | Open project | Simplify | Becomes the project crumb in the toolbar. |

@@ -71,12 +71,12 @@ async function setConnectionsEnabled(
  * panel-level test reaches.
  */
 async function dockInboxRow(page: Page, projectSlug: string) {
-  const hide = page.getByRole('button', { name: /^Hide inbox(?:,|$)/ });
-  const show = page.getByRole('button', { name: /^Show inbox/ });
+  const hide = page.getByRole('button', { name: /^Hide chats(?:,|$)/ });
+  const show = page.getByRole('button', { name: /^Show chats/ });
   await expect(hide.or(show)).toBeVisible({ timeout: 20_000 });
   if (await show.isVisible()) await show.click();
   const row = page
-    .getByRole('complementary', { name: 'Inbox chats' })
+    .getByRole('complementary', { name: 'Chats' })
     .locator('[data-testid="inbox-row"]')
     .filter({ hasText: projectSlug })
     .first();

@@ -71,7 +71,7 @@
   min-width: 0;
 }
 
-/* #4401: "Inbox" is short and always the same word; the crumbs shrank in
+/* #4401: "Chats" is short and always the same word; the crumbs shrank in
    proportion, so it truncated ("I…") while the chat title still had room to
    give. The title crumb is the one that yields. */
 .coding-workbench__crumb:first-child {
@@ -1037,7 +1037,7 @@
   .coding-workbench__crumb:not(:first-child) {
   display: none;
 }
-/* "Inbox" alone: it keeps its width while the trail's titles yield, and
+/* "Chats" alone: it keeps its width while the trail's titles yield, and
    the bar's own gap (--k-space-2) is the space before the trail's "/". */
 .coding-workbench__bar:has(.child-chat-trail) .coding-workbench__nav {
   flex: none;

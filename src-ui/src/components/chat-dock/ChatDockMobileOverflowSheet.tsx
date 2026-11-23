@@ -193,7 +193,7 @@ export function ChatDockMobileOverflowSheet({
             className="composer-actions-menu__item"
             onClick={() => run(onOpenInbox)}
           >
-            Inbox
+            Chats
           </button>
         )}
         {onBrowseConversations && (

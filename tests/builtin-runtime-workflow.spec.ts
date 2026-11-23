@@ -466,7 +466,7 @@ async function openRuntimeSession(
   await expect(dialog).toHaveCount(0);
   await page.getByRole('button', { name: 'Earlier' }).click();
   const selectedChat = page
-    .getByRole('complementary', { name: 'Inbox chats' })
+    .getByRole('complementary', { name: 'Chats' })
     .locator('button[aria-current="true"]');
   await expect(selectedChat).toBeVisible();
   // A hover row draws the runtime as its mark, named in the mark's tooltip;
@@ -523,7 +523,7 @@ test.describe('Built-in runtime chat workflows', () => {
 
     await expect(
       page
-        .getByRole('complementary', { name: 'Inbox chats' })
+        .getByRole('complementary', { name: 'Chats' })
         .locator('button[aria-current="true"]'),
     ).toContainText('Claude Runtime');
     await expect(page.locator('body')).toContainText('Claude says hi');
@@ -554,7 +554,7 @@ test.describe('Built-in runtime chat workflows', () => {
 
     await expect(
       page
-        .getByRole('complementary', { name: 'Inbox chats' })
+        .getByRole('complementary', { name: 'Chats' })
         .locator('button[aria-current="true"]'),
     ).toContainText('Codex Runtime');
     await expect(page.locator('body')).toContainText('Codex says hi');

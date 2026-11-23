@@ -595,7 +595,7 @@ test('ChatDock sends scoped file and conversation references while preserving th
   await page.goto(`/?dock=open&maximize=true&chat=${threadId}`);
   await dismissSetupLauncher(page);
   await page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }).click();
-  const taskSwitcher = page.getByRole('region', { name: 'Inbox', exact: true });
+  const taskSwitcher = page.getByRole('region', { name: 'Chats', exact: true });
   await taskSwitcher
     .getByRole('button', { name: /^Reference dispatch.*default/ })
     .click();
@@ -2165,7 +2165,7 @@ test('a Task inventory outage does not block the mobile inbox or New chat', asyn
   // the brief pending state before the failure reaches the host.
   await expect.poll(() => taskFailures).toBeGreaterThanOrEqual(2);
   await page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }).click();
-  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
+  const menu = page.getByRole('region', { name: 'Chats', exact: true });
   await expect(menu.getByText('Some chats may be out of date.')).toBeVisible();
   const failedReads = taskFailures;
   await menu.getByRole('button', { name: 'Retry', exact: true }).click();
@@ -2200,7 +2200,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   const triggerBox = await switcher.boundingBox();
 
   await switcher.click();
-  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
+  const menu = page.getByRole('region', { name: 'Chats', exact: true });
   await expect(menu).toBeVisible();
   await expect(page.getByText(/credential|connect an account/i)).toHaveCount(0);
   // Match the conversation and its Project. The same title appears in two
@@ -2243,7 +2243,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     },
   );
   await switcher.click();
-  await page.getByRole('button', { name: 'Inbox actions' }).click();
+  await page.getByRole('button', { name: 'Chat list actions' }).click();
   await page
     .getByRole('menuitem', { name: 'Back to chat', exact: true })
     .click();
@@ -2309,7 +2309,7 @@ test('switches between mobile tasks and restores the exact active chat context',
       .getByRole('button', { name: /^Station Chat.*Default/i })
       .filter({ hasText: 'Waiting on you' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Inbox actions' }).click();
+  await page.getByRole('button', { name: 'Chat list actions' }).click();
   await page
     .getByRole('menuitem', { name: 'Back to chat', exact: true })
     .click();
@@ -2329,7 +2329,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   // viewport, not only the dialog geometry checks.
   await switcher.click();
   await page
-    .getByRole('region', { name: 'Inbox', exact: true })
+    .getByRole('region', { name: 'Chats', exact: true })
     .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Running' })
     .click();
@@ -2337,7 +2337,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   await switcher.click();
   // The task retains its canonical identity after opening.
   await page
-    .getByRole('region', { name: 'Inbox', exact: true })
+    .getByRole('region', { name: 'Chats', exact: true })
     .getByRole('button', { name: /^Worker task · delegated review(?:\s|$)/i })
     .click();
   await expect
@@ -2345,7 +2345,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     .toBe('delegated-review');
   await switcher.click();
   await page
-    .getByRole('region', { name: 'Inbox', exact: true })
+    .getByRole('region', { name: 'Chats', exact: true })
     .getByRole('button', { name: /^Station Chat.*Default/i })
     .filter({ hasText: 'Waiting on you' })
     .click();
@@ -2353,7 +2353,7 @@ test('switches between mobile tasks and restores the exact active chat context',
 
   await switcher.click();
   const compactDialog = page.getByRole('region', {
-    name: 'Inbox',
+    name: 'Chats',
     exact: true,
   });
   const compactBox = await compactDialog.boundingBox();
@@ -2361,7 +2361,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect((compactBox?.x ?? 0) + (compactBox?.width ?? 0)).toBeLessThanOrEqual(
     320,
   );
-  const actions = page.getByRole('button', { name: 'Inbox actions' });
+  const actions = page.getByRole('button', { name: 'Chat list actions' });
   await actions.focus();
   await page.keyboard.press('Enter');
   const compactClose = page.getByRole('menuitem', {
@@ -2993,7 +2993,7 @@ test('Escape dismisses the mobile task switcher without leaving the chat', async
 
   const switcher = page.getByRole('button', { name: /^(Inbox|Back to chat)$/ });
   await expect(switcher).toBeVisible({ timeout: 15_000 });
-  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
+  const menu = page.getByRole('region', { name: 'Chats', exact: true });
 
   // Escape straight away: the sheet closes and the route is untouched.
   await switcher.click();
@@ -3470,7 +3470,7 @@ test('the maximized phone dock header clears the status bar once, not twice', as
     .boundingBox())!;
   expect(identity.width).toBeGreaterThanOrEqual(180);
   const back = (await header
-    .getByRole('button', { name: 'Inbox', exact: true })
+    .getByRole('button', { name: 'Chats', exact: true })
     .boundingBox())!;
   expect(back.width).toBeGreaterThanOrEqual(44);
   expect(back.x + back.width).toBeLessThanOrEqual(identity.x + 1);
@@ -4959,7 +4959,7 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
   await expect(switcher).toBeVisible({ timeout: 15_000 });
   await switcher.click();
 
-  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
+  const menu = page.getByRole('region', { name: 'Chats', exact: true });
   await expect(menu).toBeVisible();
   // Restored bulk entries currently use the Station Chat display title.
   // Fullness is what matters: enough rows that the sheet hits max height.
@@ -4969,7 +4969,7 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
     )
     .toBeGreaterThan(15);
 
-  await page.getByRole('button', { name: 'Inbox actions' }).click();
+  await page.getByRole('button', { name: 'Chat list actions' }).click();
   const close = page.getByRole('menuitem', {
     name: 'Back to chat',
     exact: true,
@@ -5110,7 +5110,7 @@ test('profiles switching between authoritative conversations', async ({
   await page.goto('/?dock=open&chat=conv-running');
   await dismissSetupLauncher(page);
   const switcher = page.getByRole('button', { name: /^(Inbox|Back to chat)$/ });
-  const menu = page.getByRole('region', { name: 'Inbox', exact: true });
+  const menu = page.getByRole('region', { name: 'Chats', exact: true });
   const textarea = page.locator('textarea[placeholder*="Type a message"]');
   await expect(switcher).toBeVisible();
   await profileJourney(
@@ -5297,14 +5297,14 @@ test('the mobile Inbox lists chats beyond the first rows', async ({ page }) => {
     exact: true,
   });
   const menu = page.getByRole('menu', { name: 'Chat actions' });
-  await page.getByRole('button', { name: 'Inbox', exact: true }).click();
-  const sheet = page.getByRole('region', { name: 'Inbox', exact: true });
+  await page.getByRole('button', { name: 'Chats', exact: true }).click();
+  const sheet = page.getByRole('region', { name: 'Chats', exact: true });
   await expect(sheet).toBeVisible();
   await expect(navigation).not.toBeVisible();
   await expect(
     sheet.getByText('Overflow conversation 0', { exact: true }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Inbox actions' }).click();
+  await page.getByRole('button', { name: 'Chat list actions' }).click();
   await page
     .getByRole('menuitem', { name: 'Back to chat', exact: true })
     .click();
@@ -5331,7 +5331,7 @@ for (const width of [320, 431]) {
     const input = await openComposer(page);
     const header = page.getByTestId('chat-dock-mobile-header');
     const back = (await header
-      .getByRole('button', { name: 'Inbox', exact: true })
+      .getByRole('button', { name: 'Chats', exact: true })
       .boundingBox())!;
     const actions = (await header
       .locator('.chat-dock__mobile-actions')

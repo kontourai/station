@@ -273,15 +273,15 @@ Station text aliases to the published Kontour UI tokens: supporting text uses
 `--k-text-lg` (18px). Desktop density remains owned by each surface; the
 person's Comfortable or Compact choice sets only the base text tokens and
 never shrinks a touch target ([density and motion](theming.md#density-and-motion)).
-Desktop and mobile Inbox cards allow two lines for the title. The metadata reads project first, then agent, as it does on Home. The status column shows one elapsed, scheduled or recency time. A task opens
+Desktop and mobile Chats list cards allow two lines for the title. The metadata reads project first, then agent, as it does on Home. The status column shows one elapsed, scheduled or recency time. A task opens
 from its row. Its work-chat disclosure stays separate. A desktop row's ⋯ menu
-appears on hover or keyboard focus. Open Search from its icon or the narrow header menu. **New chat** floats over the Inbox list. This Inbox replaces the title-triggered Chats and tasks sheet
-and shares the desktop Inbox's scope and history preferences. It stays mounted
+appears on hover or keyboard focus. Open Search from its icon or the narrow header menu. **New chat** floats over the Chats list. This list replaces the title-triggered Chats and tasks sheet
+and shares the desktop Chats list's scope and history preferences. It stays mounted
 behind a conversation, retaining its search and list position. While reading a
-chat, **Inbox** in Chat actions opens the same list. **Browse all conversations**
+chat, **Chats** in Chat actions opens the same list. **Browse all conversations**
 opens the saved conversation list.
 Project choice belongs to the start composer on phone and desktop; the dock
-header has no project picker, including while empty or showing Inbox. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
+header has no project picker, including while empty or showing Chats. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
 across the desktop inbox, the collapsed dock bar (icon only) and
 the open, empty dock. The mobile bar composes the same conversation-plus glyph
 with its toolbar button styles. Both forms retain a 44px minimum target and
@@ -296,7 +296,7 @@ opened from Agent & model takes the panel's place (`yieldToChildPopover` on
 (`data-popover-boundary`); phones keep stacked sheets. Attach, mic and Start
 share the phone action row. Targets remain at least 44px; picker menus are edge
 sheets on phones with their own
-scrolling list. Creation controls remain outside the scrolling lists. The mobile Inbox presents
+scrolling list. Creation controls remain outside the scrolling lists. The mobile Chats list presents
 Input/Approval compactly and keeps reasons readable in full through details;
 Git and PR data are read only when that details surface opens.
 
@@ -326,7 +326,7 @@ Stations are under **More ways to connect**. Native capability and coarse-pointe
 presentation determine that screen; narrow desktop browsers retain access to
 their current Station.
 
-The collapsed mobile Inbox bar’s **New chat** uses an icon-only chat-bubble-plus control in
+The collapsed mobile Chats bar’s **New chat** uses an icon-only chat-bubble-plus control in
 the same toolbar button family as its neighbours, retaining its accessible
 name. Source and component checks establish these placements and disabled
 states. The relay UX screenshot harness omits the real dock and uses stubbed
@@ -506,10 +506,10 @@ cases in `FileTreePanel.test.tsx` and `InboxRow.test.tsx`, and was rendered in
 Chromium. It has not been verified in WKWebView or WebView2, or on an iOS or
 Android device.
 
-### Inbox swipe actions
+### Chat list swipe actions
 
 The Sheet gestures device preview also enables a left swipe on touch inbox rows
-in the dock panel and embedded mobile Inbox. The row reveals 72px-wide
+in the dock panel and embedded mobile Chats list. The row reveals 72px-wide
 controls, Snooze then Mark done. A swipe only reveals the
 controls. Snooze opens the time choices; Mark done offers Undo. A right swipe closes the
 rail. Vertical movement stays available to the scroll container, and the swipe’s
@@ -517,19 +517,19 @@ trailing click cannot open the conversation. Details and long press retain the
 same actions with the preview off.
 
 Without settlement, Mark done is browser-local inbox visibility, separate from
-tab teardown, stopping work, or deleting a draft. Inbox search reveals matching
+tab teardown, stopping work, or deleting a draft. Chats search reveals matching
 items marked done, under Marked done, with Reopen. Lifecycle changes use the existing debounce; running
 progress does not restore a dismissed row. Hidden Third-party sessions stay
 hidden through external updates and return to normal status handling when
 adopted into Station. With Open and Settled inbox on, Mark done settles an
 eligible owned chat; an owned chat that cannot be settled yet is put away on
-this Inbox instead. A settled chat offers Reopen.
+this list instead. A settled chat offers Reopen.
 Hide records a third-party Session on the host for the person.
 The actions are available in the row, swipe tray and Details.
 The swipe Snooze picker uses the dialog layer above its mobile inbox host.
-On desktop, move the pointer from an Inbox row into its preview to scroll
+On desktop, move the pointer from a Chats row into its preview to scroll
 long content such as Basis. The preview stays inside the window as late
-details arrive. Escape or scrolling the Inbox closes it.
+details arrive. Escape or scrolling the list closes it.
 The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
 hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,
 and renders 390px and 1440px in both themes. Physical-device behavior remains
@@ -547,17 +547,17 @@ checks remain necessary.
 ### Phone chat shell
 
 A chat on a phone is full screen, as in a messaging app: opening one from
-Home, the Inbox, the drawer or a started draft maximizes the dock. The half
+Home, the chat list, the drawer or a started draft maximizes the dock. The half
 height is a deliberate peek. The app toolbar keeps the drawer and Station switcher
 above the dock at every height. The trailing extent button switches between
 full and half height. Collapsing a chat keeps its title and actions in the bar.
 Tap the title to resume or open Chat actions to reveal the dock and its menu.
-A collapsed Inbox still offers Inbox and New chat.
-In Inbox, the down arrow collapses the dock. In chat, Back returns to Inbox
+A collapsed Chats list still offers Chats and New chat.
+In Chats, the down arrow collapses the dock. In chat, Back returns to Chats
 or, when reading a subagent, to its parent.
 
-Inbox floats **New chat** above the list. In an open chat it lives in the
-chat actions menu. At narrow widths the Inbox menu also holds Search and
+Chats floats **New chat** above the list. In an open chat it lives in the
+chat actions menu. At narrow widths the Chats menu also holds Search and
 Filter. Filters combine Station, Project and status. Hold a conversation or
 choose **Select conversations** to select rows. The tray offers Snooze and
 Mark done; Mark done settles or dismisses each row as a single row would, and
@@ -567,7 +567,7 @@ The answer's **⋯** sheet lists the answer's actions itself (Provenance,
 Reasoning, Add to Task) below its summary row, instead of a second **⋯** whose
 popup covered the sheet title. Notifications open as a bottom sheet over a
 dimmed page, exposed as a dialog; desktop keeps the anchored popover. A phone
-Inbox row's second line reads the engine mark, the engine's name and then the
+Chats row's second line reads the engine mark, the engine's name and then the
 project, from the start of the row.
 
 A short window with a fine pointer (a desktop browser emulating a phone held
@@ -595,8 +595,8 @@ Two treatments use them; do not add a per-screen fold rule:
 - a split layout puts its first pane before the crease and its second after it.
   `SplitPaneLayout` gives its list exactly the room before a vertical crease and
   hides the resize divider (unfolding restores the saved width); it snaps only
-  when the list keeps 200px and the detail 280px. The dock's Inbox row does the
-  same with the Inbox. Each marks itself `data-fold-aware`;
+  when the list keeps 200px and the detail 280px. The dock's Chats row does the
+  same with the list. Each marks itself `data-fold-aware`;
 - a single column (`.fold-avoid-crease`) moves wholly into the larger side. The
   route outlet and the dock's conversation reader carry it; a column that
   contains a `data-fold-aware` layout leaves the panes to it.

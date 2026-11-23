@@ -858,7 +858,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
       ).toContainText('Current chat is ready.');
       const inbox = await ensureConnectionInboxOpen(page);
       if (layout === 'mobile')
-        await inbox.getByRole('button', { name: 'Search inbox' }).click();
+        await inbox.getByRole('button', { name: 'Search chats' }).click();
       const search = inbox.getByRole('searchbox');
       if (layout === 'mobile') await expect(search).toBeFocused();
       await search.fill('First cold');

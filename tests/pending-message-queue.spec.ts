@@ -209,7 +209,7 @@ async function openRuntimeSession(
   await page.getByRole('button', { name: 'Earlier' }).click();
   await expect(
     page
-      .getByRole('complementary', { name: 'Inbox chats' })
+      .getByRole('complementary', { name: 'Chats' })
       .getByRole('button', { name: /, No project$/ })
       .and(page.locator('[aria-current="true"]')),
   ).toBeVisible();

@@ -339,7 +339,7 @@ test('phone Chat page: the tool picker leads the chat header and the bar takes n
   ).toBeTruthy();
   // The chat header has its own Inbox button; the bar's back control and
   // its Open Browser button are gone with the bar.
-  expect(screen.queryByRole('button', { name: 'Inbox' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Chats' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Open Browser' })).toBeNull();
   expect(
     window.document
@@ -469,7 +469,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     expect(drillInPage().getAttribute('data-active')).toBe('false');
     expect(drillInPage().hasAttribute('inert')).toBe(true);
     expect(drillInPage().getAttribute('aria-hidden')).toBe('true');
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle]);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle]);
     // The bar is the breadcrumb alone: Back and Forward are the browser's and
     // the chords', not buttons.
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
@@ -506,7 +506,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     // its toasts must reach the reader.
     expect(harness.chatProps).toMatchObject({ onScreen: false });
     expect(chatPage().hasAttribute('inert')).toBe(true);
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Diff']);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle, 'Diff']);
     // The conversation stays mounted behind the pane (its draft, its scroll).
     expect(
       window.document.querySelector('[data-testid="center-chat"]'),
@@ -526,7 +526,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     expect(chatPage().getAttribute('data-active')).toBe('true');
     expect(chatPage().getAttribute('data-enter')).toBe('pop');
     expect(harness.chatProps).toMatchObject({ onScreen: true });
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle]);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle]);
 
     // Back on the conversation, focus went to its composer; the chords are for
     // the reader who has left it.
@@ -538,7 +538,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
       );
     });
     expect(drillInPage().getAttribute('data-active')).toBe('true');
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Diff']);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle, 'Diff']);
   });
 
   test('Back (the chord) on a drill-in reached from outside the layout goes UP to the Chat page', async () => {
@@ -548,7 +548,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
       paneScope: scopeKey,
     });
     renderStack();
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Files']);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle, 'Files']);
     const index = navigationStore.getHistoryIndex();
 
     act(() => harness.shortcuts.get('codingStack.back')?.handler());
@@ -698,7 +698,7 @@ describe('CodingWorkbench — the Coding layout as a navigation stack', () => {
     deviceSettingsStore.set('inboxOpen', false);
     renderStack();
     await drillInto('Files');
-    fireEvent.click(screen.getByRole('button', { name: 'Inbox' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Chats' }));
     await historyBackSettled();
     expect(chatPage().getAttribute('data-active')).toBe('true');
     expect(deviceSettingsStore.get('inboxOpen')).toBe(true);
@@ -992,7 +992,7 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
     expect(railItem('Diff').getAttribute('aria-pressed')).toBe('true');
     expect(railItem('Diff').getAttribute('aria-controls')).toBe(sidePanel().id);
     expect(railItem('Diff').hasAttribute('aria-current')).toBe(false);
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle]);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle]);
     expect(
       within(sidePanel()).getByRole('heading', { name: 'Diff' }),
     ).toBeTruthy();
@@ -1291,7 +1291,7 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
     );
     await act(async () => undefined);
     expect(chatPage().getAttribute('data-active')).toBe('false');
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Diff']);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle, 'Diff']);
     expect(harness.chatMounts).toBe(mounts);
   });
 });
@@ -1507,7 +1507,7 @@ describe('CodingWorkbench — the folded inbox’s edge, and the fold judged aga
     ).toBe('2');
     expect(
       strip.parentElement?.querySelector('[role="tooltip"]')?.textContent,
-    ).toBe('Show inbox, 2 need you');
+    ).toBe('Show chats, 2 need you');
     // A Needs-you count is what lifts the strip's rule to the accent.
     expect(
       strip.classList.contains('coding-workbench__inbox-edge--needs-you'),
@@ -1521,7 +1521,7 @@ describe('CodingWorkbench — the folded inbox’s edge, and the fold judged aga
     const strip = edge()!;
     expect(
       strip.parentElement?.querySelector('[role="tooltip"]')?.textContent,
-    ).toBe('Show inbox');
+    ).toBe('Show chats');
     expect(strip.classList.contains('coding-workbench__inbox-edge')).toBe(true);
     expect(
       strip.classList.contains('coding-workbench__inbox-edge--needs-you'),
@@ -1870,7 +1870,7 @@ describe('CodingWorkbench — review round: file links, the fold’s owner, geom
     await act(async () => undefined);
     expect(urlPane()).toBe(terminal.instanceId);
     expect(navigationStore.getHistoryIndex()).toBe(index);
-    expect(crumbs()).toEqual(['Inbox', harness.chatTitle, 'Terminal']);
+    expect(crumbs()).toEqual(['Chats', harness.chatTitle, 'Terminal']);
     // No lower panel below the fold: the host draws the Terminal there.
     expect(lowerPanel()).toBeNull();
   });

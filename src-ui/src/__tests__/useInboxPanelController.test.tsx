@@ -113,7 +113,7 @@ function Harness({
   return (
     <>
       <button ref={triggerRef} type="button" onClick={() => setOpen(true)}>
-        Inbox
+        Chats
       </button>
       <button
         type="button"
@@ -200,7 +200,7 @@ test('mobile search focuses when mounted and never steals a later keyboard selec
     frames.push(callback);
     return frames.length;
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Search chats' }));
   const search = screen.getByRole('searchbox');
   expect(document.activeElement).toBe(search);
   const row = screen.getByRole('button', {
@@ -233,7 +233,7 @@ test("following the project page keeps another Station's same-slug project out",
   ).toBeNull();
 });
 
-test('mobile restores focus when the host closes Inbox while opening its reader', async () => {
+test('mobile restores focus when the host closes Chats while opening its reader', async () => {
   mount(
     'mobile',
     vi.fn<Open>(async () => true),
@@ -241,12 +241,12 @@ test('mobile restores focus when the host closes Inbox while opening its reader'
     false,
     true,
   );
-  const trigger = screen.getByRole('button', { name: 'Inbox' });
+  const trigger = screen.getByRole('button', { name: 'Chats' });
   trigger.focus();
   const user = userEvent.setup();
   await user.click(screen.getByRole('button', { name: /^Second selection\b/ }));
   await waitFor(() => expect(document.activeElement).toBe(trigger));
-  expect(screen.queryByRole('region', { name: 'Inbox' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Chats' })).toBeNull();
 });
 
 for (const layout of ['desktop', 'mobile'] as const) {
@@ -341,7 +341,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
       mount(layout, async () => true);
       const user = userEvent.setup();
       if (layout === 'mobile')
-        await user.click(screen.getByRole('button', { name: 'Search inbox' }));
+        await user.click(screen.getByRole('button', { name: 'Search chats' }));
       await user.type(screen.getByRole('searchbox'), 'second');
       expect(
         screen.queryByRole('button', {

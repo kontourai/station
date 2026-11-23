@@ -170,7 +170,7 @@ describe('inbox dismissal through the rendered panel', () => {
       screen.queryByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeNull();
     expect(screen.queryByRole('region', { name: /Marked done/ })).toBeNull();
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search chats' }), {
       target: { value: 'Review' },
     });
     const section = screen.getByRole('region', { name: /Marked done/ });
@@ -202,13 +202,13 @@ describe('inbox dismissal through the rendered panel', () => {
         ]}
       />,
     );
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search chats' }), {
       target: { value: 'Review' },
     });
     await waitFor(() =>
       expect(screen.getByRole('region', { name: /Marked done/ })).toBeTruthy(),
     );
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search chats' }), {
       target: { value: '' },
     });
     expect(screen.queryByText('Review the inbox')).toBeNull();

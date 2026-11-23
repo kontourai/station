@@ -309,7 +309,7 @@ export function MobileInboxPanel({
     <section
       ref={panelRef}
       className="mobile-inbox"
-      aria-label="Inbox"
+      aria-label="Chats"
       hidden={!open}
       tabIndex={-1}
       data-no-dock-drag=""
@@ -484,7 +484,7 @@ export function MobileInboxPanel({
       </div>
       {open && refresh && (
         <ListRefreshStatus
-          activity="Refreshing inbox…"
+          activity="Refreshing chats…"
           phase={refresh.phase}
           updating={updating && (hasVisibleItems || !pending)}
         />

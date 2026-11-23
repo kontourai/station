@@ -1983,7 +1983,7 @@ per conversation.** Below the fold nothing above changes.
   name. Both carry the inbox's "Needs you" count, published by Chat from
   the same partition the inbox panel renders (`needsYouCount`,
   `onInboxNeedsYouChange`): the strip as its badge and tooltip, the toggle
-  in its name and tooltip ("Show inbox, 3 need you",
+  in its name and tooltip ("Show chats, 3 need you",
   `inbox-toggle-label.ts`), so a fold never hides that something is
   waiting. A coarse pointer has no hover to widen it and gets
   none; below the fold the inbox is not folded by the layout. Hover-peek (the

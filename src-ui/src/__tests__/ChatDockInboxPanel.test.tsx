@@ -97,7 +97,7 @@ describe('ChatDockInboxPanel', () => {
   it('renders activity groups in order with their status words', () => {
     renderPanel();
 
-    const panel = screen.getByRole('complementary', { name: 'Inbox chats' });
+    const panel = screen.getByRole('complementary', { name: 'Chats' });
     const labels = Array.from(
       panel.querySelectorAll(
         '.chat-dock-inbox__group-label, .chat-dock-inbox__section-toggle',
@@ -374,7 +374,7 @@ describe('ChatDockInboxPanel', () => {
       onFocusChat,
     });
 
-    const panel = screen.getByRole('complementary', { name: 'Inbox chats' });
+    const panel = screen.getByRole('complementary', { name: 'Chats' });
     const labels = Array.from(
       panel.querySelectorAll(
         '.chat-dock-inbox__group-label, .chat-dock-inbox__section-toggle',
@@ -607,7 +607,7 @@ describe('ChatDockInboxPanel', () => {
 
   it('focuses the inbox panel when the removed row has no neighbor (#1054)', () => {
     renderPanel({ items: [items[0]], openChatSessionIds: ['active'] });
-    const panel = screen.getByRole('complementary', { name: 'Inbox chats' });
+    const panel = screen.getByRole('complementary', { name: 'Chats' });
     const close = screen.getByRole('button', {
       name: 'Actions for active title',
     });
@@ -1036,9 +1036,7 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
     expect(panel.className).not.toContain('chat-dock-inbox--exiting');
     expect(panel.inert).toBe(false);
     // Still a landmark answering to its name, and still reachable.
-    expect(
-      screen.getByRole('complementary', { name: 'Inbox chats' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('complementary', { name: 'Chats' })).toBeTruthy();
   });
 
   it('is inert and marked exiting while it plays its exit', () => {
@@ -1161,16 +1159,16 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
         '.chat-dock-inbox__toolbar',
       ) as HTMLElement;
       expect(
-        within(toolbar).getByRole('searchbox', { name: 'Search inbox' }),
+        within(toolbar).getByRole('searchbox', { name: 'Search chats' }),
       ).toBeTruthy();
       expect(
-        within(toolbar).getByRole('combobox', { name: 'Inbox scope' }),
+        within(toolbar).getByRole('combobox', { name: 'Chat list scope' }),
       ).toBeTruthy();
       expect(
         within(toolbar).getByRole('button', { name: 'New chat' }),
       ).toBeTruthy();
       expect(
-        screen.queryByRole('button', { name: 'Inbox actions' }),
+        screen.queryByRole('button', { name: 'Chat list actions' }),
       ).toBeNull();
       // The scope's visible label gave its width to search; its name stays.
       expect(

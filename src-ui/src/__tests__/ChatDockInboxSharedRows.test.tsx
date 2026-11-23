@@ -183,7 +183,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       now: NOW,
     };
     const mounted = render(<MobileInboxPanel {...props} open />);
-    fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Search chats' }));
     fireEvent.change(screen.getByRole('searchbox'), {
       target: { value: 'Shared row' },
     });
@@ -193,7 +193,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     )!;
     list.scrollTop = 120;
     mounted.rerender(<MobileInboxPanel {...props} open={false} />);
-    expect(screen.queryByRole('region', { name: 'Inbox' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Chats' })).toBeNull();
     mounted.rerender(<MobileInboxPanel {...props} open />);
     expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe(
       'Shared row',
@@ -245,7 +245,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     ]);
     expect(onClose).not.toHaveBeenCalled();
     expect(onAcknowledgeConversation).not.toHaveBeenCalled();
-    expect(screen.getByRole('region', { name: 'Inbox' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Chats' })).toBeTruthy();
   });
   beforeEach(() => {
     localStorage.clear();
@@ -383,12 +383,12 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
             );
       const first = mount();
       if (host === 'mobile') {
-        fireEvent.click(screen.getByRole('button', { name: 'Filter inbox' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Filter chats' }));
         fireEvent.click(screen.getByRole('button', { name: /^Alpha/ }));
         fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
       } else
         fireEvent.change(
-          screen.getByRole('combobox', { name: 'Inbox scope' }),
+          screen.getByRole('combobox', { name: 'Chat list scope' }),
           {
             target: { value: 'project:["station:local","alpha"]' },
           },
@@ -406,7 +406,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         expect(
           (
             screen.getByRole('combobox', {
-              name: 'Inbox scope',
+              name: 'Chat list scope',
             }) as HTMLSelectElement
           ).value,
         ).toBe('project:["station:local","alpha"]');
@@ -478,7 +478,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       const mounted = render(panel());
       const scope = () =>
         screen.getByRole('combobox', {
-          name: 'Inbox scope',
+          name: 'Chat list scope',
         }) as HTMLSelectElement;
       // With no stored setting a project route scopes the inbox.
       expect(scope().value).toBe('current-project');
@@ -883,7 +883,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
 
   it('sheet host renders the same shared anatomy with touch chrome', () => {
     renderSheetHost(workItem());
-    const dialog = screen.getByRole('region', { name: 'Inbox' });
+    const dialog = screen.getByRole('region', { name: 'Chats' });
     expectSharedRowAnatomy(dialog);
     expect(
       screen.getByRole('button', {
@@ -894,7 +894,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expect(dialog.querySelector('.inbox-row--touch')).not.toBeNull();
     expect(dialog.querySelector('.inbox-row--hover')).toBeNull();
     // Chrome stays host-owned: the pinned accessible names survive.
-    expect(screen.getByRole('region', { name: 'Inbox' })).not.toBeNull();
+    expect(screen.getByRole('region', { name: 'Chats' })).not.toBeNull();
   });
 
   // Rendered through the shared row directly: a 3h-old terminal row lives in
@@ -1183,7 +1183,7 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
 
   it('renders the same icon through the mobile sheet chrome', () => {
     renderSheetHost(sessionItem({ agentSlug: 'codex' }), vi.fn(), AGENTS);
-    const dialog = screen.getByRole('region', { name: 'Inbox' });
+    const dialog = screen.getByRole('region', { name: 'Chats' });
     expect(avatarOf(dialog)?.getAttribute('data-brand-key')).toBe('codex');
   });
 });

@@ -163,7 +163,7 @@ const choose = async (title: string, item: 'Mark done' | 'Reopen') => {
   fireEvent.click(screen.getByRole('menuitem', { name: item }));
 };
 const search = (value: string) =>
-  fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
+  fireEvent.change(screen.getByRole('searchbox', { name: 'Search chats' }), {
     target: { value },
   });
 
@@ -236,7 +236,7 @@ describe('Open and Settled inbox: Mark done settles owned work and hides third-p
   it('finds a hidden Session through search and restores it on the host', async () => {
     host.hidden = { 'external-thread': new Date(NOW).toISOString() };
     mount([external]);
-    await screen.findByRole('searchbox', { name: 'Search inbox' });
+    await screen.findByRole('searchbox', { name: 'Search chats' });
     await waitFor(() => expect(row('Outside session')).toBeNull());
     search('Outside');
     const section = await screen.findByRole('region', {

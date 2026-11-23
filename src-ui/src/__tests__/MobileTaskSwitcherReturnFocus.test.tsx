@@ -115,7 +115,7 @@ describe('MobileInboxPanel return focus (station#1245)', () => {
     mountSheet(trigger);
     expect(document.activeElement).not.toBe(trigger);
 
-    fireEvent.keyDown(screen.getByRole('region', { name: 'Inbox' }), {
+    fireEvent.keyDown(screen.getByRole('region', { name: 'Chats' }), {
       key: 'Escape',
     });
     act(() => {
@@ -142,7 +142,7 @@ describe('MobileInboxPanel return focus (station#1245)', () => {
     trigger.focus();
 
     mountSheet(trigger);
-    fireEvent.keyDown(screen.getByRole('region', { name: 'Inbox' }), {
+    fireEvent.keyDown(screen.getByRole('region', { name: 'Chats' }), {
       key: 'Escape',
     });
     // Switching chat re-rendered the header the trigger lived in.
@@ -168,7 +168,7 @@ describe('MobileInboxPanel return focus (station#1245)', () => {
     trigger.focus();
 
     mountSheet(trigger);
-    fireEvent.keyDown(screen.getByRole('region', { name: 'Inbox' }), {
+    fireEvent.keyDown(screen.getByRole('region', { name: 'Chats' }), {
       key: 'Escape',
     });
     bar.remove();

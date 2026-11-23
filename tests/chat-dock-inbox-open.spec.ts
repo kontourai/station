@@ -154,8 +154,8 @@ for (const [mode, width, theme, decision] of [
     await dismissSetupLauncher(page);
     const inbox =
       width === 390
-        ? page.getByRole('region', { name: 'Inbox', exact: true })
-        : page.getByRole('complementary', { name: 'Inbox chats', exact: true });
+        ? page.getByRole('region', { name: 'Chats', exact: true })
+        : page.getByRole('complementary', { name: 'Chats', exact: true });
     const row = inbox
       .getByTestId('inbox-row')
       .filter({ hasText: 'Needs approval' });
@@ -433,7 +433,7 @@ test('an inbox row for a stored conversation with no open chat opens its transcr
   await page.goto('/?dock=open&maximize=true');
   await dismissSetupLauncher(page);
   // With no chat open, the phone dock opens on its Inbox.
-  const inbox = page.getByRole('region', { name: 'Inbox', exact: true });
+  const inbox = page.getByRole('region', { name: 'Chats', exact: true });
   await expect(inbox).toBeVisible();
   // The Station's session row; no chat for it is open in this browser.
   await inbox
@@ -459,7 +459,7 @@ test('the desktop Inbox hover card scrolls to Basis in a short window', async ({
   await page.goto('/?dock=open&maximize=true');
   await dismissSetupLauncher(page);
   const inbox = page.locator('#chat-dock').getByRole('complementary', {
-    name: 'Inbox chats',
+    name: 'Chats',
     exact: true,
   });
   const row = inbox.getByRole('button', { name: /^Station session\b/i });

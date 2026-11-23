@@ -222,6 +222,6 @@ metadata remains a compatibility fallback. GitHub labels omit `github.com/`;
 other hosts remain visible. Tooltips retain the full remote and folder.
 These labels do not match Projects across Stations or change delegation by slug.
 
-An unchosen Inbox scope follows the current Project page and uses its display
+An unchosen Chat list scope follows the current Project page and uses its display
 name. Outside Project pages it includes all work. Explicit scope choices,
 including **All work**, remain selected across navigation.
