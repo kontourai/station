@@ -312,10 +312,7 @@ test.describe('Registry page', () => {
     await page
       .getByRole('combobox', { name: 'Search commands' })
       .fill('Plugins');
-    await page
-      .getByRole('option', { name: /^Apps/ })
-      .first()
-      .click();
+    await page.getByRole('option', { name: /^Apps/ }).first().click();
     await expect(page).toHaveURL(/\/apps$/);
     await page.getByRole('tab', { name: 'Library', exact: true }).click();
     await expect(page).toHaveURL(/\/apps\/library$/);
