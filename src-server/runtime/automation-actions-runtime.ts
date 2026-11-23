@@ -566,11 +566,15 @@ class AutomationActionsRuntime implements AutomationActions {
    * and the automation Session cannot (it acts for no person). A Task still
    * `in_progress` moves to `review` so a person sees the result, as an
    * isolated repair's does. Any other status (blocked by a revocation, or set
-   * by a person) is left alone, and so is a Task whose Session a person
-   * already took over: it is theirs.
+   * by a person or the Agent) is left alone. A person's takeover does not
+   * matter: the minute tick can notice the end of the dispatched turn after
+   * the person continued the Session, and the Task must read `review` either
+   * way. A person who continues afterwards works in a Task already awaiting
+   * review. The status is read and then updated in a separate call because
+   * the Task service has no expected-status transition.
    */
   private async awaitReview(intent: AutomationActionIntent): Promise<void> {
-    if (!intent.taskId || intent.personTakeoverAt) return;
+    if (!intent.taskId) return;
     try {
       const task = this.options.taskGraph.readTaskView(intent.taskId);
       if (

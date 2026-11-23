@@ -2452,21 +2452,68 @@ test('a person stopping the first turn and continuing leaves the Task waiting fo
   expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('review');
 });
 
-test('a Task whose Session a person took over before the first turn ended keeps its status', async () => {
-  const w = await world({ projects: [STATION_PROJECT] });
+test('a person continuing before the runtime notices the turn ended still leaves the Task waiting for review', async () => {
+  const w = await world({ projects: [STATION_PROJECT], maxAttempts: 1 });
   const intent = await running(w);
+  w.adapter.events.push({
+    method: 'turn.aborted',
+    reason: 'interrupted',
+    eventId: 'first-turn-turn.aborted',
+    provider: w.adapter.provider,
+    threadId: intent.sessionId!,
+    turnId: intent.turnId!,
+    createdAt: new Date().toISOString(),
+    invocationId: w.adapter.sends[0]?.invocationId,
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(intent.sessionId!, ['turn.aborted']),
+    ).toBeTruthy(),
+  );
+  // Stop then Continue with no runtime tick in between.
   await w.service.dispatch(
     {
       type: 'sendTurn',
-      input: { threadId: intent.sessionId!, input: 'I am taking this' },
+      input: { threadId: intent.sessionId!, input: 'Continue' },
     },
     { clientOrigin: PERSON_ORIGIN },
   );
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(2));
   expect(w.ledger.readIntent(intent.intentId)?.personTakeoverAt).toBeTruthy();
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('in_progress');
+  await w.runtime.tick();
+  await w.runtime.tick();
+  expect(w.ledger.readIntent(intent.intentId)?.state).toBe('failed');
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('review');
+});
+
+test.each([
+  ['blocked by a person', 'blocked'],
+  ['done', 'done'],
+  ['canceled', 'canceled'],
+] as const)('a Task already %s when the first turn ends keeps its status', async (_label, status) => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  const intent = await running(w);
+  await w.graph.updateTaskStatus(intent.taskId!, status);
   await endFirstTurn(w, intent, {
     method: 'turn.completed',
     finishReason: 'stop',
   });
+  await w.runtime.tick();
   expect(w.ledger.readIntent(intent.intentId)?.state).toBe('completed');
-  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('in_progress');
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe(status);
+});
+
+test('a Task blocked by the rule being disabled keeps blocked when the stopped turn ends', async () => {
+  const w = await world({ approvalMode: 'auto' });
+  const intent = await running(w);
+  await setRuleMode(w, w.rule.id, 'off');
+  await w.runtime.tick();
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('blocked');
+  await endFirstTurn(w, intent, {
+    method: 'turn.aborted',
+    reason: 'interrupted',
+  });
+  await w.runtime.tick();
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('blocked');
 });
