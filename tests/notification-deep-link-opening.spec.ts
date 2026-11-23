@@ -793,7 +793,7 @@ for (const [width, viewport] of [
               .getByRole('button', { name: 'Chat list', exact: true })
               .click();
           await expect(
-            page.locator('[aria-label="Chats"], [aria-label="Inbox"]').first(),
+            page.locator('[aria-label="Chats"]').first(),
           ).toBeVisible();
           await page
             .getByRole('button', {

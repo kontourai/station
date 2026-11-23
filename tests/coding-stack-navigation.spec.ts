@@ -124,7 +124,7 @@ async function drillIntoDiff(page: Page) {
     }),
   ).toBeVisible();
   await expect(crumbs(page).getByRole('listitem')).toHaveText([
-    'Inbox',
+    'Chat list',
     'Dev Agent Chat',
     'Diff',
   ]);
@@ -574,7 +574,7 @@ test.describe('Coding stack — wide (1440px): tools beside Chat', () => {
     );
     // Chat is still the page: the crumbs are the conversation's.
     await expect(crumbs(page).getByRole('listitem')).toHaveText([
-      'Inbox',
+      'Chat list',
       'Dev Agent Chat',
     ]);
     // Side by side, not over: the panel starts where Chat ends.

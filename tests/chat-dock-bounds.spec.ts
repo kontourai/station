@@ -19,7 +19,7 @@ import { dragDockTo } from './helpers/region-placement';
  *   slide under the status chip once the title had shrunk to nothing.
  * - A31: the 36px strip of a collapsed side region holds only what fits in
  *   it; the chat title, avatar and × used to run out of it over the page.
- * - The Coding bar's "Inbox" crumb is never the one that truncates.
+ * - The Coding bar’s "Chat list" crumb is never the one that truncates.
  * - A32: a rail item's tooltip follows the pointer and the keyboard, not
  *   focus that a mouse-driven close hands back to the item.
  *
