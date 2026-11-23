@@ -31,7 +31,7 @@ const selectedOptions = z
 
 /** Standard-tier fixed text profile. Policy still passes the canonical posture
  * gate; no tools are offered. Unsupported settings never silently use defaults. */
-export function normalizeNativeTextModelOptions(
+function normalizeNativeTextModelOptions(
   provider: 'anthropic' | 'openai',
   options?: Readonly<Record<string, unknown>>,
 ): NativeTextModelSettings {
