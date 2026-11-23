@@ -5,7 +5,7 @@ on:
     - cron: '43 * * * *'
   workflow_dispatch:
   workflow_run:
-    workflows: ["Main: Qualification"]
+    workflows: ["Main: Qualification", "Nightly"]
     types: [completed]
 
 permissions:
