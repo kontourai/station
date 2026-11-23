@@ -1,0 +1,7 @@
+{
+  "revision": "7a569f1812f8ba9bbcccc797f25ab1a8fa5729d4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed DestinationRegistry scope against 7a569f1812 only: hiddenFromNav controls sidebar projection independently of palette metadata; Home now opts into the existing palette projection and retains canonical Home page navigation. Existing architecture prose remains accurate. Unchanged owner baseline passed 75 tests; settled pre-fix output showed no Home option after supplemental loading completed. First repair run exposed an overstrict test matcher against accessible name HomeNavigation; corrected prefix matcher plus exact owner suites passed 76 tests in 11.65s. This is mounted caller evidence with navigation callbacks mocked; real keyboard URL/focus and render proof are separate pending evidence, not implied by this note. No unrelated module-map claims reviewed.","inputs":["docs/architecture/module-map.md","src-ui/src/app-shell/destination-registry.ts"]}
+  ]
+}
