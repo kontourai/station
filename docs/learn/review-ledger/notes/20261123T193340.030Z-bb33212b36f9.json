@@ -1,0 +1,131 @@
+{
+  "revision": "3aeb155f3f0e7e957652088d18f2ac6778e1b62e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked the collection path, credential-bound projection, 16-group and 256 KiB page bounds, and continuation contract against the route and group owner. Reviewed the real route test source for credential isolation with a second page.","inputs":["docs/reference/api.md","src-server/routes/orchestration/orchestration.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked station group session-list and its --after cursor against command registration, argument validation and the SDK call. Listing uses the existing selected Station credential.","inputs":["docs/reference/cli.md","packages/cli/src/commands/group.ts","packages/cli/src/help.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Traced the public SDK export through capability check, encoded cursor, credential-aware GET, response bound and page parsing. The fallback for an older host is distinct from malformed successful data; the source test exercises the 404 compatibility case.","inputs":["docs/reference/sdk.md","packages/contracts/src/delegation-group.ts","packages/sdk/src/__tests__/cli-session-groups.test.ts","packages/sdk/src/client/cli-session-groups.ts","src-server/routes/orchestration/orchestration.ts","src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Inspected the added GET collection handler across citing pages. It enters the existing personal Session-group preview and verified-credential boundary, rechecks authority before response, and has no mutation or event path. Chat, Session lifecycle, delegated Task and stream handlers keep their documented behavior.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Reviewed the pairing delta against affected access, deployment, relay and connection docs. The only addition is GET on the previously POST-only Session-group collection in the orchestration path family. GET uses orchestration:read; generic scope resolution, other routes and all mutation permissions keep their existing behavior.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked the added Session-group collection GET row against the cited route-scope coverage. Existing MCP UI host and pairing cases retain their assertions.","inputs":["src-server/security/__tests__/pairing-route-scopes.test.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the module map against the group owner. Listing filters by verified credential before projection, rechecks live authority, and keeps read-only pages within the count and byte bounds. Existing dispatch, stop and durable mutation owners are unaffected.","inputs":["src-server/services/orchestration/cli-session-group.ts"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Checked the help registry addition against cited CLI distribution, skill and migration docs. The Session-group topic now recognizes session-list and its optional cursor. Existing topic admission and distribution remain intact.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Checked the help registry addition against cited CLI distribution, skill and migration docs. The Session-group topic now recognizes session-list and its optional cursor. Existing topic admission and distribution remain intact.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked the help registry addition against cited CLI distribution, skill and migration docs. The Session-group topic now recognizes session-list and its optional cursor. Existing topic admission and distribution remain intact.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Checked the help registry addition against cited CLI distribution, skill and migration docs. The Session-group topic now recognizes session-list and its optional cursor. Existing topic admission and distribution remain intact.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Reviewed incoming references against the added credential-owned Session-group collection paragraph. The terminal socket and S3 API anchors retain their original text; integrating callers can still use the same reference.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed incoming references against the added credential-owned Session-group collection paragraph. The terminal socket and S3 API anchors retain their original text; integrating callers can still use the same reference.","inputs":["docs/reference/api.md"]},
+
+    {"path":"README.md","note":"Checked inbound CLI entry points and references after adding the group listing command. Existing invocation, credential and distribution guidance still leads to the same CLI procedures.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked inbound CLI entry points and references after adding the group listing command. Existing invocation, credential and distribution guidance still leads to the same CLI procedures.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Checked inbound CLI entry points and references after adding the group listing command. Existing invocation, credential and distribution guidance still leads to the same CLI procedures.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked inbound CLI entry points and references after adding the group listing command. Existing invocation, credential and distribution guidance still leads to the same CLI procedures.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Checked inbound CLI entry points and references after adding the group listing command. Existing invocation, credential and distribution guidance still leads to the same CLI procedures.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the documentation entry points after adding the Session-group page API. SDK ownership and discovery links still lead to the same public client reference.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Checked the documentation entry points after adding the Session-group page API. SDK ownership and discovery links still lead to the same public client reference.","inputs":["docs/reference/sdk.md"]}
+  ]
+}
