@@ -12,6 +12,7 @@ import {
   resetPendingUndoForTest,
   undoLatestAction,
 } from '../../undo/UndoableActionShortcut';
+import { toastStore } from '../../../contexts/ToastContext';
 import { MobileInboxSelection } from '../MobileInboxSelection';
 
 const mutate = vi.hoisted(() => vi.fn());
@@ -33,7 +34,14 @@ beforeEach(() => {
   work.supported = true;
   work.settled = {};
   resetPendingUndoForTest();
+  toastStore.clear();
 });
+const notice = () =>
+  toastStore
+    .getSnapshot()
+    .filter((toast) => toast.actions?.some((action) => action.label === 'Undo'))
+    .map((toast) => toast.message)
+    .at(-1);
 function row(id: string): HomeWorkItem {
   return {
     id,
@@ -98,6 +106,8 @@ it('marks running work done on this device, where settlement does not reach it, 
     [{ conversationId: 'one', settled: true }],
   ]);
   expect(dismiss).toHaveBeenCalledWith(running);
+  // One settled, one only hidden here: the notice says which is which.
+  expect(notice()).toBe('1 marked done, 1 hidden on this device');
   expect(undoLatestAction()).toBe(true);
   expect(reopen).toHaveBeenCalledWith({
     conversationId: 'one',
@@ -114,6 +124,30 @@ it('marks every row done on this device when settlement is not available', async
   await waitFor(() => expect(onChange).toHaveBeenCalledWith(null));
   expect(mutate).not.toHaveBeenCalled();
   expect(dismiss).toHaveBeenCalledWith(row('one'));
+  // Without settlement, putting a row away is Mark done.
+  expect(notice()).toBe('Marked done');
+});
+it('says the selection was only hidden here when settlement reaches none of it', async () => {
+  const onChange = vi.fn();
+  const dismiss = vi.fn().mockResolvedValue(undefined);
+  const running = (id: string) => ({
+    ...row(id),
+    lifecycleLabel: 'Running' as const,
+    conversationId: undefined,
+  });
+  render(tray([running('one'), running('two')], onChange, dismiss));
+  fireEvent.click(screen.getByRole('button', { name: 'Mark done' }));
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith(null));
+  expect(mutate).not.toHaveBeenCalled();
+  expect(notice()).toBe('2 hidden on this device');
+});
+it('says how many were marked done when every row settled', async () => {
+  const onChange = vi.fn();
+  mutate.mockResolvedValue(undefined);
+  render(tray([row('one'), row('two')], onChange));
+  fireEvent.click(screen.getByRole('button', { name: 'Mark done' }));
+  await waitFor(() => expect(onChange).toHaveBeenCalledWith(null));
+  expect(notice()).toBe('2 marked done');
 });
 it('stops a batch when its Station selection disappears during the first write', async () => {
   let finish!: () => void;

@@ -126,7 +126,7 @@ export function MobileInboxSelection({
     // when some of the selection failed.
     if (done.length)
       offerInboxUndo(
-        done.length === 1 ? 'Marked done' : `${done.length} marked done`,
+        bulkDoneNotice(done, work.supported),
         () => {
           for (const entry of done) {
             if (entry.kind === 'settled')
@@ -207,4 +207,27 @@ export function MobileInboxSelection({
       </div>
     </section>
   );
+}
+
+/**
+ * What a bulk Mark done did, in its own words: a settled row is done for the
+ * person everywhere; with settlement on, a row it could only put away on this
+ * device was hidden here, not done, and the notice says so (as a single
+ * row's does). Without settlement, putting it away is Mark done.
+ */
+function bulkDoneNotice(done: readonly Done[], settlementOn: boolean): string {
+  const hidden = settlementOn
+    ? done.filter((entry) => entry.kind === 'dismissed').length
+    : 0;
+  const settled = done.length - hidden;
+  const parts = [
+    settled === 1 && !hidden
+      ? 'Marked done'
+      : settled
+        ? `${settled} marked done`
+        : '',
+    hidden ? `${hidden} hidden on this device` : '',
+  ].filter(Boolean);
+  const notice = parts.join(', ');
+  return notice.charAt(0).toUpperCase() + notice.slice(1);
 }
