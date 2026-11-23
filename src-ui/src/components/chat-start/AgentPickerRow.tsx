@@ -159,7 +159,7 @@ function AgentPickerRow({
         {/* The Station's default for new chats, on its own line so the
             name keeps its width in a narrow menu. */}
         {isNewChatDefault && (
-          <div className="new-chat-modal__agent-default-line">
+          <div className="new-chat-modal__agent-purpose new-chat-modal__agent-default-line">
             <span className="engine-chip__pill new-chat-modal__agent-default">
               Default for new chats
             </span>
