@@ -9,28 +9,17 @@ import {
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { errorText } from '../../utils/errorText';
+import { wakeTime } from '../../utils/relativeTime';
 import { snoozeChoices } from '../inbox-row/snooze-presets';
 import type { RowMenuItem } from './RowMenu';
 
 /** The server Feature Preview every snooze control is gated on. */
 export const ATTENTION_SNOOZE_PREVIEW = 'attention-snooze';
 
-/** "6:00 PM", "tomorrow 9:00 AM", "Mon 9:00 AM", or a date — local time. */
+/** When a snooze ends, in the snooze list's own form (`wakeTime`). */
 export function formatSnoozeUntil(iso: string, now = new Date()): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return 'later';
-  const time = date.toLocaleTimeString([], {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-  const day = (value: Date) =>
-    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
-  const days = Math.round((day(date) - day(now)) / 86_400_000);
-  if (days <= 0) return time;
-  if (days === 1) return `tomorrow ${time}`;
-  if (days < 7)
-    return `${date.toLocaleDateString([], { weekday: 'short' })} ${time}`;
-  return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
+  const at = Date.parse(iso);
+  return Number.isNaN(at) ? 'later' : wakeTime(at, now.getTime());
 }
 
 /**

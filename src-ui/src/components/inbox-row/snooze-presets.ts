@@ -1,4 +1,4 @@
-import { clockTime } from '../../utils/relativeTime';
+import { wakeTime } from '../../utils/relativeTime';
 
 /**
  * THE snooze list, for every surface that snoozes: the dock and phone inbox
@@ -29,9 +29,14 @@ export function snoozePresets(now = new Date()): SnoozePreset[] {
   if (now.getHours() < 17)
     presets.push({ label: 'This evening', until: at(0, 18) });
   presets.push({ label: 'Tomorrow morning', until: at(1, 9) });
-  // Next Monday, a full week out when today is Monday.
+  // Next Monday, a full week out when today is Monday. On a Sunday the
+  // coming Monday is already "Tomorrow morning", so next week is the one
+  // after: no two choices are ever the same instant.
   const toMonday = (8 - now.getDay()) % 7 || 7;
-  presets.push({ label: 'Next week', until: at(toMonday, 9) });
+  presets.push({
+    label: 'Next week',
+    until: at(toMonday === 1 ? 8 : toMonday, 9),
+  });
   return presets;
 }
 
@@ -41,9 +46,9 @@ export function snoozeChoices(
 ): { label: string; hint: string; wakeAt: number }[] {
   return snoozePresets(new Date(now)).map((preset) => ({
     label: preset.label,
-    // "6:00 PM" today, "Mon 9:00 AM" on another day: the work surfaces'
-    // one clock-time form.
-    hint: clockTime(preset.until.getTime(), now),
+    // "6:00 PM", "tomorrow 9:00 AM", "Mon 9:00 AM" or a date: never two
+    // days that read the same.
+    hint: wakeTime(preset.until.getTime(), now),
     wakeAt: preset.until.getTime(),
   }));
 }
