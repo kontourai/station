@@ -108,6 +108,26 @@ describe('nextSevenDays', () => {
     );
   });
 
+  test('an evening run stays on the reader’s day even when it is already tomorrow in UTC', () => {
+    const evening = {
+      ...daily,
+      name: 'evening',
+      schedule: { kind: 'cron', expr: '0 20 * * *', timezone: DENVER },
+    } as SchedulerJob;
+    // Friday 6 March 2026, noon in Denver; 8:00 PM there is 03:00 UTC Saturday.
+    const now = Date.parse('2026-03-06T19:00:00.000Z');
+    const result = nextSevenDays({
+      weeks: forecast([evening], DENVER, now),
+      now,
+      zone: DENVER,
+    });
+    if (result.kind !== 'known') throw new Error('expected a forecast');
+    expect(result.days[0]!.runs.map((run) => run.time)).toEqual([
+      '2026-03-07T03:00:00.000Z',
+    ]);
+    expect(result.days[6]!.runs).toHaveLength(1);
+  });
+
   test('leaves paused automations out', () => {
     const now = Date.parse('2026-03-06T19:00:00.000Z');
     const result = nextSevenDays({
