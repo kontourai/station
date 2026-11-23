@@ -803,6 +803,33 @@ signing, and acceptance of agent tools, workspace access, credential storage
 and pairing in the sandbox. The rehearsal's ad-hoc signature is for local
 testing.
 
+## Stage the Mac App Store candidate
+
+Set the repository variable `STATION_MAC_APP_STORE_STAGE=enabled` when the
+protected `native-release` environment contains the Mac installer certificate
+and provisioning profile. **Release: Stage** runs the Mac TestFlight job after
+the advisory gate and exact-source qualification for an immutable RC tag. The
+job builds for Apple Silicon with the Stable bundle ID and pairing scheme. The
+Mac App Store owns updates for this package.
+
+The job reuses the Apple Distribution identity and App Store Connect key from
+Stable iOS. Add these inputs to `native-release`:
+
+- `APPLE_MAC_STORE_INSTALLER_CERTIFICATE_BASE64` for the Mac Installer Distribution PKCS#12.
+- `APPLE_MAC_STORE_INSTALLER_CERTIFICATE_PASSWORD` for that PKCS#12.
+- `APPLE_MAC_STORE_PROVISIONING_PROFILE_BASE64` for the macOS App Store profile for `io.kontourai.station`.
+
+The workflow signs the bundled executables, verifies the sandboxed app and
+installer, and retains the attested package before upload. Apple build lookups
+use `MAC_OS`, so macOS and iOS can share a candidate number. Keep the Mac
+package digest, upload response, and processed build and group receipts together
+when verifying tester availability. If the build number is already occupied,
+inspect its original delivery evidence before sending new bytes.
+
+The GitHub draft and the Mac TestFlight job have independent outcomes. App Store
+review and public release use the App Store Connect macOS version after
+acceptance testing.
+
 ## Required protected environments and secrets
 
 The workflow declarations require these GitHub Environments. Their current
