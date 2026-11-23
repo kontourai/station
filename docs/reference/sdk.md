@@ -466,6 +466,8 @@ and checks the returned operation and run IDs. Request
 `includeContextSync: true` to inspect the latest receipt with
 `getCliSessionGroup` or `listCliSessionGroups`. A matching sync operation may
 be replayed to observe its own receipt without another send.
+Use `parseCliSessionGroupSyncInput` to validate a local sync plan before
+sending it.
 
 ## Integration capability status and Task write-back
 
