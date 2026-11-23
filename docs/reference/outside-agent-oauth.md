@@ -52,6 +52,13 @@ bounded replay queues are local to this single transport owner. See the
 [isolated R4a receipt](../design/outside-agent-mcp-r4a-evidence.md) for executed
 faults, real-client checks and topology/release limits.
 
+The isolated search composition also offers `search_conversations`. It
+admits native Sessions by stable Project and recorded owner, and restricts
+transcript ranking to those IDs. The worker verifies its SQLite read
+snapshot before querying message content. File transcripts require a
+separate ownership and artifact-binding check. The result reports incomplete
+coverage for file records, host exclusions and read limits.
+
 The isolated active-work composition also offers `list_active_work`. It
 admits rows by the grant's stable Project ID and recorded owner before
 loading projection events or counts. Every Session in a conversation's

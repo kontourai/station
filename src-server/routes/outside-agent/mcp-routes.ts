@@ -21,6 +21,10 @@ import {
   createOutsideActiveWorkReader,
   type OutsideActiveWorkDeps,
 } from '../../services/outside-agent/active-work.js';
+import {
+  createOutsideConversationSearchReader,
+  type OutsideConversationSearchDeps,
+} from '../../services/outside-agent/conversation-search.js';
 import { canonicalOutsideOrigin } from '../../services/outside-agent/management-service.js';
 import { createOutsideMcpDispatch } from '../../services/outside-agent/mcp-dispatch.js';
 import {
@@ -95,6 +99,7 @@ export async function createOutsideAgentMcpServer(input: {
   validateGrant(grant: Grant): boolean;
   projects: Pick<ProjectService, 'listProjects' | 'getProject'>;
   activeWork?: OutsideActiveWorkDeps;
+  conversationSearch?: OutsideConversationSearchDeps;
   exposure: OutsideOAuthExposure;
   checkServe?: () => Promise<'clear' | 'mapped' | 'unverifiable'>;
 }) {
@@ -106,6 +111,12 @@ export async function createOutsideAgentMcpServer(input: {
   const now = store.options.now ?? Date.now;
   const listActiveWork = input.activeWork
     ? createOutsideActiveWorkReader(input.activeWork, now)
+    : undefined;
+  const searchConversations = input.conversationSearch
+    ? createOutsideConversationSearchReader(
+        input.conversationSearch,
+        input.projects,
+      )
     : undefined;
   const sessions = new Map<string, Session>();
   const calls = new Map<string, number>();
@@ -516,6 +527,7 @@ export async function createOutsideAgentMcpServer(input: {
                 current: () => current(owned),
                 projects: input.projects,
                 listActiveWork,
+                searchConversations,
                 reserveCall: () => {
                   const count = dispatches.get(grant.id) ?? 0;
                   if (count >= 10)

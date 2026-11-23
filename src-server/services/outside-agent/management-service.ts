@@ -294,7 +294,7 @@ export class OutsideAgentManagementService {
     scope: Records['intent']['selection']['projectScope'],
   ) {
     if (scope.kind === 'global')
-      return [{ label: 'Project scope', detail: 'All Projects (global)' }];
+      return [{ label: 'Project scope', detail: 'Work outside Projects' }];
     const project = this.authority.describeProject(scope.projectId);
     if (!project) return refuse();
     return [
