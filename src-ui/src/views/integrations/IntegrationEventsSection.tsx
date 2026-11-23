@@ -3,7 +3,7 @@ import {
   useDiscoverIntegrationEventsMutation,
 } from '@kontourai/station-sdk';
 import { StationHttpError } from '@kontourai/station-sdk/client';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { PageRow } from '../../components/PageRow';
@@ -34,6 +34,7 @@ function EventCatalog({
   scope: ApiRequestScope;
 }) {
   const [open, setOpen] = useState(false);
+  const opener = useRef<HTMLButtonElement>(null);
   const discovery = useDiscoverIntegrationEventsMutation();
   const check = () =>
     discovery.mutate({ id: integrationId, requestScope: scope });
@@ -48,11 +49,13 @@ function EventCatalog({
         title="MCP Events"
         control={
           <Button
+            ref={opener}
             onClick={() => {
+              if (discovery.isPending) return;
               setOpen(true);
               check();
             }}
-            disabled={discovery.isPending}
+            aria-disabled={discovery.isPending}
           >
             Check events
           </Button>
@@ -63,6 +66,7 @@ function EventCatalog({
           title="MCP Events"
           closeLabel="Close MCP Events"
           onClose={close}
+          returnFocusTarget={opener.current}
           footer={<Button onClick={close}>Done</Button>}
         >
           {outdated ? (
