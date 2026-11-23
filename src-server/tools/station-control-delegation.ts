@@ -6003,11 +6003,10 @@ export async function delegateTask(
   // an OPT-IN attempt is claimed HERE and nowhere else: never at a
   // forwarding controller. The claim is written BEFORE the admission mint,
   // before `resolveExecutionTarget`, and before any engine preparation —
-  // the only awaits above it are host/handshake selection, which do not
-  // touch the intent. The digest covers the VALIDATED RAW intent only
-  // (prompt + normalized target + parentTaskId): resolved workspaces and
-  // incarnations do not exist yet and are bound separately under the SAME
-  // claim after resolution (`bindAdmitted` below), before any provider
+  // host and handshake selection use the captured request. The digest binds
+  // the validated prompt, target, parent Task, and verified tool restrictions.
+  // Resolved workspaces and incarnations are bound to the same claim after
+  // resolution (`bindAdmitted` below), before any provider
   // effect. No lock and no store handle is held across any of the awaits
   // that follow — the store transaction is the short atomic reserve.
   const attemptClaim:
@@ -6056,11 +6055,14 @@ export async function delegateTask(
       key: claimKey,
       attemptId: input.delegationAttemptId,
       callerDeviceId: attemptCaller.deviceId,
-      intentDigest: delegationAttemptIntentDigest({
-        prompt: input.prompt,
-        target: input.target,
-        ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
-      }),
+      intentDigest: delegationAttemptIntentDigest(
+        {
+          prompt: input.prompt,
+          target: input.target,
+          ...(input.parentTaskId ? { parentTaskId: input.parentTaskId } : {}),
+        },
+        input.delegation,
+      ),
       taskId: reservedTaskId,
     });
     // Same tuple + same validated intent: join the existing claim and name
