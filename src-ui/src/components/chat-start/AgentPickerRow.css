@@ -31,20 +31,16 @@
      grey stub of it paints past the line's edge. */
   overflow: hidden;
 }
-/* The engine pill and the default tag share the track; each may ellipsize. */
-.new-chat-modal__agent-header > .new-chat-modal__agent-engine {
-  display: flex;
-  gap: var(--k-space-1);
-}
 /* The shared quiet pill (EngineChip.css), allowed to ellipsize here. */
 .new-chat-modal__agent-engine > .engine-chip__pill {
   display: block;
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* The default for new chats: an outlined tag, so it never reads as an engine. */
-.new-chat-modal__agent-engine > .new-chat-modal__agent-default {
+/* The default for new chats: an outlined tag, so it never reads as an
+   engine, in the trailing track so it keeps its width. */
+.new-chat-modal__agent-header > .new-chat-modal__agent-default {
+  grid-column: 4;
   background: transparent;
   border: var(--k-border-thin) solid var(--k-line-strong);
 }

@@ -146,20 +146,17 @@ function AgentPickerRow({
           >
             {agent.name}
           </span>
-          {/* What runs it, as the quiet engine pill, right after the name,
-              then the tag naming the Station's default for new chats. Both
-              share the flexible track, so they give up width before the
-              name does. */}
-          {(engineLabel || isNewChatDefault) && (
+          {/* What runs it, as the quiet engine pill, right after the name. */}
+          {engineLabel && (
             <span className="new-chat-modal__agent-engine" title={engineLabel}>
-              {engineLabel && (
-                <span className="engine-chip__pill">{engineLabel}</span>
-              )}
-              {isNewChatDefault && (
-                <span className="engine-chip__pill new-chat-modal__agent-default">
-                  Default for new chats
-                </span>
-              )}
+              <span className="engine-chip__pill">{engineLabel}</span>
+            </span>
+          )}
+          {/* The Station's default for new chats. It keeps its width: the
+              engine pill gives way first. */}
+          {isNewChatDefault && (
+            <span className="engine-chip__pill new-chat-modal__agent-default">
+              Default for new chats
             </span>
           )}
           {!runnable && !agentFixLabel(agent) && (
