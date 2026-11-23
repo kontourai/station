@@ -354,7 +354,11 @@ MonitorTaskTurnSupervisor owns
 turn, token and wall limits; full-access grants remain absent. Token enforcement
 depends on canonical provider usage arriving; missing usage is unknown, not a
 hard billing reservation. A completed action records the first turn terminal,
-not Task acceptance or successful repair. A green run closes
+not Task acceptance or successful repair. When that turn ends, completed or
+failed, a Task still `in_progress` moves to `review` so a person sees the
+result; nothing else would move it, since the Session acts for no person. A
+Task that is blocked, or whose Session a person took over before the turn
+ended, keeps its status. A green run closes
 the episode and prevents later placement for it.
 
 These Tasks can diagnose the normalized failing run. The quoted `head_sha` is
