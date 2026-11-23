@@ -12,7 +12,12 @@ import { Dialog } from '../../components/Dialog';
 import { DisclosureToggle } from '../../components/DisclosureToggle';
 import { PageRow } from '../../components/PageRow';
 import { PageSectionGroup } from '../../components/PageSection';
-import { describeReadFailure, Empty, ErrorState } from '../../components/state';
+import {
+  describeReadFailure,
+  Empty,
+  ErrorState,
+  SkeletonBlock,
+} from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { copyToClipboard } from '../../lib/clipboard';
@@ -81,7 +86,7 @@ function ScopedOutsideClients({
     target: ReviewTarget;
   }>();
   const scopeFormId = useId();
-  const selectionOpener = useRef<HTMLButtonElement>(null);
+  const selectionOpener = useRef<HTMLButtonElement | 'done' | null>(null);
   const opener = useRef<HTMLButtonElement>(null);
   const inventoryDone = useRef<HTMLButtonElement>(null);
   const scopeForm = useRef<HTMLFormElement>(null);
@@ -93,7 +98,10 @@ function ScopedOutsideClients({
       )?.focus();
     } else if (open && selectionOpener.current) {
       const control = selectionOpener.current;
-      (control.isConnected ? control : inventoryDone.current)?.focus();
+      (control !== 'done' && control.isConnected
+        ? control
+        : inventoryDone.current
+      )?.focus();
       selectionOpener.current = null;
     }
   }, [selection, open]);
@@ -178,6 +186,7 @@ function ScopedOutsideClients({
     setSelection({ target, name: name || 'Unnamed client' });
   };
   const cancelSelection = () => {
+    if (settled) selectionOpener.current = 'done';
     setSelection(undefined);
     review.reset();
   };
@@ -313,7 +322,9 @@ function ScopedOutsideClients({
         >
           {reviewFailure}
           {selection &&
-            (review.data ? (
+            (review.data && decision.isPending ? (
+              <SkeletonBlock label="Checking passkey decision" />
+            ) : review.data ? (
               <div className="content-stack">
                 {decision.isError && (
                   <ErrorState

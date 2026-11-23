@@ -833,11 +833,16 @@ test('operator inventory keeps current grants when retained history exceeds the 
     headers: { cookie: h.cookie },
   });
   expect(inventory.status).toBe(200);
-  const data = await inventory.json();
-  expect(data.olderGrantsOmitted).toBe(true);
-  expect(
-    data.grants.map((grant: { grantId: string }) => grant.grantId),
-  ).toEqual([active.id, ...ended.slice(1).reverse()]);
+  expect(await inventory.json()).toMatchObject({
+    olderGrantsOmitted: true,
+    grants: [
+      { grantId: active.id },
+      ...ended
+        .slice(1)
+        .reverse()
+        .map((grantId) => ({ grantId })),
+    ],
+  });
 });
 
 async function expectSameResponse(actual: Response, expected: Response) {
