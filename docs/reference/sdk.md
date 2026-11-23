@@ -430,6 +430,12 @@ operator. The result carries `supported` and, when supported, bounded event
 names with optional titles and descriptions. The captured scope binds the
 request to the current Station and authority. Older hosts return HTTP 404.
 
+`usePollIntegrationEventsMutation().mutateAsync({id, input, requestScope})`
+reads one page of a named event type through that same integration. Start
+with `cursor: null` and pass the returned cursor to continue. Keep the name
+and optional event arguments consistent when continuing. The response
+reports whether more events remain and whether earlier events are unavailable.
+
 `useIntegrationAccountQuery(id, projectSlug?, requestScope?)` reads the account
 summary. Pass the captured `ApiRequestScope` to partition account state by
 Station and principal authority and refuse a request after that authority changes.

@@ -7,9 +7,13 @@ import type { LayoutComponentRef } from '@kontourai/station-contracts/layout';
 import type {
   IntegrationTrustReviewDecision,
   ToolDef,
+  ToolServerEventPollInput,
 } from '@kontourai/station-contracts/tool';
 import type { ApiRequestScope } from '../client/http';
-import { discoverIntegrationEvents } from '../client/integrations';
+import {
+  discoverIntegrationEvents,
+  pollIntegrationEvents,
+} from '../client/integrations';
 import {
   type MutationOptions,
   type QueryConfig,
@@ -414,6 +418,20 @@ export function useDiscoverIntegrationEventsMutation() {
   return useApiMutation(
     ({ id, requestScope }: { id: string; requestScope: ApiRequestScope }) =>
       discoverIntegrationEvents(id, requestScope),
+  );
+}
+
+export function usePollIntegrationEventsMutation() {
+  return useApiMutation(
+    ({
+      id,
+      input,
+      requestScope,
+    }: {
+      id: string;
+      input: ToolServerEventPollInput;
+      requestScope: ApiRequestScope;
+    }) => pollIntegrationEvents(id, input, requestScope),
   );
 }
 

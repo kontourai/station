@@ -188,6 +188,7 @@ export {
   useIntegrationsQuery,
   useKitLayoutQuery,
   useKitRegistryQuery,
+  usePollIntegrationEventsMutation,
   useReconnectIntegrationMutation,
   useRegistryAgentActionMutation,
   useRegistryIntegrationActionMutation,

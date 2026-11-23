@@ -2183,9 +2183,11 @@ operating-system level is tracked in
 Open a saved, enabled HTTP tool server in **Connections → Tools** and choose
 **Check events**. The Station operator can use this action on a connection
 with a shared account. Station checks the server using that connection and
-lists the event types it advertises. For OAuth, use a server that requests
-authorization during connection setup and sign in first. Subscriptions and
-delivery use separate protocol operations.
+lists the event types it advertises. Choose **Read events** beside an event type
+to read a page and expand an event's data. **Next page** continues from the
+server's cursor and **Check again** looks for later events. A message above the
+results identifies missing earlier events. For OAuth, use a server that requests
+authorization during connection setup and sign in first.
 
 ## Connect an OAuth MCP server to an Agent
 

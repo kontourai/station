@@ -14,7 +14,11 @@
  * family; station-control's raw-forwarding call sites need their own adapter
  * when migrated, Wave 2B.
  */
-import type { ToolServerEventCatalog } from '@kontourai/station-contracts/tool';
+import type {
+  ToolServerEventCatalog,
+  ToolServerEventPollInput,
+  ToolServerEventPollPage,
+} from '@kontourai/station-contracts/tool';
 import {
   type ApiRequestScope,
   type ClientRequestOptions,
@@ -57,6 +61,22 @@ export async function discoverIntegrationEvents(
   const catalog = await readEnvelopeOrThrow<ToolServerEventCatalog>(response);
   if (!catalog) throw new Error('Event catalog missing from response');
   return catalog;
+}
+
+export async function pollIntegrationEvents(
+  id: string,
+  input: ToolServerEventPollInput,
+  requestScope: ApiRequestScope,
+): Promise<ToolServerEventPollPage> {
+  const response = await mutateJson(
+    `${requestScope.apiBase}/integrations/${encodeURIComponent(id)}/events/poll`,
+    'POST',
+    { requestScope, readOnly: true, maxResponseBytes: 512 * 1024 },
+    input,
+  );
+  const page = await readEnvelopeOrThrow<ToolServerEventPollPage>(response);
+  if (!page) throw new Error('Event page missing from response');
+  return page;
 }
 
 /** `POST /integrations` — create an integration. */

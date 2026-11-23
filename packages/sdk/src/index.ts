@@ -1192,6 +1192,7 @@ export {
   usePluginUpdateMutation,
   usePluginUpdatesQuery,
   usePluginVisibilityQuery,
+  usePollIntegrationEventsMutation,
   usePrepareTroubleshootMutation,
   usePreviewSchedule,
   useProbeSshEnvironmentMutation,
