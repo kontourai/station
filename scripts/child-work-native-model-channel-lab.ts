@@ -108,7 +108,8 @@ try {
     /^[a-f0-9]{40}$/,
   );
   const docker = process.env.CHILD_WORK_DOCKER_EXECUTABLE;
-  assert.ok(docker?.startsWith('/'));
+  assert.ok(docker);
+  assert.ok(docker.startsWith('/'));
   const endpoint = process.env.CHILD_WORK_DOCKER_ENDPOINT;
   assert.ok(endpoint);
   assert.ok(endpoint.startsWith('unix:///'));
@@ -447,7 +448,7 @@ try {
       container = prepareContainer(engine.name);
       await container.start();
       const signal = AbortSignal.timeout(60_000);
-      const before = requests.length;
+      const requestsBeforeLaunch: number = requests.length;
       const run = await container.startText({
         engine: engine.name,
         modelId: engine.name === 'claude' ? 'claude-sonnet-4-5' : fixtureModel,
@@ -516,7 +517,7 @@ try {
         );
       }
       assert.ok(
-        requests.length > before,
+        requests.length > requestsBeforeLaunch,
         `${engine.name} made no channel request`,
       );
       await run.settled;
