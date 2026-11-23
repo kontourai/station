@@ -1,4 +1,6 @@
-/* ═══ Automations: Next 7 days, the list, and the empty page ═══ */
+/* ═══ Automations: Next 7 days, the list, and the empty page ═══
+   Each list sits in a PageSection, which draws the card; the lists draw
+   only the rules between their items. */
 
 .automations-section + .automations-section {
   margin-top: var(--k-space-5);
@@ -21,10 +23,6 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-md);
-  background: var(--k-panel);
-  overflow: hidden;
 }
 
 .automations-week__day {
@@ -97,9 +95,6 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-md);
-  background: var(--k-panel);
 }
 
 .automations-next-up__row,
@@ -201,9 +196,6 @@
   margin: 0;
   padding: 0;
   list-style: none;
-  border: 1px solid var(--k-line);
-  border-radius: var(--k-radius-md);
-  background: var(--k-panel);
 }
 
 .automations-row {
