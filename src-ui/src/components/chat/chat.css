@@ -3195,6 +3195,14 @@
   display: none;
 }
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  /* A phone composer clips what overflows it (index.css), which would clip
+     the status row floating above it too (see `data-status-floats` below):
+     the clip reaches past the composer's edge by the room the row floats in.
+     It lives in this block because it shares the block's condition. */
+  .chat-dock__body[data-status-floats] > .chat-input {
+    overflow: clip;
+    overflow-clip-margin: var(--chat-status-float-room);
+  }
   .app-toolbar__action--secondary.app-toolbar__action--secondary {
     display: none;
   }
@@ -3760,16 +3768,6 @@ div.chat-input
   bottom: 100%;
   z-index: var(--layer-sticky);
   pointer-events: none;
-}
-
-/* A phone composer clips what overflows it (index.css), which would clip
-   the floating row above it too: the clip reaches past the composer's edge
-   by the room the row floats in. */
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .chat-dock__body[data-status-floats] > .chat-input {
-    overflow: clip;
-    overflow-clip-margin: var(--chat-status-float-room);
-  }
 }
 
 /* The transcript keeps that room at its end, so pinned to the end the pill
