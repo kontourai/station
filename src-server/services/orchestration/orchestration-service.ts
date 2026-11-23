@@ -11996,6 +11996,10 @@ export class OrchestrationService {
           if (
             this.options.eventStore?.ownedStopTargets(command.threadId).length
           ) {
+            if (internal?.beforeProviderInterrupt)
+              throw new Error(
+                'Exact delegated turn cancellation cannot use the Session cascade.',
+              );
             const activeTurnId = this.activeTurnIdOfThread(command.threadId);
             if (command.turnId && command.turnId !== activeTurnId) {
               const result: InterruptTurnResult = {
@@ -12054,6 +12058,10 @@ export class OrchestrationService {
             });
           } catch {
             assertInterruptCurrent();
+            if (internal?.beforeProviderInterrupt)
+              throw new Error(
+                'Exact delegated turn cancellation requires a current provider Session.',
+              );
             // UX audit T1 (live verification): the engine session for this
             // thread does not exist YET. A dispatched turn takes 0.5-2.6s to
             // reach `turn.started`, and refusing the whole command inside that
