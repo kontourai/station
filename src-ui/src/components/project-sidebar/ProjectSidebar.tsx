@@ -516,7 +516,7 @@ function ProjectSidebarImpl() {
               key={durableAuthorityNamespace ?? ''}
               load={quiet ? loadQuietSidebar : loadProjectSidebarBoards}
               pending={null}
-              componentProps={{ part: 'apps', ...quietProps }}
+              componentProps={{ part: 'apps' as const, ...quietProps }}
             />
             <span
               role="status"
