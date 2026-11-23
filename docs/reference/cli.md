@@ -2437,9 +2437,9 @@ automation observations** Feature Preview.
 
 `deliveries` prints `deliveries` (default 50) and `polls`: each row's outcome
 (`matched`, `no-match`, `ignored`, `suppressed` or `refused` with a reason,
-`started`, `failed`, `interrupted`, `indeterminate` or `duplicate`), its
+`started`, `failed`, `stopped`, `indeterminate` or `duplicate`), its
 semantic key, and its rule and episode ids. A delivery whose action is held by
-a limit reads `suppressed` with that reason; `interrupted` means a person
+a limit reads `suppressed` with that reason; `stopped` means a person
 stopped the Agent's turn (any other stop reads `failed`). Each row's `decisions` lists every matched
 `observe` or `live` rule with its mode and outcome: `would-start` or
 `suppressed` (with a reason) for an `observe` rule, `intent-retained` or

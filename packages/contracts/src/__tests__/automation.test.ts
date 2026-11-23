@@ -42,7 +42,7 @@ describe('@kontourai/station-contracts/automation', () => {
       'started',
       'failed',
       // A person stopped the turn the delivery started.
-      'interrupted',
+      'stopped',
       'indeterminate',
     ]);
     expectTypeOf<AutomationDeliveryOutcome>().toEqualTypeOf<

@@ -5,10 +5,11 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
  * its approval and input requests, before its turn is interrupted. Approval
  * requests carry no expiry of their own and the idle-session sweep never
  * parks a Session with a running turn, so without this an unanswered request
- * would hold an engine and an episode open indefinitely. A day leaves room
- * for an overnight answer.
+ * would hold an engine and an episode open indefinitely. Twelve hours lets an
+ * approval raised overnight be answered in the morning; the Task holds its
+ * rule and a concurrent action slot while it waits, so it is no longer.
  */
-export const AUTOMATION_PERSON_WAIT_CEILING_MS = 24 * 60 * 60 * 1000;
+export const AUTOMATION_PERSON_WAIT_CEILING_MS = 12 * 60 * 60 * 1000;
 
 export type PersonWait = Readonly<{
   /** Time spent with at least one blocking request open, up to `now`. */

@@ -364,15 +364,21 @@ a person has since continued the Session, and a person who continues afterwards
 works in a Task that already awaits review. A green run closes
 the episode and prevents later placement for it.
 
-A first turn a person stops reads `interrupted` on the intent and the
-delivery, not `failed`; Settings shows "interrupted · stopped by a person".
-Station knows it was a person because the Stop command came from an operator
-or paired-device client origin, which it records as `byPerson` on that turn's
-`session.stop-settled`. The budget, a revocation, an engine failure, a
-restart, or a Stop sent by an Agent never record it, so they still read
-`failed`. Either way the Agent ran: the attempt is used, the episode moves on
-exactly as after a failure (with one attempt it reads `exhausted`), and the
-failed-start Retry is not offered.
+A first turn a person stops reads `stopped` on the intent and the
+delivery, not `failed`; Settings shows "stopped by a person".
+Station knows it was a person from the Stop request itself: the
+orchestration command route applies Station's person check
+(`personCredentialRequest`: an operator credential or session, or a paired
+person's device, never a delegation-kind device such as a remote parent
+Station, and never a request an Agent may have made). It records the result
+as `byPerson` on that turn's `session.stop-settled`. The budget, a
+revocation, an engine failure, a restart, or a Stop sent by an Agent never
+record it, so they still read `failed`. Either way the Agent ran: the attempt
+is used, the episode moves on exactly as after a failure (with one attempt it
+reads `exhausted`), and the failed-start Retry is not offered. Two stops by a
+person still read `failed`: a Stop that reaches the turn through the owned
+cascade (a Session with delegated children), and a person ending the whole
+Session (`stopSession`), which writes no Station stop record for the turn.
 
 The wall budget (`maxWallRuntimeMs`) counts time the Agent could be working.
 While the Session waits on a person (a blocking approval or input request is
@@ -382,12 +388,26 @@ turn ends. The waits are folded from the Session's persisted
 restart with a request still open, the remaining budget is what it was.
 Approval requests have no expiry of their own, and the idle sweep never parks
 a Session with a running turn. So an automation Task may wait for a person
-for at most `AUTOMATION_PERSON_WAIT_CEILING_MS` (24 hours) in total. After
+for at most `AUTOMATION_PERSON_WAIT_CEILING_MS` (12 hours) in total, long
+enough for an approval raised overnight to be answered in the morning. After
 that its turn is interrupted with the intent reason `person_wait_ceiling`
-and the Session is marked blocked, saying no one answered within 24 hours.
-`maxTurns` and `maxTokens` are unchanged. An unanswered request still notifies
-the way any approval does: the approval card reaches the owner's devices. It
-names the tool and the Project, not the Task or the rule.
+and the Session is marked blocked, saying no one answered within 12 hours.
+`maxTurns` and `maxTokens` are unchanged.
+
+What the pause costs: while a Task waits on a person it still holds its rule
+(`maxActivePerRule` 1) and one of the Station's concurrent action slots
+(`maxConcurrentActions`), for up to its wall budget plus 12 hours. Two
+unanswered approvals can hold every automation on the Station for that long.
+An Agent can lengthen its wall time up to the ceiling by asking blocking
+questions, while its turns and tokens stay capped. An engine that never
+reports a request as resolved leaves the clock paused until the ceiling.
+
+An unanswered request notifies the way any approval does: the approval card
+reaches the owner's devices. For a Session that acts for no person, such as
+an automation's, the card's body starts with the title of the Task it runs
+("Automation: <rule name>", at most 80 characters), so it says which Task is
+waiting. The Session's own title is not used: it is derived from the framed
+prompt, which quotes untrusted source data.
 
 These Tasks can diagnose the normalized failing run. The quoted `head_sha` is
 source evidence, not proof that the execution workspace is that exact checkout.
@@ -757,7 +777,7 @@ text. The agent fetches logs itself with `gh`.
   `maxActive` 1; a global `AUTOMATION_EXECUTION_LIMITS.maxConcurrentActions`;
   and a per-action budget (`maxTurns`, `maxTokens`, `maxWallRuntimeMs`)
   enforced by `MonitorTaskTurnSupervisor`; the wall clock is paused while a
-  person is awaited, up to a 24-hour waiting ceiling (see
+  person is awaited, up to a 12-hour waiting ceiling (see
   [Operator surface](#operator-surface)).
 - **Approval.** `fullAccessGrant` is always null. A rule may pin `ask` or
   `auto`, never wider than the agent's own mode. `ask` routes to the inbox
@@ -811,7 +831,7 @@ episode.
 - **Ledger rows per delivery:** `duplicate`, `refused(reason)`,
   `ignored`, `no-match`, `matched`, `suppressed(reason)` (see
   [Operator surface](#operator-surface)), `started(taskId, sessionId)`, and
-  `failed`, `interrupted` (a person stopped the turn) or `indeterminate`.
+  `failed`, `stopped` (a person stopped the turn) or `indeterminate`.
   There is no `received` row: intake records a
   delivery and its evaluation in one transaction. Rows hold a bounded projection only: no payloads, no
   secrets, and no GUIDs in clear.

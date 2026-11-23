@@ -129,7 +129,7 @@ test('a delivery whose turn a person stopped reads as stopped by a person, not f
           eventType: 'github.workflow_run.completed',
           receivedAt: '2026-11-06T00:00:00.000Z',
           updatedAt: '2026-11-06T00:00:00.000Z',
-          outcome: 'interrupted',
+          outcome: 'stopped',
         },
       ],
     }),
@@ -137,7 +137,7 @@ test('a delivery whose turn a person stopped reads as stopped by a person, not f
   render(<AutomationsSection />);
   const list = screen.getByRole('region', { name: /^Recent deliveries/ });
   expect(
-    within(list).getByText('interrupted · stopped by a person'),
+    within(list).getByText('stopped by a person'),
   ).toBeTruthy();
   expect(within(list).queryByText(/failed/)).toBeNull();
 });

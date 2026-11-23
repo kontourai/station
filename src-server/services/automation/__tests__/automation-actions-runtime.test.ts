@@ -10,6 +10,7 @@ import {
   SERVER_EVENTS,
 } from '@kontourai/station-contracts/runtime-events';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
+import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import {
   createGateTestRegistry,
@@ -23,15 +24,28 @@ import type {
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
 import { createAutomationRoutes } from '../../../routes/operations/automations.js';
+import { createOrchestrationRoutes } from '../../../routes/orchestration/orchestration.js';
 import { currentUnattendedPrincipal } from '../../../runtime/agents/unattended-principal-context.js';
 import { createAutomationActionsRuntime } from '../../../runtime/automation-actions-runtime.js';
 import { installManagedApprovalCeiling } from '../../../security/managed-approval-ceiling.js';
+import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
+import {
+  STATION_CONTROL_ORIGIN_AGENT_TOOL,
+  STATION_CONTROL_ORIGIN_HEADER,
+} from '../../../tools/station-control-shared.js';
+import {
+  ApprovalInboxNotificationProvider,
+  unattendedSessionTitleResolver,
+  wireApprovalInboxNotifications,
+} from '../../approvals/approval-inbox.js';
 import {
   modelOptionsRefusal,
   UnsupportedModelOptionsError,
 } from '../../execution-target/execution-target-resolver.js';
 import { FeaturePreviewRegistry } from '../../feature-previews/feature-preview-registry.js';
+import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
 import { createRuntimeResourcePostureController } from '../../infra/resource-posture.js';
+import { NotificationService } from '../../notifications/notification-service.js';
 import { EventBus } from '../../orchestration/event-bus.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import { OrchestrationService } from '../../orchestration/orchestration-service.js';
@@ -2567,28 +2581,87 @@ function settled(w: World, intent: AutomationActionIntent) {
   };
 }
 
-test("a person's Stop of the automation's first turn reads interrupted, not failed, and uses the attempt as a failure does", async () => {
+type RoutePrincipal = Parameters<
+  typeof setRuntimeAuthenticatedRequestPrincipal
+>[1];
+const OPERATOR: RoutePrincipal = {
+  kind: 'credential',
+  credential: 'operator',
+  authority: 'operator-credential',
+  source: 'bearer',
+};
+/** A remote parent Station's device grant: not a person. */
+const DELEGATION_DEVICE: RoutePrincipal = {
+  kind: 'credential',
+  credential: 'peer',
+  authority: 'device-credential',
+  deviceId: 'peer-grant',
+  deviceKind: 'delegation',
+  source: 'bearer',
+};
+
+/**
+ * Sends a Stop through the real orchestration command route as `principal`,
+ * so the route's own person check decides whether it was a person's.
+ */
+async function stopThroughRoute(
+  w: World,
+  sessionId: string,
+  principal: RoutePrincipal,
+  options: { deviceKind?: 'device' | 'delegation'; agent?: boolean } = {},
+) {
+  w.adapter.acknowledgeInterrupts = true;
+  const app = new Hono();
+  app.use('*', async (c, next) => {
+    setRuntimeAuthenticatedRequestPrincipal(c.req.raw, principal);
+    await next();
+  });
+  app.route(
+    '/',
+    createOrchestrationRoutes(w.service, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn(), warn: vi.fn() } as never,
+      getUserId: () => LOCAL_OPERATOR_PRINCIPAL_ID,
+      isRequestPrincipalCurrent: () => true,
+      resolveInboundDeviceKind: () => options.deviceKind,
+    }),
+  );
+  const before = w.eventStore
+    .listEvents(sessionId)
+    .filter(({ payload }) => payload.method === 'turn.aborted').length;
+  const response = await app.request('/commands', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(options.agent
+        ? { [STATION_CONTROL_ORIGIN_HEADER]: STATION_CONTROL_ORIGIN_AGENT_TOOL }
+        : {}),
+    },
+    body: JSON.stringify({ type: 'interruptTurn', threadId: sessionId }),
+  });
+  expect(response.status, await response.clone().text()).toBeLessThan(300);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore
+        .listEvents(sessionId)
+        .filter(({ payload }) => payload.method === 'turn.aborted').length,
+    ).toBeGreaterThan(before),
+  );
+}
+
+test("a person's Stop of the automation's first turn reads stopped, not failed, and uses the attempt as a failure does", async () => {
   const w = await world({ maxAttempts: 1 });
   const intent = await running(w);
   // Invoking the Agent used the episode's only attempt.
   expect(w.ledger.listOpenEpisodes()).toEqual([
     expect.objectContaining({ state: 'exhausted', attemptCount: 1 }),
   ]);
-  w.adapter.acknowledgeInterrupts = true;
-  await w.service.dispatch(
-    { type: 'interruptTurn', threadId: intent.sessionId! },
-    { clientOrigin: PERSON_ORIGIN },
-  );
-  await vi.waitFor(() =>
-    expect(
-      w.eventStore.latestEventByMethods(intent.sessionId!, ['turn.aborted']),
-    ).toBeTruthy(),
-  );
+  await stopThroughRoute(w, intent.sessionId!, OPERATOR);
   await w.runtime.tick();
   const after = settled(w, intent);
   expect(after).toMatchObject({
-    state: 'interrupted',
-    delivery: 'interrupted',
+    state: 'stopped',
+    delivery: 'stopped',
   });
   // The attempt was used when the Agent was invoked: the episode reads as it
   // does after a failure, and no start-failed Retry is offered.
@@ -2600,19 +2673,78 @@ test("a person's Stop of the automation's first turn reads interrupted, not fail
   expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('review');
 });
 
-test("an Agent's or server's Stop of the automation turn is not a person's: it still reads failed", async () => {
+test.each([
+  [
+    'a delegation-kind device (a remote parent Station)',
+    DELEGATION_DEVICE,
+    { deviceKind: 'delegation' as const },
+  ],
+  ['an Agent holding an operator credential', OPERATOR, { agent: true }],
+])(
+  "a Stop from %s is not a person's: it still reads failed",
+  async (_label, principal, options) => {
+    const w = await world({ maxAttempts: 1 });
+    const intent = await running(w);
+    await stopThroughRoute(w, intent.sessionId!, principal, options);
+    await w.runtime.tick();
+    expect(settled(w, intent)).toMatchObject({
+      state: 'failed',
+      delivery: 'failed',
+    });
+  },
+);
+
+test("an Agent's or server's Stop dispatched without the route is not a person's: it still reads failed", async () => {
   const w = await world({ maxAttempts: 1 });
   const intent = await running(w);
   w.adapter.acknowledgeInterrupts = true;
   await w.service.dispatch(
     { type: 'interruptTurn', threadId: intent.sessionId! },
-    { clientOrigin: INTERNAL_ORIGIN },
+    { clientOrigin: PERSON_ORIGIN },
   );
   await vi.waitFor(() =>
     expect(
       w.eventStore.latestEventByMethods(intent.sessionId!, ['turn.aborted']),
     ).toBeTruthy(),
   );
+  await w.runtime.tick();
+  expect(settled(w, intent)).toMatchObject({
+    state: 'failed',
+    delivery: 'failed',
+  });
+});
+
+test("a person's Stop of a later turn in the Session leaves the dispatched turn's outcome as it was", async () => {
+  const w = await world({ maxAttempts: 1 });
+  const intent = await running(w);
+  // The dispatched turn ends on its own (an engine abort, no one's Stop)...
+  await pushEvent(w, intent, {
+    method: 'turn.aborted',
+    eventId: 'dispatched-turn-aborted',
+    reason: 'engine gave up',
+  });
+  // ...then, before the runtime notices, a person continues and stops their
+  // own turn.
+  await w.service.dispatch(
+    {
+      type: 'sendTurn',
+      input: { threadId: intent.sessionId!, input: 'I will take it from here' },
+    },
+    { clientOrigin: PERSON_ORIGIN },
+  );
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(2));
+  await stopThroughRoute(w, intent.sessionId!, OPERATOR);
+  expect(
+    w.eventStore
+      .listEvents(intent.sessionId!)
+      .map(({ payload }) => payload)
+      .some(
+        (event) =>
+          event.method === 'session.stop-settled' &&
+          event.byPerson === true &&
+          event.turnId !== intent.turnId,
+      ),
+  ).toBe(true);
   await w.runtime.tick();
   expect(settled(w, intent)).toMatchObject({
     state: 'failed',
@@ -2751,7 +2883,7 @@ test('a turn that works past its wall budget with no request open is interrupted
 test('an approval nobody answers is interrupted at the waiting ceiling, with its own reason', async () => {
   const { w, intent, interrupts } = await hourBudget();
   await openApproval(w, intent, 'approval-never');
-  await vi.advanceTimersByTimeAsync(24 * 60 * MINUTE - MINUTE);
+  await vi.advanceTimersByTimeAsync(12 * 60 * MINUTE - MINUTE);
   await w.runtime.tick();
   expect(interrupts).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(2 * MINUTE);
@@ -2767,7 +2899,7 @@ test('an approval nobody answers is interrupted at the waiting ceiling, with its
   expect(blocked).toMatchObject({
     sessionState: 'blocked',
     reason:
-      'Stopped: no one answered this automation’s request within 24 hours.',
+      'Stopped: no one answered this automation’s request within 12 hours.',
   });
   await endFirstTurn(w, intent, {
     method: 'turn.aborted',
@@ -2799,4 +2931,123 @@ test('a restart while an approval is open keeps the remaining wall budget', asyn
   expect(interrupts).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(2 * MINUTE);
   expect(interrupts).toHaveBeenCalledWith(intent.sessionId);
+});
+
+test('two separate waits that together pass the waiting ceiling reach it', async () => {
+  const { w, intent, interrupts } = await hourBudget();
+  await openApproval(w, intent, 'approval-first');
+  await vi.advanceTimersByTimeAsync(7 * 60 * MINUTE);
+  await answerApproval(w, intent, 'approval-first');
+  await vi.advanceTimersByTimeAsync(MINUTE);
+  await openApproval(w, intent, 'approval-second');
+  // 7 hours and then 4 hours 59 minutes: under the 12-hour ceiling in total.
+  await vi.advanceTimersByTimeAsync(5 * 60 * MINUTE - MINUTE);
+  await w.runtime.tick();
+  expect(interrupts).not.toHaveBeenCalled();
+  // Neither wait alone reaches 12 hours; together they pass it.
+  await vi.advanceTimersByTimeAsync(2 * MINUTE);
+  expect(interrupts).toHaveBeenCalledWith(intent.sessionId);
+  expect(w.ledger.readIntent(intent.intentId)?.reason).toBe(
+    'person_wait_ceiling',
+  );
+});
+
+/**
+ * The real approval-card wiring over this world's orchestration service and
+ * event store, as runtime support composes it.
+ */
+async function approvalCards(
+  w: World,
+  orchestration: Pick<
+    OrchestrationService,
+    'firstStartedMetadataOfThread'
+  > = w.service,
+) {
+  const bus = new EventBus();
+  const notifications = new NotificationService(
+    bus,
+    makeTempDir('automation-cards-'),
+    999_999,
+    { acquireMutationLock: async () => async () => {} },
+  );
+  const provider = new ApprovalInboxNotificationProvider({
+    approvalRegistry: { has: () => false, resolve: () => false },
+    orchestrationService: w.service,
+    unattendedSessionTitle: unattendedSessionTitleResolver({
+      orchestration,
+      store: w.eventStore,
+      tasks: w.graph,
+    }),
+  });
+  notifications.addProvider(provider);
+  const unwire = wireApprovalInboxNotifications(bus, provider, notifications, {
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+  } as never);
+  await notifications.start();
+  cleanup.push(async () => {
+    unwire();
+    await notifications.shutdown();
+  });
+  const opened = (intent: AutomationActionIntent, requestId: string) => {
+    bus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
+      event: {
+        eventId: `card-${requestId}`,
+        createdAt: new Date().toISOString(),
+        method: 'request.opened',
+        provider: w.adapter.provider,
+        threadId: intent.sessionId!,
+        turnId: intent.turnId!,
+        requestId,
+        requestType: 'approval',
+        title: 'Run a command',
+        description: 'git push origin main',
+      },
+    });
+  };
+  const card = async (requestId: string) => {
+    let found: { body?: string } | undefined;
+    await vi.waitFor(async () => {
+      found = (await notifications.list()).find(
+        (notification) =>
+          (notification.metadata as { requestId?: string } | undefined)
+            ?.requestId === requestId,
+      );
+      expect(found).toBeTruthy();
+    });
+    return found!;
+  };
+  return { opened, card };
+}
+
+test("an automation's approval card starts with its Task's title", async () => {
+  const w = await world();
+  const intent = await running(w);
+  const title = w.graph.readTaskView(intent.taskId!)!.title;
+  const cards = await approvalCards(w);
+  cards.opened(intent, 'automation-request');
+  const card = await cards.card('automation-request');
+  expect(title).toBe(`Automation: ${QUALIFICATION_RULE.name}`);
+  expect(card.body).toBe(`${title}: git push origin main`);
+  // Not the Session's prompt-derived label, which quotes source data.
+  expect(card.body).not.toContain('quoted source data');
+});
+
+test("an ordinary Session's approval card is unchanged", async () => {
+  const w = await world();
+  const intent = await running(w);
+  // The same Session, had its start not been marked as acting for no one.
+  const cards = await approvalCards(w, {
+    firstStartedMetadataOfThread: (threadId) => {
+      const { ownerAttribution: _marker, ...rest } =
+        w.service.firstStartedMetadataOfThread(threadId) ?? {};
+      return rest;
+    },
+  });
+  cards.opened(intent, 'ordinary-request');
+  expect((await cards.card('ordinary-request')).body).toBe(
+    'git push origin main',
+  );
 });

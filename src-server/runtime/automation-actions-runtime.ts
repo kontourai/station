@@ -1259,7 +1259,7 @@ class AutomationActionsRuntime implements AutomationActions {
                       event.turnId === turnId &&
                       event.byPerson === true,
                   )
-                ? 'interrupted'
+                ? 'stopped'
                 : 'failed',
         },
         Date.now(),

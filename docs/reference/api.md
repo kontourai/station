@@ -6455,7 +6455,7 @@ Feature Preview. Disabled previews return 404 with `feature_preview_disabled`,
 reports last-poll time, cursor and coverage/failure outcome; `partial` means the
 GitHub page omitted additional runs and did not advance the cursor. A delivery
 whose action is held by a limit reads `suppressed` with that reason. `outcome`
-is one of `AUTOMATION_DELIVERY_OUTCOMES`; `interrupted` means a person stopped
+is one of `AUTOMATION_DELIVERY_OUTCOMES`; `stopped` means a person stopped
 the turn the delivery started, while the wall budget, an engine failure, a
 restart or a revocation reads `failed`. Use the
 [SDK client](../../packages/sdk/src/client/automations.ts) or

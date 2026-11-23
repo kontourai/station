@@ -10170,6 +10170,12 @@ export class OrchestrationService {
        * untrusted-content permission asks about at a Station seam.
        */
       personAnswer?: true;
+      /**
+       * Set by the orchestration command route on an `interruptTurn` that
+       * passes Station's person check (`personCredentialRequest`). Recorded
+       * as `byPerson` on the turn's `session.stop-settled`.
+       */
+      personStop?: true;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -11887,12 +11893,10 @@ export class OrchestrationService {
           }
         }
         case 'interruptTurn': {
-          // A person's Stop (operator or device origin) is recorded as such
-          // on `session.stop-settled`, so an automation can tell it from its
-          // own budget interrupt, which never reaches this command.
-          const byPerson =
-            classifyTurnDispatchOrigin(undefined, context?.clientOrigin) ===
-            'interactive';
+          // A person's Stop (the route's person check) is recorded as such on
+          // `session.stop-settled`, so an automation can tell it from its own
+          // budget interrupt, which never reaches this command.
+          const byPerson = context?.personStop === true;
           const pendingStart = this.engineStartCancels.get(command.threadId);
           if (
             pendingStart &&
