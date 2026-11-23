@@ -103,7 +103,7 @@ or approval. Those checks remain with the execution owners. A completed chat
 also does not establish a passed gate. Failed catalog reads hide the prior setup
 until a retry succeeds; no tools are installed or configured from this view.
 
-The Inbox presents a Task with its authorized work chats underneath, including
+The Chats list presents a Task with its authorized work chats underneath, including
 independent Agent requests from the Task Room. Selecting the Task reveals
 Overview; selecting a work chat opens that conversation. A conversation linked
 to multiple Tasks stays separate. Running counts reflect actual chats, so an

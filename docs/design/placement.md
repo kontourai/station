@@ -61,7 +61,7 @@ This source contract does not renew browser or native geometry qualification.
 On a phone, the Coding workbench replaces its trailing icon rail and breadcrumb
 with a compact header. On the Chat page the workbench bar takes no row: the
 tool picker (glyph and caret, named for a screen reader) leads the chat's own
-mobile header, whose Inbox button already returns to the inbox, and Open
+mobile header, whose Chats button already returns to the list, and Open
 Browser stays in the picker's list. With a tool open, the bar returns with
 Chat and the tool's labeled picker. The picker opens the shared Dialog as a bottom sheet.
 It lists Chat and the host's pane instances in the layout's declared order,
@@ -1738,7 +1738,7 @@ into from it.
   `chromeless`: a drill-in page is the breadcrumb and the pane, no tab strip,
   save notice or pane actions. Choosing another conversation in the inbox is a
   replace (`setActiveChat`), not an entry. The bar is the breadcrumb
-  (Inbox / conversation / pane; earlier crumbs go back); drill-ins are an icon
+  (Chats / conversation / pane; earlier crumbs go back); drill-ins are an icon
   rail on the trailing edge with the current one solid, the Diff badged with a
   changed-file count the layout already knows, the Browser launcher and the
   pane catalog last. Back and Forward are the browser's and the stack's
@@ -1836,7 +1836,7 @@ per conversation.** Below the fold nothing above changes.
   keeps the pane: a drill-in pushed below the fold is the side panel above
   it (that one entry, pushed as a page, still pops as one), and a side panel
   is the drill-in below. Chat is always the page past the fold — the crumbs
-  stay Inbox / conversation, the composer stays on screen and in the
+  stay Chats / conversation, the composer stays on screen and in the
   foreground — and the drill-in `section` is the same DOM node either way,
   so Chat is one mounted instance across a panel's open, switch and close
   and across the fold (`CodingWorkbench.test.tsx` counts its mounts).
@@ -1918,7 +1918,7 @@ per conversation.** Below the fold nothing above changes.
   reader makes by hand while a tool is open is remembered for the session
   (`inbox: true | false` in the record) and never overridden: no fold, no
   restore, and the choice applied again when the session arrives or
-  returns. The crumb's Inbox and the edge strip are such choices. Who
+  returns. The crumb's Chats and the edge strip are such choices. Who
   folded it is the record's too (`inbox: 'layout'`), so a reload or a
   return on a folded inbox unfolds it when the tool closes, as it would
   have without the reload.
@@ -2054,15 +2054,15 @@ measured width at fold time deciding the unfold.
 
 ### Mobile inbox entry (2026-10-30)
 
-On a phone, Chat opens at its Inbox unless navigation names a conversation.
-The Inbox is the dock's reading surface, not a modal over the current chat.
-Its explicit header icon switches between the Inbox and the retained reader;
+On a phone, Chat opens at its Chats list unless navigation names a conversation.
+The Chats list is the dock's reading surface, not a modal over the current chat.
+Its explicit header icon switches between the Chats list and the retained reader;
 the chat title identifies the conversation rather than opening a second list.
 Selecting a chat, an imported session, or New chat reveals that destination.
-A failed open keeps the Inbox visible and reports the failure. Durable Tasks
+A failed open keeps the Chats list visible and reports the failure. Durable Tasks
 still open their task details through canonical navigation.
 Selecting a Task reveals its Overview and closes the covering chat/dock view;
-retained work chats remain available. The Inbox groups authorized primary,
+retained work chats remain available. The Chats list groups authorized primary,
 independent Task-room and explicitly linked work chats under their Task.
 Direct Task association takes precedence over delegated-chat grouping; a chat
 associated with multiple Tasks remains separate. A Task's recorded
@@ -2071,7 +2071,7 @@ counts distinct running chats, including folded children, and excludes Task rows
 Pending opens cannot replace a later selection or New chat draft. Cross-project
 routing occurs only after the reader's focus guard accepts the destination.
 
-The Inbox and reader stay mounted while switching between them, preserving
+The Chats list and reader stay mounted while switching between them, preserving
 list position, the search, and unsent composer text. Collapse and reopen retain
 the selected view. A collapsed chat retains its title and actions. Activating
 a chat command in the collapsed header reveals the dock. A new conversation
@@ -2079,7 +2079,7 @@ URL reveals its reader. A covered reader
 does not count as viewed and cannot take composer focus. A hidden New chat
 draft releases its Back-history entry until it is shown again.
 
-The Inbox uses the shared work rows, status ladder, scope filter and section
+The Chats list uses the shared work rows, status ladder, scope filter and section
 preferences. Saved work remains listed even when it has no open local tab.
 Project artwork and engine marks identify rows; titles wrap to two lines,
 status remains explicit, and real recency timestamps stay separate. Search is
@@ -2099,7 +2099,7 @@ crowded and that nothing said what belonged in it. The rule:
 | In the bar | Where it went instead |
 | --- | --- |
 | Identity, one line: title, then agent and engine, muted. The engine is the one the chat's Session runs on, by the composer chip's rule ([chat composer §3.1](chat-composer.md#31-provider-and-model-picker)). When they do not all fit, the engine and then the agent step off the line (they wrap onto a clipped second line) before the title truncates; the title's tooltip names all three, and model and route are the context's tooltip. | Model and route: the composer's model picker names them. |
-| Inbox toggle at the far left, before the region tabs or Coding breadcrumb, with the working chats' count (the inbox's Running rows) as a badge and unread as a dot; both are in its name. While it shows a number, the More trigger shows its background-task count as a dot, not a second number. | "N chats working" dropdown: the working chats are the More menu's first rows (with their ⌘1–9 chords); the unread pill: the toggle. |
+| Chats toggle at the far left, before the region tabs or Coding breadcrumb, with the working chats' count (the inbox's Running rows) as a badge and unread as a dot; both are in its name. While it shows a number, the More trigger shows its background-task count as a dot, not a second number. | "N chats working" dropdown: the working chats are the More menu's first rows (with their ⌘1–9 chords); the unread pill: the toggle. |
 | Icon-only New chat. The start composer owns its Project choice. | Future-project selector: removed from an active conversation’s header. The chat’s fixed project and branch remain in session context. |
 | A Chat settings gear, then one overflow (⋯), in groups divided by a rule (`groupDockMoreActions`, 2026-11-15): the working chats and Open chat…; this chat's commands and panels (New Task from this, Changed files and Task context as checked toggles, History, coordinator, Background tasks, Chat inventory, Browse turns); the Copy rows; where the chat came from (a disabled note); and, where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), the region's Move to …, Add pane… and Maximize/Restore size. Open in Coding is a composer "+" action, beside Open terminal ([chat composer §3](chat-composer.md#3-target-composer)). What the This chat card carries leaves the menu while the card shows it (2026-11-16): beside the transcript, Background tasks, the Copy rows and the origin note are the card's (its Activity row, footer and From row; Chat inventory stays a row, since it opens the full reader and the card's footer link the compact view); folded behind the chip, the Copy rows and the origin note are the chip's sheet's while Background tasks keeps its row and its count on the trigger; a card that has not loaded leaves them all in the menu. A lone working chat stays behind the trigger, which carries its count. | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
 | The region's ⋮⋮ grab (shown on hover or focus) and the show/hide chevron. | In a side region narrower than its 400px default, the grab and the agent avatar step aside and the spacing tightens, so the title keeps room beside the × (#4401); Move to … stays in the overflow. |
@@ -2110,7 +2110,7 @@ A control earns a place in the bar when it is about the chat on screen or is
 the dock's primary verb, and it is used often enough that a menu would cost
 more than its width. Anything else is a row of the More menu. Chords keep
 working wherever their control lives. The phone's bar is
-`ChatDockMobileHeader`; its current Inbox entry is described above. Conversation
+`ChatDockMobileHeader`; its current Chats entry is described above. Conversation
 switching stays direct, while the start composer owns Project selection. An
 active conversation does not offer a future-project switcher. A region host decides per pane:
 Chat absorbs the region's rows; Activity and the other panes keep the bar's
