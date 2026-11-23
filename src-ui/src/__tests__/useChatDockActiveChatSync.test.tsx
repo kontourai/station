@@ -298,10 +298,10 @@ describe('useChatDockActiveChatSync', () => {
   // be cleared rather than left aimed at a chat that will never render.
   //
   // archive#1284: the clear is no longer silent -- it must
-  // reveal Activity with the session (clearing the dead `chat` param first)
+  // reveal Chat with the session (clearing the dead `chat` param first)
   // instead of only calling setActiveChat(null), or the dock
   // is left showing nothing with no way back to the conversation.
-  it('reveals Activity with the session instead of silently clearing when the owning agent can no longer be opened', async () => {
+  it('reveals Chat with the session instead of silently clearing when the owning agent can no longer be opened', async () => {
     const opener = vi.fn().mockResolvedValue(false);
     const setActiveSessionId = vi.fn();
 
@@ -383,7 +383,7 @@ describe('useChatDockActiveChatSync', () => {
   // "owning agent no longer exists" case below -- but here a second attempt
   // with the real catalog is still available and must get the chance to
   // resolve the chat instead of the pointer being nulled out first.
-  it('does not reveal Activity when only the not-yet-loaded attempt reports false', async () => {
+  it('does not reveal Chat when only the not-yet-loaded attempt reports false', async () => {
     const notYetLoadedOpener = vi.fn().mockResolvedValue(false);
     const readyOpener = vi.fn().mockResolvedValue(true);
     const setActiveSessionId = vi.fn();
@@ -424,9 +424,9 @@ describe('useChatDockActiveChatSync', () => {
 
   // If the retry itself also reports false (the agent genuinely does not
   // exist in the now-loaded catalog), the two-attempt budget is spent and
-  // the pointer must still clear -- via the Activity reveal fallback,
+  // the pointer must still clear -- via the Chat reveal fallback,
   // not a silent null -- rather than leave the dock stuck forever.
-  it('reveals Activity with the session once the retry with a loaded catalog also fails', async () => {
+  it('reveals Chat with the session once the retry with a loaded catalog also fails', async () => {
     const notYetLoadedOpener = vi.fn().mockResolvedValue(false);
     const loadedCatalogOpener = vi.fn().mockResolvedValue(false);
     const setActiveSessionId = vi.fn();
@@ -481,7 +481,7 @@ describe('useChatDockActiveChatSync', () => {
   // produce a second, distinct attempt, so the archive#801 deleted-agent clear
   // never fired for it -- a stale `activeChat` pointer forever. `agentsLoaded`
   // must be the signal that actually gates this, independent of the key.
-  it('reveals Activity for a loaded-but-empty catalog, not just a nonempty miss', async () => {
+  it('reveals Chat for a loaded-but-empty catalog, not just a nonempty miss', async () => {
     const opener = vi.fn().mockResolvedValue(false);
     const setActiveSessionId = vi.fn();
 
@@ -509,7 +509,7 @@ describe('useChatDockActiveChatSync', () => {
 
     // The catalog resolves to durably empty -- same key, but `agentsLoaded`
     // flips true. This must still re-run the lookup and, on this definitive
-    // miss, reveal Activity for the session per archive#801/archive#1284.
+    // miss, reveal Chat for the session per archive#801/archive#1284.
     rerender({ agentsLoaded: true });
 
     await waitFor(() => expect(opener).toHaveBeenCalledTimes(2));
@@ -580,7 +580,7 @@ describe('useChatDockActiveChatSync', () => {
   // id (`activeChatDurableId`), which for a chat never promoted to a
   // conversation is its client session id -- and `serializeActiveChats` never
   // persists such a chat, so a reload of that URL is a guaranteed definitive
-  // miss. Revealing Activity for it opened a region the user never opened and
+  // miss. Revealing Chat for it opened a region the user never opened and
   // filled it with skeletons for an id that resolves to nothing. The pointer
   // still clears (archive#1284's real requirement: the effect must not loop
   // back into the dead conversation); no surface is placed.
@@ -627,7 +627,7 @@ describe('useChatDockActiveChatSync', () => {
       Object.assign(new Error('authentication required'), { status: 401 }),
     ],
   ])(
-    'reveals Activity for the session when the lookup fails with %s',
+    'reveals Chat for the session when the lookup fails with %s',
     async (_label, thrown) => {
       fetchConversationById.mockRejectedValue(thrown);
       const setActiveSessionId = vi.fn();
