@@ -114,22 +114,6 @@ export function RowMenu({
     if (!open) setPosition(null);
   }, [open]);
 
-  // Escape belongs to the open menu first, before any surface around it
-  // that listens for Escape in its own capture phase (the dock's hover card,
-  // its close shortcut): it closes this menu only and returns focus.
-  useEffect(() => {
-    if (!open) return;
-    const onEscape = (event: globalThis.KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
-      event.preventDefault();
-      event.stopPropagation();
-      setOpen(false);
-      triggerRef.current?.focus();
-    };
-    window.addEventListener('keydown', onEscape, true);
-    return () => window.removeEventListener('keydown', onEscape, true);
-  }, [open]);
-
   // biome-ignore lint/correctness/useExhaustiveDependencies: `place` reads refs only
   useEffect(() => {
     if (!open) return;

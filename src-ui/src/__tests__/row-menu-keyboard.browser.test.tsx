@@ -22,10 +22,11 @@ const fixture = `
   import {NavigationProvider} from './src-ui/src/contexts/NavigationContext';
   import {ToastProvider} from './src-ui/src/contexts/ToastContext';
   const items = [
-    {id:'one', kind:'orchestration', kindLabel:'Conversation', title:'Review the inbox', projectLabel:'Station', agentLabel:'Codex', modelLabel:'GPT', updatedAt:Date.now(), lifecycleLabel:'Ready'},
-    {id:'two', kind:'orchestration', kindLabel:'Conversation', title:'Plan the next release', projectLabel:'Station', agentLabel:'Claude', modelLabel:'Sonnet', updatedAt:Date.now() - 60000, lifecycleLabel:'Ready'},
+    {id:'one', kind:'orchestration', kindLabel:'Conversation', title:'Review the inbox', projectLabel:'Station', agentLabel:'Agent A', modelLabel:'Model A', updatedAt:Date.now(), lifecycleLabel:'Ready'},
+    {id:'two', kind:'orchestration', kindLabel:'Conversation', title:'Plan the next release', projectLabel:'Station', agentLabel:'Agent B', modelLabel:'Model B', updatedAt:Date.now() - 60000, lifecycleLabel:'Ready'},
   ];
   window.closedDock = 0;
+  window.dialogEscapes = 0;
   const props = { activeChatSessionId:null, openChatSessionIds:[], onFocusChat:()=>{}, onOpenConversation:()=>true, onOpenSession:()=>{}, onCloseChat:()=>{} };
   createRoot(document.getElementById('root')).render(
     <QueryClientProvider client={new QueryClient()}><NavigationProvider><ToastProvider>
@@ -40,6 +41,9 @@ const fixture = `
             {id:'snooze-1', group:'Snooze until', label:'In 1 hour', hint:'7:00 PM', onSelect:()=>{}},
           ]} />
         </article>
+        <div role="dialog" aria-label="Other dialog" onKeyDown={(e) => { if (e.key === 'Escape') window.dialogEscapes++; }}>
+          <input aria-label="Other dialog field" />
+        </div>
       </div>
     </ToastProvider></NavigationProvider></QueryClientProvider>);
 `;
@@ -134,6 +138,22 @@ test('the row menu works from the keyboard in the dock and on the inbox page', a
     expect(await page.evaluate(() => Reflect.get(window, 'closedDock'))).toBe(
       0,
     );
+    // An open menu does not own Escape pressed elsewhere: a dialog that has
+    // focus while a row menu is still open gets its own Escape, and keeps
+    // focus.
+    const dockTrigger = page.getByRole('button', {
+      name: 'Actions for Review the inbox',
+    });
+    await dockTrigger.focus();
+    await page.keyboard.press('Enter');
+    await expectBrowser(page.getByRole('menu')).toBeVisible();
+    const field = page.getByRole('textbox', { name: 'Other dialog field' });
+    await field.focus();
+    await page.keyboard.press('Escape');
+    expect(
+      await page.evaluate(() => Reflect.get(window, 'dialogEscapes')),
+    ).toBe(1);
+    await expectBrowser(field).toBeFocused();
     expect(errors).toEqual([]);
   } finally {
     await browser.close();
