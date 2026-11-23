@@ -115,6 +115,7 @@ describe('status and flag', () => {
     const ran = {
       schedule: { kind: 'at' as const, timeMs: at },
       lastRun: new Date(at + 5_000).toISOString(),
+      recentOutcomes: { outcomes: ['worked' as const], more: false },
     };
     // Kept after its run (on), and turned off by "remove it after it runs".
     expect(automationStatus(job(ran), false, now)).toBe('Done');
@@ -123,6 +124,10 @@ describe('status and flag', () => {
     );
     expect(nextRunText(job({ ...ran, enabled: false }), now)).toMatch(/^Ran /);
     expect(statusRank(job(ran), now)).toBe(2);
+    // Without outcomes the read cannot say its last row was a run.
+    expect(nextRunText(job({ ...ran, recentOutcomes: undefined }), now)).toBe(
+      'No more runs',
+    );
     // A run by hand before its time leaves it waiting for that time.
     const early = {
       schedule: { kind: 'at' as const, timeMs: now + 3_600_000 },

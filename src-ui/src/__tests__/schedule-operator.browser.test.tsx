@@ -197,6 +197,16 @@ test('Automations: Next 7 days and the list fit phone and desktop in both themes
               menuBox.y + menuBox.height / 2 - (rowBox.y + rowBox.height / 2),
             );
             expect(offset, 'menu centred in its row').toBeLessThanOrEqual(4);
+            // A full strip of twelve never runs into the status word.
+            const strip = await row.locator('.automations-strip').boundingBox();
+            const status = (await row
+              .locator('.automations-row__status')
+              .boundingBox())!;
+            if (strip && strip.y + strip.height > status.y)
+              expect(
+                strip.x + strip.width,
+                'strip clear of status',
+              ).toBeLessThanOrEqual(status.x);
           }
           expect(await week.isVisible()).toBe(false);
           expect(

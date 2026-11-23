@@ -92,8 +92,9 @@ function runLabel(at: number, now: number): string {
 }
 
 /**
- * A one-time automation whose time has passed and that has had a run at or
- * after that time: it will not run again, whatever its stored on or off says
+ * A one-time automation whose time has passed and that has a run row at or
+ * after that time (a run, or the record that it was missed because Station
+ * was off): it will not run again, whatever its stored on or off says
  * (a one-time automation set to be removed after its run is turned off once
  * that run succeeds). Derived from the list read; nothing stores it. A run
  * started by hand before its time does not finish it.
@@ -105,13 +106,33 @@ export function hasFinished(job: SchedulerJob, now: number): boolean {
   return Number.isFinite(lastRun) && lastRun >= schedule.timeMs;
 }
 
+/**
+ * A finished one-time automation whose newest outcome is a skipped occurrence:
+ * Station was off when it was due and recorded it missed instead of running
+ * it late. Its last run row is that record, so "Ran" would be untrue.
+ */
+function wasMissed(job: SchedulerJob): boolean {
+  return job.recentOutcomes?.outcomes.at(-1) === 'skipped';
+}
+
+function shortDate(ms: number): string {
+  return new Date(ms).toLocaleString(undefined, {
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 /** What the row says about the next run. */
 export function nextRunText(job: SchedulerJob, now: number): string {
-  if (hasFinished(job, now))
-    return `Ran ${new Date(Date.parse(job.lastRun ?? '')).toLocaleString(
-      undefined,
-      { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' },
-    )}`;
+  if (hasFinished(job, now)) {
+    if (wasMissed(job) && job.schedule?.kind === 'at')
+      return `Missed ${shortDate(job.schedule.timeMs)}`;
+    // Without outcomes the read cannot say whether its last row was a run.
+    if (!job.recentOutcomes) return 'No more runs';
+    return `Ran ${shortDate(Date.parse(job.lastRun ?? ''))}`;
+  }
   if (!job.enabled) return "Won't run while paused";
   const next = Date.parse(job.nextRun ?? '');
   if (Number.isFinite(next)) return `Next: ${runLabel(next, now)}`;
@@ -120,7 +141,12 @@ export function nextRunText(job: SchedulerJob, now: number): string {
   return 'Next run unknown';
 }
 
-export type AutomationStatus = 'Active' | 'Paused' | 'Running' | 'Done';
+export type AutomationStatus =
+  | 'Active'
+  | 'Paused'
+  | 'Running'
+  | 'Done'
+  | 'Missed';
 
 export function automationStatus(
   job: SchedulerJob,
@@ -128,11 +154,11 @@ export function automationStatus(
   now: number,
 ): AutomationStatus {
   if (running) return 'Running';
-  if (hasFinished(job, now)) return 'Done';
+  if (hasFinished(job, now)) return wasMissed(job) ? 'Missed' : 'Done';
   return job.enabled ? 'Active' : 'Paused';
 }
 
-/** Where a row sorts: active first, then paused, then done. */
+/** Where a row sorts: active first, then paused, then done or missed. */
 export function statusRank(job: SchedulerJob, now: number): number {
   if (hasFinished(job, now)) return 2;
   return job.enabled ? 0 : 1;

@@ -164,6 +164,11 @@ test.describe('Schedule run history', () => {
 
     const name = row.getByRole('button', { name: 'daily-report', exact: true });
     await expect(name).toHaveAttribute('aria-expanded', 'false');
+    // The name is the row's disclosure: Enter and Space toggle it.
+    await name.press('Enter');
+    await expect(name).toHaveAttribute('aria-expanded', 'true');
+    await name.press('Space');
+    await expect(name).toHaveAttribute('aria-expanded', 'false');
     await name.click();
     await expect(name).toHaveAttribute('aria-expanded', 'true');
     const runs = page.getByRole('region', { name: 'Runs of daily-report' });

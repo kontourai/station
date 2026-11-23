@@ -89,8 +89,21 @@ export function ScheduleView() {
     message: string;
     variant: 'danger' | 'warning';
     confirmLabel: string;
+    /** Whose ⋯ gets focus back when the person cancels. */
+    returnTo?: SchedulerJob;
     onConfirm: () => void;
   } | null>(null);
+  // The menu item that opened a confirmation is gone once the menu closes,
+  // so a cancelled confirmation returns focus to the row's ⋯ itself.
+  const [focusMenuOf, setFocusMenuOf] = useState<SchedulerJob | null>(null);
+  useEffect(() => {
+    if (!focusMenuOf) return;
+    document
+      .getElementById(automationRowId(focusMenuOf))
+      ?.querySelector<HTMLButtonElement>('.action-overflow__trigger')
+      ?.focus();
+    setFocusMenuOf(null);
+  }, [focusMenuOf]);
   const [runError, setRunError] = useState<string | null>(null);
   const [retryFailure, setRetryFailure] = useState<ReturnType<
     typeof selectSchedulerFailure
@@ -418,6 +431,7 @@ export function ScheduleView() {
                           message: `Delete '${jobLabel(job)}'? This cannot be undone.`,
                           variant: 'danger',
                           confirmLabel: 'Delete',
+                          returnTo: job,
                           onConfirm: () => {
                             changeJob(job, 'delete');
                             setConfirmAction(null);
@@ -440,7 +454,10 @@ export function ScheduleView() {
           variant={confirmAction.variant}
           confirmLabel={confirmAction.confirmLabel}
           onConfirm={confirmAction.onConfirm}
-          onCancel={() => setConfirmAction(null)}
+          onCancel={() => {
+            if (confirmAction.returnTo) setFocusMenuOf(confirmAction.returnTo);
+            setConfirmAction(null);
+          }}
         />
       )}
     </div>

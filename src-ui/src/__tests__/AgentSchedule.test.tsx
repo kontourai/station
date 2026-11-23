@@ -720,7 +720,8 @@ describe('the "This chat" card’s Automations section', () => {
     expect(section.textContent).toContain('Resume after usage limit');
     expect(section.textContent).toContain('At 3:00 PM');
     expect(section.textContent).toContain('Needs your approval');
-    expect(section.textContent).toContain('Every 60 min · paused');
+    expect(section.textContent).toContain('Every 60 min · Paused');
+    expect(section.textContent).not.toContain('· paused');
 
     fireEvent.click(screen.getByRole('button', { name: 'Run nightly now' }));
     expect(scheduler.run).toHaveBeenCalledWith('nightly');
@@ -781,7 +782,10 @@ describe('the "This chat" card’s Automations section', () => {
     const section = await screen.findByRole('region', { name: 'Automations' });
     expect(section.textContent).toContain('check the deploy');
     expect(section.textContent).toContain('repo-digest');
-    expect(section.textContent).toContain('Every 60 min · 2 failed');
+    expect(section.textContent).toContain(
+      "Every 60 min · Last 2 runs didn't work",
+    );
+    expect(section.textContent).not.toContain('2 failed');
     expect(
       screen.getByRole('button', { name: 'Run repo-digest now' }),
     ).toBeTruthy();

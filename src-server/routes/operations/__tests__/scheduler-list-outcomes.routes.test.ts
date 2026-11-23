@@ -297,3 +297,67 @@ describe('runs whose outcome is unknown count toward pausing, and are said as su
     expect(fatigueBells()[0].body).not.toMatch(/fail/i);
   });
 });
+
+describe('ledger: recent outcomes leave out runs still in progress', () => {
+  function ledgerWithOneWorkedRun(retryCount: number) {
+    const ledger = createSchedulerLedger({
+      directory: makeTempDir('station-outcomes-live-'),
+    });
+    ledger.create({
+      name: 'nightly',
+      prompt: 'run',
+      enabled: true,
+      retryCount,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    const first = ledger.claimManual(
+      'nightly',
+      Date.parse('2026-01-01T01:00:00.000Z'),
+    );
+    if (first.kind !== 'claimed') throw new Error('expected a claim');
+    first.receipt.beginInvocation();
+    first.receipt.settle({
+      success: true,
+      state: 'completed',
+      completedAt: '2026-01-01T01:00:01.000Z',
+      durationSecs: 1,
+    });
+    const outcomes = () => {
+      const read = ledger.listViews(Date.parse('2026-01-01T02:00:00.000Z'));
+      if (read.kind !== 'available') throw new Error('list unavailable');
+      return read.value[0]!.recentOutcomes;
+    };
+    return { ledger, outcomes };
+  }
+
+  test('a run that is still going is not an outcome yet', () => {
+    const { ledger, outcomes } = ledgerWithOneWorkedRun(0);
+    const live = ledger.claimManual(
+      'nightly',
+      Date.parse('2026-01-01T01:30:00.000Z'),
+    );
+    if (live.kind !== 'claimed') throw new Error('expected a claim');
+    live.receipt.beginInvocation();
+    expect(outcomes()).toEqual({ outcomes: ['worked'], more: false });
+    ledger.close();
+  });
+
+  test('a retry in progress does not show its earlier failed attempt', () => {
+    const { ledger, outcomes } = ledgerWithOneWorkedRun(1);
+    const first = ledger.claimManual(
+      'nightly',
+      Date.parse('2026-01-01T01:30:00.000Z'),
+    );
+    if (first.kind !== 'claimed') throw new Error('expected a claim');
+    first.receipt.beginInvocation();
+    // Attempt 1 failed before reaching the engine; attempt 2 is running.
+    const retry = first.receipt.recordNotInvoked({
+      completedAt: '2026-01-01T01:30:01.000Z',
+      error: 'provider unavailable',
+    });
+    if (retry.kind !== 'claimed') throw new Error('expected the retry claim');
+    retry.receipt.beginInvocation();
+    expect(outcomes()).toEqual({ outcomes: ['worked'], more: false });
+    ledger.close();
+  });
+});

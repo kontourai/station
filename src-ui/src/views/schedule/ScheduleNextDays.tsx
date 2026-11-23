@@ -64,10 +64,13 @@ type OpenAutomation = (job: SchedulerJob) => void;
 function RunChip({
   run,
   zone,
+  day,
   onOpen,
 }: {
   run: UpcomingRun;
   zone: string;
+  /** The day it is on, said before the time so each chip's name is unique. */
+  day: string;
   onOpen: OpenAutomation;
 }) {
   const time = shortTime(run.at, zone);
@@ -82,6 +85,7 @@ function RunChip({
         title={`${time} ${label}`}
         onClick={() => onOpen(run.job)}
       >
+        <span className="sr-only">{day}, </span>
         <time dateTime={run.time} className="automations-week__time">
           {time}
         </time>{' '}
@@ -123,6 +127,7 @@ function DayCell({
               key={`${run.job.provider}:${run.job.name}:${run.time}`}
               run={run}
               zone={zone}
+              day={day.isToday ? 'Today' : parts.long}
               onOpen={onOpen}
             />
           ))}

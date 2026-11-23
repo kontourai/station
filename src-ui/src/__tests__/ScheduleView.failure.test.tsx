@@ -924,6 +924,7 @@ describe('Automations list (first-release automations-inbox-01 and -02)', () => 
         enabled: false,
         schedule: { kind: 'at', timeMs: at, deleteAfterRun: true },
         lastRun: new Date(at + 2_000).toISOString(),
+        recentOutcomes: { outcomes: ['worked'], more: false },
       }),
       job({ name: 'paused', displayName: 'Zz paused', enabled: false }),
       job({ name: 'active', displayName: 'Mm active' }),
@@ -1014,6 +1015,19 @@ describe('Automations list (first-release automations-inbox-01 and -02)', () => 
     ).toBeNull();
   });
 
+  test('cancelling a delete returns focus to the row’s ⋯', async () => {
+    schedulerHooks.jobs.data = [job({ displayName: 'Daily briefing' })];
+    render(<ScheduleView />);
+    const trigger = screen.getByRole('button', {
+      name: 'Actions for Daily briefing',
+    });
+    fireEvent.click(trigger);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(document.activeElement).toBe(trigger));
+    expect(deleteMutation.mutate).not.toHaveBeenCalled();
+  });
+
   test('deleting asks first, naming the display name', () => {
     schedulerHooks.jobs.data = [job({ displayName: 'Daily briefing' })];
     render(<ScheduleView />);
@@ -1041,6 +1055,16 @@ describe('Automations list (first-release automations-inbox-01 and -02)', () => 
       target: { value: 'Report 12' },
     });
     expect(screen.getAllByTestId(/^job-row-/)).toHaveLength(1);
+    // A query that matches nothing says so and offers to clear it.
+    fireEvent.change(screen.getByPlaceholderText('Filter automations…'), {
+      target: { value: 'no such automation' },
+    });
+    expect(screen.queryAllByTestId(/^job-row-/)).toHaveLength(0);
+    expect(
+      screen.getByText('Nothing in automations matches “no such automation”'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
+    expect(screen.getAllByTestId(/^job-row-/)).toHaveLength(16);
   });
 
   test('a stopped scheduler is a notice, and a healthy one says nothing', () => {
@@ -1253,6 +1277,8 @@ describe('Next 7 days', () => {
       screen.getByRole('list', { name: 'Next 7 days' }),
     ).getByRole('button', { name: /Daily repo digest/ });
     expect(chip.getAttribute('title')).toMatch(/ Daily repo digest$/);
+    // Its name says the day, so a week of the same automation is told apart.
+    expect(chip.textContent).toMatch(/^Today, .* Daily repo digest$/);
     const name = screen.getByRole('button', { name: 'Daily repo digest' });
     expect(name.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(chip);

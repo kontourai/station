@@ -118,6 +118,7 @@
   padding: var(--k-space-2) 0;
   border: none;
   border-top: 1px solid var(--k-line);
+  border-radius: 0;
   background: transparent;
   color: var(--k-text);
   font: inherit;
@@ -537,6 +538,30 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--k-space-1) var(--k-space-3);
+    min-width: 0;
+  }
+
+  /* Twelve squares fit beside the status at 390px, and wrap rather than
+     run into it on anything narrower. */
+  .automations-strip {
+    flex-wrap: wrap;
+    gap: var(--k-space-1);
+  }
+
+  .automations-strip__cell {
+    width: 9px;
+    height: 14px;
+  }
+
+  .automations-row__status {
+    padding-left: var(--k-space-2);
+  }
+
+  /* The section body's padding is the inset above the first row; the row's
+     own top padding would double it. Rows keep even padding so the ⋯ stays
+     centred. */
+  .automations-list {
+    margin-top: calc(-1 * var(--k-space-3));
   }
 
   .automations-row__last-run {
@@ -569,4 +594,9 @@
 
 .automations-row__status--done .automations-row__status-dot {
   background: var(--k-text-muted);
+}
+
+.automations-row__status--missed .automations-row__status-dot {
+  border: 1.5px dashed var(--k-text-muted);
+  background: transparent;
 }

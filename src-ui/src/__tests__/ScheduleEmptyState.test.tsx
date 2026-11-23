@@ -37,4 +37,13 @@ describe('ScheduleEmptyState', () => {
       expect(shared.length, template.name).toBeGreaterThanOrEqual(2);
     }
   });
+
+  test('offers both ask-in-a-chat examples, word for word', () => {
+    render(<ScheduleEmptyState onSelectTemplate={vi.fn()} />);
+    const asks = document.querySelectorAll('.automations-empty__asks li');
+    expect([...asks].map((item) => item.textContent?.trim())).toEqual([
+      '“Every morning, tell me which tests failed overnight”',
+      '“Remind me Friday to review open pull requests”',
+    ]);
+  });
 });

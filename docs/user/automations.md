@@ -18,7 +18,9 @@ runs. A filled square worked, a red square with a dot failed, an outline was
 skipped because it was too late, and a dashed outline means Station cannot
 tell how it ended. The status reads **Active**, **Paused** or **Running**, or
 **Done** for a one-time automation that has had its run (it lists last, says
-when it ran, and has no Pause or Resume; **Run now** still runs it again). A
+when it ran, and has no Pause or Resume; **Run now** still runs it again), or
+**Missed** when its time came while Station was off and it was more than 6
+hours late, so it never ran. A
 row can carry a flag: **Last 2 runs didn't work**, or **Paused itself after 5
 runs that didn't work** when Station turned it off. "Didn't work" covers runs
 that failed and runs whose outcome Station cannot tell. Open **⋯** on a row
