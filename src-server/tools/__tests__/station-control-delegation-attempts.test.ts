@@ -876,6 +876,34 @@ describe('ordinary local create request claims', () => {
     };
   }
 
+  test('a durable Task create key refuses a changed tool policy', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService();
+    const delegation = {
+      mode: 'isolated-child' as const,
+      depth: 1,
+      maxDepth: 2,
+      parentAgentSlug: agentId('parent'),
+      rootAgentSlug: agentId('root'),
+      blockedTools: ['repo_write'],
+    };
+    const first = await delegateTask(
+      { ...localInput(), delegation },
+      service as never,
+    );
+    await expect(
+      delegateTask({ ...localInput(), delegation }, service as never),
+    ).resolves.toEqual(first);
+    await expect(
+      delegateTask(
+        { ...localInput(), delegation: { ...delegation, blockedTools: [] } },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'create_request_conflict' });
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
   test.each(['launch target', 'create intent'] as const)(
     'captures borrowed %s before environment resolution and replays the unchanged request',
     async (field) => {
