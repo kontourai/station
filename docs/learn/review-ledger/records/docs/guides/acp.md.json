@@ -34,7 +34,11 @@
 
     "src-server/services/acp/opencode-project-config.ts",
 
-    "src-server/providers/adapters/opencode-adapter.ts"
+    "src-server/providers/adapters/opencode-adapter.ts",
+
+    "src-server/providers/adapters/acp-tool-update-supervisor.ts",
+
+    "src-server/providers/__tests__/acp-session-answers.process.test.ts"
   ],
 
   "checks": [
