@@ -72,23 +72,13 @@ function reroutedTurns(messages: readonly ChatMessage[]): Set<RerouteKey> {
   return keys;
 }
 
-/**
- * Session-scope reroutes by session, with the turn each names: from that
- * turn on, the engine runs the session on its own pick, so no later turn of
- * the session ran what it asked for either.
- */
-function sessionReroutes(
-  messages: readonly ChatMessage[],
-): Map<string, Set<string | undefined>> {
-  const sessions = new Map<string, Set<string | undefined>>();
+/** Sessions whose engine moved the whole session onto another model. */
+function sessionReroutes(messages: readonly ChatMessage[]): Set<string> {
+  const sessions = new Set<string>();
   for (const message of messages)
-    for (const part of message.contentParts ?? []) {
-      const reroute = part.modelReroute;
-      if (reroute?.scope !== 'session') continue;
-      const turns = sessions.get(reroute.sessionId) ?? new Set();
-      turns.add(reroute.turnId);
-      sessions.set(reroute.sessionId, turns);
-    }
+    for (const part of message.contentParts ?? [])
+      if (part.modelReroute?.scope === 'session')
+        sessions.add(part.modelReroute.sessionId);
   return sessions;
 }
 
@@ -237,7 +227,6 @@ export function transcriptChangeFacts(
 ): ReadonlyMap<number, TranscriptChangeFacts> {
   const times = sessionTimes(messages);
   const rerouted = reroutedTurns(messages);
-  const sessionScoped = sessionReroutes(messages);
   // Sessions the walk has passed a session-scope reroute in.
   const reroutedSessions = new Set<string>();
   const resets = new Map<string, ResetStart>();
@@ -307,8 +296,8 @@ export function transcriptChangeFacts(
     const recorded =
       byTurn.get(message.turnId) ?? recordedTurn(message, rerouted);
     const sessionId = recorded.sessionId;
-    if (sessionId && sessionScoped.get(sessionId)?.has(message.turnId))
-      reroutedSessions.add(sessionId);
+    // The turn a session-scope reroute names is marked by `reroutedTurns`;
+    // its line comes after that turn's rows, so every later turn is covered.
     const current =
       sessionId && reroutedSessions.has(sessionId)
         ? { ...recorded, rerouted: true as const }
