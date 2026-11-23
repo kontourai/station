@@ -95,7 +95,10 @@ Only the latest inbox **Mark done** keeps its notice: marking a second
 conversation done closes the first one's, so a second press does not bring the
 first back. Once its notice has gone, the conversation is brought back by
 searching the inbox for it and choosing **Reopen** under **Marked done**.
-Mark done does not stop work or delete conversation history. Changing Station
+Mark done does not stop work or delete conversation history. Mark done on the
+inbox page, a phone bulk Mark done and Discard draft use the same one notice.
+The bell popover's per-row Undo is a button in the row and does not answer
+**⌘Z**. Changing Station
 closes the notice, so its Undo is not offered for another Station.
 
 A key saved for the removed **Undo inbox dismissal** command no longer does

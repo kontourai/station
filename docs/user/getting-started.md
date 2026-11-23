@@ -905,12 +905,14 @@ and is separate from deletion. **Working** holds running and
 monitoring chats and armed check-backs, which show **Waiting**; **Needs attention** takes priority whenever input is owed.
 Drafts appear as a pencil on the chat row in its current status. Collapse a
 shelf to move it below expanded work. Shelf menus let you move sections up or
-down, with that order saved on this device. **Settled** is last by default.
+down, with that order saved on this device. **Settled** is last by default
+(**Earlier** with the preview off).
 
 With the preview on, **Mark done** settles your own conversations, so it
 syncs across your devices. Work still running, or waiting for an answer from
-you, cannot be settled yet: Mark done puts it away on this browser instead.
-On a **Third-party** session, Mark done hides it on all your devices, through
+you, cannot be settled yet: Mark done hides it on this browser instead, and
+its notice says so ("Hidden on this device. It still needs you."). It comes
+back when it next changes. On a **Third-party** session, Mark done hides it on all your devices, through
 its updates, until you bring it into Station or search for it and choose
 **Reopen**.
 Sessions you dismissed on this browser before move to your hidden list once.
@@ -1718,7 +1720,8 @@ permission has recorded request evidence, its row offers **Approve once** and
 request version, once. A review request with recorded evidence offers
 **Inspect request** instead, where **Request identity** shows its exact record.
 A row's ⋯ menu holds **Mark done**, and **Snooze** (the same choices as the
-chat inbox) when the Attention snooze preview is on. A failed run shows once:
+chat inbox) when the Attention snooze preview is on. Mark done there waits behind its notice's **Undo** (or **⌘Z**) and is sent
+when the notice closes. A failed run shows once:
 its row stands for the failed message too, and Mark done marks both done.
 
 A conversation’s Chats row also shows the request and **Approve once** or
