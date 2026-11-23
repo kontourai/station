@@ -144,6 +144,10 @@ test('outside layout listing does not open replacement records after a slug is r
             await storage.deleteProject(slug);
             await storage.createProject({ ...project, id: 'id-replacement' });
             replacement(storage.getProject(slug).id);
+            if (!revision.withCurrentRead)
+              throw new Error(
+                'fixture Project revision did not provide a read lock',
+              );
             return revision.withCurrentRead(read);
           },
         };
