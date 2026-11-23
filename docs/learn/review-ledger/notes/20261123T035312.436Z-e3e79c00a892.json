@@ -1,0 +1,7 @@
+{
+  "revision": "62694dedd2ad88de44a5fa70962aeab935bfd143",
+
+  "notes": [
+    {"path":"examples/survey-review-workbench/README.md","note":"Unchanged from the Apps slice head; Apps › Library still offers Install plugin and the API routes it names are unchanged.","inputs":["examples/survey-review-workbench/README.md"]}
+  ]
+}
