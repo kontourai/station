@@ -42,6 +42,12 @@ The protocol limits requests to 2 MiB, frames to 3 MiB, channel lifetime to
 are at most 64 KiB. These transport bounds do not establish token or fiscal
 budgets. Client credentials are stripped from forwarded request headers.
 
+The [fixed-text request preparer](../../src-server/runtime/conversation/native-text-model-request.ts)
+is a dormant prerequisite. It validates bounded JSON, applies the selected
+model and output cap, and strips tools and opaque provider state from the
+final request. A future caller must authorize those final bytes through the
+source, credential, and reservation owners before any provider request.
+
 ## Run the lab
 
 Use a local Linux/arm64 Docker daemon and the repository's managed dependencies.
