@@ -17,6 +17,7 @@ import {
 import { canonicalJson } from '@kontourai/relay';
 import type {
   CliSessionGroupListPage,
+  CliSessionGroupSync,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
 import {
@@ -62,6 +63,43 @@ const terminalEventSchema = z
     turnId: z.string().min(1).max(512),
   })
   .strict();
+const MAX_SYNC_OPERATIONS = 8;
+const MAX_SYNC_CONTENT_BYTES = 128 * 1024;
+const MAX_SYNC_DURATION_MS = 30 * 60_000;
+const sha256 = z.string().regex(/^sha256:[0-9a-f]{64}$/);
+const syncReceiptSchema = z.object({
+  turnId: terminalEventSchema.shape.turnId,
+  terminalEventId: terminalEventSchema.shape.eventId,
+  nativeIdentityHash: sha256,
+  toolCalls: z.number().int().min(0).max(1_000_000),
+});
+const syncResultSchema = syncReceiptSchema.extend({
+  sessionId: handleSchema.shape.sessionId,
+  output: z.string(),
+});
+const syncSchema: z.ZodType<CliSessionGroupSync> = z
+  .object({
+    operationId: id,
+    runId: id,
+    contentHash: sha256,
+    timestamp: z.string().datetime(),
+    status: z.enum(['syncing', 'acknowledged', 'incomplete']),
+    members: z
+      .array(
+        syncReceiptSchema
+          .partial()
+          .extend({
+            seatId: id,
+            status: z.enum(['pending', 'acknowledged', 'failed', 'unknown']),
+            attempts: z.number().int().min(0).max(2),
+            timestamp: z.string().datetime().optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(32),
+  })
+  .strict();
 const recordSchema = z
   .object({
     version: z.literal(1),
@@ -97,6 +135,7 @@ const recordSchema = z
       )
       .min(1)
       .max(32),
+    syncs: z.array(syncSchema).max(MAX_SYNC_OPERATIONS).optional(),
     scheduleEvents: z
       .array(
         z
@@ -143,6 +182,16 @@ export interface CliSessionGroupHost<T> {
     completedEvent?: { eventId: string; turnId: string };
   }>;
   interrupt(handle: MemberHandle): Promise<void>;
+  prepareSync?(handle: MemberHandle): Promise<void>;
+  sync?(
+    handle: MemberHandle,
+    input: {
+      prompt: string;
+      clientTurnId: string;
+      signal: AbortSignal;
+      assertCurrent(): void;
+    },
+  ): Promise<z.infer<typeof syncResultSchema>>;
 }
 
 /** Station owns session authority; Flow owns readiness, claims and gate evaluation. */
@@ -208,6 +257,57 @@ export class CliSessionGroups<T> {
       )
     )
       throw new CliSessionGroupUnavailable('group_storage_unavailable');
+    const syncs = record.syncs ?? [];
+    if (
+      new Set(syncs.map((sync) => sync.operationId)).size !== syncs.length ||
+      syncs.some(
+        (sync) =>
+          sync.members.length !== record.seats.length ||
+          new Set(sync.members.map((member) => member.seatId)).size !==
+            sync.members.length ||
+          sync.members.some(
+            (member) =>
+              !record.seats.some((seat) => seat.seatId === member.seatId) ||
+              (member.status === 'pending'
+                ? member.attempts !== 0
+                : member.attempts === 0) ||
+              (member.status === 'acknowledged' && member.toolCalls !== 0) ||
+              ((member.status === 'acknowledged' ||
+                member.status === 'failed') &&
+                !syncReceiptSchema.safeParse(member).success),
+          ) ||
+          (sync.status === 'acknowledged' &&
+            sync.members.some((member) => member.status !== 'acknowledged')),
+      )
+    )
+      throw new CliSessionGroupUnavailable('group_storage_unavailable');
+  }
+
+  private async withGroupMutation<R>(
+    groupId: string,
+    owner: string,
+    work: (record: GroupRecord, path: string) => Promise<R>,
+  ): Promise<R> {
+    const path = this.path(groupId);
+    const release = await acquireFileMutationLockAsync(`${path}.mutation`);
+    try {
+      return await work(this.read(groupId, owner), path);
+    } finally {
+      await release();
+    }
+  }
+
+  private async publishRecord(
+    path: string,
+    record: GroupRecord,
+    assertCurrent?: (record: GroupRecord) => void,
+  ): Promise<void> {
+    record.revision += 1;
+    recordSchema.parse(record);
+    await publishJsonFileWithOwnedLock(path, record, {
+      maxBytes: MAX_BYTES,
+      assertCurrent: assertCurrent ? () => assertCurrent(record) : undefined,
+    });
   }
 
   private async mutate<R>(
@@ -216,22 +316,12 @@ export class CliSessionGroups<T> {
     work: (record: GroupRecord) => R,
     assertCurrent?: (record: GroupRecord) => void,
   ): Promise<R> {
-    const path = this.path(groupId);
-    const release = await acquireFileMutationLockAsync(`${path}.mutation`);
-    try {
-      const record = this.read(groupId, owner);
+    return this.withGroupMutation(groupId, owner, async (record, path) => {
       assertCurrent?.(record);
       const result = work(record);
-      record.revision += 1;
-      recordSchema.parse(record);
-      await publishJsonFileWithOwnedLock(path, record, {
-        maxBytes: MAX_BYTES,
-        assertCurrent: assertCurrent ? () => assertCurrent(record) : undefined,
-      });
+      await this.publishRecord(path, record, assertCurrent);
       return result;
-    } finally {
-      await release();
-    }
+    });
   }
 
   async create(
@@ -402,22 +492,46 @@ export class CliSessionGroups<T> {
     return this.project(this.read(groupId, owner));
   }
 
-  private async project(record: GroupRecord): Promise<CliSessionGroupView> {
+  private async project(
+    record: GroupRecord,
+    replayOperationId?: string,
+  ): Promise<CliSessionGroupView> {
     const { groupId } = record;
+    const contextSync =
+      replayOperationId === undefined
+        ? record.syncs?.at(-1)
+        : record.syncs?.find(
+            (entry) => entry.operationId === replayOperationId,
+          );
+    if (replayOperationId !== undefined && !contextSync)
+      throw new CliSessionGroupUnavailable('group_sync_unavailable');
     const flow = record.flowReady
       ? await loadRun(groupId, join(this.root, groupId))
       : null;
+    const supervising =
+      replayOperationId === undefined && this.active.has(groupId);
     return {
       version: 'station.cli-session-group/v1',
       groupId,
       revision: record.revision,
-      supervision: this.active.has(groupId) ? 'active' : 'not-running',
+      supervision: supervising ? 'active' : 'not-running',
       cancelled: record.cancelled,
       deadlineAt: record.deadlineAt,
       maxConcurrent: record.maxConcurrent,
       maxDispatches: record.maxDispatches ?? record.seats.length,
       admissionClosed: record.admissionClosed,
       dispatchCount: record.dispatchCount,
+      ...(contextSync
+        ? {
+            contextSync: {
+              ...contextSync,
+              status:
+                !supervising && contextSync.status === 'syncing'
+                  ? 'incomplete'
+                  : contextSync.status,
+            },
+          }
+        : {}),
       guarantees: {
         authority: 'station-session',
         portableFlowLineage: 'unbound',
@@ -458,6 +572,297 @@ export class CliSessionGroups<T> {
         }),
       ),
     };
+  }
+
+  private membersForNewSync(record: GroupRecord) {
+    if (
+      !record.flowReady ||
+      record.cancelled ||
+      (record.syncs?.length ?? 0) >= MAX_SYNC_OPERATIONS ||
+      record.syncs?.some(
+        (entry) =>
+          entry.status === 'syncing' ||
+          entry.members.some((member) => member.status === 'unknown'),
+      )
+    )
+      throw new CliSessionGroupUnavailable('group_sync_unavailable');
+    return record.seats.map((seat) => {
+      const handle = seat.handle;
+      if (
+        seat.state !== 'terminal' ||
+        seat.outcome !== 'completed' ||
+        !handle?.initialTurnId ||
+        handle.sessionId !== seat.reservedSessionId ||
+        seat.terminalEvent?.turnId !== handle.initialTurnId
+      )
+        throw new CliSessionGroupUnavailable('group_sync_unavailable');
+      return {
+        seatId: seat.seatId,
+        handle: Object.freeze({ ...handle }),
+        initialTerminalEventId: seat.terminalEvent.eventId,
+      };
+    });
+  }
+
+  // UNWIRED(#91): The retained Session adapter and credential-bound route own delivery.
+  async sync(
+    groupId: string,
+    owner: string,
+    input: {
+      operationId: string;
+      runId: string;
+      content: string;
+      deadlineAt: number;
+    },
+    host: CliSessionGroupHost<T>,
+    signal: AbortSignal,
+  ): Promise<CliSessionGroupView> {
+    const { operationId, runId, content, deadlineAt } = input;
+    id.parse(operationId);
+    id.parse(runId);
+    if (
+      typeof content !== 'string' ||
+      !content.trim() ||
+      Buffer.byteLength(content) > MAX_SYNC_CONTENT_BYTES ||
+      !Number.isSafeInteger(deadlineAt) ||
+      deadlineAt <= 0
+    )
+      throw new CliSessionGroupUnavailable('group_invalid');
+    const contentHash = `sha256:${createHash('sha256').update(content).digest('hex')}`;
+    const assertCallerCurrent = host.assertCurrent.bind(host);
+    const assertInspectionCurrent = () => {
+      assertCallerCurrent();
+      signal.throwIfAborted();
+    };
+    const existingOperation = (record: GroupRecord) => {
+      const existing = record.syncs?.find(
+        (entry) => entry.operationId === operationId,
+      );
+      if (
+        existing &&
+        (existing.contentHash !== contentHash || existing.runId !== runId)
+      )
+        throw new CliSessionGroupUnavailable('group_conflict');
+      return existing;
+    };
+    const observeOperation = async (record: GroupRecord) => {
+      assertInspectionCurrent();
+      const projection = await this.project(record, operationId);
+      assertInspectionCurrent();
+      return projection;
+    };
+    assertInspectionCurrent();
+    const initial = this.read(groupId, owner);
+    if (existingOperation(initial)) return observeOperation(initial);
+
+    const duration = deadlineAt - Date.now();
+    if (duration <= 0 || duration > MAX_SYNC_DURATION_MS)
+      throw new CliSessionGroupUnavailable('group_invalid');
+    const prepareSync = host.prepareSync?.bind(host);
+    const sync = host.sync?.bind(host);
+    if (!prepareSync || !sync || this.active.has(groupId))
+      throw new CliSessionGroupUnavailable('group_busy');
+    const participants = this.membersForNewSync(initial);
+    const memberBinding = canonicalJson(participants);
+    const controller = new AbortController();
+    const lifetime = AbortSignal.any([
+      signal,
+      controller.signal,
+      AbortSignal.timeout(duration),
+    ]);
+    this.active.set(groupId, controller);
+    const assertAdmission = (record?: GroupRecord) => {
+      assertCallerCurrent();
+      if (lifetime.aborted || Date.now() >= deadlineAt || record?.cancelled)
+        throw new CliSessionGroupUnavailable('group_sync_interrupted');
+    };
+    const findMember = (record: GroupRecord, seatId: string) => {
+      const operation = record.syncs?.find(
+        (entry) => entry.operationId === operationId,
+      );
+      const member = operation?.members.find(
+        (value) => value.seatId === seatId,
+      );
+      if (operation?.status !== 'syncing' || !member)
+        throw new CliSessionGroupUnavailable('group_sync_unavailable');
+      return member;
+    };
+    const ack = `ACK SYNC ${runId}`;
+    const prompt = `Retain the complete folded result below as context for this conversation. Use no tools. Reply with exactly ${ack} and nothing else.
+
+${content}`;
+    // The owned operation keeps its reservation until its effect settles.
+    const settlement = (async () => {
+      let reserved = false;
+      try {
+        for (const { handle } of participants) {
+          assertAdmission();
+          const preparation = prepareSync(handle);
+          void preparation.catch(() => {});
+          await awaitWithAbort(preparation, lifetime);
+          assertAdmission();
+        }
+
+        const replay = await this.withGroupMutation(
+          groupId,
+          owner,
+          async (record, path) => {
+            assertInspectionCurrent();
+            if (existingOperation(record)) return record;
+            assertAdmission(record);
+            if (canonicalJson(this.membersForNewSync(record)) !== memberBinding)
+              throw new CliSessionGroupUnavailable(
+                'group_sync_identity_changed',
+              );
+            record.syncs ??= [];
+            record.syncs.push({
+              operationId,
+              runId,
+              contentHash,
+              timestamp: new Date().toISOString(),
+              status: 'syncing',
+              members: participants.map(({ seatId }) => ({
+                seatId,
+                status: 'pending',
+                attempts: 0,
+              })),
+            });
+            await this.publishRecord(path, record, assertAdmission);
+            return undefined;
+          },
+        );
+        if (replay) return replay;
+        reserved = true;
+
+        for (const { seatId, handle, initialTerminalEventId } of participants) {
+          for (let attempt = 1; attempt <= 2; attempt++) {
+            const clientTurnId = `sync-${digest([groupId, operationId, seatId, attempt])}`;
+            await this.mutate(
+              groupId,
+              owner,
+              (record) => {
+                const member = findMember(record, seatId);
+                if (
+                  member.attempts !== attempt - 1 ||
+                  (attempt === 2 &&
+                    (member.status !== 'failed' || member.toolCalls !== 0))
+                )
+                  throw new CliSessionGroupUnavailable('group_conflict');
+                member.attempts = attempt;
+                member.status = 'unknown';
+                member.timestamp = new Date().toISOString();
+              },
+              assertAdmission,
+            );
+
+            const reservedMember = (record: GroupRecord) => {
+              const member = findMember(record, seatId);
+              const seat = record.seats.find(
+                (value) => value.seatId === seatId,
+              );
+              if (
+                member.attempts !== attempt ||
+                member.status !== 'unknown' ||
+                seat?.handle?.sessionId !== handle.sessionId ||
+                seat.handle.initialTurnId !== handle.initialTurnId ||
+                seat.terminalEvent?.eventId !== initialTerminalEventId
+              )
+                throw new CliSessionGroupUnavailable(
+                  'group_sync_identity_changed',
+                );
+              return member;
+            };
+            const assertAttempt = () => {
+              const record = this.read(groupId, owner);
+              assertAdmission(record);
+              reservedMember(record);
+            };
+            try {
+              assertAttempt();
+              const result = syncResultSchema.parse(
+                await sync(handle, {
+                  prompt,
+                  clientTurnId,
+                  signal: lifetime,
+                  assertCurrent: assertAttempt,
+                }),
+              );
+              if (
+                result.sessionId !== handle.sessionId ||
+                result.turnId === handle.initialTurnId ||
+                result.terminalEventId === initialTerminalEventId
+              )
+                throw new CliSessionGroupUnavailable(
+                  'group_sync_identity_changed',
+                );
+              const acknowledged =
+                result.toolCalls === 0 && result.output === ack;
+              await this.mutate(groupId, owner, (record) => {
+                const member = reservedMember(record);
+                if (
+                  (member.nativeIdentityHash &&
+                    member.nativeIdentityHash !== result.nativeIdentityHash) ||
+                  record.syncs?.some((entry) =>
+                    entry.members.some(
+                      (previous) =>
+                        (previous.seatId === seatId &&
+                          previous.turnId === result.turnId) ||
+                        previous.terminalEventId === result.terminalEventId,
+                    ),
+                  )
+                )
+                  throw new CliSessionGroupUnavailable(
+                    'group_sync_identity_changed',
+                  );
+                member.status = acknowledged ? 'acknowledged' : 'failed';
+                member.turnId = result.turnId;
+                member.terminalEventId = result.terminalEventId;
+                member.nativeIdentityHash = result.nativeIdentityHash;
+                member.toolCalls = result.toolCalls;
+                member.timestamp = new Date().toISOString();
+              });
+              if (lifetime.aborted || acknowledged || result.toolCalls !== 0)
+                break;
+            } catch {
+              // An attempted effect with no exact receipt stays unknown.
+              break;
+            }
+          }
+        }
+      } finally {
+        try {
+          if (reserved)
+            await this.mutate(groupId, owner, (record) => {
+              const entry = record.syncs?.find(
+                (value) => value.operationId === operationId,
+              );
+              if (entry?.status === 'syncing')
+                entry.status = entry.members.every(
+                  (member) => member.status === 'acknowledged',
+                )
+                  ? 'acknowledged'
+                  : 'incomplete';
+            });
+        } finally {
+          this.active.delete(groupId);
+        }
+      }
+      return this.read(groupId, owner);
+    })();
+    const response = settlement.then(async (record) => {
+      lifetime.throwIfAborted();
+      const projection = await observeOperation(record);
+      lifetime.throwIfAborted();
+      return projection;
+    });
+    void response.catch(() => {});
+    try {
+      return await awaitWithAbort(response, lifetime);
+    } catch (error) {
+      if (!lifetime.aborted) throw error;
+      assertCallerCurrent();
+      throw new CliSessionGroupUnavailable('group_sync_interrupted');
+    }
   }
 
   async cancel(
