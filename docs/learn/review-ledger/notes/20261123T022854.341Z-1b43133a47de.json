@@ -1,0 +1,7 @@
+{
+  "revision": "9757c19c3e04641535ba05d0977b1d921275778a",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Adds the Station Control acting principal for a person's own turn in a taken-over automation Session, and states today's stopped-turn outcome and wall-clock budget during approvals.","inputs":["docs/design/automations.md"]}
+  ]
+}
