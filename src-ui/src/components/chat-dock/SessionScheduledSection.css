@@ -6,12 +6,17 @@
  */
 .session-scheduled {
   display: grid;
+  /* The column is the card's width, never its content's: a header or row
+     wider than a narrow card wraps or truncates inside it instead of
+     widening the section past the card's edge. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--k-space-1);
   padding: var(--k-space-1) var(--k-space-2) var(--k-space-2);
 }
 
 .session-scheduled__header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--k-space-2);
@@ -140,6 +145,7 @@
    wins over the card's full-width link whichever sheet loads last). */
 .session-scheduled__header .session-scheduled__all {
   width: auto;
+  white-space: nowrap;
 }
 
 .session-scheduled__header .session-scheduled__all:first-of-type {
