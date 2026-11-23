@@ -2201,6 +2201,21 @@ OAuth and the Station host must be able to reach that address.
    **Claude Code** or **Codex** engine and start a new session. The remote
    server's tools are available within the access you granted.
 
+### Use T3 Code from a Station Agent
+
+In T3 Code, use **Settings → Environments → Copy MCP URL** for the
+environment you want to reach. Add that URL with the steps above and choose
+**Read only** when T3 Code asks for approval. In the Station Agent's new
+Session, ask it to list T3 projects or threads. Run both services on the same
+host for a loopback URL, or use a T3 HTTPS address reachable from the Station
+host. [T3 outside-agent setup](https://github.com/pingdotgg/t3code/blob/main/docs/user/outside-agents.md)
+
+If the connected T3 environment already has **Linked environments** enabled
+and a link you approved, the Agent can discover that link with
+`t3_environment_links` and call `t3_project_list` with its `environmentId`.
+T3 Code checks the link and the caller's permissions before forwarding. You
+manage and revoke those links in T3 Code. [T3 Linked environments](https://github.com/pingdotgg/t3code/blob/main/docs/user/remote-access.md#link-another-environment)
+
 A custom integration uses the shared Station account by default. For sources
 configured for personal accounts, Station selects the session owner's Project account first, then their personal
 account. A shared account is used for a personal integration only when its
