@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, expect, test, vi } from 'vitest';
+import { scaleLivenessMs } from '../../../../scripts/lib/liveness-scale.mjs';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { ProjectTaskRoomRevisionEvidenceBridge } from '../../../services/orchestration/project-task-room-revision-evidence-bridge.js';
@@ -61,7 +62,14 @@ async function fixture(
     },
   });
   const store = new EventStore(join(directory, 'events.sqlite'));
-  const backing = store.createProjectTaskRoomWorkingState();
+  // The worker response deadline is a dead-child guard sized for an idle host
+  // (#3302): a saturated qualification shard can outlast the 5s default, which
+  // terminates the worker and reports the freeze unavailable for a non-capacity
+  // reason. The behavior under test is ledger capacity, so the fixture raises
+  // the bound; it stays finite, so a genuinely wedged worker still fails.
+  const backing = store.createProjectTaskRoomWorkingState({
+    responseTimeoutMs: scaleLivenessMs(60_000),
+  });
   const working = { ...backing, settle: vi.fn(backing.settle) };
   let current = true;
   const security = new EnvironmentSecurityService({ homeDir: directory });

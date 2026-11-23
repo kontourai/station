@@ -7,6 +7,7 @@ import { CONVERSATION_FORK_REFUSAL_CODES } from '@kontourai/station-contracts/or
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { scaleLivenessMs } from '../../../../scripts/lib/liveness-scale.mjs';
 import {
   continuityBinding,
   continuityRegistry,
@@ -496,38 +497,45 @@ describe('fork and handoff deliver the transcript seed across engine families', 
     return { id, branch };
   }
 
-  test('a long, tool-heavy conversation forks at a late turn and the target receives that turn', async () => {
-    const h = harness();
-    const { id, branch } = await longToolHeavyConversation(h, {
-      toolCalls: 30,
-      toolOutputBytes: 600,
-      deltas: 4,
-    });
-    // The pages the conversation reader itself serves for this history, as
-    // the earlier all-or-nothing fork read paged them: more than its 16-page
-    // ceiling, while under its event and byte ceilings.
-    let pages = 0;
-    let events = 0;
-    let cursor: string | undefined;
-    do {
-      const window = await h.service.readConversationEventWindow(id, {
-        turnLimit: 200,
-        authority,
-        ...(cursor ? { cursor } : {}),
+  test(
+    'a long, tool-heavy conversation forks at a late turn and the target receives that turn',
+    async () => {
+      const h = harness();
+      const { id, branch } = await longToolHeavyConversation(h, {
+        toolCalls: 30,
+        toolOutputBytes: 600,
+        deltas: 4,
       });
-      if (!window) throw new Error('The source history is unreadable.');
-      pages += 1;
-      events += window.events?.length ?? 0;
-      cursor = window.hasMore ? window.nextCursor : undefined;
-    } while (cursor);
-    expect(pages).toBeGreaterThan(16);
-    expect(events).toBeLessThan(3_200);
-    const response = await h.fork('codex', id, 'claude', branch);
-    const forkId = await h.forkedId(response);
-    const { sent } = await h.turn('claude', forkId, 'First fork turn.');
-    expect(sent.ambientContext).toContain('BRANCH-TURN-4476');
-    expect(sent.ambientContext).not.toContain(AFTER);
-  });
+      // The pages the conversation reader itself serves for this history, as
+      // the earlier all-or-nothing fork read paged them: more than its 16-page
+      // ceiling, while under its event and byte ceilings.
+      let pages = 0;
+      let events = 0;
+      let cursor: string | undefined;
+      do {
+        const window = await h.service.readConversationEventWindow(id, {
+          turnLimit: 200,
+          authority,
+          ...(cursor ? { cursor } : {}),
+        });
+        if (!window) throw new Error('The source history is unreadable.');
+        pages += 1;
+        events += window.events?.length ?? 0;
+        cursor = window.hasMore ? window.nextCursor : undefined;
+      } while (cursor);
+      expect(pages).toBeGreaterThan(16);
+      expect(events).toBeLessThan(3_200);
+      const response = await h.fork('codex', id, 'claude', branch);
+      const forkId = await h.forkedId(response);
+      const { sent } = await h.turn('claude', forkId, 'First fork turn.');
+      expect(sent.ambientContext).toContain('BRANCH-TURN-4476');
+      expect(sent.ambientContext).not.toContain(AFTER);
+      // The paged all-history read plus the fork across forty tool-heavy turns
+      // must stay honest on a saturated host; the bound stays finite, so a
+      // genuine hang still fails.
+    },
+    scaleLivenessMs(120_000),
+  );
 
   test('a fork whose copied tool output outgrows the saved-context bound keeps its text', async () => {
     const h = harness();
