@@ -271,7 +271,7 @@ export function DiscoverView() {
                 <button
                   type="button"
                   className="discover__link"
-                  onClick={() => navigate('/connections/tools')}
+                  onClick={() => navigate('/customize/tools')}
                 >
                   Tools
                 </button>

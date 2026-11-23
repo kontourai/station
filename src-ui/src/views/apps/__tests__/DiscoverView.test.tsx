@@ -482,6 +482,17 @@ describe('Apps › Discover', () => {
     expect(cardNames()).toEqual(['Session Activity Pane']);
   });
 
+  test('sends people to Skills and to the Customize Tools item for what is not an app', () => {
+    render(<DiscoverView />);
+    const moreFilters = screen.getByRole('complementary', {
+      name: 'More filters',
+    });
+    fireEvent.click(within(moreFilters).getByRole('button', { name: 'Skills' }));
+    expect(state.navigate).toHaveBeenLastCalledWith('/guidance?tab=skills');
+    fireEvent.click(within(moreFilters).getByRole('button', { name: 'Tools' }));
+    expect(state.navigate).toHaveBeenLastCalledWith('/customize/tools');
+  });
+
   test('a search that matches nothing keeps both filter groups in place', () => {
     render(<DiscoverView />);
     fireEvent.change(screen.getByLabelText('Search apps'), {
