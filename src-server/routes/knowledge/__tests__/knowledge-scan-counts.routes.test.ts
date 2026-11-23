@@ -1,9 +1,9 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { Hono } from 'hono';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { beforeEach, expect, test, vi } from 'vitest';
 import { readJson } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { ProjectManifestStore } from '../../../services/projects/project-manifest-store.js';
 import { ProjectService } from '../../../services/projects/project-service.js';
@@ -18,12 +18,10 @@ const { KnowledgeService } = await import(
   '../../../services/knowledge/knowledge-service.js'
 );
 
+const makeTempDir = trackTempDirs();
 let home: string;
 beforeEach(() => {
-  home = mkdtempSync(join(tmpdir(), 'knowledge-scan-counts-'));
-});
-afterEach(() => {
-  rmSync(home, { recursive: true, force: true });
+  home = makeTempDir('knowledge-scan-counts-');
 });
 
 function vectorStore() {

@@ -1752,7 +1752,7 @@ anything there that should stay private.
 Many hosted and self-hosted inference servers expose an OpenAI-compatible API (`/v1/chat/completions`, `/v1/models`). Station connects to these as an **OpenAI-compatible** Model connection.
 
 1. On **Connections → Models**, select **Add model connection** and choose a named service such as **LiteLLM** or **OpenRouter**, or choose **Other OpenAI-compatible**.
-2. Confirm the **server URL** for the service's API root (for example, the URL that serves `/chat/completions` and `/models`). The server URL is required: **Create** and **Save** stay unavailable while it is blank, and the server refuses such a save, so a connection with no address is never created. The one exception keeps a connection off: a connection saved with no address before this rule can still be turned off by clearing **Enabled** and selecting **Save**. Turning it on again needs the server URL.
+2. Confirm the **server URL** for the service's API root (for example, the URL that serves `/chat/completions` and `/models`). The server URL is required: **Create** and **Save** stay unavailable while it is blank, and the server refuses such a save, so a connection with no address is never created. The one exception is a saved connection that is turned off: with **Enabled** cleared, **Save** works without a server URL, so a connection saved before this rule can be turned off. Turning it on again needs the server URL.
 3. Provide an **API key** if the endpoint requires one. Endpoints that need no auth can leave it blank.
 4. Verify the connection, then pick a model when editing a Station agent.
 
