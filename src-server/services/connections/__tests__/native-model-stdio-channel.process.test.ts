@@ -1,3 +1,4 @@
+import { once } from 'node:events';
 import { mkdirSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { expect, onTestFinished, test, vi } from 'vitest';
@@ -104,8 +105,8 @@ async function fixture(
   };
 }
 
-async function rpcClient(f: Awaited<ReturnType<typeof fixture>>) {
-  const owner = spawnOwnedChild(
+function spawnRpcRelay(f: Awaited<ReturnType<typeof fixture>>) {
+  return spawnOwnedChild(
     process.execPath,
     [
       '--import',
@@ -126,6 +127,10 @@ async function rpcClient(f: Awaited<ReturnType<typeof fixture>>) {
       },
     },
   );
+}
+
+async function rpcClient(f: Awaited<ReturnType<typeof fixture>>) {
+  const owner = spawnRpcRelay(f);
   const { stdin, stdout, stderr } = owner.proc;
   if (!stdin || !stdout || !stderr)
     throw new Error('RPC client pipes unavailable');
@@ -434,6 +439,57 @@ test.each(['wrong-id-type', 'result-and-error'] as const)(
     await f.channel.close();
   },
 );
+
+test('ending the relay input retires a reply blocked on unread stdout', async () => {
+  const reply = {
+    jsonrpc: '2.0',
+    id: 1,
+    result: 'a'.repeat(NATIVE_MODEL_CHANNEL_LIMITS.bodyBytes - 1_024),
+  };
+  const rpc = vi.fn(() => ({
+    response: Promise.resolve(Response.json(reply)),
+    settled: Promise.resolve(),
+    invokeDelivery: delivery,
+  }));
+  const f = await fixture(
+    () => {
+      throw new Error('RPC reached model owner');
+    },
+    Promise.resolve(),
+    rpc,
+  );
+  const owner = spawnRpcRelay(f);
+  const { stdin, stdout, stderr } = owner.proc;
+  if (!stdin || !stdout || !stderr)
+    throw new Error('RPC client pipes unavailable');
+  const closed = once(owner.proc, 'close');
+  let retirement: Promise<void> | undefined;
+  const stop = () =>
+    (retirement ??= (async () => {
+      stdout.destroy();
+      stderr.destroy();
+      await terminateProcessTree(owner.proc, {
+        graceMs: 1_000,
+        killConfirmMs: 1_000,
+      });
+      await closed;
+      owner.release();
+    })());
+  onTestFinished(stop);
+
+  const readable = once(stdout, 'readable');
+  stdin.write('{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n');
+  await readable;
+  expect(stdout.readableLength).toBeGreaterThan(0);
+  expect(stdout.readableLength).toBeLessThan(reply.result.length);
+  expect(rpc).toHaveBeenCalledOnce();
+  stdin.end();
+  await vi.waitFor(() => expect(owner.proc.exitCode).toBe(1), {
+    timeout: 2_000,
+  });
+  await stop();
+  await f.channel.close();
+});
 
 test('oversized native request is refused before host admission and does not poison a later valid request', async () => {
   const owner = vi.fn(() => ({

@@ -1,4 +1,5 @@
 // UNWIRED(#91): accepted-parent issuance, effect/accounting owners and actual native-client qualification remain required.
+import { Socket } from 'node:net';
 import { z } from 'zod/v3';
 import {
   NATIVE_DELEGATION_RPC_PATH,
@@ -51,6 +52,11 @@ export async function runNativeDelegationRpcClient(): Promise<void> {
   )
     throw new Error('native_delegation_rpc_binding_unavailable');
 
+  // Close the native client's pipe on retirement even if its reader stops draining.
+  const stdout = new Socket({ fd: 1, readable: false, writable: true });
+  const outputClosed = new Promise<void>((resolve) =>
+    stdout.once('close', resolve),
+  );
   const controller = new AbortController();
   const active = new Set<Promise<void>>();
   const seen = new Set<string>();
@@ -58,12 +64,16 @@ export async function runNativeDelegationRpcClient(): Promise<void> {
   let outputBytes = 0;
   let output = Promise.resolve();
   let failure: unknown;
-  const fail = (error: unknown) => {
-    failure ??= error;
-    controller.abort(error);
+  const retire = (reason?: unknown) => {
+    controller.abort(reason);
+    stdout.destroy();
     process.stdin.destroy();
   };
-  process.stdout.on('error', fail);
+  const fail = (error: unknown) => {
+    failure ??= error;
+    retire(error);
+  };
+  stdout.on('error', fail);
 
   const emit = (packet: z.infer<typeof responseSchema>): Promise<void> => {
     const bytes = Buffer.from(JSON.stringify(packet) + '\n');
@@ -76,9 +86,7 @@ export async function runNativeDelegationRpcClient(): Promise<void> {
     output = output.then(() => {
       controller.signal.throwIfAborted();
       return new Promise<void>((resolve, reject) => {
-        process.stdout.write(bytes, (error) =>
-          error ? reject(error) : resolve(),
-        );
+        stdout.write(bytes, (error) => (error ? reject(error) : resolve()));
       });
     });
     return output;
@@ -90,9 +98,8 @@ export async function runNativeDelegationRpcClient(): Promise<void> {
     const body = JSON.stringify(request);
     if (Buffer.byteLength(body) > NATIVE_MODEL_CHANNEL_LIMITS.bodyBytes)
       throw new Error('native_delegation_rpc_input_bound');
-    const deadline = new AbortController();
     const timeout = setTimeout(
-      () => deadline.abort(new Error('native_delegation_rpc_deadline')),
+      () => fail(new Error('native_delegation_rpc_deadline')),
       30_000,
     );
     timeout.unref();
@@ -105,7 +112,7 @@ export async function runNativeDelegationRpcClient(): Promise<void> {
         },
         body,
         redirect: 'error',
-        signal: AbortSignal.any([controller.signal, deadline.signal]),
+        signal: controller.signal,
       });
       if (!response.ok) throw new Error('native_delegation_rpc_refused');
       const chunks: Buffer[] = [];
@@ -115,8 +122,9 @@ export async function runNativeDelegationRpcClient(): Promise<void> {
           const chunk = Buffer.from(raw);
           bytes += chunk.byteLength;
           if (bytes > NATIVE_MODEL_CHANNEL_LIMITS.bodyBytes) {
-            deadline.abort();
-            throw new Error('native_delegation_rpc_response_bound');
+            const error = new Error('native_delegation_rpc_response_bound');
+            fail(error);
+            throw error;
           }
           chunks.push(chunk);
         }
@@ -163,10 +171,10 @@ export async function runNativeDelegationRpcClient(): Promise<void> {
   } catch (error) {
     fail(error);
   } finally {
-    controller.abort();
+    retire();
     await Promise.allSettled([...active]);
-    await output.catch(fail);
-    process.stdout.removeListener('error', fail);
+    await outputClosed;
+    stdout.removeListener('error', fail);
   }
   if (failure)
     throw new Error('native_delegation_rpc_client_failed', { cause: failure });
