@@ -36,6 +36,7 @@ import {
 import type { ProjectConfig } from '@kontourai/station-contracts/project';
 import { readProjectOverrides } from '@kontourai/station-contracts/project-settings-overrides';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { routeWrittenKeyRefusal } from '@kontourai/station-contracts/settings-registry';
 import { type Context, Hono } from 'hono';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { mergeAppConfigUpdate } from '../../domain/config-loader-app.js';
@@ -618,35 +619,17 @@ export function createConfigRoutes(
             400,
           );
       }
-      // The first-run record is a TRANSITION, not a setting (review M1). Left
-      // on this route it was an ordinary composite: an `orchestration:operate`
-      // peer could re-arm an existing home as `pending` and re-run the guided
-      // chapter on it, or forge `completed` with a timestamp of its choosing
-      // for a run that never happened. Same shape as the `logLevel` refusal
-      // below — the write has its own endpoint, which is where the rule lives.
-      if (Object.hasOwn(body as object, 'firstRun')) {
-        configOps.add(1, { op: 'update_app_first_run_refused' });
-        return c.json(
-          {
-            success: false,
-            error:
-              'firstRun records a first-run decision and is written through POST /config/first-run; no settings were saved.',
-          },
-          400,
-        );
-      }
-      // Same shape: a first-signed-in default is recorded once, and that rule
-      // lives on its own endpoint.
-      if (Object.hasOwn(body as object, 'newChatDefault')) {
-        configOps.add(1, { op: 'update_app_new_chat_default_refused' });
-        return c.json(
-          {
-            success: false,
-            error:
-              'newChatDefault is written through POST /config/new-chat-default; no settings were saved.',
-          },
-          400,
-        );
+      // The first-run record is a TRANSITION, not a setting (review M1), and
+      // a first-signed-in default for new chats is recorded once. Left on
+      // this route either rule could be skipped: an `orchestration:operate`
+      // peer could re-arm a home as `pending`, or replace the recorded
+      // default. Each has its own endpoint, which is where its rule lives.
+      const routeWritten = routeWrittenKeyRefusal(
+        body as Record<string, unknown>,
+      );
+      if (routeWritten) {
+        configOps.add(1, { op: 'update_app_route_written_refused' });
+        return c.json({ success: false, error: routeWritten }, 400);
       }
 
       // The terminal shell is a program Station will start; changing it is

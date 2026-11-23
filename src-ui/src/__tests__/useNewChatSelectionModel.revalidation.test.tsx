@@ -47,6 +47,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   // #5401: no host records a default here; the fixed-order pick applies.
   useNewChatDefaultCapability: () => ({ data: false }),
   useRecordNewChatDefaultMutation: () => ({ mutate: () => undefined }),
+  useEngineConnectionsQuery: () => ({ data: undefined, isFetching: false }),
   useAgentsQuery: () => ({
     data: state.agents,
     isFetching: false,

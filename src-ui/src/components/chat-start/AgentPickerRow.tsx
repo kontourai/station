@@ -40,6 +40,8 @@ function engineQualifiedBy(
   return { ...engine, name: match[2] };
 }
 
+const NEW_CHAT_DEFAULT_TAG = 'Default for new chats';
+
 /**
  * One Agent in a start picker: the New Chat list (fork) and the start
  * composer's Agent menu render this same row, so readiness, the model
@@ -127,7 +129,12 @@ function AgentPickerRow({
         onClick={onSelect}
         disabled={interactionDisabled || (!selectionOnly && !runnable)}
         aria-describedby={
-          unavailability ? `agent-${agent.slug}-unavailable` : undefined
+          [
+            isNewChatDefault ? `agent-${agent.slug}-new-chat-default` : '',
+            unavailability ? `agent-${agent.slug}-unavailable` : '',
+          ]
+            .filter(Boolean)
+            .join(' ') || undefined
         }
       >
         <div className="new-chat-modal__agent-header">
@@ -152,16 +159,32 @@ function AgentPickerRow({
               <span className="engine-chip__pill">{engineLabel}</span>
             </span>
           )}
+          {/* A state only when nothing else on the row says it. "Ready" is
+              what an enabled row says by being choosable, and a row that
+              cannot start is already disabled, dimmed, and carries its one
+              fixing button (Enable, Connect, Set up, Edit agent) at the end.
+              Only a row with no fix of its own (a policy, or no fix kind at
+              all) keeps the badge, so it is never a dead row with no reason.
+              When shown it is the SHORT state (archive#4521), the Agents
+              list's own word, never the server's paragraph, which stays on
+              the row's title and assistive node. */}
           {!runnable && !agentFixLabel(agent) && (
             <AgentReadinessCell agent={agent} part="status" compact />
           )}
         </div>
         {/* The Station's default for new chats, on its own line so the
-            name keeps its width in a narrow menu. */}
+            name keeps its width in a narrow menu. Hidden from the button's
+            name and read once as its description instead. */}
         {isNewChatDefault && (
-          <div className="new-chat-modal__agent-purpose new-chat-modal__agent-default-line">
-            <span className="engine-chip__pill new-chat-modal__agent-default">
-              Default for new chats
+          <div
+            className="new-chat-modal__agent-purpose new-chat-modal__agent-default-line"
+            aria-hidden="true"
+          >
+            <span
+              id={`agent-${agent.slug}-new-chat-default`}
+              className="engine-chip__pill new-chat-modal__agent-default"
+            >
+              {NEW_CHAT_DEFAULT_TAG}
             </span>
           </div>
         )}

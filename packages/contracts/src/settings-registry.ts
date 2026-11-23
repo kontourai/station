@@ -1008,6 +1008,30 @@ const INTERNAL_FIELD_SET: ReadonlySet<string> = new Set(
   INTERNAL_APP_CONFIG_FIELDS,
 );
 
+/**
+ * Settings that have their own route because a rule governs how they change:
+ * the first-run record moves only forward, and a first-signed-in default for
+ * new chats is written only while none exists. Every generic writer (the
+ * config route and `station config set`, online or `--offline`) refuses them
+ * and names the route, so neither rule can be skipped.
+ */
+export const ROUTE_WRITTEN_APP_CONFIG_KEYS = {
+  firstRun: 'POST /config/first-run',
+  newChatDefault: 'POST /config/new-chat-default',
+} as const satisfies Partial<Record<keyof AppConfig, string>>;
+
+/** The refusal for a generic write naming a route-written key, if any. */
+export function routeWrittenKeyRefusal(
+  updates: Record<string, unknown>,
+): string | undefined {
+  const key = Object.keys(ROUTE_WRITTEN_APP_CONFIG_KEYS).find((candidate) =>
+    Object.hasOwn(updates, candidate),
+  ) as keyof typeof ROUTE_WRITTEN_APP_CONFIG_KEYS | undefined;
+  return key
+    ? `${key} is written through ${ROUTE_WRITTEN_APP_CONFIG_KEYS[key]}; no settings were saved.`
+    : undefined;
+}
+
 export interface SanitizeAppConfigUpdateResult {
   accepted: Partial<AppConfig>;
   ignored: Array<{ key: string; reason: 'unknown' | 'runtime-derived' }>;

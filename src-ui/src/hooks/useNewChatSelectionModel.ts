@@ -409,24 +409,29 @@ export function useNewChatSelectionModel({
       !agentCatalog.isFetching &&
       agentCatalog.catalogState !== 'reconciling',
   });
+  const listedAgents = viewModel.scopedAgents ?? viewModel.flatList;
   const defaultSelection = resolveNewChatDefaultSelection({
     flatList: viewModel.flatList,
+    listedAgents,
     agentConnections,
     modelConnections,
     acpConnections,
     projectDefaultModel: selectedProjectConfig?.defaultModel,
     projectChatDefaults: selectedProjectSlug ? projectChatDefaults : undefined,
-    preferredAgentSlug: firstStartableAgentSlug(viewModel.flatList, [
-      rememberedAgentSlug,
-      ...getRecentAgentSlugsForContext(
-        activeChatsSnapshot,
-        selectedContext,
-        [],
-      ),
-      selectedProjectConfig?.defaultAgent,
-      layout?.defaultAgent,
+    preferredAgentSlug: firstStartableAgentSlug(
+      listedAgents,
+      [
+        rememberedAgentSlug,
+        ...getRecentAgentSlugsForContext(
+          activeChatsSnapshot,
+          selectedContext,
+          [],
+        ),
+        selectedProjectConfig?.defaultAgent,
+        layout?.defaultAgent,
+      ],
       newChatDefaultSlug,
-    ]),
+    ),
 
     lastChosenModelByBinding,
   });
@@ -693,19 +698,25 @@ export function useNewChatSelectionModel({
 
 /**
  * The new chat's preferred Agent: the first of the remembered, recent and
- * configured Agents that can start. One that needs setup is passed over, so a
- * stale memory never outranks a working default. When none can start, the
- * first one named is kept, so a missing Agent is still reported as missing.
+ * configured Agents that can start, then the Station's default for new chats
+ * if it can start. One that needs setup is passed over, so a stale memory
+ * never outranks a working default. When none can start, the first one named
+ * is kept, so a missing Agent is still reported as missing; the Station's
+ * default never is: a stale record is passed over everywhere, and the fixed
+ * order (or quick-start preparation) takes it from there.
  */
 export function firstStartableAgentSlug(
   agents: readonly AgentData[],
   candidates: readonly (string | undefined)[],
+  stationDefault?: string,
 ): string | undefined {
   const named = candidates.filter((slug): slug is string => Boolean(slug));
+  const startable = (slug: string) => {
+    const agent = agents.find((candidate) => candidate.slug === slug);
+    return agent !== undefined && agentRunnability(agent).runnable;
+  };
   return (
-    named.find((slug) => {
-      const agent = agents.find((candidate) => candidate.slug === slug);
-      return agent !== undefined && agentRunnability(agent).runnable;
-    }) ?? named[0]
+    named.find(startable) ??
+    (stationDefault && startable(stationDefault) ? stationDefault : named[0])
   );
 }

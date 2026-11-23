@@ -626,8 +626,9 @@ explicit replacement. Only an Agent that can start is remembered or chosen by
 default: a remembered, recent or configured Agent that cannot start yields to
 the next one that can, then to the Station's
 [default for new chats](../reference/api.md#default-for-new-chats), then to the
-first engine in the fixed order (Claude Code, Codex, other engines, Station's
-own) that can start. The menu tags that default's row **Default for new chats**, and an Agent chosen on the way into setup shows only
+first Agent in the fixed order (Claude Code, Codex, other engines by id,
+Station's own) that can start; a default that cannot start or is not offered
+here is passed over. The menu tags that default's row **Default for new chats**, and an Agent chosen on the way into setup shows only
 once setup makes it ready. An Agent picked from the menu in this tab still
 shows with its repair, so it can run on another Station. The dock's setup card appears
 only when no Agent can start, with each reason under **Details**.

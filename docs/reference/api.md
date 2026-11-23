@@ -3147,8 +3147,9 @@ The [route](../../src-server/routes/system/config.ts) records
 `AppConfig.newChatDefault`, the Agent new chats on this Station start with when
 nothing closer names one (`GET /config/app` reports it). The body has exactly
 `agent`, a clean Agent id, and `reason`: `first-signed-in` when Station picks
-the first engine that can run a chat, in the fixed order Claude Code, Codex,
-other engines, Station's own engine; `chosen` when a person picks it. A
+the first engine whose sign-in it has verified, in the fixed order Claude Code,
+Codex, other engines by id (never Station's own engine); `chosen` when a
+person picks it. A
 `first-signed-in` record is written only while none exists, checked inside the
 serialized config write: a later one answers 409 with the default that stands
 in `data`, and nothing changes. `chosen` always replaces it. A malformed body
