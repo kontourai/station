@@ -2435,6 +2435,17 @@ A zero dispatch allowance closes admission at creation. The allowance counts
 reserved member starts. Dollar, token, and physical-attempt caps are unavailable.
 Issue #91 tracks production composition with Station Session authority.
 
+The [retained activation owner](../../src-server/services/orchestration/orchestration-service.ts)
+is also dormant. It admits one reserved turn in a persistent personal Claude
+Session, waits for the previous process exit, and resumes the same native
+conversation with wildcard tool denial. The adapter qualifies the launched
+runtime before accepting the turn. The owner reads the exact terminal event
+and requires confirmed release before returning its receipt. An uncertain
+activation remains fenced until explicit teardown. Group reservation,
+acknowledgment, and the HTTP, SDK, and CLI callers remain separate work in #91.
+The [service tests](../../src-server/services/orchestration/__tests__/retained-session-sync.test.ts)
+exercise restricted activation, authority withdrawal, and exit custody.
+
 Starting a Session crosses two boundaries: an engine may start, and Station must record the command’s result. The [command owner](../../src-server/services/orchestration/session-command-module.ts) reports those facts separately; losing a receipt must not invite a second engine start.
 
 **Interface.** `execute({ type: 'start-session', input }, context)` is the closed caller Interface. It always returns one of `accepted`, `rejected`, `failed`, or `indeterminate`, together with a receipt and `receiptStatus: persisted|unavailable`. `accepted` has a persisted accepted receipt and a session. `rejected` and `failed` report whether their terminal receipt is durable. `indeterminate` covers uncertain provider creation as well as missing accepted-receipt durability; a Session is included only when one is known. The server-only `executeInternal` also carries recovery, Task dispatch, owned-workspace, and portable-execution admission capabilities. Those options are not accepted from public command JSON.
