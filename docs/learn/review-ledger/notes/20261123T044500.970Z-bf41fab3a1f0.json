@@ -1,0 +1,11 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked: adds AppConfig.newChatDefault and describeNewChatDefaultViolation; no existing field or helper changed.","inputs":["packages/contracts/src/config.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked: adds AppConfig.newChatDefault and describeNewChatDefaultViolation; no existing field or helper changed.","inputs":["packages/contracts/src/config.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Checked: adds AppConfig.newChatDefault and describeNewChatDefaultViolation; no existing field or helper changed.","inputs":["packages/contracts/src/config.ts"]}
+  ]
+}
