@@ -295,7 +295,11 @@ With the `quiet-sidebar` Feature Preview on, the panel is the
   Automations, project initials, app icons, Discover, Customize with its dot,
   and Settings, with Updates and the account below them. The **phone drawer**
   has the same structure, and its New chat closes the drawer before it opens
-  the chat.
+  the chat. Focus then goes to the chat's composer, or its first control,
+  not back to the menu button; closing the drawer any other way still
+  returns focus to the button.
+- The sidebar remembers, per Station, whether the preview was last on, so a
+  slow or failed previews read draws the sidebar that Station last showed.
 - With the `apps-library` preview also on, Discover is the only add path:
   Browse apps is not shown.
 - Its footer reads the Customize items' signals on every page, the reads the
