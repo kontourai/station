@@ -325,7 +325,10 @@ describe('useChatDockActiveChatSync', () => {
         session: 'thread-1',
       }),
     );
-    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
+    expect(updateParams).toHaveBeenCalledWith({ chat: null });
+    expect(updateParams).not.toHaveBeenCalledWith(
+      expect.objectContaining({ dock: null }),
+    );
   });
 
   it('leaves the active chat alone when the opener succeeds', async () => {
@@ -464,7 +467,10 @@ describe('useChatDockActiveChatSync', () => {
         session: 'thread-1',
       }),
     );
-    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
+    expect(updateParams).toHaveBeenCalledWith({ chat: null });
+    expect(updateParams).not.toHaveBeenCalledWith(
+      expect.objectContaining({ dock: null }),
+    );
   });
 
   // archive#945 MED finding: `agentCatalogKey` is built by joining agent slugs, so
@@ -512,7 +518,10 @@ describe('useChatDockActiveChatSync', () => {
         session: 'thread-1',
       }),
     );
-    expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
+    expect(updateParams).toHaveBeenCalledWith({ chat: null });
+    expect(updateParams).not.toHaveBeenCalledWith(
+      expect.objectContaining({ dock: null }),
+    );
   });
 
   // archive#945 MED finding: `useAgentsLoaded`'s first cut derived
@@ -642,7 +651,10 @@ describe('useChatDockActiveChatSync', () => {
           session: 'thread-network-error',
         }),
       );
-      expect(updateParams).toHaveBeenCalledWith({ chat: null, dock: null });
+      expect(updateParams).toHaveBeenCalledWith({ chat: null });
+      expect(updateParams).not.toHaveBeenCalledWith(
+        expect.objectContaining({ dock: null }),
+      );
     },
   );
 
