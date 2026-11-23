@@ -4,7 +4,7 @@
 
 /**
  * With the `quiet-sidebar` preview off, the sidebar is the one it was. Each of
- * its three forms (expanded, the collapsed rail, the phone drawer) is
+ * its forms (expanded with and without Projects and Boards, the collapsed rail, the phone drawer) is
  * rendered from the real `ProjectSidebar` and compared, byte for byte, with
  * the markup the base sidebar produced for the same data. The fixtures under
  * `fixtures/quiet-sidebar-preview-off/` were written from the sidebar files of
@@ -12,7 +12,8 @@
  * that leaks into the preview-off sidebar fails here. React's generated ids
  * are masked; nothing else is.
  *
- * Two ways of being off are checked against the same markup: the read says
+ * The fresh form has no Projects and no Boards, so the empty Boards line is
+ * in it. Two ways of being off are checked against the same markup: the read says
  * off, and the read has not answered on a device with no remembered answer.
  */
 import { readFileSync } from 'node:fs';
@@ -35,14 +36,18 @@ vi.mock('../contexts/RegionModelContext', () => ({
 const state = vi.hoisted(() => ({
   previews: [] as Array<{ id: string; enabled: boolean }> | undefined,
   isMobile: false,
+  /** A fresh install: no Projects and no Boards. */
+  fresh: false,
 }));
 
 vi.mock('../contexts/ProjectsContext', () => ({
   useProjects: () => ({
-    projects: [
-      { id: 'p1', slug: 'acme-web', name: 'Acme Web' },
-      { id: 'p2', slug: 'notes-api', name: 'Notes API' },
-    ],
+    projects: state.fresh
+      ? []
+      : [
+          { id: 'p1', slug: 'acme-web', name: 'Acme Web' },
+          { id: 'p2', slug: 'notes-api', name: 'Notes API' },
+        ],
     isLoading: false,
   }),
 }));
@@ -105,10 +110,12 @@ vi.mock('@kontourai/station-sdk', () => ({
   useBoardAvailabilityQuery: () => ({ data: undefined }),
   useAttentionQuery: () => ({ data: { pendingCount: 0 } }),
   usePersonalLayoutsQuery: () => ({
-    data: [
-      { id: 'b1', slug: 'daily-brief', name: 'Daily brief', icon: '☀' },
-      { id: 'b2', slug: 'release-desk', name: 'Release desk' },
-    ],
+    data: state.fresh
+      ? []
+      : [
+          { id: 'b1', slug: 'daily-brief', name: 'Daily brief', icon: '☀' },
+          { id: 'b2', slug: 'release-desk', name: 'Release desk' },
+        ],
   }),
   useCreatePersonalLayoutMutation: () => ({
     mutate: vi.fn(),
@@ -128,10 +135,11 @@ const FIXTURES = resolve(
   'fixtures/quiet-sidebar-preview-off',
 );
 
-type Form = 'expanded' | 'rail' | 'drawer';
+type Form = 'expanded' | 'fresh' | 'rail' | 'drawer';
 
 async function renderForm(form: Form): Promise<string> {
   state.isMobile = form === 'drawer';
+  state.fresh = form === 'fresh';
   if (form === 'rail') deviceSettingsStore.set('projectSidebarCollapsed', true);
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -177,7 +185,7 @@ describe.each([
   ['the read says off', [{ id: 'quiet-sidebar', enabled: false }]],
   ['the read has not answered and nothing is remembered', undefined],
 ])('with the quiet sidebar off (%s)', (_label, previews) => {
-  test.each(['expanded', 'rail', 'drawer'] as const)(
+  test.each(['expanded', 'fresh', 'rail', 'drawer'] as const)(
     'the %s sidebar is the base markup',
     async (form) => {
       state.previews = previews;
