@@ -18,9 +18,10 @@ import {
   useRegionModelOptional,
 } from '../../contexts/RegionModelContext';
 import { useExitTransition } from '../../hooks/useExitTransition';
-import type {
-  NewChatClosedOutcome,
-  NewChatIntent,
+import {
+  type NewChatClosedOutcome,
+  type NewChatIntent,
+  newChatIntentCarriesPayload,
 } from '../../lib/newChatIntent';
 import type { ActiveWorkPanel } from './ActiveWorkContextFrame';
 import { CHAT_DOCK_INBOX_EXIT_MS } from './chat-dock-utils';
@@ -149,6 +150,10 @@ export function useChatDockOverlays({
   const reportNewChatDraft = useCallback((text: string) => {
     newChatDraftText.current = text;
   }, []);
+  // What a plain draft held when it was left without starting, so the next
+  // plain New chat opens with it, as a chat keeps its unsent draft. A draft a
+  // sender opened hands its text back to that sender instead.
+  const keptNewChatText = useRef<string | undefined>(undefined);
   const [newChatStartWithDefault, setNewChatStartWithDefault] = useState(false);
   const [newChatSelection, setNewChatSelection] =
     useState<NewChatIntent['selection']>();
@@ -163,11 +168,22 @@ export function useChatDockOverlays({
       /** Why an open request ends: its chat started, or it was dismissed. */
       closedAs: NewChatClosedOutcome = 'dismissed',
     ) => {
-      newChatOnClosed.current?.(closedAs, newChatDraftText.current);
+      const closingText = newChatDraftText.current;
+      if (newChatOnClosed.current)
+        newChatOnClosed.current(closedAs, closingText);
+      else if (closedAs === 'started') keptNewChatText.current = undefined;
+      else if (closingText !== undefined)
+        keptNewChatText.current = closingText.trim() ? closingText : undefined;
       newChatDraftText.current = undefined;
       newChatOnClosed.current = open ? options?.onClosed : undefined;
       setNewChatTaskShaping(open && options?.taskShaping === true);
-      setNewChatInitialPrompt(open ? options?.initialPrompt : undefined);
+      setNewChatInitialPrompt(
+        !open
+          ? undefined
+          : newChatIntentCarriesPayload(options)
+            ? options?.initialPrompt
+            : keptNewChatText.current,
+      );
       setNewChatInitialFiles(open ? options?.initialFiles : undefined);
       setNewChatStartWithDefault(open && options?.startWithDefault === true);
       setNewChatSelection(open ? options?.selection : undefined);

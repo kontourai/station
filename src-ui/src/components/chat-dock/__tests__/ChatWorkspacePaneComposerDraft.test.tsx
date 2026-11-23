@@ -1055,6 +1055,101 @@ test("a dismissed hand-off returns the dock's edited draft", async () => {
   );
 });
 
+// #5491: text typed in a plain New chat draft survives leaving it, as a
+// chat's own draft does, through every plain way back in.
+test('a plain New chat draft keeps its text when left and opened again', async () => {
+  openChatA();
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+
+  clickDockedNewChat();
+  await screen.findByRole('region', { name: 'New chat picker' });
+  act(() => pickerProps.at(-1)!.onDraftChange('Plan the release notes'));
+  // Dismissed (Escape, Back), then the New chat button again.
+  act(() => pickerProps.at(-1)!.onClose());
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('region', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  clickDockedNewChat();
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(pickerProps.at(-1)!.initialPrompt).toBe('Plan the release notes');
+
+  // Left for a chat, then a plain open (`/new`, the palette, Cmd+T).
+  act(() => pickerProps.at(-1)!.onDraftChange('Plan the release notes v2'));
+  act(() => navigationStore.navigate('/', { chat: 'chat-a', dock: 'open' }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('region', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(pickerProps.at(-1)!.initialPrompt).toBe('Plan the release notes v2');
+});
+
+test('a started New chat leaves no text behind, and a request with its own prompt keeps it', async () => {
+  renderDockedPane();
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  act(() => pickerProps.at(-1)!.onDraftChange('Kept for later'));
+  act(() => pickerProps.at(-1)!.onClose());
+
+  // A request carrying its own prompt (Home's hand-off) shows that prompt,
+  // and its text goes back to its sender, not into the kept draft.
+  const onClosed = vi.fn();
+  act(() => {
+    dispatchNewChatIntent({
+      initialPrompt: 'From Home',
+      selection: { context: '__global__', agentSlug: 'assistant' },
+      handoff: { kind: 'skills' },
+      onClosed,
+    });
+  });
+  await waitFor(() =>
+    expect(pickerProps.at(-1)!.initialPrompt).toBe('From Home'),
+  );
+  // The real draft reports its text as it mounts.
+  act(() => pickerProps.at(-1)!.onDraftChange('From Home'));
+  act(() => pickerProps.at(-1)!.onClose());
+  expect(onClosed).toHaveBeenCalledExactlyOnceWith('dismissed', 'From Home');
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await waitFor(() =>
+    expect(pickerProps.at(-1)!.initialPrompt).toBe('Kept for later'),
+  );
+
+  // Started: the text became the chat's first message, so the next New chat
+  // opens empty.
+  act(() => {
+    pickerProps
+      .at(-1)!
+      .onSelect(
+        { slug: 'assistant', name: 'Assistant' },
+        undefined,
+        undefined,
+        'Kept for later',
+      );
+  });
+  await waitFor(() =>
+    expect(
+      screen.queryByRole('region', { name: 'New chat picker' }),
+    ).toBeNull(),
+  );
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  expect(pickerProps.at(-1)!.initialPrompt).toBeUndefined();
+});
+
 test('a Personal Board draft opens one projectless chat picker and stays unsent after Agent selection', async () => {
   renderDockedPane();
   let claimed = false;
