@@ -1,15 +1,12 @@
 import type { ConversationInboxEntry } from '@kontourai/station-contracts/orchestration';
 import {
-  DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
-  listConversationInbox,
-} from '@kontourai/station-sdk/client';
-import {
-  type QueryClient,
-  type QueryFunction,
+  hashKey,
+  type QueryState,
   skipToken,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
+import { useCallback, useSyncExternalStore } from 'react';
 import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
 import type { StationConnection } from '../connections/station-connection';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
@@ -39,44 +36,6 @@ export function inboxReceiptsKey(queryKey: readonly unknown[]) {
   return [...queryKey, 'receipts'];
 }
 
-/**
- * The inbox read. The list and its read-only second reader both register it:
- * an observer's options replace the query's, so a refetch runs whichever
- * function the last observer set, and it must be the real read either way.
- */
-export function inboxQueryFn(input: {
-  client: QueryClient;
-  scope: InboxScope | undefined;
-  apiBase: string | undefined;
-  conversationId: string;
-  queryKey: readonly unknown[];
-}): QueryFunction<ConversationInboxEntry[]> {
-  const { client, scope, apiBase, conversationId, queryKey } = input;
-  return async ({ signal }): Promise<ConversationInboxEntry[]> => {
-    if (!scope?.isCurrent()) throw new Error('The Station connection changed.');
-    const receiptsKey = inboxReceiptsKey(queryKey);
-    const confirmedByThisRead =
-      client.getQueryData<ConversationInboxEntry[]>(receiptsKey);
-    const entries = await listConversationInbox(apiBase!, conversationId, {
-      requestScope: scope,
-      requireCredential: scope.requiresEnrolledCredential !== false,
-      signal,
-      timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
-      onHead: (head) => {
-        if (!signal.aborted && scope.isCurrent())
-          client.setQueryData([...queryKey, 'head'], head);
-      },
-    });
-    if (!scope.isCurrent()) throw new Error('The Station connection changed.');
-    if (!signal.aborted && confirmedByThisRead?.length) {
-      client.setQueryData<ConversationInboxEntry[]>(receiptsKey, (current) =>
-        current?.filter((entry) => !confirmedByThisRead.includes(entry)),
-      );
-    }
-    return entries;
-  };
-}
-
 export function useInboxReceipts(queryKey: readonly unknown[]) {
   return useQuery<ConversationInboxEntry[]>({
     queryKey: inboxReceiptsKey(queryKey),
@@ -100,6 +59,33 @@ export function withInboxReceipts(
 }
 
 /**
+ * The list's inbox query as the cache holds it, without becoming one of its
+ * observers. An observer's options replace the query's, so a second observer
+ * with no real read (skipToken, or none) could be the one a refetch runs
+ * through; a cache subscriber registers nothing. With no list mounted there
+ * is no query, and so no entries.
+ */
+function useInboxQueryState(
+  queryKey: readonly unknown[],
+): QueryState<ConversationInboxEntry[]> | undefined {
+  const client = useQueryClient();
+  const queryHash = hashKey(queryKey);
+  const subscribe = useCallback(
+    (onChange: () => void) =>
+      client.getQueryCache().subscribe((event) => {
+        if (event.query.queryHash === queryHash) onChange();
+      }),
+    [client, queryHash],
+  );
+  const read = useCallback(
+    () =>
+      client.getQueryCache().get<ConversationInboxEntry[]>(queryHash)?.state,
+    [client, queryHash],
+  );
+  return useSyncExternalStore(subscribe, read, read);
+}
+
+/**
  * The entries the pending list shows now, read from the same query without
  * reading the inbox again: for a second view of that list (the chat's
  * context card). Empty while the list's own read has no current answer.
@@ -119,20 +105,14 @@ export function useConversationInboxSnapshot(
       ? undefined
       : (connection?.targetApiBase ?? target?.apiBase ?? scope?.apiBase);
   const queryKey = inboxQueryKey(scope, conversationId, apiBase);
-  const client = useQueryClient();
-  // The real read, not skipToken: when this reader's options are the query's
-  // latest, an invalidation refetches through them, and skipToken would be
-  // invoked and throw. enabled:false keeps this reader from fetching itself.
-  const query = useQuery<ConversationInboxEntry[]>({
-    queryKey,
-    queryFn: inboxQueryFn({ client, scope, apiBase, conversationId, queryKey }),
-    enabled: false,
-    gcTime: 0,
-  });
+  const query = useInboxQueryState(queryKey);
   const receipts = useInboxReceipts(queryKey);
   const current =
     connection?.isCurrent() ?? (target?.requestScope ?? hostScope)?.isCurrent();
-  return connection !== null && current && !query.isError && !query.isPaused
-    ? visibleInboxEntries(withInboxReceipts(query.data, receipts))
+  return connection !== null &&
+    current &&
+    query?.status !== 'error' &&
+    query?.fetchStatus !== 'paused'
+    ? visibleInboxEntries(withInboxReceipts(query?.data, receipts))
     : [];
 }

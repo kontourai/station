@@ -951,14 +951,52 @@ test('a snapshot reader mounted alone neither fetches nor errors on invalidation
     await client.invalidateQueries({ queryKey: SCOPE_PREFIX });
   });
   expect(fetchMock).not.toHaveBeenCalled();
-  const query = client
-    .getQueryCache()
-    .find({ queryKey: [...SCOPE_PREFIX, 'conversation'], exact: true });
-  expect(query?.state.error).toBeNull();
-  expect(query?.state.fetchStatus).toBe('idle');
+  // The reader registers nothing: with no list mounted there is no query.
+  expect(
+    client
+      .getQueryCache()
+      .find({ queryKey: [...SCOPE_PREFIX, 'conversation'], exact: true }),
+  ).toBeUndefined();
   expect(screen.getByTestId('snapshot').textContent).toBe('');
   expect(
     consoleError.mock.calls.filter((call) => /queryFn/i.test(String(call[0]))),
   ).toEqual([]);
   consoleError.mockRestore();
+});
+
+test("a snapshot reader shows the list's entries only while the list is mounted", async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => response([entry('queued', 'held')])),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  setClientCredentialResolver(() => ({
+    origin: authority.current.apiBase,
+    requestAuthority: authority.current,
+  }));
+  function Pair({ list }: { list: boolean }) {
+    return (
+      <QueryClientProvider client={client}>
+        <SnapshotProbe />
+        {list && <Owner />}
+      </QueryClientProvider>
+    );
+  }
+  const view = render(<Pair list />);
+  await waitFor(() =>
+    expect(screen.getByTestId('snapshot').textContent).toBe('held'),
+  );
+  // The list's read is the only one keeping these entries current, so the
+  // reader does not go on showing them once it is gone.
+  view.rerender(<Pair list={false} />);
+  await waitFor(() =>
+    expect(screen.getByTestId('snapshot').textContent).toBe(''),
+  );
+  view.rerender(<Pair list />);
+  await waitFor(() =>
+    expect(screen.getByTestId('snapshot').textContent).toBe('held'),
+  );
 });
