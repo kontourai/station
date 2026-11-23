@@ -1,0 +1,7 @@
+{
+  "revision": "0a5417f6fb34bd71554fc9b2257ab4ad4fc44ae3",
+
+  "notes": [
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed OAuth advisory claims against the changed access-token check and its callers. Issuer, redirect, refresh credential and client-secret binding continue to use the same guarded exchange and refresh paths. A nonrefreshable token is used until actual expiry or rejection. The focused issuer and engine tests passed; dated advisory evidence retains its original scope.","inputs":["docs/guides/dependency-security.md","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

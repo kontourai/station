@@ -1,0 +1,7 @@
+{
+  "revision": "0a5417f6fb34bd71554fc9b2257ab4ad4fc44ae3",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Traced Station Tools OAuth through managed paste-back, account expiry and engine proxy. The scoped regression reproduced premature sign-in before the fix and 99 OAuth tests passed after it. An isolated T3 Nightly pair accepted registration and read-only approval, served project and thread calls, withheld a linked target after unlink, and refused a revoked grant before a new approval restored reads. The smoke exercised Station server components and the MCP client; browser, provider and hosted journeys remain unverified.","inputs":["docs/guides/connections.md","src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

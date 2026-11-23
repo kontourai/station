@@ -24,6 +24,10 @@ import type {
   ForegroundMessageHandle,
   ForegroundMessageInput,
 } from '../execution-target/execution-target-execution.js';
+import {
+  bindDelegationToolIntent,
+  captureInheritedDelegationToolContext,
+} from './delegation-tool-policy.js';
 import { chatTurnSubmissionDigest } from './turn-submission-digest.js';
 
 const MAX_CLAIMS = 1024;
@@ -496,14 +500,17 @@ export async function runDelegationCreate(
       authority,
       callerSessionId: input.createRequestCallerSessionId,
       requestKey: input.clientTurnId!,
-      intent: input.createRequestIntent ?? {
-        prompt: input.prompt,
-        attemptId: input.delegationAttemptId ?? null,
-        target: input.target,
-        parentTaskId: input.parentTaskId ?? null,
-        sessionId: input.sessionId ?? null,
-        attachments: input.taskRoomAttachments ?? null,
-      },
+      intent: bindDelegationToolIntent(
+        input.createRequestIntent ?? {
+          prompt: input.prompt,
+          attemptId: input.delegationAttemptId ?? null,
+          target: input.target,
+          parentTaskId: input.parentTaskId ?? null,
+          sessionId: input.sessionId ?? null,
+          attachments: input.taskRoomAttachments ?? null,
+        },
+        input.delegation,
+      ),
       sessionId: existingAttemptSessionId ?? input.sessionId,
       hasSessionStartRecord,
     },
@@ -528,19 +535,27 @@ export async function runForegroundCreateClaim(
       );
     return result;
   }
-  if (!claims || !input.clientTurnId)
+  const requestKey = input.clientTurnId;
+  if (!claims || !requestKey)
     throw new Error('Durable foreground create claims are unavailable.');
+  const captured = {
+    ...input,
+    delegation: captureInheritedDelegationToolContext(input.delegation),
+  };
   return claims.run(
     {
       kind: 'foreground',
       principal: input.principal,
       authority,
       callerSessionId,
-      requestKey: input.clientTurnId,
-      intent,
+      requestKey,
+      intent: bindDelegationToolIntent(intent, captured.delegation),
       hasSessionStartRecord,
     },
     async (conversationId) =>
-      (await execute({ ...input, conversationId })) as ForegroundMessageHandle,
+      (await execute({
+        ...captured,
+        conversationId,
+      })) as ForegroundMessageHandle,
   );
 }
