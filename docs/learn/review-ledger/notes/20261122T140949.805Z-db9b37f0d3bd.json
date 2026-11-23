@@ -1,0 +1,41 @@
+{
+  "revision": "56dd1248fb350ac3ccc37d586e5823a9fbc7115c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Scheduler section (jobId vs slug vs displayName) unchanged in meaning; create now also answers the stored slug, which the section does not contradict.","inputs":["docs/architecture/module-map.md","packages/contracts/src/scheduler.ts","src-server/routes/operations/scheduler.ts","src-server/services/__tests__/scheduler.test.ts","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Create answers the stored slug; no term in this context changes.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Scheduler create gains data.name; the operations vocabulary here is unchanged.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/routes/operations/scheduler.ts"]},
+
+    {"path":"docs/design/automations.md","note":"No naming rule here; the narrower display-name character rule does not contradict it.","inputs":["docs/design/automations.md","packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"The display-name flag now names its own hosted reason (servesSchedulerRoutes); this design states no scheduler flag.","inputs":["docs/design/remote-execution-preparation.md","src-server/capabilities/station-capability-flags.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Linked from api.md only for unrelated routes; nothing changes.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"Automation entry still matches: slug identity, display name people read and rename.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"schedule.spec.ts keeps its journeys; the fixture now passes this Station's handshake through and checks it advertises schedulerJobDisplayName, and the duplicate step asserts the create carried no slug.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/schedule.spec.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Routing guide; the create answer gaining name and the narrowed name rule change no route or requirement it states.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Starter scheduler intent is unchanged; storing a new job stays synchronous.","inputs":["docs/guides/starter-work.md","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Create now documents data.name (SchedulerCreateResponse) beside output, and the display-name rule refuses controls, separators, bidi controls, invisible fillers and tag characters while accepting joiners and direction marks; checked against the route, schema and isSchedulerJobDisplayName.","inputs":["docs/reference/api.md","packages/contracts/src/scheduler.ts","packages/sdk/src/client/scheduler.ts","src-server/routes/operations/scheduler.ts","src-server/services/scheduling/builtin-scheduler.ts","src-server/services/scheduling/scheduler-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"No config or logging claim changes; slugs still key run records.","inputs":["docs/reference/config.md","src-server/services/scheduling/builtin-scheduler.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Scheduler paragraph names SchedulerCreateResponse and the narrowed isSchedulerJobDisplayName rule; matches packages/contracts/src/scheduler.ts.","inputs":["docs/reference/contracts.md","packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"createJob now returns SchedulerCreateResponse with the stored slug; this page does not describe createJob's return shape, and the capability hook entry is unchanged.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/scheduler.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"No shared re-export of the scheduler contract.","inputs":["docs/reference/shared.md","packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Scheduled-jobs topic does not describe naming; still accurate.","inputs":["docs/reference/station-docs.md","packages/contracts/src/scheduler.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"No automation form steps here; the 409 and read-only wording changes do not touch this guide.","inputs":["docs/user/getting-started.md","src-ui/src/components/scheduler/JobFormModal.tsx"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Routing note; SchedulerCreateResponse is a plain contract shape.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

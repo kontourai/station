@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"No shared re-export of scheduler contracts is affected by the added optional field and constant.","inputs":["docs/reference/shared.md","packages/contracts/src/scheduler.ts"]}
+  ]
+}

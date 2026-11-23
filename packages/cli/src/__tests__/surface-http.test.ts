@@ -1695,6 +1695,37 @@ describe('CLI surface commands over HTTP', () => {
     expect(state.flowCommandBodies).toHaveLength(0);
   });
 
+  test('schedule create accepts a display name without a slug, and refuses a body with neither', async () => {
+    const { runCli } = await import('../cli.js');
+
+    await runCli([
+      'schedule',
+      'create',
+      `--api-base=${apiBase}`,
+      '--data={"displayName":"Daily report","prompt":"Generate report"}',
+    ]);
+    expect(state.scheduleJobs).toEqual([
+      { displayName: 'Daily report', prompt: 'Generate report' },
+    ]);
+
+    for (const data of [
+      '{"prompt":"Generate report"}',
+      '{"name":"","displayName":"","prompt":"Generate report"}',
+      '{"displayName":"Daily report"}',
+    ])
+      await expect(
+        runCli([
+          'schedule',
+          'create',
+          `--api-base=${apiBase}`,
+          `--data=${data}`,
+        ]),
+      ).rejects.toThrow(
+        'Scheduler create requires a nonempty prompt and a nonempty name or displayName',
+      );
+    expect(state.scheduleJobs).toHaveLength(1);
+  });
+
   test('schedule preview and logs refuse a count that is not a whole number', async () => {
     const { runCli } = await import('../cli.js');
 

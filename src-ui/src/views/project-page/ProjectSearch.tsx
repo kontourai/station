@@ -8,7 +8,13 @@ import { ErrorState, SkeletonBlock } from '../../components/state';
 const loadSearch = () =>
   import('../../components/search/WorkspaceSearchPalette');
 
-export function ProjectSearch({ projectId }: { projectId: string }) {
+/**
+ * Search inside one Project. Unified search scopes Tasks and messages by the
+ * Project slug (the key both record), so the slug is the filter, not the id.
+ * It offers no way back to the command palette: that palette searches the
+ * whole Station, which is not where this dialog was opened from.
+ */
+export function ProjectSearch({ slug }: { slug: string }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   return (
@@ -20,14 +26,10 @@ export function ProjectSearch({ projectId }: { projectId: string }) {
         <LazyBoundary
           load={loadSearch}
           componentProps={{
-            projectId,
+            projectId: slug,
             query,
             onQueryChange: setQuery,
             onClose: () => setOpen(false),
-            onCommands: () => {
-              setOpen(false);
-              window.dispatchEvent(new Event('open-command-palette'));
-            },
           }}
           pending={
             <Dialog

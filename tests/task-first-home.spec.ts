@@ -1,5 +1,6 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import type { ProjectChatDefaultsView } from '@kontourai/station-contracts/project-chat-defaults';
 import { PROJECT_IDENTITY_NOT_PREPARED_CODE } from '@kontourai/station-contracts/project-identity';
 import type { SkillExperienceInventoryV1 } from '@kontourai/station-contracts/skill-experience';
 import type {
@@ -408,6 +409,93 @@ async function mockTaskFirstHome(
       );
       return;
     }
+    // The open fixture chat's per-conversation reads, in the shapes the
+    // daily-driver shell declares: nothing scheduled, nothing queued, no
+    // terminal runs, and a turn directory derived from the fixture's events.
+    if (route.request().method() === 'GET') {
+      const url = new URL(route.request().url());
+      if (path === '/api/orchestration/agent-schedule/task-first-home') {
+        await route.fulfill(json({ wakeUps: [], jobProposals: [], jobs: [] }));
+        return;
+      }
+      // What a new chat in the project starts with: the fixed default, no
+      // last-used start recorded, no approval layer.
+      if (path === '/api/projects/station/chat-defaults') {
+        await route.fulfill(
+          json({
+            version: 'station.project-chat-defaults/v1',
+            projectSlug: 'station',
+            model: { selection: 'fixed', lastUsed: [] },
+            approvalMode: { selection: 'fixed', resolved: { source: 'none' } },
+          } satisfies ProjectChatDefaultsView),
+        );
+        return;
+      }
+      if (path === '/api/orchestration/conversations/task-first-home/inbox') {
+        await route.fulfill(json({ entries: [] }));
+        return;
+      }
+      if (
+        path === '/api/terminal/runs' &&
+        url.searchParams.get('conversationId') === 'task-first-home'
+      ) {
+        await route.fulfill(json({ runs: [] }));
+        return;
+      }
+      if (
+        path ===
+          '/api/orchestration/session-reads/task-first-home/turn-directory' &&
+        !url.searchParams.has('cursor')
+      ) {
+        const events = (options.sessionEvents ?? []) as Array<{
+          method?: string;
+          turnId?: unknown;
+          createdAt?: string;
+          prompt?: string;
+        }>;
+        if (events.length === 0) {
+          await route.fulfill({
+            status: 404,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: false,
+              error: 'Session not found',
+            }),
+          });
+          return;
+        }
+        const turns = events.flatMap((event) => {
+          if (
+            event.method !== 'turn.started' ||
+            typeof event.turnId !== 'string'
+          )
+            return [];
+          const terminal = events.find(
+            (item) =>
+              item.turnId === event.turnId && item.method === 'turn.completed',
+          );
+          return [
+            {
+              turnId: event.turnId,
+              startedAt: event.createdAt,
+              request: event.prompt,
+              outcome: terminal ? 'completed' : 'open',
+            },
+          ];
+        });
+        await route.fulfill(
+          json({
+            session: {
+              conversationId: 'task-first-home',
+              turnCount: turns.length,
+            },
+            turns: turns.reverse(),
+            nextCursor: null,
+          }),
+        );
+        return;
+      }
+    }
     if (path === '/api/orchestration/sessions/task-first-home') {
       await route.fulfill(
         json({ session: taskSession, events: options.sessionEvents ?? [] }),
@@ -742,6 +830,19 @@ async function openNewChatDraft(page: Page) {
   };
 }
 
+/** The dock remembers `slug`, as opening that project's page leaves it. */
+async function seedDockBinding(page: Page, slug: string) {
+  await page.addInitScript((bound) => {
+    localStorage.setItem(
+      'station-device-settings-v1',
+      JSON.stringify({
+        version: 2,
+        values: { chatDockProjectSlug: bound },
+      }),
+    );
+  }, slug);
+}
+
 /** Chooses a project through a composer's project chip. */
 async function chooseProject(page: Page, composer: Locator, slug: string) {
   await composer.getByRole('button', { name: /^Project: / }).click();
@@ -1049,39 +1150,75 @@ test.describe('Task-first Home (#332, mocked)', () => {
     ).toBeUndefined();
   });
 
-  // #3312 review HIGH: once the user has opened a project, the dock is bound
-  // to it and Start runs in that project's context, so its default Model
-  // applies. Home must name that Model, not the global default it would
-  // name for an unbound dock (`gpt-5.3-codex`, the agent default).
-  test('names the project default Start runs on when the dock is bound to a project', async ({
+  // #5392: opening a project rebinds the dock silently. A chat from Home
+  // goes where Home's chip says, No project until the person picks one, so
+  // the global default applies (`gpt-5.3-codex`, the agent default), not the
+  // bound project's own default (`gpt-5.4`).
+  test('starts in No project when the dock remembers a project Home does not show', async ({
     page,
   }) => {
     const commands: Record<string, unknown>[] = [];
     await mockTaskFirstHome(page, { commands, projectDefaultModel: 'gpt-5.4' });
-    await page.addInitScript(() => {
-      localStorage.setItem(
-        'station-device-settings-v1',
-        JSON.stringify({
-          version: 2,
-          values: { chatDockProjectSlug: 'station' },
-        }),
-      );
-    });
+    await seedDockBinding(page, 'station');
     await page.goto('/');
-    const prompt = 'Reply exactly PROJECT READY. Use no tools.';
+    const prompt = 'Reply exactly NO PROJECT READY. Use no tools.';
     const form = page.getByRole('form', { name: 'Start work' });
     const start = form.getByRole('button', { name: 'Start', exact: true });
-    // Both chips name what Start uses: the bound project and its default.
     await expect(
-      form.getByRole('button', {
-        name: 'Project: Station',
-        exact: true,
-      }),
+      form.getByRole('button', { name: 'Project: No project', exact: true }),
     ).toBeVisible();
     await expect(
       await runSetupControl(form, (panel) =>
         panel.getByRole('button', {
-          name: 'Agent: Codex · GPT 5.4',
+          name: 'Agent: Codex · gpt-5.3-codex',
+          exact: true,
+        }),
+      ),
+    ).toBeVisible();
+    await closeRunSetup(page);
+    await page
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill(prompt);
+    await start.click();
+    await expect
+      .poll(() =>
+        commands.some((command) => command.type === 'sendExecutionMessage'),
+      )
+      .toBe(true);
+    const sent = commands.find(
+      (command) => command.type === 'sendExecutionMessage',
+    );
+    expect(sent?.input).toMatchObject({
+      message: prompt,
+      target: { agent: 'codex-agent' },
+    });
+    expect(
+      (sent?.input as { target?: { workspace?: unknown } } | undefined)?.target
+        ?.workspace,
+    ).toBeUndefined();
+    await expectStartedChatRuns(page, prompt, 'Codex', 'gpt-5.3-codex');
+  });
+
+  // The project the person picks on Home's chip is where Start goes, with
+  // that project's default Model.
+  test('starts in the project picked on Home and names its default', async ({
+    page,
+  }) => {
+    const commands: Record<string, unknown>[] = [];
+    await mockTaskFirstHome(page, { commands, projectDefaultModel: 'gpt-5.4' });
+    await seedDockBinding(page, 'station');
+    await page.goto('/');
+    const prompt = 'Reply exactly PROJECT READY. Use no tools.';
+    const form = page.getByRole('form', { name: 'Start work' });
+    const start = form.getByRole('button', { name: 'Start', exact: true });
+    await chooseProject(page, form, 'station');
+    await expect(
+      form.getByRole('button', { name: 'Project: Station', exact: true }),
+    ).toBeVisible();
+    await expect(
+      await runSetupControl(form, (panel) =>
+        panel.getByRole('button', {
+          name: 'Agent: Codex · gpt-5.4',
           exact: true,
         }),
       ),

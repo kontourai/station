@@ -692,6 +692,141 @@ describe('ProviderSettingsView — Ollama dedup client debounce (#191 R5)', () =
     });
   });
 
+  test('Create stays unavailable, with the reason, while an OpenAI-compatible connection has no server URL', async () => {
+    render(
+      <ProviderSettingsView selectedProviderId="new" onNavigate={onNavigate} />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /OpenAI-Compatible/ }));
+    await screen.findByRole('heading', { name: 'Connect OpenAI-Compatible' });
+
+    const create = screen.getByRole('button', {
+      name: 'Create',
+    }) as HTMLButtonElement;
+    const reason = 'A server URL is required to save this connection.';
+    expect(create.disabled).toBe(true);
+    expect(create.closest('header')?.textContent).toContain(reason);
+    const describedBy = (create.getAttribute('aria-describedby') ?? '').split(
+      ' ',
+    );
+    const fieldReasonId = screen
+      .getByLabelText('Server URL')
+      .getAttribute('aria-describedby');
+    expect(fieldReasonId).toBeTruthy();
+    expect(document.getElementById(fieldReasonId!)?.textContent).toBe(reason);
+    expect(describedBy).toContain(fieldReasonId);
+    fireEvent.click(create);
+    expect(saveMutate).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText('Server URL'), {
+      target: { value: '   ' },
+    });
+    expect(create.disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText('Server URL'), {
+      target: { value: 'http://localhost:8080/v1' },
+    });
+    expect(create.disabled).toBe(false);
+    expect(screen.queryByText(reason)).toBeNull();
+    fireEvent.click(create);
+    expect(saveMutate).toHaveBeenCalledOnce();
+  });
+
+  test('an already-saved OpenAI-compatible connection with no server URL cannot be saved until one is entered', () => {
+    modelConnections = [
+      {
+        id: 'compat-broken',
+        kind: 'model',
+        type: 'openai-compat',
+        name: 'OpenAI-Compatible',
+        config: { baseUrl: '' },
+        enabled: true,
+        capabilities: ['llm', 'embedding'],
+        status: 'missing_prerequisites',
+        prerequisites: [],
+        lastCheckedAt: null,
+      },
+    ];
+    render(
+      <ProviderSettingsView
+        selectedProviderId="compat-broken"
+        onNavigate={onNavigate}
+      />,
+    );
+    const save = screen.getByRole('button', {
+      name: 'Save',
+    }) as HTMLButtonElement;
+    expect(save.disabled).toBe(true);
+    // The same sentence sits in the header beside Save, not only under the
+    // Server URL field, which a phone shows below the fold.
+    const header = save.closest('header');
+    expect(header).toBeTruthy();
+    expect(header?.textContent).toContain(
+      'A server URL is required to save this connection.',
+    );
+    expect(
+      document.getElementById(save.getAttribute('aria-describedby') ?? '')
+        ?.textContent,
+    ).toBe('A server URL is required to save this connection.');
+  });
+
+  test('a saved OpenAI-compatible connection with no server URL can be turned off and saved without one', () => {
+    modelConnections = [
+      {
+        id: 'compat-broken',
+        kind: 'model',
+        type: 'openai-compat',
+        name: 'OpenAI-Compatible',
+        config: { baseUrl: '' },
+        enabled: true,
+        capabilities: ['llm', 'embedding'],
+        status: 'missing_prerequisites',
+        prerequisites: [],
+        lastCheckedAt: null,
+      },
+    ];
+    render(
+      <ProviderSettingsView
+        selectedProviderId="compat-broken"
+        onNavigate={onNavigate}
+      />,
+    );
+    const save = screen.getByRole('button', {
+      name: 'Save',
+    }) as HTMLButtonElement;
+    const enabled = screen.getByRole('checkbox', { name: 'Enabled' });
+    expect(save.disabled).toBe(true);
+
+    fireEvent.click(enabled);
+    const turnOn = 'A server URL is required to turn this connection on.';
+    expect(save.disabled).toBe(false);
+    expect(save.closest('header')?.textContent).toContain(turnOn);
+    expect(
+      document.getElementById(
+        screen.getByLabelText('Server URL').getAttribute('aria-describedby')!,
+      )?.textContent,
+    ).toBe(turnOn);
+
+    fireEvent.click(save);
+    expect(saveMutate).toHaveBeenCalledOnce();
+    const sent = saveMutate.mock.calls[0]?.[0] as {
+      connection: { id: string; enabled: boolean; config: { baseUrl: string } };
+      isNew: boolean;
+    };
+    expect(sent.isNew).toBe(false);
+    expect(sent.connection).toMatchObject({
+      id: 'compat-broken',
+      enabled: false,
+      config: { baseUrl: '' },
+    });
+
+    // Turning it back on needs the address again.
+    fireEvent.click(enabled);
+    expect(save.disabled).toBe(true);
+    expect(save.closest('header')?.textContent).toContain(
+      'A server URL is required to save this connection.',
+    );
+  });
+
   test('defers a dirty draft selection change until discard is confirmed', () => {
     modelConnections = [
       {

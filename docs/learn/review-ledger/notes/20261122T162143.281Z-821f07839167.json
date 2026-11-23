@@ -1,0 +1,7 @@
+{
+  "revision": "4f101ab0f8de657ae1782cf97535fc02e19c1715",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Station Assistant identity and delivery claims unchanged by moving the estimate after the build.","inputs":["docs/reference/station-docs.md","src-server/runtime/agents/runtime-default-agent.ts"]}
+  ]
+}

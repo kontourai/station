@@ -1,0 +1,7 @@
+{
+  "revision": "67bc53f6e0384566a0842a955240ff3d0ace0b25",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Amended (#5398 fix round): an unconfirmed message reads May have reached the agent, its chat keeps its status, and the inbox row adds Last message may not have arrived with Check; the stale Delivery unconfirmed label is gone. Checked against MessageDeliveryNote and the row flag.","inputs":["docs/user/concepts.md"]}
+  ]
+}

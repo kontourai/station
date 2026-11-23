@@ -402,9 +402,7 @@ function ProjectOperatorPage({
         )}
 
         <div className="section-nav-rail project-page__layout">
-          {!roomScreen && (
-            <ProjectNavigation slug={slug} projectId={project.id} />
-          )}
+          {!roomScreen && <ProjectNavigation slug={slug} />}
           <section className="section-nav-rail__body project-page__content">
             <section
               hidden={destination !== 'overview'}

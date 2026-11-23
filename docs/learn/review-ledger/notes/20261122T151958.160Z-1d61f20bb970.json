@@ -1,0 +1,7 @@
+{
+  "revision": "e88633bcb6a218871895902d9c0bd707a8f92ddc",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"No claim depends on the default Agent's prompt estimate; runtime-default-agent.ts only adds removal of that estimate on the two teardown paths.","inputs":["docs/guides/knowledge.md","src-server/runtime/agents/runtime-default-agent.ts"]}
+  ]
+}

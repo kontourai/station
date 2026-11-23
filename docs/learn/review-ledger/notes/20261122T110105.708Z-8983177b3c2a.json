@@ -1,0 +1,7 @@
+{
+  "revision": "03608b8d8a6389c15557e84d850bce1b120f7dee",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Checked against the glossary's new Flags bullet (#5398): the context map names no inbox status or flag, so nothing here changes.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]}
+  ]
+}

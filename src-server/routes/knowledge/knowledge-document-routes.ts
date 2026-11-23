@@ -156,7 +156,7 @@ export function createKnowledgeDocumentRoutes(
         extensions,
         includePatterns,
         excludePatterns,
-        getNamespace(c) ?? 'code',
+        getNamespace(c),
       );
       observeKnowledgeOperation('scan');
       return c.json({ success: true, data });

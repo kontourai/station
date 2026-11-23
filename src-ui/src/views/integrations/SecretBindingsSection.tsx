@@ -159,7 +159,17 @@ export function SecretBindingsSection() {
       className="agent-editor__section"
       aria-labelledby="secret-bindings-heading"
     >
-      <details className="editor__expandable">
+      <details
+        className="editor__expandable secret-bindings__disclosure"
+        onToggle={(event) => {
+          // In a short panel the opened summary can sit below the fold. The
+          // whole section is taller than the panel, so only its summary moves.
+          if (event.currentTarget.open)
+            event.currentTarget
+              .querySelector('summary')
+              ?.scrollIntoView?.({ block: 'nearest' });
+        }}
+      >
         <summary className="editor__expandable-header">
           <span id="secret-bindings-heading" className="editor__section-title">
             Advanced: Secret bindings

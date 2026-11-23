@@ -1,0 +1,7 @@
+{
+  "revision": "fbefd43834d3a9ca94e47e8d232b0edfdb82668f",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Save a Connection: added that a PUT with enabled:false is accepted without an OpenAI-compatible address, while create (even disabled), turning on and a /api/providers PUT that omits enabled still answer connection_address_required. Checked against connectionUpdateSchema/providerUpdateSchema in runtime.ts and both routes' tests.","inputs":["docs/reference/api.md"]}
+  ]
+}

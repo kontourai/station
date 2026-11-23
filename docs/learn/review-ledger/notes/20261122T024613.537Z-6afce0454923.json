@@ -1,0 +1,7 @@
+{
+  "revision": "c2c7273daa8db38bf7557336537fb9e08dbeaa05",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked against this round: the held, held-until-restart and stopping-engine hints were shortened under the 140-character copy limit with the same instructions (send again once the agent stopped; restart Station by quitting and reopening the app; send again in a moment). The merge kept both refusal codes and the replaced-settings notice. This page's claims about this source remain accurate.","inputs":["src-ui/src/utils/chatErrorTranslation.ts"]}
+  ]
+}

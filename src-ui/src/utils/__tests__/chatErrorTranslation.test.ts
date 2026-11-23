@@ -1,4 +1,9 @@
 // @vitest-environment jsdom
+
+import {
+  AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE,
+  AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE,
+} from '@kontourai/station-contracts/managed-model-binding';
 import { PRINCIPAL_UNRESOLVED_CODE } from '@kontourai/station-contracts/principal';
 import {
   MUSE_TURN_IDLE_TIMEOUT_CODE,
@@ -11,6 +16,7 @@ import {
   translateChatError,
   translateProjectedRuntimeError,
 } from '../chatErrorTranslation';
+import { describeProviderDefaultFailure } from '../providerDefaultFailure';
 
 // Fixture-based per the plan's Stop-short risks: the real AWS Bedrock
 // "model not enabled" exception text could not be captured live in
@@ -68,6 +74,7 @@ describe('translateChatError', () => {
   it.each([
     "This agent's settings changed while the chat was still working. That work can no longer use tools. When it finishes, send your message again: the chat continues this conversation with the new settings.",
     "This agent's settings changed and this chat's engine can't pick up where it left off. Send your message again: the chat continues this conversation in a new session with the new settings.",
+    "This agent's settings changed again before your message was sent, so nothing was sent. Send it again: the chat continues with the new settings.",
   ])(
     'shows a replaced-configuration refusal as the server wrote it, with no hint repeating it: %s',
     (message) => {
@@ -775,5 +782,43 @@ describe('model refusal (model_not_advertised)', () => {
     expect(translated.hint).not.toContain('temporary');
     expect(translated.hint).not.toContain('may already have started');
     expect(translated.retryable).toBe(false);
+  });
+});
+
+// One fixture per server sentence: the provider service's ("application
+// default") and an unbound agent's ("explicit default"), each as the
+// station-agent relay records it.
+const AMBIGUITY_CASES = [
+  ['the provider service', AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE],
+  ['an unbound agent', AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE],
+] as const;
+
+describe('describeProviderDefaultFailure (slice 0.17)', () => {
+  const expected = {
+    summary:
+      'Couldn’t start: more than one model connection is turned on and Station can’t tell which one to use.',
+    actionLabel: 'Open model connections',
+    actionHref: '/customize/providers',
+  };
+
+  it.each(AMBIGUITY_CASES)(
+    'names the refusal thrown for %s, wrapped by the relay or bare',
+    (_source, message) => {
+      expect(
+        describeProviderDefaultFailure(
+          `Station agent did not accept the task turn: ${message}`,
+        ),
+      ).toEqual(expected);
+      expect(describeProviderDefaultFailure(message)).toEqual(expected);
+    },
+  );
+
+  it('leaves every other cause alone', () => {
+    expect(
+      describeProviderDefaultFailure(
+        'An application default LLM provider and model must be configured.',
+      ),
+    ).toBeNull();
+    expect(describeProviderDefaultFailure('ECONNREFUSED host:8443')).toBeNull();
   });
 });

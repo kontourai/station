@@ -563,3 +563,134 @@ describe('AutomationStore', () => {
     expect(store.read().rules[0]?.mode).toBe('live');
   });
 });
+
+describe('a rule or grant names its Project by id or slug', () => {
+  const STATION = {
+    id: '5b0d3c1e-8f6a-4c2b-9d7e-1a2b3c4d5e6f',
+    slug: 'station',
+  };
+  const raw = (store: AutomationStore) =>
+    JSON.parse(readFileSync(store.path, 'utf8'));
+  function storeWith(projects: { id: string; slug: string }[] | (() => never)) {
+    return new AutomationStore(makeTempDir('automation-projects-'), undefined, {
+      listProjects: () =>
+        typeof projects === 'function' ? projects() : projects,
+    });
+  }
+
+  test('creating a source and a rule with a slug writes and returns the id', async () => {
+    const store = storeWith([STATION]);
+    const { source } = await store.createSource({
+      kind: 'github-poll',
+      name: 'Main',
+      repository: 'kontourai/station',
+      grants: [GRANT],
+    });
+    expect(source.grants?.[0]?.projectId).toBe(STATION.id);
+    expect(raw(store).sources[0].grants[0].projectId).toBe(STATION.id);
+    const rule = await store.createRule(ruleInput(source.id));
+    expect(rule.action.projectId).toBe(STATION.id);
+    expect(raw(store).rules[0].action.projectId).toBe(STATION.id);
+  });
+
+  test('an edit naming no Project is refused, quoting it, and the rule is left as it was', async () => {
+    const store = storeWith([STATION]);
+    const { source } = await store.createSource({
+      kind: 'github-poll',
+      name: 'Main',
+      repository: 'kontourai/station',
+      grants: [GRANT],
+    });
+    const rule = await store.createRule(ruleInput(source.id));
+    const before = readFileSync(store.path, 'utf8');
+    await expect(
+      store.updateRule({
+        id: rule.id,
+        expectedFingerprint: automationConfigurationFingerprint(store.read()),
+        kinds: ['dispatch-task'],
+        rule: {
+          ...ruleInput(source.id),
+          action: { ...DISPATCH, projectId: 'nope' },
+        },
+      }),
+    ).rejects.toMatchObject({
+      problems: ['action.projectId: no Project has the id or slug "nope"'],
+    });
+    expect(readFileSync(store.path, 'utf8')).toBe(before);
+  });
+
+  test('an unreadable Project list refuses a write as unavailable, not as a missing Project', async () => {
+    const store = storeWith(() => {
+      throw new Error('project record unreadable');
+    });
+    const refused = store.createSource({
+      kind: 'github-poll',
+      name: 'Main',
+      repository: 'kontourai/station',
+      grants: [GRANT],
+    });
+    await expect(refused).rejects.toBeInstanceOf(
+      AutomationPolicyUnavailableError,
+    );
+    await expect(refused).rejects.toMatchObject({
+      detail: 'project list unavailable',
+    });
+  });
+
+  test('a read with an unreadable Project list resolves nothing and writes nothing', async () => {
+    let fail = false;
+    const store = new AutomationStore(
+      makeTempDir('automation-projects-'),
+      undefined,
+      {
+        listProjects: () => {
+          if (fail) throw new Error('project record unreadable');
+          return [STATION];
+        },
+      },
+    );
+    const { source } = await store.createSource({
+      kind: 'github-poll',
+      name: 'Main',
+      repository: 'kontourai/station',
+      grants: [GRANT],
+    });
+    const draft = raw(store);
+    draft.sources[0].grants[0].projectId = 'station';
+    writeFileSync(store.path, JSON.stringify(draft), { mode: 0o600 });
+    fail = true;
+    expect(store.read().sources[0]?.grants?.[0]?.projectId).toBe('station');
+    await store.projectReferencesPinned();
+    expect(raw(store).sources[0].grants[0].projectId).toBe('station');
+    expect(source.id).toBeTruthy();
+  });
+
+  test('a stored slug is pinned to its Project on first read, so a same-slug replacement never inherits it', async () => {
+    let projects = [STATION];
+    const store = new AutomationStore(
+      makeTempDir('automation-projects-'),
+      undefined,
+      {
+        listProjects: () => projects,
+      },
+    );
+    const { source } = await store.createSource({
+      kind: 'github-poll',
+      name: 'Main',
+      repository: 'kontourai/station',
+      grants: [GRANT],
+    });
+    await store.createRule(ruleInput(source.id));
+    const draft = raw(store);
+    draft.sources[0].grants[0].projectId = 'station';
+    draft.rules[0].action.projectId = 'station';
+    writeFileSync(store.path, JSON.stringify(draft), { mode: 0o600 });
+    expect(store.read().rules[0]?.action.projectId).toBe(STATION.id);
+    await store.projectReferencesPinned();
+    expect(raw(store).rules[0].action.projectId).toBe(STATION.id);
+    expect(raw(store).sources[0].grants[0].projectId).toBe(STATION.id);
+    projects = [{ id: 'a-replacement-project', slug: 'station' }];
+    expect(store.read().rules[0]?.action.projectId).toBe(STATION.id);
+    expect(store.read().sources[0]?.grants?.[0]?.projectId).toBe(STATION.id);
+  });
+});

@@ -1,0 +1,7 @@
+{
+  "revision": "7dd945ab02faeb88d4c37edaf50bcfc31887f999",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The test now pins the full indeterminate guidance text (no promise that later messages are refused); agent-smoke-confidence.md does not describe that text and remains accurate.","inputs":["src-server/routes/orchestration/__tests__/orchestration.routes.test.ts"]}
+  ]
+}

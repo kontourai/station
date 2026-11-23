@@ -39,7 +39,9 @@ export function ScheduleEmptyState({
                 key={template.name}
                 onClick={() =>
                   onSelectTemplate({
-                    name: template.name,
+                    // The form takes the name people read and keeps the
+                    // slug it derives hidden.
+                    name: template.label,
                     schedule: template.schedule,
                     prompt: template.prompt,
                   })

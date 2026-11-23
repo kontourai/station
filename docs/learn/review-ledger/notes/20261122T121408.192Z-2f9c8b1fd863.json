@@ -1,0 +1,7 @@
+{
+  "revision": "c87d3a6f90f89aa550b0bc68515cf0b14395dcfb",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Checked against the second shared refusal sentence: runtime-provider-resolution now throws AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE from managed-model-binding, byte-for-byte the sentence it threw before, so the defaultLLMProvider row and examples are unchanged.","inputs":["docs/reference/config.md","src-server/runtime/plugins/runtime-provider-resolution.ts"]}
+  ]
+}

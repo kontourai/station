@@ -156,6 +156,28 @@ function hasOpenTurn(events: CanonicalRuntimeEvent[]): boolean {
 }
 
 /**
+ * Whether the latest turn boundary in `events` is a completion at the
+ * engine's output limit, with no turn open after it: the Session's last
+ * reply is incomplete although its turn completed.
+ */
+function latestTurnCutOff(
+  events: CanonicalRuntimeEvent[],
+): 'max-tokens' | undefined {
+  if (hasOpenTurn(events)) return undefined;
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index]!;
+    if (event.method === 'turn.completed')
+      return event.finishReason === 'max-tokens' ? 'max-tokens' : undefined;
+    if (
+      event.method === 'turn.aborted' ||
+      (event.method === 'turn.started' && event.inputKind !== 'steer')
+    )
+      return undefined;
+  }
+  return undefined;
+}
+
+/**
  * Event families that mean a conversation has had ACTIVITY and so cannot be a
  * Draft (#2310). Turn facts, because the conversation history's own message
  * count (`EventStore.projectConversationHistoryEvent`) counts exactly
@@ -387,6 +409,8 @@ export async function resolveOrchestrationAdapterForThread(options: {
   materializeSession?: (
     threadId: string,
   ) => Promise<ProviderAdapterShape | undefined>;
+  /** What works instead, appended to the not-found answer when known. */
+  missingSessionHint?: (threadId: string) => string | undefined;
 }): Promise<ProviderAdapterShape> {
   const knownProvider = options.threadProviders.get(options.threadId);
   if (knownProvider) {
@@ -408,8 +432,9 @@ export async function resolveOrchestrationAdapterForThread(options: {
     return materialized;
   }
 
+  const hint = options.missingSessionHint?.(options.threadId);
   throw new OrchestrationProviderSessionNotFoundError(
-    `No provider session found for thread: ${options.threadId}`,
+    `No provider session found for thread: ${options.threadId}${hint ? `. ${hint}` : ''}`,
   );
 }
 
@@ -810,6 +835,9 @@ export function buildOrchestrationSessionSummary(options: {
     ...(lastEvent?.method === 'turn.aborted' &&
     lastEvent.recoveryTerminal !== true
       ? { lastTurnAbortReason: lastEvent.reason }
+      : {}),
+    ...(latestTurnCutOff(events)
+      ? { lastTurnCutOff: 'max-tokens' as const }
       : {}),
     ...(options.turnProgress ? { turnProgress: options.turnProgress } : {}),
     ...(options.engineStartWait

@@ -1,0 +1,17 @@
+{
+  "revision": "1c6073d8ca9553fb3f7c34b8f9b3e7bfc9a43ee1",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"add_job's listing was shortened: cron and prompt lost descriptions that restated their names, and schedule now says 'Instead of cron'; arguments and behaviour are unchanged. Checked agent-configuration, connections, knowledge, self-configuring-agent, config and the self-configuring-agent example: none quotes add_job's argument descriptions, and self-configuring-agent's add_job and schedule-kind text still matches.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"add_job's listing was shortened: cron and prompt lost descriptions that restated their names, and schedule now says 'Instead of cron'; arguments and behaviour are unchanged. Checked agent-configuration, connections, knowledge, self-configuring-agent, config and the self-configuring-agent example: none quotes add_job's argument descriptions, and self-configuring-agent's add_job and schedule-kind text still matches.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/knowledge.md","note":"add_job's listing was shortened: cron and prompt lost descriptions that restated their names, and schedule now says 'Instead of cron'; arguments and behaviour are unchanged. Checked agent-configuration, connections, knowledge, self-configuring-agent, config and the self-configuring-agent example: none quotes add_job's argument descriptions, and self-configuring-agent's add_job and schedule-kind text still matches.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"add_job's listing was shortened: cron and prompt lost descriptions that restated their names, and schedule now says 'Instead of cron'; arguments and behaviour are unchanged. Checked agent-configuration, connections, knowledge, self-configuring-agent, config and the self-configuring-agent example: none quotes add_job's argument descriptions, and self-configuring-agent's add_job and schedule-kind text still matches.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"docs/reference/config.md","note":"add_job's listing was shortened: cron and prompt lost descriptions that restated their names, and schedule now says 'Instead of cron'; arguments and behaviour are unchanged. Checked agent-configuration, connections, knowledge, self-configuring-agent, config and the self-configuring-agent example: none quotes add_job's argument descriptions, and self-configuring-agent's add_job and schedule-kind text still matches.","inputs":["src-server/tools/station-control-operations-tools.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"add_job's listing was shortened: cron and prompt lost descriptions that restated their names, and schedule now says 'Instead of cron'; arguments and behaviour are unchanged. Checked agent-configuration, connections, knowledge, self-configuring-agent, config and the self-configuring-agent example: none quotes add_job's argument descriptions, and self-configuring-agent's add_job and schedule-kind text still matches.","inputs":["src-server/tools/station-control-operations-tools.ts"]}
+  ]
+}

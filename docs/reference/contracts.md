@@ -432,7 +432,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
 | `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions including Commenter (view and discuss), invitations, administration projections, sharing enablement and refusal details |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types, including `PROVIDER_OPENCODE` and `isAcpFamilyEngine` (`ACP_FAMILY_ENGINE_IDS`: `acp` and `opencode`, the engines that run saved ACP connection records). Read it where a behaviour belongs to the ACP connection a session runs on, never to tell the engines apart. See [the OpenCode native transport decision](../decisions/opencode-native-transport.md) |
-| `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses. `ConversationStatsResponse.engineMcp` is the folded engine MCP status (`foldEngineMcpStatus`, also the live chat's reducer); the stats parser drops a server entry that does not parse and keeps the first 64 of the rest, and refuses an `engineMcp` of the wrong shape |
+| `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses. `ConversationStatsResponse.engineMcp` is the folded engine MCP status (`foldEngineMcpStatus`, also the live chat's reducer); the stats parser drops a server entry that does not parse and keeps the first 64 of the rest, and refuses an `engineMcp` of the wrong shape. `ConversationStatsResponse.engines` (`ConversationEngineUsage`) is each engine's own usage, one row per engine on every engine-events view (one row for a single-engine conversation); `reportsEngineTokens` says whether a row reported any token figure, cache figures included; the parser refuses a malformed entry, an engine listed twice and a list longer than `CONVERSATION_STATS_ENGINES_MAX` |
 | `@kontourai/station-contracts/runtime-events` | Runtime event stream payloads; `engine-mcp.status` bounds (`ENGINE_MCP_STATUS_MAX_SERVERS` 64, `ENGINE_MCP_SERVER_NAME_MAX_CHARS` 128, `ENGINE_MCP_ERROR_MAX_CHARS` 512) |
 | `@kontourai/station-contracts/session-inventory` | Closed Session inventory rows, gaps, and current-answer Basis projection |
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
@@ -932,6 +932,13 @@ reason. A later successful terminal clears them. `lastRuntimeErrorUsageLimit`
 is `true` when that terminal error carried an engine adapter's
 `UsageLimitFailureDetails` (a Claude Code or Codex usage limit); clients hold
 queued follow-ups on it until a turn starts or the user sends one.
+`lastTurnCutOff` (`'max-tokens'`) is set while the latest turn completed with
+`finishReason: 'max-tokens'` and no turn is open after it: the reply is
+incomplete, and `sessionLadderWord` answers "Cut off" instead of "Done".
+Engines that report no finish reason are never marked. Claude Code, ACP
+agents, the Station agent, Ollama and Bedrock report an output-limit stop.
+Codex, Muse Code, OpenCode and Copilot never do (their adapters report only
+`stop`, `cancelled` or `other`), so their cut-off replies still read "Done".
 
 `ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
 not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
@@ -967,6 +974,14 @@ untargeted run; absent for older records),
 `AUTOMATION_RUN_POLICY` (fatigue threshold, lateness cutoff, turn deadline),
 `automationRunClientTurnId`, and `SCHEDULER_EXECUTION_LIMITS.maxConcurrentConversationHandoffs`
 (the separate pool a targeted run holds only until its turn is queued).
+It also owns a job's name: `SchedulerJob.name` is the internal slug, and the
+optional `displayName` (at most `SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS`,
+checked by `isSchedulerJobDisplayName`) is what people read and rename.
+`schedulerJobSlug` and `schedulerJobSlugCandidates` derive the slugs a
+display name suggests, up to `SCHEDULER_JOB_SLUG_ATTEMPTS`, and
+`SCHEDULER_JOB_NAME_TAKEN` is the refusal code for a taken slug.
+`SchedulerCreateResponse` is the create answer, with the stored slug as
+`name`.
 
 `@kontourai/station-contracts/coordinator` owns a person's coordinator Session
 (#3628): `CoordinatorDesignation`, the route bodies
@@ -1152,6 +1167,7 @@ non-retryable.
 | `conversation_handoff_idempotency_conflict` | `conflict` | `false` |
 | `conversation_handoff_predecessor_busy` | `busy` | `true` |
 | `conversation_handoff_session_changed` | `conflict` | `false` |
+| `conversation_predecessor_engine_live` | `busy` | `true` |
 | `conversation-context-unavailable` | `conflict` | `false` |
 | `engine-credential-profile-unsupported` | `input_unsupported` | `false` |
 | `engine-decision-not-sent` | `warning` | `false` |
@@ -1205,6 +1221,9 @@ non-retryable.
 | `SESSION_START_INDETERMINATE` | `indeterminate` | `false` |
 | `session-reattach-conflict` | `conflict` | `false` |
 | `transcript-line-skipped` | `warning` | `false` |
+| `turn_start_busy` | `busy` | `true` |
+| `turn_start_held` | `busy` | `true` |
+| `turn_start_held_until_restart` | `conflict` | `false` |
 | `workload-command-oom-killed` | `warning` | `false` |
 | `workload-memory-pressure` | `warning` | `false` |
 | `workload-memory-pressure-cleared` | `warning` | `false` |
@@ -1574,6 +1593,20 @@ next poll of the wait for a retry already waiting. Another Station process
 sharing the store cannot see that the attempt gave up, so there the retry is
 treated as for a held key. When the client's
 automatic re-sends run out, the message stays queued with a reason and Retry.
+A send with a new key to a Session whose earlier turn start blocks it is
+refused, and nothing is sent (codes in `@kontourai/station-contracts/orchestration`;
+the failure-kind table above gives each one's kind: `busy` and retryable, except
+`turn_start_held_until_restart`, which is `conflict`). `turn_start_held`: an
+earlier start by this Station process may have reached the engine; the next
+send settles it once the Session's engine is observed to have ended.
+`turn_start_held_until_restart`: the same, on an engine that does not report
+its process ending, so it stays held until that turn reports its end; to
+send now, restart Station. `turn_start_busy`: another start on the Session (another
+request or Station process, or the engine's own start) has not finished.
+`conversation_predecessor_engine_live` (`CONVERSATION_PREDECESSOR_ENGINE_LIVE_CODE`):
+a continuation was refused because the conversation's current Session failed
+while its engine process still runs, and a successor would resume the same
+native conversation beside it; it clears once that process has stopped.
 A follow-up sent with `whenBusy: 'queue'` is held by Station instead, in the
 conversation's durable inbox (#3568): `POST /chat` answers `202` with a
 `ConversationInboxQueuedReceipt`, its `ConversationInboxEntry` says where the

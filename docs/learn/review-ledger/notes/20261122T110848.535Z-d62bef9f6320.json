@@ -1,0 +1,7 @@
+{
+  "revision": "297d94bd66b3a4df8d9c48acc81269ee89123e28",
+
+  "notes": [
+    {"path":"docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","note":"No claims about the code-entry HTTPS note or the Station manager's connect line; the secure-context and QR-wording changes leave this page accurate.","inputs":["docs/reviews/sidebar-focus-20261107/manager-audit-addendum.md","packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]}
+  ]
+}

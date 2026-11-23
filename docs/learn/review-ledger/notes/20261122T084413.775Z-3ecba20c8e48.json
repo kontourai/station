@@ -1,0 +1,15 @@
+{
+  "revision": "faed86953d1729e2b258bd9575746bc7c40dd95b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked repository acquisition claims: a refused source still records nothing and only the relative-path refusal wording changed. No claim here states that wording.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked repository acquisition claims: a refused source still records nothing and only the relative-path refusal wording changed. No claim here states that wording.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked repository acquisition claims: a refused source still records nothing and only the relative-path refusal wording changed. No claim here states that wording.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked repository acquisition claims: a refused source still records nothing and only the relative-path refusal wording changed. No claim here states that wording.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked repository acquisition claims: a refused source still records nothing and only the relative-path refusal wording changed. No claim here states that wording.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]}
+  ]
+}

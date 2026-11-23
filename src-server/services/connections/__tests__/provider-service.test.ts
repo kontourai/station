@@ -1,3 +1,4 @@
+import { AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE } from '@kontourai/station-contracts/managed-model-binding';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   captureLoggerLines,
@@ -270,7 +271,9 @@ describe('ProviderService', () => {
     test('multiple enabled connections with no app default hits the ambiguity guard through the model-only path', async () => {
       const adapter = createMockStorageAdapter();
       adapter.getProject.mockRejectedValue(new Error('not found'));
-      for (const id of ['provider-a', 'provider-b']) {
+      // Three, not two: the refusal (and the UI sentence keyed on it) is for
+      // any number of enabled connections above one.
+      for (const id of ['provider-a', 'provider-b', 'provider-c']) {
         adapter.saveProviderConnection({
           id,
           type: 'ollama',
@@ -287,7 +290,7 @@ describe('ProviderService', () => {
           projectSlug: 'missing',
           allowModelOnlyFallback: true,
         }),
-      ).rejects.toThrow('require an application default');
+      ).rejects.toThrow(AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE);
       expect(createLLMProvider).not.toHaveBeenCalled();
     });
   });
@@ -401,7 +404,7 @@ describe('ProviderService', () => {
 
     await expect(
       svc.resolveProvider({ projectSlug: 'missing' }),
-    ).rejects.toThrow('require an application default');
+    ).rejects.toThrow(AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE);
     expect(createLLMProvider).not.toHaveBeenCalled();
   });
 

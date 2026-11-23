@@ -390,6 +390,7 @@ describe('executeSchedulerJobAttempt', () => {
     const result = await executeSchedulerJobAttempt({
       job: {
         name: 'never-invoked',
+        displayName: 'Never invoked check',
         prompt: 'run',
         enabled: true,
         createdAt: new Date().toISOString(),
@@ -435,7 +436,7 @@ describe('executeSchedulerJobAttempt', () => {
       'scheduler',
       expect.objectContaining({
         category: 'job-failure',
-        title: 'Job "never-invoked" failed',
+        title: 'Job "Never invoked check" failed',
         body: reason,
       }),
     );

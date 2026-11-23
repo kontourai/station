@@ -1,0 +1,7 @@
+{
+  "revision": "8d908c396441c33d2735dbe78977883515774947",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Updated the held-start paragraph: codes turn_start_held and turn_start_held_until_restart, settlement on observed engine end, Claude exit ending the Session so the next message by conversation id runs in a successor (engine-exit-continue test).","inputs":["docs/reference/session-api.md","src-server/providers/adapters/claude-adapter.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts","src-ui/src/hooks/useActiveChatSessionMessaging.ts"]}
+  ]
+}

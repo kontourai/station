@@ -1,0 +1,7 @@
+{
+  "revision": "09c82d735e478d29bb920425840278b4321bad34",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"#5389: useStatsQuery note now names the engines field and the absent token totals after an engine change; the SDK passes the response through parseConversationStatsResponse unchanged.","inputs":["docs/reference/sdk.md","packages/shared/src/usage-fold.ts","src-server/services/orchestration/session-transcript-reads.ts"]}
+  ]
+}

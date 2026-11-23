@@ -1,0 +1,7 @@
+{
+  "revision": "498cca03db1d74f1877484478d4859d81caa18b7",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Checked against the shared refusal sentence (managed-model-binding), its two provider-service throw sites and the AttentionCard Details style: the refusal text and when it is thrown are unchanged; the page's connection-selection and permission claims still hold.","inputs":["docs/guides/agent-configuration.md","packages/contracts/src/managed-model-binding.ts","src-server/services/connections/provider-service.ts","src-ui/src/components/attention/AttentionCard.css"]}
+  ]
+}

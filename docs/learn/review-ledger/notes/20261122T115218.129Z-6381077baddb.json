@@ -1,0 +1,21 @@
+{
+  "revision": "e4a092c098668ea852ad0e7edb6ee77754f1a746",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Re-checked after the keyboard shortcuts guide dropped the key carry-over sentence: it cites the guide for Undo and makes no claim about saved keys for the removed inbox command","inputs":["docs/architecture/abstraction-review.md","docs/guides/keyboard-shortcuts.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked against the device-settings change (region arrangement description no longer mentions maximize): this page cites device settings for composer preferences only; its maximized-dock line is about rendering, not what is saved","inputs":["docs/design/chat-composer.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked against device-settings.ts: the regionArrangement description now says size and visibility only, matching the Persistence section's statement that maximize is not saved","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Checked against device-settings.ts: the only change is the region arrangement description dropping maximize; this page makes no claim about that setting's description","inputs":["docs/design/settings-launch-triage.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Carry-over sentence replaced: a key saved for the removed Undo inbox dismissal command does nothing and Undo last action is rebound in Keyboard shortcuts; checked against shortcutPreferences.ts (no carry) and the inbox-dismissal test that a stale entry is harmless","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/__tests__/inbox-dismissal.test.tsx","src-ui/src/settings/shortcutPreferences.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked against device-settings.ts: only the region arrangement description changed; this guide makes no claim about it","inputs":["docs/guides/starter-work.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked against the inbox-dismissal test change (carry-over test replaced by a stale-key test): the Undo wording here (Cmd+Z while the toast is shown, then search and Restore) is unchanged and still accurate","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-dismissal.test.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Checked against device-settings.ts: the region arrangement description shown in Settings now names size and visibility only; this page does not quote that description","inputs":["docs/user/settings.md","packages/contracts/src/device-settings.ts"]}
+  ]
+}

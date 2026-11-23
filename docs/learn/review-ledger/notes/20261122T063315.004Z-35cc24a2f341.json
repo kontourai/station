@@ -1,0 +1,7 @@
+{
+  "revision": "43984b24fef216b82a179674f66432259a25223d",
+
+  "notes": [
+    {"path":"packages/shared/README.md","note":"#5389: the new ./usage-lineage-fold subpath is documented in docs/reference/shared.md, so it does not belong in this README's list of subpaths without a reference section; no prose change.","inputs":["packages/shared/README.md","packages/shared/package.json#/exports"]}
+  ]
+}

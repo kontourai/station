@@ -1,0 +1,7 @@
+{
+  "revision": "e3d8d05572d6be7fa76c34956da353de1ac691c6",
+
+  "notes": [
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Checked against the agent-configuration.md edit (when a replaced launch restarts in place, and the refusal after a failed stop). This plan inventories Agent identity surfaces and makes no claim about replaced-launch restarts; it remains accurate.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agent-configuration.md"]}
+  ]
+}

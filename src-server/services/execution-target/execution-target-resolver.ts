@@ -6,6 +6,7 @@ import {
   type EngineConnectionId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+import type { AcpApprovalControl } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   ExecutionResolutionReceipt,
   ExecutionTarget,
@@ -47,6 +48,7 @@ import {
   isCanonicalPathWithin,
 } from '../../utils/path-containment.js';
 import { expandTilde } from '../../utils/paths.js';
+import { approvalKnobSupported } from '../orchestration/approval-posture.js';
 
 export const CATALOG_REFRESHING_REASON =
   'Agent catalog is refreshing after a configuration change; retrying automatically.';
@@ -163,6 +165,12 @@ export interface ExecutionTargetResolverDependencies {
    * belongs to the adapter declaration; it is not a provider-name policy.
    */
   getProviderAdapter: (provider: EngineId) => ProviderAdapterShape | undefined;
+  /**
+   * #3290: who answers an ACP connection's approvals on this Station
+   * (`acpApprovalControl`). Where Station does (`station` or `requests`), an
+   * ACP Agent takes `approvalMode`; absent, the provider table decides.
+   */
+  acpApprovalControl?: (connectionId: string) => AcpApprovalControl | undefined;
   now?: () => Date;
 }
 
@@ -254,22 +262,45 @@ function connectionProvider(connection: ConnectionConfig): EngineId {
   return provider;
 }
 
+/** The start's per-invocation engine settings cannot be applied to this Agent. */
+export class UnsupportedModelOptionsError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'UnsupportedModelOptionsError';
+  }
+}
+
+/**
+ * Why an Agent on `provider` cannot take these per-invocation engine
+ * settings, or undefined when it can. An ACP connection whose approvals
+ * Station answers (`acpControl`) also takes `approvalMode`, as an ACP
+ * thread does at the orchestration seam (`approvalKnobSupported`).
+ */
+export function modelOptionsRefusal(
+  provider: EngineId,
+  options: Readonly<Record<string, unknown>> | undefined,
+  agent: string,
+  acpControl?: AcpApprovalControl,
+): string | undefined {
+  if (provider === 'station-agent' && options && Object.keys(options).length)
+    return `Station Agent '${agent}' does not support per-invocation engine settings`;
+  const unsupported = unsupportedModelOptionKeys(provider, options).filter(
+    (key) =>
+      key !== 'approvalMode' || !approvalKnobSupported(provider, acpControl),
+  );
+  return unsupported.length
+    ? unsupportedModelOptionError(provider, unsupported[0]!, agent)
+    : undefined;
+}
+
 function assertModelOptionsSupported(
   provider: EngineId,
   options: Readonly<Record<string, unknown>> | undefined,
   agent: AgentId,
+  acpControl?: AcpApprovalControl,
 ): void {
-  if (provider === 'station-agent' && options && Object.keys(options).length) {
-    throw new Error(
-      `Station Agent '${agent}' does not support per-invocation engine settings`,
-    );
-  }
-  const unsupported = unsupportedModelOptionKeys(provider, options);
-  if (unsupported.length) {
-    throw new Error(
-      unsupportedModelOptionError(provider, unsupported[0], agent),
-    );
-  }
+  const refusal = modelOptionsRefusal(provider, options, agent, acpControl);
+  if (refusal) throw new UnsupportedModelOptionsError(refusal);
 }
 
 const REMOTE_HOME_UNVERIFIED_REASON =
@@ -768,7 +799,16 @@ export async function resolveExecutionTarget(
   )?.modelId?.trim();
   const effectiveModelId = overrideModelId || agentModelId || undefined;
 
-  assertModelOptionsSupported(provider, target.model?.options, resolvedAgentId);
+  assertModelOptionsSupported(
+    provider,
+    target.model?.options,
+    resolvedAgentId,
+    provider === 'acp' &&
+      engine.kind === 'connection' &&
+      access.kind === 'current'
+      ? deps.acpApprovalControl?.(engine.connectionId)
+      : undefined,
+  );
   // Session binding is deliberately read after target resolution. This early
   // gate therefore only answers whether this registered adapter can accept an
   // override at any lifecycle; the orchestration seam applies the precise

@@ -1,0 +1,7 @@
+{
+  "revision": "03608b8d8a6389c15557e84d850bce1b120f7dee",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked InboxRow.css (#5398): the new flag line adds no transition or animation; the swipe and enter motion described here are unchanged.","inputs":["docs/design/motion.md","src-ui/src/components/inbox-row/InboxRow.css"]}
+  ]
+}

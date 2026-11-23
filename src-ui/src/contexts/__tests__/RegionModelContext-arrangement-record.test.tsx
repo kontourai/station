@@ -515,6 +515,75 @@ describe('RegionModelProvider adopts another tab’s record without re-persistin
     expect(model?.lastShownRegion).toBe('right');
   });
 
+  test('another tab’s maximize does not maximize this tab, and leaves its URL without maximize (#5397)', async () => {
+    setUrl('/?dock=open');
+    render(<Harness />);
+    await waitFor(() => expect(model?.regions.bottom.visible).toBe(true));
+    const spies = spyOnEverySetter();
+
+    // An earlier build in another tab still wrote its maximize into the record.
+    act(() =>
+      writeFromAnotherTab(
+        activityRightRecord({
+          bottom: {
+            visible: true,
+            size: 320,
+            occupant: { kind: 'surface', id: 'chat' },
+            maximized: true,
+          },
+        }),
+      ),
+    );
+
+    // The rest of the record is adopted; the maximize is not.
+    await waitFor(() =>
+      expect(model?.regions.right.occupant).toBe('workspace-agents'),
+    );
+    await settle();
+    expect(model?.regions.bottom).toMatchObject({
+      visible: true,
+      maximized: false,
+    });
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
+    expect(
+      new URLSearchParams(window.location.search).get('maximize'),
+    ).toBeNull();
+    expect(spies.setDockState).not.toHaveBeenCalledWith(true, true);
+  });
+
+  test('another tab’s record does not restore this tab’s maximized dock, unless it hides that region', async () => {
+    setUrl('/?dock=open&maximize=true');
+    render(<Harness />);
+    await waitFor(() => expect(model?.regions.bottom.maximized).toBe(true));
+
+    // The other tab resized the dock; its record, like every record, says
+    // nothing is maximized.
+    act(() =>
+      writeFromAnotherTab(
+        activityRightRecord({
+          bottom: {
+            visible: true,
+            size: 360,
+            occupant: { kind: 'surface', id: 'chat' },
+            maximized: false,
+          },
+        }),
+      ),
+    );
+    await waitFor(() => expect(model?.regions.bottom.size).toBe(360));
+    await settle();
+    expect(model?.regions.bottom.maximized).toBe(true);
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
+    expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+      'true',
+    );
+
+    // A region the other tab hid cannot stay maximized here.
+    act(() => writeFromAnotherTab(activityRightRecord()));
+    await waitFor(() => expect(model?.regions.bottom.visible).toBe(false));
+    expect(model?.regions.bottom.maximized).toBe(false);
+  });
+
   test('an unrelated setting’s write re-materializes an equal record and changes nothing', async () => {
     seedEnvelope({ regionArrangement: activityRightRecord() });
     setUrl('/?dockSlotPlacement=left');
@@ -557,7 +626,7 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     expectNoWrites(spies);
   });
 
-  test('a record with right.maximized and Activity in right mounts maximized, and the URL says nothing', async () => {
+  test('a record that holds a maximized region mounts every region at normal size when the URL does not maximize', async () => {
     seedEnvelope({
       regionArrangement: activityRightRecord({
         right: {
@@ -579,12 +648,45 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
       size: 517,
       panes: ['workspace-agents'],
       occupant: 'workspace-agents',
-      maximized: true,
+      maximized: false,
     });
     expect(model?.regions.bottom.maximized).toBe(false);
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
     await settle();
     expectNoWrites(spies);
+  });
+
+  test('a dock maximized on one page opens at normal size on a freshly loaded page', async () => {
+    setUrl('/?dock=open');
+    const first = render(<Harness />);
+    await waitFor(() => expect(model).not.toBeNull());
+
+    act(() => model?.setRegion('bottom', { maximized: true }));
+    await waitFor(() =>
+      expect(navigationStore.getSnapshot().isDockMaximized).toBe(true),
+    );
+    expect(new URLSearchParams(window.location.search).get('maximize')).toBe(
+      'true',
+    );
+    await settle();
+    // The maximize is this page's: the device record does not carry it.
+    expect(
+      deviceSettingsStore.get('regionArrangement').regions.bottom.maximized,
+    ).toBe(false);
+    first.unmount();
+    const mountedModel = () => model;
+    model = null;
+
+    // Another page, loaded fresh: no `maximize` in its URL.
+    setUrl('/automations?dock=open');
+    render(<Harness />);
+    await waitFor(() => expect(mountedModel()).not.toBeNull());
+
+    expect(mountedModel()?.regions.bottom).toMatchObject({
+      visible: true,
+      maximized: false,
+    });
+    expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
   });
 
   test('the URL’s maximize=true beats a record maximizing another region', async () => {
@@ -613,7 +715,7 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     expect(model?.regions.right.maximized).toBe(false);
   });
 
-  test('maximizing Activity through setRegion persists the record and never calls setDockState', async () => {
+  test('maximizing Activity through setRegion writes no record and never calls setDockState', async () => {
     seedEnvelope({ regionArrangement: activityRightRecord() });
     setUrl('/');
     render(<Harness />);
@@ -627,23 +729,16 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
 
     act(() => model?.setRegion('right', { maximized: true }));
 
-    await waitFor(() =>
-      expect(
-        deviceSettingsStore.get('regionArrangement').regions.right,
-      ).toEqual({
-        visible: true,
-        size: 517,
-        occupant: { kind: 'surface', id: 'workspace-agents' },
-        maximized: true,
-      }),
-    );
-    expect(model?.regions.right.maximized).toBe(true);
+    await waitFor(() => expect(model?.regions.right.maximized).toBe(true));
+    await settle();
+    // A maximize is the page's, not the device's (#5397): nothing to save.
+    expect(regionArrangementWrites(spies.set)).toHaveLength(0);
     expect(spies.setDockState).not.toHaveBeenCalled();
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(false);
     expect(navigationStore.lastDockMaximized).toBe(false);
   });
 
-  test('maximizing Chat’s region calls setDockState(true, true) exactly once and persists', async () => {
+  test('maximizing Chat’s region calls setDockState(true, true) exactly once and writes no record', async () => {
     setUrl('/?dock=open');
     render(<Harness />);
     await waitFor(() => expect(model?.regions.bottom.visible).toBe(true));
@@ -655,15 +750,11 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
     expect(spies.setDockState).toHaveBeenCalledWith(true, true);
     expect(navigationStore.getSnapshot().isDockMaximized).toBe(true);
     expect(navigationStore.lastDockMaximized).toBe(true);
-    await waitFor(() =>
-      expect(
-        deviceSettingsStore.get('regionArrangement').regions.bottom.maximized,
-      ).toBe(true),
-    );
     // Settled: the inbound sync saw a navigation that already agrees, so no
-    // second write.
+    // second write; and the maximize lives in this page's URL, not the record.
     await settle();
     expect(spies.setDockState).toHaveBeenCalledTimes(1);
+    expect(regionArrangementWrites(spies.set)).toHaveLength(0);
 
     // Restore: an explicit un-maximize clears the memory (an explicit
     // non-maximized open, navigation-store.ts).
@@ -700,10 +791,9 @@ describe('RegionModelProvider carries maximize as a region attribute', () => {
 
     await waitFor(() => expect(model?.regions.bottom.maximized).toBe(true));
     // The seed is inbound: the mirror does not replay it as a user write,
-    // but the arrangement did change, so the record persists it.
-    await waitFor(() =>
-      expect(regionArrangementWrites(setSpy)).toHaveLength(1),
-    );
+    // and a maximize is not part of the record, so nothing is saved.
+    await settle();
+    expect(regionArrangementWrites(setSpy)).toHaveLength(0);
 
     act(() => navigationStore.collapseMaximizedDock());
     await waitFor(() => expect(model?.regions.bottom.maximized).toBe(false));

@@ -1,0 +1,7 @@
+{
+  "revision": "a46df40a2bef79288a97a4cb4ead44e5325e4b44",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the Knowledge provider row against knowledge-service.ts: the service still receives vector and embedding resolvers from bootstrap; the scan change only registers the code namespace through the existing storage adapter and does not change provider choice.","inputs":["docs/architecture/abstraction-review.md","src-server/services/knowledge/knowledge-service.ts"]}
+  ]
+}
