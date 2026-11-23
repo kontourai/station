@@ -1,0 +1,7 @@
+{
+  "revision": "03de6c5660ef56ad345fb6674700afaefb107b6f",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Traced the explicit worker argument, fixed scoped loopback destination, and bounded response parsing. The worker fixture exercises numeric and string IDs and withholding invalid replies. This source review covers transport without claiming native launcher, effect authority, or provider qualification.","inputs":["docs/guides/native-model-channel-lab.md","src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts","src-server/services/connections/native-model-stdio-worker.ts","src-server/services/connections/native-delegation-rpc-client.ts"]}
+  ]
+}

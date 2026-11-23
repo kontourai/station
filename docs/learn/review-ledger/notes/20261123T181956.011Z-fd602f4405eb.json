@@ -1,0 +1,25 @@
+{
+  "revision": "ad5f50c4e782bce9a8e5c62b2be37bd951be9afa",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"The native SQLite statement declaration now includes its actual iterator method. This narrows the verification delta to type visibility for the audited read-only candidate query. SQL and runtime behavior retain the previous review.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"The native SQLite statement declaration now includes its actual iterator method. This narrows the verification delta to type visibility for the audited read-only candidate query. SQL and runtime behavior retain the previous review.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"The native SQLite statement declaration now includes its actual iterator method. This narrows the verification delta to type visibility for the audited read-only candidate query. SQL and runtime behavior retain the previous review.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"The native SQLite statement declaration now includes its actual iterator method. This narrows the verification delta to type visibility for the audited read-only candidate query. SQL and runtime behavior retain the previous review.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"The native SQLite statement declaration now includes its actual iterator method. This narrows the verification delta to type visibility for the audited read-only candidate query. SQL and runtime behavior retain the previous review.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"The native SQLite statement declaration now includes its actual iterator method. This narrows the verification delta to type visibility for the audited read-only candidate query. SQL and runtime behavior retain the previous review.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"The native SQLite statement declaration now includes its actual iterator method. This narrows the verification delta to type visibility for the audited read-only candidate query. SQL and runtime behavior retain the previous review.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The native SQLite statement declaration now includes its actual iterator method. This narrows the verification delta to type visibility for the audited read-only candidate query. SQL and runtime behavior retain the previous review.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"The native SQLite statement declaration now includes its actual iterator method. This narrows the verification delta to type visibility for the audited read-only candidate query. SQL and runtime behavior retain the previous review.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"The native SQLite statement declaration now includes its actual iterator method. This narrows the verification delta to type visibility for the audited read-only candidate query. SQL and runtime behavior retain the previous review.","inputs":["src-server/services/orchestration/event-store.ts"]}
+  ]
+}

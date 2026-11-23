@@ -17,6 +17,10 @@ import {
   outsideIngress,
   validateOutsideExposure,
 } from '../../security/outside-agent-ingress.js';
+import {
+  createOutsideActiveWorkReader,
+  type OutsideActiveWorkDeps,
+} from '../../services/outside-agent/active-work.js';
 import { canonicalOutsideOrigin } from '../../services/outside-agent/management-service.js';
 import { createOutsideMcpDispatch } from '../../services/outside-agent/mcp-dispatch.js';
 import {
@@ -90,6 +94,7 @@ export async function createOutsideAgentMcpServer(input: {
   store: OutsideAgentGrantStore;
   validateGrant(grant: Grant): boolean;
   projects: Pick<ProjectService, 'listProjects' | 'getProject'>;
+  activeWork?: OutsideActiveWorkDeps;
   exposure: OutsideOAuthExposure;
   checkServe?: () => Promise<'clear' | 'mapped' | 'unverifiable'>;
 }) {
@@ -99,6 +104,9 @@ export async function createOutsideAgentMcpServer(input: {
     throw new Error('Outside MCP issuer mismatch');
   const resource = `${issuer.origin}/mcp`;
   const now = store.options.now ?? Date.now;
+  const listActiveWork = input.activeWork
+    ? createOutsideActiveWorkReader(input.activeWork, now)
+    : undefined;
   const sessions = new Map<string, Session>();
   const calls = new Map<string, number>();
   const dispatches = new Map<string, number>();
@@ -507,6 +515,7 @@ export async function createOutsideAgentMcpServer(input: {
               server: createOutsideMcpDispatch({
                 current: () => current(owned),
                 projects: input.projects,
+                listActiveWork,
                 reserveCall: () => {
                   const count = dispatches.get(grant.id) ?? 0;
                   if (count >= 10)
