@@ -129,6 +129,7 @@ export interface CliSessionGroupDispatchAdmission {
 
 export interface CliSessionGroupHost<T> {
   assertCurrent(): void;
+  assertStopCurrent(): void;
   dispatch(
     input: T,
     admission: CliSessionGroupDispatchAdmission,
@@ -202,15 +203,20 @@ export class CliSessionGroups<T> {
     groupId: string,
     owner: string,
     work: (record: GroupRecord) => R,
+    assertCurrent?: (record: GroupRecord) => void,
   ): Promise<R> {
     const path = this.path(groupId);
     const release = await acquireFileMutationLockAsync(`${path}.mutation`);
     try {
       const record = this.read(groupId, owner);
+      assertCurrent?.(record);
       const result = work(record);
       record.revision += 1;
       recordSchema.parse(record);
-      await publishJsonFileWithOwnedLock(path, record, { maxBytes: MAX_BYTES });
+      await publishJsonFileWithOwnedLock(path, record, {
+        maxBytes: MAX_BYTES,
+        assertCurrent: assertCurrent ? () => assertCurrent(record) : undefined,
+      });
       return result;
     } finally {
       await release();
@@ -398,10 +404,14 @@ export class CliSessionGroups<T> {
     owner: string,
     host: CliSessionGroupHost<T>,
   ): Promise<CliSessionGroupView> {
-    await this.mutate(groupId, owner, (record) => {
-      host.assertCurrent();
-      record.cancelled = true;
-    });
+    await this.mutate(
+      groupId,
+      owner,
+      (record) => {
+        record.cancelled = true;
+      },
+      () => host.assertCurrent(),
+    );
     this.active.get(groupId)?.abort();
     for (const seat of this.read(groupId, owner).seats) {
       if (seat.state === 'started')
@@ -459,20 +469,24 @@ export class CliSessionGroups<T> {
     seatId: string,
   ): Promise<void> {
     try {
-      const handle = await this.mutate(groupId, owner, (record) => {
-        host.assertCurrent();
-        const seat = record.seats.find((member) => member.seatId === seatId);
-        if (
-          seat?.state !== 'started' ||
-          !seat.handle?.initialTurnId ||
-          seat.stopReserved
-        )
-          return undefined;
-        seat.stopReserved = true;
-        return structuredClone(seat.handle);
-      });
+      const handle = await this.mutate(
+        groupId,
+        owner,
+        (record) => {
+          const seat = record.seats.find((member) => member.seatId === seatId);
+          if (
+            seat?.state !== 'started' ||
+            !seat.handle?.initialTurnId ||
+            seat.stopReserved
+          )
+            return undefined;
+          seat.stopReserved = true;
+          return structuredClone(seat.handle);
+        },
+        () => host.assertStopCurrent(),
+      );
       if (!handle) return;
-      host.assertCurrent();
+      host.assertStopCurrent();
       const interruption = host.interrupt(handle);
       void interruption.catch(() => {});
       await awaitWithAbort(interruption, AbortSignal.timeout(5_000));
@@ -558,34 +572,44 @@ export class CliSessionGroups<T> {
     execution: FlowMultiCursorExecution,
   ): Promise<void> {
     const seatId = execution.claim.step_id;
-    const launch = await this.mutate(groupId, owner, (record) => {
+    const assertLaunchCurrent = (record: GroupRecord) => {
       host.assertCurrent();
       execution.signal.throwIfAborted();
       if (record.cancelled || Date.now() >= record.deadlineAt)
         throw new CliSessionGroupUnavailable('group_closed');
-      const seat = record.seats.find((s) => s.seatId === seatId);
-      if (!seat) throw new CliSessionGroupUnavailable('group_invalid');
-      if (seat.state !== 'pending')
-        return { seat: structuredClone(seat), dispatch: false };
-      if (record.dispatchCount >= (record.maxDispatches ?? record.seats.length))
-        throw new CliSessionGroupUnavailable('group_dispatch_limit');
-      const occupied = record.seats.filter(
-        (s) => s.state === 'launch-intent' || s.state === 'started',
-      ).length;
-      if (occupied >= record.maxConcurrent)
-        throw new CliSessionGroupUnavailable('group_capacity');
-      seat.reservedSessionId = `task:${randomUUID()}`;
-      seat.initialClientTurnId = randomUUID();
-      seat.state = 'launch-intent';
-      seat.claimId = execution.claim.claim_id;
-      record.dispatchCount += 1;
-      if (
-        record.dispatchCount >= (record.maxDispatches ?? record.seats.length) &&
-        record.seats.some((member) => member.state === 'pending')
-      )
-        record.admissionClosed = 'dispatch-limit-exhausted';
-      return { seat: structuredClone(seat), dispatch: true };
-    });
+    };
+    const launch = await this.mutate(
+      groupId,
+      owner,
+      (record) => {
+        const seat = record.seats.find((s) => s.seatId === seatId);
+        if (!seat) throw new CliSessionGroupUnavailable('group_invalid');
+        if (seat.state !== 'pending')
+          return { seat: structuredClone(seat), dispatch: false };
+        if (
+          record.dispatchCount >= (record.maxDispatches ?? record.seats.length)
+        )
+          throw new CliSessionGroupUnavailable('group_dispatch_limit');
+        const occupied = record.seats.filter(
+          (s) => s.state === 'launch-intent' || s.state === 'started',
+        ).length;
+        if (occupied >= record.maxConcurrent)
+          throw new CliSessionGroupUnavailable('group_capacity');
+        seat.reservedSessionId = `task:${randomUUID()}`;
+        seat.initialClientTurnId = randomUUID();
+        seat.state = 'launch-intent';
+        seat.claimId = execution.claim.claim_id;
+        record.dispatchCount += 1;
+        if (
+          record.dispatchCount >=
+            (record.maxDispatches ?? record.seats.length) &&
+          record.seats.some((member) => member.state === 'pending')
+        )
+          record.admissionClosed = 'dispatch-limit-exhausted';
+        return { seat: structuredClone(seat), dispatch: true };
+      },
+      assertLaunchCurrent,
+    );
     let handle = launch.seat.handle;
     if (launch.dispatch) {
       host.assertCurrent();

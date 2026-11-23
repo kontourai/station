@@ -5330,6 +5330,7 @@ export function createOrchestrationRoutes(
         owner: NonNullable<typeof groups>,
         binding: string,
         assertCurrent: () => void,
+        assertStopCurrent: () => void,
       ) => Promise<unknown>,
     ): Promise<Response> => {
       c.header('Cache-Control', 'private, no-store');
@@ -5339,19 +5340,23 @@ export function createOrchestrationRoutes(
         const request = c.req.raw;
         const binding = deps.callerBindingForRequest?.(request);
         const { userId } = resolveActorPrincipal(deps, c);
-        const assertCurrent = () => {
+        const assertStopCurrent = () => {
           if (!previewEnabled())
             throw new CliSessionGroupUnavailable('group_unavailable');
           if (
             !binding ||
             !userId ||
-            request.signal.aborted ||
             stationControlRequestAuthority(request)?.kind === 'caller' ||
             tenantExecutionContextForRequest(request) ||
             deps.isRequestPrincipalCurrent?.(request) !== true ||
             deps.callerBindingForRequest?.(request) !== binding ||
             resolveActorPrincipal(deps, c).userId !== userId
           )
+            throw new CliSessionGroupUnavailable('group_authority_required');
+        };
+        const assertCurrent = () => {
+          assertStopCurrent();
+          if (request.signal.aborted)
             throw new CliSessionGroupUnavailable('group_authority_required');
         };
         assertCurrent();
@@ -5364,6 +5369,7 @@ export function createOrchestrationRoutes(
           groups,
           JSON.stringify([userId, binding]),
           assertCurrent,
+          assertStopCurrent,
         );
         assertCurrent();
         return c.json({ success: true, data });
@@ -5390,8 +5396,10 @@ export function createOrchestrationRoutes(
     const groupHost = (
       c: Context,
       assertCurrent: () => void,
+      assertStopCurrent: () => void,
     ): CliSessionGroupHost<z.infer<typeof groupTaskSchema>> => ({
       assertCurrent,
+      assertStopCurrent,
       dispatch: async (task, admission) => {
         admission.assertCurrent();
         const response = await dispatchAuthorizedDelegation(
@@ -5453,7 +5461,7 @@ export function createOrchestrationRoutes(
         return { sessionId, status: 'unknown' };
       },
       interrupt: async (handle) => {
-        assertCurrent();
+        assertStopCurrent();
         if (!handle.initialTurnId || !deps.interruptDelegatedTask)
           throw new CliSessionGroupUnavailable('group_turn_unconfirmed');
         const scoped = refuseOutOfScopeDispatch(
@@ -5475,7 +5483,7 @@ export function createOrchestrationRoutes(
           ownerAttribution,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
           beforeProviderInterrupt: (threadId, turnId) => {
-            assertCurrent();
+            assertStopCurrent();
             if (
               threadId !== handle.sessionId ||
               turnId !== handle.initialTurnId
@@ -5483,7 +5491,7 @@ export function createOrchestrationRoutes(
               throw new CliSessionGroupUnavailable('group_turn_unconfirmed');
           },
         });
-        assertCurrent();
+        assertStopCurrent();
       },
     });
 
@@ -5516,18 +5524,26 @@ export function createOrchestrationRoutes(
       ),
     );
     app.post('/session-groups/:groupId/run', (c) =>
-      respondSessionGroup(c, (owner, binding, assertCurrent) =>
-        owner.run(
-          param(c, 'groupId'),
-          binding,
-          groupHost(c, assertCurrent),
-          c.req.raw.signal,
-        ),
+      respondSessionGroup(
+        c,
+        (owner, binding, assertCurrent, assertStopCurrent) =>
+          owner.run(
+            param(c, 'groupId'),
+            binding,
+            groupHost(c, assertCurrent, assertStopCurrent),
+            c.req.raw.signal,
+          ),
       ),
     );
     app.post('/session-groups/:groupId/cancel', (c) =>
-      respondSessionGroup(c, (owner, binding, assertCurrent) =>
-        owner.cancel(param(c, 'groupId'), binding, groupHost(c, assertCurrent)),
+      respondSessionGroup(
+        c,
+        (owner, binding, assertCurrent, assertStopCurrent) =>
+          owner.cancel(
+            param(c, 'groupId'),
+            binding,
+            groupHost(c, assertCurrent, assertStopCurrent),
+          ),
       ),
     );
   }
