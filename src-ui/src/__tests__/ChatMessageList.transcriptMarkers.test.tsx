@@ -257,6 +257,21 @@ describe('chat-24 transcript markers', () => {
     expect(container.textContent).not.toContain('Switched to');
   });
 
+  test('a switch record whose new Session never ran a turn draws nothing', () => {
+    // The record exists from the moment the switch is reserved; until a turn
+    // starts in its Session nothing has switched.
+    const handoff = COMPLETED.handoffs[0] as ConversationHandoffProjection;
+    const pending: CapturedWindow = {
+      ...COMPLETED,
+      contextBoundaries: [],
+      events: COMPLETED.events.filter(
+        ({ event }) => event.threadId !== handoff.sessionId,
+      ),
+    };
+    const { container } = renderTranscript(pending, transcript(pending));
+    expect(markers(container, 'engine')).toHaveLength(0);
+  });
+
   test('a later message in the reused Session does not turn a refused switch into one', () => {
     // After the refused switch the person writes again: that turn runs in
     // the fresh context's Session the refused record names, on the old Agent.
