@@ -1,0 +1,7 @@
+{
+  "revision": "6fcf24b0e0fa8c4a8ff52a232d93c7c6619a4967",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"Checked: no claim about restoring a maximized region from the saved record at load","inputs":["docs/design/pane-relationships.md","src-ui/src/contexts/RegionModelContext.tsx"]}
+  ]
+}

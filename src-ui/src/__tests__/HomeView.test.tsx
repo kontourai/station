@@ -25,7 +25,10 @@ import {
 } from 'vitest';
 import { activeChatsStore } from '../contexts/active-chats-store';
 import { openChatsStore } from '../contexts/open-chats-store';
-import { resetStartChoicesForTests } from '../hooks/useStartSelection';
+import {
+  resetStartChoicesForTests,
+  seedHomeStartProjectForTests,
+} from '../hooks/useStartSelection';
 import { writeSnooze } from '../utils/activity-snooze-store';
 import { TERMINAL_LINGER_MS } from '../views/home/home-lane-model';
 import * as homeLanes from '../views/home/useHomeWorkLanes';
@@ -1023,7 +1026,7 @@ describe('HomeView', () => {
   // #3312: with work on the page the start composer is the compact one, and
   // its Agent chip names the Agent and Model Start will run on: the default
   // selection (`useNewChatSelectionModel`) for the context the start path
-  // opens in (`useNewChatStartContext`), so changing that selection changes
+  // opens in (Home's own project pick), so changing that selection changes
   // the chip.
   const workSession = () => ({
     threadId: 'work-thread',
@@ -1095,17 +1098,30 @@ describe('HomeView', () => {
     });
   });
 
-  // #3312 review HIGH: Start runs in the dock's remembered project once the
-  // user has opened one, so Home resolves its identity in that context, not
-  // the route's (on `/` there is none). `revalidateSelection` matches the
-  // input `NewChatModal` passes for a `startWithDefault` request.
+  // #3312 review HIGH: Home resolves its identity in the context Start opens
+  // in. That is the project picked in Home's own chip, never the dock's
+  // remembered binding, which opening any project rebinds silently.
+  // `revalidateSelection` matches the input `NewChatModal` passes for a
+  // `startWithDefault` request.
   test.each([
-    ['a dock bound to a project with a directory', 'station', 'station'],
-    ['a dock bound to nothing', null, '__global__'],
-    ['a dock bound to a project that is gone', 'deleted', '__global__'],
+    ['a project picked on Home', 'station', null, 'station'],
+    ['nothing picked on Home', undefined, null, '__global__'],
+    [
+      'nothing picked on Home, the dock remembers a project',
+      undefined,
+      'station',
+      '__global__',
+    ],
+    ['a pick that is gone', 'deleted', null, '__global__'],
+    [
+      'a pick that differs from what the dock remembers',
+      '__global__',
+      'station',
+      '__global__',
+    ],
   ])(
     'Home resolves its start identity in the context Start opens in: %s',
-    (_name, binding, expected) => {
+    (_name, picked, binding, expected) => {
       fixtures.projects = [
         {
           id: 'p1',
@@ -1115,6 +1131,7 @@ describe('HomeView', () => {
         } as any,
       ];
       fixtures.chatDockProjectSlug = binding;
+      seedHomeStartProjectForTests(picked);
       renderHomeView({ continuation: null, onNavigate: vi.fn() });
       expect(fixtures.selectionInputs.length).toBeGreaterThan(0);
       for (const input of fixtures.selectionInputs) {

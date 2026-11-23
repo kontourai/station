@@ -1,0 +1,7 @@
+{
+  "revision": "d479ad8d5290f7379cfdb24aec4ec18ddf8e3de3",
+
+  "notes": [
+    {"path":"docs/design/conduit-runtime-integration.md","note":"VoltAgent still calls the shared hooks; an abort no longer reaches afterInvocation (as before this slice) and the usage passed is the turn total. Durable staging and the receipt are unchanged.","inputs":["docs/design/conduit-runtime-integration.md","src-server/runtime/frameworks/voltagent-adapter.ts"]}
+  ]
+}

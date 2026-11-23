@@ -1,0 +1,7 @@
+{
+  "revision": "ac3c0bc3e815b6d8fcfd3997caa9bd94e434f527",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rechecked chat.css (#5398 round 4): only the delivery note's Check gains an aria-disabled style; the map names no such rule.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

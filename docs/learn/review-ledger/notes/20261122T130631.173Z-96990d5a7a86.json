@@ -1,0 +1,9 @@
+{
+  "revision": "caf947c82dab28bb4ed4c24798afcaa9b2d11991",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Checked acquisition claims: the operator refusal now carries code repository_operator_required beside its unchanged sentence and 403 status. The API reference documents the code; other pages state no body detail.","inputs":["src-server/routes/projects/repository-acquisition-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked acquisition claims: the operator refusal now carries code repository_operator_required beside its unchanged sentence and 403 status. The API reference documents the code; other pages state no body detail.","inputs":["src-server/routes/projects/repository-acquisition-routes.ts"]}
+  ]
+}

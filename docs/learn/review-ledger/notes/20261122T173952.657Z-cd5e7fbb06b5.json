@@ -1,0 +1,9 @@
+{
+  "revision": "fbefd43834d3a9ca94e47e8d232b0edfdb82668f",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"PUT on /api/connections and /api/providers now uses an update schema that accepts enabled:false without an OpenAI-compatible address; create and any other update still refuse with connection_address_required. agent-smoke-confidence cites this file for chat input bounds and connection save fields, not the address rule, and stays accurate; api.md Save a Connection was updated.","inputs":["src-server/routes/schemas/schema-definitions/runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"PUT on /api/connections and /api/providers now uses an update schema that accepts enabled:false without an OpenAI-compatible address; create and any other update still refuse with connection_address_required. agent-smoke-confidence cites this file for chat input bounds and connection save fields, not the address rule, and stays accurate; api.md Save a Connection was updated.","inputs":["src-server/routes/schemas/schema-definitions/runtime.ts"]}
+  ]
+}

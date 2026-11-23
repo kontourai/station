@@ -2,15 +2,16 @@
 
 Status: implementation plan for [#5386](https://github.com/kontourai/station/issues/5386). GitHub owns live delivery state.
 
-This plan delivers [the first-release design](../design/first-release.md) as 89 slices in six phases. Each slice is one issue and one pull request. Every numbered change in the design belongs to exactly one slice, or is listed under [Not in the first release](#not-in-the-first-release).
+This plan delivers [the first-release design](../design/first-release.md) as 104 slices in six phases. Each slice is one issue. Each phase lands as one pull request that carries its slices, so the phase's changes are reviewed and merged together. Every numbered change in the design belongs to exactly one slice, or is listed under [Not in the first release](#not-in-the-first-release).
 
 ## Rules
 
-- A slice cites the screens and change numbers it delivers. Its pull request shows a running build beside the agreed render for each screen, at 1440px and 390px.
+- A slice cites the screens and change numbers it delivers. Its phase's pull request shows a running build beside the agreed render for each screen, at 1440px and 390px.
 - A change marked "backend check first" is settled before the slice builds. If the answer changes the design, the design record is amended in the same pull request with the reason.
 - A slice that changes a recorded decision, a glossary term or another design record amends that record in the same pull request.
 - A slice lands only after the slices it depends on. Sizes: S is a sitting, M a day or two, L is large and kept whole for a stated reason.
 - Each area lands complete, with no feature preview, except the sidebar change: it sits behind one preview until Phase 1 is whole.
+- A defect or gap found while delivering a slice becomes a slice of this plan in the same pull request that files its issue, in the phase that owns the area, with the slice it came from under After. No follow-up issue exists outside this plan.
 
 ## Phase 0 · Defects that need no redesign
 
@@ -29,9 +30,9 @@ Done when: Usage counts, pairing by code, New Project failures, the inbox duplic
 | 0.9 | #5393 | Keep New Project on its form when a clone fails, and label Create while pending | defects only | S |  |
 | 0.10 | #5394 | Scope project search to its project, and make the knowledge index counts agree | defects only | M |  |
 | 0.12 | #5395 | Keep the tool server editor usable with Secret bindings open | defects only | S |  |
-| 0.13 | #5396 | Hide preview-only project rail items, and drop Session Board from the view catalogue | defects only | S |  |
+| 0.13 | #5396 | Hide the Schedules item in Project settings while its preview is off | defects only | S |  |
 | 0.14 | #5397 | Stop a maximised chat dock following you, and give cmd+z one owner | defects only | M |  |
-| 0.16 | #5398 | Show each chat once in the inbox, with "Last reply may not have arrived" as a flag | `automations-inbox-11` 9 | M |  |
+| 0.16 | #5398 | Show each chat once in the inbox, with "Last message may not have arrived" as a flag | `automations-inbox-11` 9 | M |  |
 | 0.17 | #5399 | Translate the failed-turn notification into plain words | `automations-inbox-11` 8 | S |  |
 | 0.18 | #5400 | Fix one-time automation defaults and give automations a display name | `automations-inbox-04` 8 | M |  |
 
@@ -46,7 +47,8 @@ Done when: A new user lands on Home with what Station found, a stable default fo
 | 1.1 | #5401 | Store a default for new chats | `first-run-01` 2, 3; `first-run-02` 1 | M |  |
 | 1.2 | #5402 | Make Customize a page and retire Connections as a destination | `navigation-08` 1, 6 | M |  |
 | 1.3 | #5403 | Add the Customize landing with what needs you | `navigation-08` 2, 3, 4; `customize-20` 1, 2, 3, 4 | M | 1.1, 1.2 |
-| 1.4 | #5404 | Turn Plugins and Registry into Apps › Discover | `apps-03` 1, 2, 3, 4, 5, 6 | M |  |
+| 1.4a | #5479 | Add what an app is to plugin catalog entries, for Apps › Discover | no change of its own: the catalog facts that `apps-03` 1, 2 and 3 read (1.4 delivers them) | M |  |
+| 1.4 | #5404 | Turn Plugins and Registry into Apps › Discover | `apps-03` 1, 2, 3, 4, 5, 6 | M | 1.4a |
 | 1.5 | #5405 | Build the quiet sidebar behind one preview | `navigation-06` 1, 2, 3; `navigation-07` 1, 2; `navigation-10` 1; `navigation-11` 1; `apps-01` 1; `apps-02` 1, 4 | M | 1.2, 1.4 |
 | 1.6 | #5406 | Let any Customize item be pinned to the sidebar | `navigation-08` 5; `navigation-09` 1, 2, 3 | M | 1.3, 1.5 |
 | 1.7 | #5407 | Replace the setup wizard and tour with what Station found | `first-run-01` 1, 4, 5; `first-run-02` 2, 3; `apps-01` 2 | M | 1.1 |
@@ -81,6 +83,10 @@ Done when: A person can see what can run, add a provider that is checked before 
 | 2.16 | #5427 | Rework Add engine | `customize-13` 1, 2, 3, 4 | S | 2.8 |
 | 2.17 | #5428 | Turn Knowledge into one status page | `customize-14` 1, 2, 3, 4 | S | 1.12 |
 | 2.18 | #5429 | Regroup the command palette | `navigation-22` 2, 3, 4, 5, 6 | M | 2.1, 2.14, 1.4 |
+| 2.19 | #5477 | Skip model connections that cannot be used when choosing one for a capability | follow-up of 0.1 | M | 0.1 |
+| 2.20 | #5481 | Use a bound agent's model connection when its turn is relayed | follow-up of 0.17 | M | 0.17 |
+| 2.21 | #5486 | Start no engine program for an engine connection that is turned off | follow-up of 0.4 | S | 2.8 |
+| 2.22 | #5494 | Make Index directory follow `.gitignore`, refresh edited files and say what it did | follow-up of 0.10 | M | 0.10, 2.17 |
 
 ## Phase 3 · Projects and New Project
 
@@ -102,6 +108,8 @@ Done when: A person creates a project from empty, a folder or Git and works in O
 | 3.10 | #5439 | Cut project settings to five sections with one save model | `projects-13` 1; `projects-14` 1, 2, 3; `projects-15` 1, 2; `projects-18` 1 | M | 3.3 |
 | 3.11 | #5440 | Add Chat defaults to project settings | `projects-13` 2, 3, 4, 5, 6, 7, 8 | S | 3.10, 1.1 |
 | 3.12 | #5441 | Move sources into a Files tab and graduate the Library | `projects-14` 4 | M | 3.3 |
+| 3.13 | #5492 | Update the chat dock's project on a full load or Back into a project page | follow-up of 0.8 | S | 0.8 |
+| 3.14 | #5495 | Report an unknown project in search, and find Tasks stored with a Project id | follow-up of 0.10 | S | 0.10 |
 
 ## Phase 4 · Chat Details panel, actions and the Inbox
 
@@ -124,6 +132,13 @@ Done when: A person answers "what does it run on, what did it use, what did it d
 | 4.13 | #5452 | Give inbox items one status, Mark done and one snooze list | `automations-inbox-13` 1, 2, 3, 4; `chat-18` 1; `automations-inbox-11` 10, 12 | M | 0.16 |
 | 4.14 | #5453 | Rename Notifications to Inbox and simplify it | `automations-inbox-11` 1, 2, 3, 4, 5, 6, 7, 11; `automations-inbox-12` 1 | M | 4.13 |
 | 4.15 | #5454 | Let the bell popover answer what needs you | `automations-inbox-10` 1, 2, 3, 4, 5, 6, 7 | M | 4.13 |
+| 4.16 | #5487 | Say the "more than one model connection" refusal in plain words on chat, Home and the dock | follow-up of 0.17 | M | 0.17, 1.1 |
+| 4.17 | #5488 | Read a refused bound-agent start as not sent | follow-up of 0.17 | S | 2.20 |
+| 4.18 | #5489 | Remove the unused "delivery-unconfirmed" status word | follow-up of 0.16 | S | 0.16 |
+| 4.19 | #5490 | Read Cut off for every engine and on every surface | follow-up of 0.5 | M | 0.5 |
+| 4.20 | #5491 | Keep answered slash commands out of drafts, and keep New chat text | follow-up of 0.5 | S | 0.5 |
+| 4.21 | #5493 | Stop chat dock layouts hiding or clipping content | follow-up of 0.14 and 0.18 | S | 0.14 |
+| 4.22 | #5497 | Close the Station agent usage gaps: the tree root, when counting started, and Strands reuse | follow-up of 0.4 | M | 0.4, 4.2 |
 
 ## Phase 5 · Agents, Skills, Tools, Apps, Automations, Settings and previews
 
@@ -154,6 +169,7 @@ Done when: Every v1 screen is delivered and the preview list is the agreed one.
 | 5.22 | #5473 | Split Profile into Settings › Account and a Usage page | `settings-12` 1, 2, 3, 4; `settings-13` 1, 2, 3, 4, 6, 7, 9 | M | 5.17 |
 | 5.23 | #5474 | Turn previews on and sort the rest | `settings-10` 1, 2, 3, 4 | M | 5.17 |
 | 5.24 | #5475 | Make Developer a Settings group behind Developer mode | `settings-11` 1, 2, 3, 4 | M | 5.23 |
+| 5.25 | #5496 | Create an automation turned off, and let `propose_job` carry a display name | follow-up of 0.18 | S | 0.18, 5.15 |
 
 ## Not in the first release
 

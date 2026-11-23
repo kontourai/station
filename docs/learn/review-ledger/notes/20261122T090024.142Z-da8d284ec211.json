@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Scheduled jobs topic describes schedule kinds and targets, not job names or one-time defaults; still accurate.","inputs":["docs/reference/station-docs.md","packages/contracts/src/scheduler.ts"]}
+  ]
+}

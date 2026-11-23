@@ -1,0 +1,7 @@
+{
+  "revision": "d479ad8d5290f7379cfdb24aec4ec18ddf8e3de3",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"The guardrails section points at voltagent-adapter.ts for where token and sampling values are passed; unchanged by the onEnd change.","inputs":["docs/reference/config.md","src-server/runtime/frameworks/voltagent-adapter.ts"]}
+  ]
+}

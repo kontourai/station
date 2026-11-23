@@ -1,0 +1,7 @@
+{
+  "revision": "caf947c82dab28bb4ed4c24798afcaa9b2d11991",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Documented the operator refusal's code repository_operator_required and that other 403s on these paths come from request admission with their own codes. Checked against the route's denied() and the runtime admission refusals.","inputs":["docs/reference/api.md"]}
+  ]
+}

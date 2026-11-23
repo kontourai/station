@@ -1,0 +1,9 @@
+{
+  "revision": "bbcfd418bc90f0e079b3219533928c1f67ae5591",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked this page against the change: three constants (the address refusal code and message, and the no-server-URL readiness sentence) lost their export keyword and nothing else changed. The page names none of them, and the refusal code, message and behavior it describes are unchanged.","inputs":["src-server/routes/schemas/schema-definitions/runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked this page against the change: three constants (the address refusal code and message, and the no-server-URL readiness sentence) lost their export keyword and nothing else changed. The page names none of them, and the refusal code, message and behavior it describes are unchanged.","inputs":["src-server/routes/schemas/schema-definitions/runtime.ts"]}
+  ]
+}

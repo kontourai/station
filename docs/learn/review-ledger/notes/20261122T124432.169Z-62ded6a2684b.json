@@ -1,0 +1,7 @@
+{
+  "revision": "103476396e79ad90fa6f32d9ea433ad93b8f3317",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"Added what Index directory picks up, each fact checked against knowledge-scan-utils.ts (DEFAULT_EXTENSIONS incl. .json .yaml .yml .toml, SKIP_DIRS list, no .gitignore read, 200-file cap, depth 8, symlinks skipped) and knowledge-filesystem.ts (empty files and over 500,000 characters skipped), and where exclude patterns can be given: the Files & connections scan dialog (ProjectKnowledgeScanModal) and the scan API/SDK options; the Project settings button sends none.","inputs":["docs/guides/knowledge.md"]}
+  ]
+}

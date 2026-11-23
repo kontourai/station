@@ -1,0 +1,7 @@
+{
+  "revision": "43984b24fef216b82a179674f66432259a25223d",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"#5389: useStatsQuery note on engines and absent token totals after an engine change; rechecked against the route and the unchanged SDK parser use.","inputs":["docs/reference/sdk.md","packages/shared/src/usage-fold.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-transcript-reads.ts"]}
+  ]
+}

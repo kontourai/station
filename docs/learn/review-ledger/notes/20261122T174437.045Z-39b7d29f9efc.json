@@ -1,0 +1,7 @@
+{
+  "revision": "fbefd43834d3a9ca94e47e8d232b0edfdb82668f",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"OpenAI-compatible step: Create and Save stay unavailable with no server URL, except Save after clearing Enabled on a connection saved before the rule; turning it on needs the URL. Checked against connectionAddressReason in ProviderConnectionForm.tsx, the view's Save condition and the server update schema.","inputs":["docs/guides/connections.md"]}
+  ]
+}

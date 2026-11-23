@@ -1259,6 +1259,12 @@ export interface StationCapabilityFlags {
   scheduledConversationTarget?: boolean;
   /** #5070: the scheduler accepts a job `projectId` (runs as a Task). */
   projectSchedules?: boolean;
+  /**
+   * The scheduler stores and renames a job's `displayName`, and derives a
+   * slug when a create names none. An older host drops the field without
+   * saying so, so a client offers renaming only with this flag.
+   */
+  schedulerJobDisplayName?: boolean;
   /** SSH environment management (`src-server/services/ssh/`, `/api/ssh-environments`). */
   sshEnvironments?: boolean;
   /**

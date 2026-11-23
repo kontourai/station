@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"No claim about job names, slugs or one-time defaults; the additive optional displayName field does not change any stated contract here.","inputs":["docs/design/automations.md","packages/contracts/src/scheduler.ts"]}
+  ]
+}

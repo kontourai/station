@@ -1061,6 +1061,46 @@ function serverReportsLiveWork(
   );
 }
 
+/**
+ * This chat's outbox messages whose delivery nothing can confirm yet:
+ * Station may have started them (`may-have-started`, never sent again on its
+ * own), or a send got no answer and waits for Station's delivery lookup
+ * (`invoking` with `awaitingLookup`; the lookup sends it once more, with the
+ * same key, only if Station answers that it never received it). Neither
+ * waits on the person, and neither is a send waiting on the connection
+ * (#5398).
+ */
+export function unconfirmedOutboundTurns(
+  chat: ChatUIState,
+): { clientTurnId: string; createdAt: number }[] {
+  return (chat.outboundQueuedTurns ?? [])
+    .filter(
+      (turn) =>
+        turn.status === 'may-have-started' ||
+        (turn.status === 'invoking' && turn.awaitingLookup),
+    )
+    .map(({ clientTurnId, createdAt }) => ({ clientTurnId, createdAt }));
+}
+
+/**
+ * Whether a chat's `queued` status is a send that waits on the connection.
+ * The outbox projection also marks a chat queued while it lists only
+ * unconfirmed or accepted messages; those wait on nothing here, so the
+ * conversation keeps its own status and the row carries the unconfirmed
+ * delivery as a flag (`WorkFacts.unconfirmedDelivery`) instead (#5398).
+ */
+export function chatQueuedToSend(chat: ChatUIState): boolean {
+  if (chat.status !== 'queued') return false;
+  const turns = chat.outboundQueuedTurns ?? [];
+  if (turns.length === 0) return true;
+  const unconfirmed = new Set(
+    unconfirmedOutboundTurns(chat).map((turn) => turn.clientTurnId),
+  );
+  return turns.some(
+    (turn) => turn.status !== 'accepted' && !unconfirmed.has(turn.clientTurnId),
+  );
+}
+
 function chatLifecycleLabel(
   chat: ChatUIState,
   sessionId: string,
@@ -1082,8 +1122,8 @@ function chatLifecycleLabel(
     chatWaitsOnUser(chat) ||
     // archive#1224 (offline): a queued (offline) turn needs an
     // actionable label — it won't resolve on its own without the connection
-    // coming back.
-    chat.status === 'queued'
+    // coming back. An unconfirmed delivery is not one (#5398).
+    chatQueuedToSend(chat)
   )
     return 'Needs attention';
   // #2309: the conversation's server record, when there is one, is THE
@@ -1299,6 +1339,38 @@ export function buildActiveChatTaskItems({
         ...(chat.projectSlug ? { projectSlug: chat.projectSlug } : {}),
       };
     });
+  // #5398: two chats can hold one conversation (a reopen mints a new chat
+  // key), and the fold below keeps only one of them. A message waiting to be
+  // sent, or not sent, in ANY of them is owed to the person, so the kept row
+  // reads Needs attention even when the newer chat holds nothing.
+  const queuedToSend = new Set(
+    Object.entries(chats)
+      .filter(([, chat]) => chatQueuedToSend(chat))
+      .map(([id]) => id),
+  );
+  const conversationsQueued = new Set(
+    items
+      .filter(
+        (item) => item.chatSessionId && queuedToSend.has(item.chatSessionId),
+      )
+      .map((item) => item.id),
+  );
+  // The row must open the chat that holds what it is about: of the chats
+  // with a message owed (waiting, not sent, held) or unconfirmed, the newest.
+  // Every reader of the row's chat (open, current, close, read state) takes
+  // `chatSessionId`, so pointing it there is the one place to decide it.
+  const holderByConversation = new Map<string, MergeItem>();
+  for (const item of items) {
+    const chat = item.chatSessionId ? chats[item.chatSessionId] : undefined;
+    if (
+      !chat ||
+      (!chatQueuedToSend(chat) && unconfirmedOutboundTurns(chat).length === 0)
+    )
+      continue;
+    const holder = holderByConversation.get(item.id);
+    if (!holder || item.updatedAt > holder.updatedAt)
+      holderByConversation.set(item.id, item);
+  }
   // A handoff replaces the execution Session while retaining one durable
   // Conversation. Every consumer of this adapter must therefore see the
   // newest child identity, never an arbitrary predecessor map entry.
@@ -1329,6 +1401,24 @@ export function buildActiveChatTaskItems({
       }, new Map<string, MergeItem>())
       .values(),
   ]
-    .map(({ currentSessionId: _currentSessionId, ...item }) => item)
+    .map(({ currentSessionId: _currentSessionId, ...kept }) => {
+      const holder = holderByConversation.get(kept.id)?.chatSessionId;
+      const item =
+        holder && holder !== kept.chatSessionId
+          ? { ...kept, chatSessionId: holder }
+          : kept;
+      if (
+        !conversationsQueued.has(item.id) ||
+        item.lifecycleLabel === 'Needs attention'
+      )
+        return item;
+      // Both are bound to the label they came with (Running, Failed).
+      const {
+        activeReason: _activeReason,
+        failureNotice: _failureNotice,
+        ...rest
+      } = item;
+      return { ...rest, lifecycleLabel: 'Needs attention' as const };
+    })
     .sort(compareTaskRecency);
 }

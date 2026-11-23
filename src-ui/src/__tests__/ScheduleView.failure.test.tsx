@@ -456,6 +456,56 @@ describe('ScheduleView scheduler failure banner (station#3252)', () => {
     expect(screen.queryByRole('alert')).toBeNull();
   });
 
+  test('sorting by Name orders automations by the name people read, not the slug', () => {
+    schedulerHooks.jobs.data = [
+      {
+        name: 'aaa-sort',
+        displayName: 'Zebra report',
+        provider: 'built-in',
+        enabled: true,
+        prompt: 'z',
+      },
+      {
+        name: 'zzz-sort',
+        displayName: 'Apple report',
+        provider: 'built-in',
+        enabled: true,
+        prompt: 'a',
+      },
+    ];
+    render(<ScheduleView />);
+    fireEvent.click(screen.getByRole('button', { name: /^Name/ }));
+    const names = screen
+      .getAllByTestId(/^job-row-/)
+      .map((row) => row.querySelector('.schedule__td--name')?.textContent);
+    expect(names).toEqual(['Apple report', 'Zebra report']);
+  });
+
+  test('the week calendar names an automation by its display name', () => {
+    vi.setSystemTime(new Date('2026-03-07T12:00:00.000Z'));
+    schedulerHooks.jobs.data = [
+      {
+        name: 'week-marker',
+        displayName: 'Week marker digest',
+        provider: 'built-in',
+        enabled: true,
+        prompt: 'fixture',
+        weekOccurrences: {
+          times: ['2026-03-08T00:30:00.000Z'],
+          truncated: false,
+        },
+      },
+    ];
+    try {
+      render(<ScheduleView />);
+      fireEvent.click(screen.getByRole('tab', { name: 'Calendar' }));
+      expect(screen.getByText(/Week marker digest/)).toBeTruthy();
+      expect(screen.queryByText(/week-marker/)).toBeNull();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   function seedTwoRunnableJobs() {
     schedulerHooks.jobs = {
       data: [

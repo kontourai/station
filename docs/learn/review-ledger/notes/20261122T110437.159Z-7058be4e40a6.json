@@ -1,0 +1,7 @@
+{
+  "revision": "297d94bd66b3a4df8d9c48acc81269ee89123e28",
+
+  "notes": [
+    {"path":"docs/guides/operator-passkeys.md","note":"No claims about the code-entry HTTPS note or the Station manager's connect line; the secure-context and QR-wording changes leave this page accurate.","inputs":["docs/guides/operator-passkeys.md","packages/connect/src/react/DevicePairingPanel.tsx"]}
+  ]
+}

@@ -44,6 +44,57 @@
   padding-block-end: var(--inbox-row-pad-block);
 }
 
+/* #5398: "Last message may not have arrived" with Check, under the row's
+   status. A flag beside the status, not a status: the caution hue without
+   the act-now pulse, and the row stays in the lane its status gives it. It
+   sits outside the row's open button (Check is a control of its own), so it
+   is tucked up against the button's last line and starts where its text
+   starts. */
+.inbox-row__flag {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+  margin-block-start: calc(var(--k-space-1) / 2 - var(--inbox-row-pad-block));
+  padding-inline: calc(
+      var(--inbox-row-pad-inline) +
+      var(--inbox-row-unread-gutter)
+    )
+    var(--inbox-row-pad-inline);
+  padding-block-end: var(--inbox-row-pad-block);
+  font-size: var(--inbox-row-text-size);
+  line-height: var(--inbox-row-line);
+}
+.inbox-row__flag-glyph {
+  flex: 0 0 auto;
+}
+/* Check meets the touch floor on a phone; on a desktop it stays a line tall. */
+.inbox-row__flag-action {
+  min-block-size: var(--touch-target-min, 0px);
+}
+/* While its Check runs (aria-disabled, so it keeps keyboard focus). */
+.inbox-row__flag-action[aria-busy="true"] {
+  opacity: 0.6;
+  cursor: progress;
+}
+/* A flagged hover row: the flag belongs to the row, so the hover and current
+   treatment moves from the open button to the whole row (the touch row's
+   rules below), instead of stopping short of the flag. */
+.inbox-row--hover:has(> .inbox-row__flag) {
+  border: 1px solid transparent;
+}
+.inbox-row--hover:has(> .inbox-row__flag) .inbox-row__open {
+  border-color: transparent;
+  background: transparent;
+}
+.inbox-row__flag-result:empty {
+  display: none;
+}
+.inbox-row__flag-result {
+  flex-basis: 100%;
+  color: var(--k-text-muted);
+}
+
 @keyframes inbox-row-enter {
   from {
     opacity: 0;
@@ -308,7 +359,8 @@
 
 .inbox-row__status[data-tone="caution"] .inbox-row__word,
 .inbox-row__status[data-tone="caution"] .inbox-row__status-glyph,
-.inbox-row__slim-status[data-tone="caution"] {
+.inbox-row__slim-status[data-tone="caution"],
+.inbox-row__flag {
   color: var(--warning-text);
 }
 
@@ -586,13 +638,25 @@
  * stopped short of them and read as a second, unrelated control. */
 .inbox-row--touch:has(.inbox-row__open:hover),
 .inbox-row--touch:has(.inbox-row__open:focus-visible),
-.inbox-row--touch.is-current {
+.inbox-row--touch.is-current,
+.inbox-row--hover:has(> .inbox-row__flag):has(.inbox-row__open:hover),
+.inbox-row--hover:has(> .inbox-row__flag):has(.inbox-row__open:focus-visible),
+.inbox-row--hover.is-current:has(> .inbox-row__flag) {
   border-color: var(--border-secondary);
   background: var(--bg-tertiary);
 }
 
-.inbox-row--touch.is-current {
+.inbox-row--touch.is-current,
+.inbox-row--hover.is-current:has(> .inbox-row__flag) {
   border-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+}
+
+/* The flag takes a line of its own under the button and its actions. */
+.inbox-row--touch:has(.inbox-row__flag) {
+  flex-wrap: wrap;
+}
+.inbox-row--touch .inbox-row__flag {
+  flex-basis: 100%;
 }
 
 .inbox-row--touch .inbox-row__open,

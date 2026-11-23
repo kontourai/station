@@ -1,0 +1,7 @@
+{
+  "revision": "faed86953d1729e2b258bd9575746bc7c40dd95b",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Added what New Project does when a source is refused or a clone fails, checked against the form and route behavior and their tests.","inputs":["docs/guides/connections.md"]}
+  ]
+}

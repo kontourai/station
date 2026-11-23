@@ -1,0 +1,9 @@
+{
+  "revision": "1f969537d3735b7e015ed450225c0c03e4b9672e",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"The API reference change only rewords the repository acquisition 400 body. Checked that this page states nothing about that body.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The API reference change only rewords the repository acquisition 400 body. Checked that this page states nothing about that body.","inputs":["docs/reference/api.md"]}
+  ]
+}

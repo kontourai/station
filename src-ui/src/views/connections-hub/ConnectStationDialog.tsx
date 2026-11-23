@@ -1,6 +1,7 @@
 import {
   completeVerifiedPairing,
   decodeDevicePairingPayload,
+  hasCameraApi,
   JoinDevicePairingPanel,
   normalizeHostInput,
   type PendingPairingExchange,
@@ -84,6 +85,11 @@ export function ConnectStationDialog({
   const [address, setAddress] = useState('');
   const [code, setCode] = useState('');
   const [method, setMethod] = useState<'address' | 'code' | 'scan'>('address');
+  // Offer scanning only where this browser can have a camera; a capture that
+  // finds none also withdraws it.
+  const [cameraUnavailable, setCameraUnavailable] = useState(
+    () => !hasCameraApi(),
+  );
   const [destination, setDestination] = useState<Destination | null>(null);
   const [pairingPayload, setPairingPayload] = useState<string>();
   const [peerInvitation, setPeerInvitation] = useState(false);
@@ -475,12 +481,14 @@ export function ConnectStationDialog({
               >
                 Station address
               </Button>
-              <Button
-                onClick={() => setMethod('scan')}
-                aria-pressed={method === 'scan'}
-              >
-                Scan QR
-              </Button>
+              {!cameraUnavailable && (
+                <Button
+                  onClick={() => setMethod('scan')}
+                  aria-pressed={method === 'scan'}
+                >
+                  Scan QR
+                </Button>
+              )}
               <Button
                 onClick={() => setMethod('code')}
                 aria-pressed={method === 'code'}
@@ -493,6 +501,10 @@ export function ConnectStationDialog({
                 onScan={acceptCode}
                 onCancel={() => setMethod('address')}
                 onManualEntry={() => setMethod('code')}
+                onUnavailable={() => {
+                  setCameraUnavailable(true);
+                  setMethod('code');
+                }}
               />
             ) : method === 'code' ? (
               <>

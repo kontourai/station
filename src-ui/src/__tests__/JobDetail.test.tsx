@@ -201,3 +201,22 @@ test('a monitor run that finished without usage says the monitor is paused and h
   ).toBeTruthy();
   expect(screen.queryByText(/isn't final yet/)).toBeNull();
 });
+
+test("the run output's title names the job by its display name", async () => {
+  schedulerJobs.mockReturnValue({
+    data: [
+      {
+        name: JOB_NAME,
+        displayName: 'Nightly sync',
+        provider: 'station',
+        prompt: 'sync',
+        enabled: true,
+      },
+    ],
+  });
+  renderWithRuns([{ ...makeRun('failed', 'r-title'), failureMessage: 'x' }]);
+  fireEvent.click(screen.getByRole('button', { name: 'Output' }));
+  expect(
+    await screen.findByRole('dialog', { name: 'Nightly sync — Run Output' }),
+  ).toBeTruthy();
+});

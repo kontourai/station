@@ -276,6 +276,13 @@ export interface ConversationMessage {
      */
     turnStoppedBy?: 'person' | 'stall' | 'restart';
     /**
+     * Set on a turn's last row when the turn completed because the engine
+     * reached its output limit (`turn.completed` `finishReason:
+     * 'max-tokens'`): the reply stops mid-way. Absent for every other ending,
+     * including an engine that reports no finish reason.
+     */
+    turnCutOff?: 'max-tokens';
+    /**
      * station#1410: the turn's provenance envelope, re-derived from the
      * durable orchestration event stream on every read. A projection, not a
      * second store — see `packages/contracts/src/turn-provenance.ts`.

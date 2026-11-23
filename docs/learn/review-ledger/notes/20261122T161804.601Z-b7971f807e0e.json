@@ -1,0 +1,7 @@
+{
+  "revision": "4f101ab0f8de657ae1782cf97535fc02e19c1715",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Its VoltAgent adapter claim is about model-only input composition, which this change to onEnd turn reporting does not touch.","inputs":["docs/architecture/module-map.md","src-server/runtime/frameworks/voltagent-adapter.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "297d94bd66b3a4df8d9c48acc81269ee89123e28",
+
+  "notes": [
+    {"path":"docs/reference/connect.md","note":"Rechecked: the HTTPS note now appears only when the camera API is missing on an insecure page; a secure page without the API gets no note; the manager line omits QR without a camera API.","inputs":["docs/reference/connect.md","packages/connect/src/react/DevicePairingPanel.tsx","packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]}
+  ]
+}

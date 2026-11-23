@@ -1,0 +1,7 @@
+{
+  "revision": "6fcf24b0e0fa8c4a8ff52a232d93c7c6619a4967",
+
+  "notes": [
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Merged the inbox dismissal section into Undo the last action; one Cmd+Z command, matches inbox-dismissals.tsx and UndoableActionShortcut.tsx","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/__tests__/inbox-dismissal.test.tsx","src-ui/src/components/chat-dock/inbox-dismissals.tsx"]}
+  ]
+}

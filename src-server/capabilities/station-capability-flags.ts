@@ -179,6 +179,12 @@ export const STATION_CAPABILITY_FLAGS: Readonly<StationCapabilityFlags> = {
   // plain job, so a client offers Project schedules only on this flag.
   // Hosted deployments withdraw it: they compose no Project runner.
   projectSchedules: true,
+  // A job's display name: src-server/routes/operations/scheduler.ts accepts
+  // `displayName` on create and edit and derives the slug when a create
+  // names none. An older host drops the field and reports success, so a
+  // client offers renaming only on this flag. Hosted deployments withdraw
+  // it: see servesSchedulerRoutes.
+  schedulerJobDisplayName: true,
   // #5067: the Project Library, `/api/projects/:slug/library…`
   // (src-server/routes/projects/project-library-routes.ts). Hosted
   // deployments withdraw it: see servesProjectLibrary.
@@ -232,6 +238,17 @@ export function servesConnectionRoutes(
 
 /** Private memory is a personal-host feature; hosted never binds its preview. */
 function servesPrivateMemory(deployment: StationCapabilityDeployment): boolean {
+  return !deployment.hosted;
+}
+
+/**
+ * Scheduler storage is not tenant-bound, so every `/scheduler` route answers
+ * 404 to a hosted request, whatever the body: no job field it accepts is
+ * served there.
+ */
+function servesSchedulerRoutes(
+  deployment: StationCapabilityDeployment,
+): boolean {
   return !deployment.hosted;
 }
 
@@ -321,6 +338,7 @@ const DEPLOYMENT_SERVED_FLAGS: Readonly<
   followUpAttachments: servesFollowUpAttachments,
   pullRequestFeedback: servesPullRequestFeedback,
   projectSchedules: servesScheduledConversationTarget,
+  schedulerJobDisplayName: servesSchedulerRoutes,
   projectRoomCoordinator: servesProjectRoomCoordinator,
   remoteSessionHistory: servesRemoteSessionReads,
   projectLibrary: servesProjectLibrary,

@@ -1,0 +1,129 @@
+{
+  "revision": "faed86953d1729e2b258bd9575746bc7c40dd95b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/motion.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-compaction.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-dark.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-light.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-dark.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-light.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-supervision.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-usage.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-working-configuration.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-1440-light.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-after-390-dark.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-1440-light.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/child-tool-text-before-390-dark.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-picker-comparison.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-dark.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-light.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-dark.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-light.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-dark.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-light.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-dark.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-light.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-1440-light.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-after-390-dark.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-1440-light.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-before-390-dark.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-history-after-390-dark.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/updates-notes-after-390-light.png","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Checked the change: the app-shell element hover rule now skips disabled buttons with unchanged specificity. Searched this page for hover and disabled-button claims; none depends on it.","inputs":["src-ui/src/index.css"]}
+  ]
+}

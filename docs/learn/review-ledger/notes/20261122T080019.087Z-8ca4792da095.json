@@ -1,0 +1,7 @@
+{
+  "revision": "c32e2ccfca9057a89d28a011cec86d9a2e7092b6",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked for claims about failed-session notification copy, the disclosure CSS and provider-default wording; none present, so the page is unchanged by the plain-words translation.","inputs":["docs/reference/contracts.md","src-ui/src/utils/chatErrorTranslation.ts"]}
+  ]
+}

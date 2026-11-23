@@ -1,0 +1,7 @@
+{
+  "revision": "ed86b1fd40ab3d263c682358fff4f37ac18718a8",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"No vocabulary change in the revised no-camera pairing behavior.","inputs":["docs/glossary.md","docs/reference/connect.md"]}
+  ]
+}

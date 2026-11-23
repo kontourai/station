@@ -1,0 +1,7 @@
+{
+  "revision": "a46df40a2bef79288a97a4cb4ead44e5325e4b44",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the unified-search seam and exact-open paragraphs against WorkspaceSearchPalette.tsx: the palette still uses the Workspace-search mode and SQL project filtering by slug; the change removes Back to commands only where the dialog was opened from the Project rail and sends the Project slug.","inputs":["docs/architecture/module-map.md","src-ui/src/components/search/WorkspaceSearchPalette.tsx"]}
+  ]
+}
