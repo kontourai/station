@@ -5718,7 +5718,10 @@ job after five consecutive failed occurrences (retries of one occurrence count
 once; a re-enable resets the count) through `applyFatigue`, one transaction
 that disables the job and records its owed notification
 (`scheduler_fatigue_announcements`), reconciled at startup, each tick and
-after every failed run. Without an inbox (hosted) no runner is composed and a
+after every failed run. The list read derives `pausedItself` from that record
+(newer than the job's last re-enable) and `recentOutcomes`, the last 12
+finished occurrences counted the same way; the route withholds both with the
+other run-derived fields. Without an inbox (hosted) no runner is composed and a
 targeted run fails before invocation. See the
 [dispatch test](../../src-server/services/scheduling/__tests__/scheduled-conversation-run-dispatch.test.ts)
 and [automation rule tests](../../src-server/services/scheduling/__tests__/automation-targets.test.ts).

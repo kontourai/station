@@ -143,6 +143,14 @@ export interface StationControlDispatchScope {
   ): string | undefined;
 }
 
+export interface StationControlSessionTargetReader {
+  /** Read one Session's own authority. The outside caller checks its entire lineage separately. */
+  sessionTarget(
+    threadId: string,
+    action: StationControlProjectAction,
+  ): StationControlDispatchTarget | undefined;
+}
+
 /**
  * #2377 slice C2a (owner decision: a global agent never reaches into a
  * Project implicitly): the scope of a folder is the Project whose working
@@ -192,7 +200,7 @@ export function stationControlDirectoryScope(
 
 export function createStationControlDispatchScope(
   sources: StationControlDispatchScopeSources,
-): StationControlDispatchScope {
+): StationControlDispatchScope & StationControlSessionTargetReader {
   // In a Project the owner must hold the action there. The global space has
   // no membership: dispatching there needs nothing more, and approving there
   // is the operator's (owner decision 2026-09-27), whom the rule already
@@ -373,6 +381,13 @@ export function createStationControlDispatchScope(
   };
 
   return {
+    sessionTarget(threadId, action) {
+      try {
+        return threadTarget(threadId, [], false, action);
+      } catch {
+        return undefined;
+      }
+    },
     target(ref, action = 'execute') {
       try {
         switch (ref.kind) {
