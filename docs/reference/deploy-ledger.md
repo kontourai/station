@@ -28,6 +28,10 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-23T05:41:59Z | nightly-desktop | 0.2.0-nightly.20261123 | `c4272d5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45113718916) |
+| 2026-11-23T05:41:59Z | nightly-android | 0.2.0-nightly.20261123 | `c4272d5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45113718916) |
+| 2026-11-23T04:52:46Z | nightly-npm | 0.12.0-nightly.20261123.45113718916 | `c4272d5` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45113718916) |
+| 2026-11-22T23:57:28Z | nightly-npm | 0.12.0-nightly.20261122.45085428207 | `70bc93f` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45085428207) |
 | 2026-11-22T14:47:44Z | nightly-desktop | 0.2.0-nightly.20261122.2 | `91be223` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45029919643) |
 | 2026-11-22T14:47:44Z | nightly-android | 0.2.0-nightly.20261122.2 | `91be223` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45029919643) |
 | 2026-11-22T14:02:26Z | nightly-npm | 0.12.0-nightly.20261122.45029919643 | `91be223` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45029919643) |
@@ -538,6 +542,86 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-23T05:41:59Z · nightly-desktop · 0.2.0-nightly.20261123
+
+- Ship SHA: `c4272d565947c19e3457942404e2f69065271377`
+- Artifact built at: `2026-11-23T04:51:08.729Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 45113718916)
+
+### Changelog
+
+Commits since `91be223` ([full sha](https://github.com/kontourai/station/commit/91be22328f12a9aa40ab279c9ada7120bc68ed48)):
+
+**Fixes**
+
+- [#5478](https://github.com/kontourai/station/pull/5478) fix: correct the first-release audit defects
+- [#5484](https://github.com/kontourai/station/pull/5484) fix(chat): cancel Fork when its source view closes
+- [#5485](https://github.com/kontourai/station/pull/5485) fix(automations): move an automation Task to review when its dispatched turn ends
+- [#5483](https://github.com/kontourai/station/pull/5483) fix(test): isolate login-shell fixture writes
+
+**Other**
+
+- [#5482](https://github.com/kontourai/station/pull/5482) perf(dock): show the desktop Inbox immediately on warm reopen
+
+## 2026-11-23T05:41:59Z · nightly-android · 0.2.0-nightly.20261123
+
+- Ship SHA: `c4272d565947c19e3457942404e2f69065271377`
+- Artifact built at: `2026-11-23T04:50:22.473Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 45113718916)
+
+### Changelog
+
+Commits since `91be223` ([full sha](https://github.com/kontourai/station/commit/91be22328f12a9aa40ab279c9ada7120bc68ed48)):
+
+**Fixes**
+
+- [#5478](https://github.com/kontourai/station/pull/5478) fix: correct the first-release audit defects
+- [#5484](https://github.com/kontourai/station/pull/5484) fix(chat): cancel Fork when its source view closes
+- [#5485](https://github.com/kontourai/station/pull/5485) fix(automations): move an automation Task to review when its dispatched turn ends
+- [#5483](https://github.com/kontourai/station/pull/5483) fix(test): isolate login-shell fixture writes
+
+**Other**
+
+- [#5482](https://github.com/kontourai/station/pull/5482) perf(dock): show the desktop Inbox immediately on warm reopen
+
+## 2026-11-23T04:52:46Z · nightly-npm · 0.12.0-nightly.20261123.45113718916
+
+- Ship SHA: `c4272d565947c19e3457942404e2f69065271377`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261123.45113718916 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `70bc93f` ([full sha](https://github.com/kontourai/station/commit/70bc93f92d99038e0e5a959ba4c5d60b7773ab8c)):
+
+**Fixes**
+
+- [#5478](https://github.com/kontourai/station/pull/5478) fix: correct the first-release audit defects
+- [#5484](https://github.com/kontourai/station/pull/5484) fix(chat): cancel Fork when its source view closes
+- [#5485](https://github.com/kontourai/station/pull/5485) fix(automations): move an automation Task to review when its dispatched turn ends
+
+## 2026-11-22T23:57:28Z · nightly-npm · 0.12.0-nightly.20261122.45085428207
+
+- Ship SHA: `70bc93f92d99038e0e5a959ba4c5d60b7773ab8c`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261122.45085428207 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `91be223` ([full sha](https://github.com/kontourai/station/commit/91be22328f12a9aa40ab279c9ada7120bc68ed48)):
+
+**Fixes**
+
+- [#5483](https://github.com/kontourai/station/pull/5483) fix(test): isolate login-shell fixture writes
+
+**Other**
+
+- [#5482](https://github.com/kontourai/station/pull/5482) perf(dock): show the desktop Inbox immediately on warm reopen
 
 ## 2026-11-22T14:47:44Z · nightly-desktop · 0.2.0-nightly.20261122.2
 

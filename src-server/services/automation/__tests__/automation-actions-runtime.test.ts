@@ -2373,3 +2373,150 @@ test("a retry is refused once the rule's source no longer grants it", async () =
   );
   expect(retryOf(w, first)().kind).toBe('policy-unavailable');
 });
+
+// ── the action's Task after its first turn ends ─────────────────────────────
+
+/** The engine ends the action's first turn with `event`. */
+async function endFirstTurn(
+  w: World,
+  intent: AutomationActionIntent,
+  event:
+    | { method: 'turn.completed'; finishReason: 'stop' }
+    | {
+        method: 'turn.aborted';
+        reason: string;
+      },
+) {
+  w.adapter.events.push({
+    ...event,
+    eventId: `first-turn-${event.method}`,
+    provider: w.adapter.provider,
+    threadId: intent.sessionId!,
+    turnId: intent.turnId!,
+    createdAt: new Date().toISOString(),
+    invocationId: w.adapter.sends[0]?.invocationId,
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(intent.sessionId!, [event.method]),
+    ).toBeTruthy(),
+  );
+  await w.runtime.tick();
+}
+
+test('an automation Task whose first turn ends normally waits for review instead of staying in progress', async () => {
+  const w = await world({ projects: [STATION_PROJECT] });
+  const intent = await running(w);
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('in_progress');
+  await endFirstTurn(w, intent, {
+    method: 'turn.completed',
+    finishReason: 'stop',
+  });
+  expect(w.ledger.readIntent(intent.intentId)?.state).toBe('completed');
+  expect(w.ledger.listDeliveries()[0]?.outcome).toBe('started');
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('review');
+});
+
+test('a person stopping the first turn and continuing leaves the Task waiting for review, not in progress', async () => {
+  const w = await world({ projects: [STATION_PROJECT], maxAttempts: 1 });
+  const intent = await running(w);
+  // The person presses Stop: the engine reports the turn aborted.
+  await endFirstTurn(w, intent, {
+    method: 'turn.aborted',
+    reason: 'interrupted',
+  });
+  // Recorded as the first turn's terminal: failed, on the delivery too. The
+  // attempt was used at invocation; the episode is exhausted (still listed open).
+  expect(w.ledger.readIntent(intent.intentId)?.state).toBe('failed');
+  expect(w.ledger.listDeliveries()[0]?.outcome).toBe('failed');
+  const episode = w.ledger.episode(intent.episodeKey);
+  expect(episode).toMatchObject({ state: 'exhausted', attemptCount: 1 });
+  expect(
+    w.ledger
+      .listOpenEpisodes()
+      .find((open) => open.episodeId === intent.episodeId)?.startFailed,
+  ).toBeUndefined();
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('review');
+  // The person continues in the same Session; it becomes theirs.
+  await w.service.dispatch(
+    {
+      type: 'sendTurn',
+      input: { threadId: intent.sessionId!, input: 'Continue' },
+    },
+    { clientOrigin: PERSON_ORIGIN },
+  );
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(2));
+  expect(w.ledger.readIntent(intent.intentId)?.personTakeoverAt).toBeTruthy();
+  await w.runtime.tick();
+  expect(w.ledger.readIntent(intent.intentId)?.state).toBe('failed');
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('review');
+});
+
+test('a person continuing before the runtime notices the turn ended still leaves the Task waiting for review', async () => {
+  const w = await world({ projects: [STATION_PROJECT], maxAttempts: 1 });
+  const intent = await running(w);
+  w.adapter.events.push({
+    method: 'turn.aborted',
+    reason: 'interrupted',
+    eventId: 'first-turn-turn.aborted',
+    provider: w.adapter.provider,
+    threadId: intent.sessionId!,
+    turnId: intent.turnId!,
+    createdAt: new Date().toISOString(),
+    invocationId: w.adapter.sends[0]?.invocationId,
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(intent.sessionId!, ['turn.aborted']),
+    ).toBeTruthy(),
+  );
+  // Stop then Continue with no runtime tick in between.
+  await w.service.dispatch(
+    {
+      type: 'sendTurn',
+      input: { threadId: intent.sessionId!, input: 'Continue' },
+    },
+    { clientOrigin: PERSON_ORIGIN },
+  );
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(2));
+  expect(w.ledger.readIntent(intent.intentId)?.personTakeoverAt).toBeTruthy();
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('in_progress');
+  await w.runtime.tick();
+  await w.runtime.tick();
+  expect(w.ledger.readIntent(intent.intentId)?.state).toBe('failed');
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('review');
+});
+
+test.each([
+  ['blocked by a person', 'blocked'],
+  ['done', 'done'],
+  ['canceled', 'canceled'],
+] as const)(
+  'a Task already %s when the first turn ends keeps its status',
+  async (_label, status) => {
+    const w = await world({ projects: [STATION_PROJECT] });
+    const intent = await running(w);
+    await w.graph.updateTaskStatus(intent.taskId!, status);
+    await endFirstTurn(w, intent, {
+      method: 'turn.completed',
+      finishReason: 'stop',
+    });
+    await w.runtime.tick();
+    expect(w.ledger.readIntent(intent.intentId)?.state).toBe('completed');
+    expect(w.graph.readTaskView(intent.taskId!)?.status).toBe(status);
+  },
+);
+
+test('a Task blocked by the rule being disabled keeps blocked when the stopped turn ends', async () => {
+  const w = await world({ approvalMode: 'auto' });
+  const intent = await running(w);
+  await setRuleMode(w, w.rule.id, 'off');
+  await w.runtime.tick();
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('blocked');
+  await endFirstTurn(w, intent, {
+    method: 'turn.aborted',
+    reason: 'interrupted',
+  });
+  await w.runtime.tick();
+  expect(w.graph.readTaskView(intent.taskId!)?.status).toBe('blocked');
+});
