@@ -256,6 +256,21 @@ export function useChatInput({
   const currentAgent = connection ? undefined : hostAgent;
   const cancelMessage = useCancelMessage(apiBase, connection);
 
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDraftRef = useRef<{ sessionId: string; text: string } | null>(
+    null,
+  );
+  /** Lets go of the chat's saved draft, including a keystroke not yet saved. */
+  const dropSavedDraft = useCallback(
+    (sid: string) => {
+      pendingDraftRef.current = null;
+      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = null;
+      clearDraft(sid);
+    },
+    [clearDraft],
+  );
+
   // Slash commands
   const { commands: slashCommands } = useSlashCommands(
     agentSlug,
@@ -268,7 +283,7 @@ export function useChatInput({
   const slashCommandHandler = useCallback(
     async (sid: string, command: string) => {
       if (connection && connection.routeKind !== 'host') return false;
-      return handleSlashCommand(sid, command, {
+      const result = await handleSlashCommand(sid, command, {
         onInputCleared,
         availableModels,
         bindingStatus:
@@ -290,9 +305,19 @@ export function useChatInput({
           closeAll,
         },
       });
+      // Answered here, with its line gone from the composer: the command is
+      // not unsent text, so the chat keeps no draft of it. A command that
+      // left its line in place (`/new` with text) keeps it saved.
+      if (
+        (result === true || result === 'CLEAR') &&
+        !activeChatsStore.getSnapshot()[sid]?.input
+      )
+        dropSavedDraft(sid);
+      return result;
     },
     [
       handleSlashCommand,
+      dropSavedDraft,
       connection,
       openModel,
       onOpenNewChat,
@@ -446,10 +471,6 @@ export function useChatInput({
       support.model_selection ||
       runtimeHasSessionOptions);
 
-  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingDraftRef = useRef<{ sessionId: string; text: string } | null>(
-    null,
-  );
   const flushDraft = useCallback(() => {
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     draftTimerRef.current = null;
@@ -821,13 +842,10 @@ export function useChatInput({
 
   const handleClearInput = useCallback(() => {
     if (!sessionId) return;
-    pendingDraftRef.current = null;
-    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-    draftTimerRef.current = null;
-    clearDraft(sessionId);
+    dropSavedDraft(sessionId);
     clearInput(sessionId);
     onInputCleared();
-  }, [sessionId, clearDraft, clearInput, onInputCleared]);
+  }, [sessionId, dropSavedDraft, clearInput, onInputCleared]);
 
   const handleAddAttachments = useCallback(
     (files: FileAttachment[]) => {
