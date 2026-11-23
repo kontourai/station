@@ -399,9 +399,8 @@ test('accepts and durably seeds a long proposal brief (#4007)', async () => {
 });
 
 /**
- * Fills the Station-wide revision ledger (#4055) through other Tasks' rooms,
- * with ever smaller documents, until even a one-character document's receipt
- * no longer fits. Each requested reference stores a full snapshot receipt.
+ * Fill the Station-wide ledger (#4055) with signed snapshots from other Tasks
+ * until even a one-character document's receipt no longer fits.
  */
 async function fillRevisionLedger(
   service: TaskGraphService,
@@ -409,7 +408,6 @@ async function fillRevisionLedger(
   bridge: ProjectTaskRoomRevisionEvidenceBridge,
   working: Awaited<ReturnType<typeof fixture>>['working'],
 ) {
-  const freezes = vi.spyOn(bridge, 'recordPublication');
   const request = new Request('http://station.test');
   const fillers: string[] = [];
   for (const size of [
@@ -443,19 +441,23 @@ async function fillRevisionLedger(
       expect(result).toMatchObject({ kind: 'committed' });
       const document = await room.readPlanForReview(filler.id, request);
       if (document.kind !== 'available') throw new Error('expected plan');
-      const frozen = await room.freezeDocumentRevision({
-        taskId: filler.id,
-        documentId: document.documentId,
-        workingRevision: document.revision,
-        beforeCommit: () => true,
+      const candidate = await working.readRevisionPublication({
+        scope: {
+          projectId: 'alpha',
+          taskId: filler.id,
+          documentId: document.documentId,
+        },
       });
-      if (!frozen) {
-        expect(freezes.mock.results.at(-1)).toMatchObject({
-          type: 'return',
-          value: { kind: 'refused', reason: 'capacity_exceeded' },
-        });
+      if (candidate.kind !== 'available') {
+        throw new Error(`revision publication was ${candidate.kind}`);
+      }
+      expect(candidate.publication.workingRevision).toBe(document.revision);
+      const recorded = bridge.recordPublication(candidate.publication);
+      if (recorded.kind === 'refused') {
+        expect(recorded.reason).toBe('capacity_exceeded');
         break;
       }
+      expect(recorded.kind).toBe('recorded');
       text += 'g';
     }
   }

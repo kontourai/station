@@ -6,7 +6,7 @@ import {
 import { CONVERSATION_FORK_REFUSAL_CODES } from '@kontourai/station-contracts/orchestration';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest';
 import {
   continuityBinding,
   continuityRegistry,
@@ -19,6 +19,7 @@ import {
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
 } from '../../../services/execution-target/execution-target-execution.js';
+import { receiptBus } from '../../../services/infra/receipt-bus.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -241,17 +242,6 @@ describe('fork and handoff deliver the transcript seed across engine families', 
         return { turnId: receipt.result.turnId };
       },
     };
-    const idle = (conversationId: string) =>
-      vi.waitFor(async () =>
-        expect(
-          (
-            await service.readCurrentConversationSession(
-              conversationId,
-              authority,
-            )
-          )?.session.hasActiveTurn,
-        ).toBe(false),
-      );
     /** One completed turn on `engine`; resolves with the turn it answered. */
     const turn = async (
       agent: AgentName,
@@ -262,25 +252,39 @@ describe('fork and handoff deliver the transcript seed across engine families', 
       const engine = engineOf(agent);
       const adapter = adapters.get(engine)!;
       const before = adapter.turns.length;
-      await executeForegroundMessage(
-        {
-          target: { environment: { kind: 'current' }, agent: agentId(agent) },
-          conversationId,
-          message,
-          userId: OWNER,
-          ...(handoffKey
-            ? { handoffIntent: createConversationHandoffIntent(handoffKey) }
-            : {}),
-        },
-        deps,
-      );
-      await vi.waitFor(() => expect(adapter.turns.length).toBe(before + 1));
-      await idle(conversationId);
-      const sent = adapter.turns[before]!;
-      return {
-        sent,
-        turnId: `${engine}-handoff-turn-${before + 1}`,
-      };
+      const turnId = `${engine}-handoff-turn-${before + 1}`;
+      const projected = Promise.withResolvers<void>();
+      const unsubscribe = receiptBus.subscribeForTest((receipt) => {
+        if (
+          receipt.kind === 'turn.event.projected' &&
+          receipt.reason === 'completed' &&
+          receipt.turnId === turnId &&
+          receipt.threadId === adapter.turns[before]?.threadId
+        ) {
+          projected.resolve();
+        }
+      });
+      onTestFinished(unsubscribe);
+      try {
+        const handle = await executeForegroundMessage(
+          {
+            target: { environment: { kind: 'current' }, agent: agentId(agent) },
+            conversationId,
+            message,
+            userId: OWNER,
+            ...(handoffKey
+              ? { handoffIntent: createConversationHandoffIntent(handoffKey) }
+              : {}),
+          },
+          deps,
+        );
+        expect(handle.providerTurnId).toBe(turnId);
+        await projected.promise;
+        expect(adapter.turns).toHaveLength(before + 1);
+        return { sent: adapter.turns[before]!, turnId };
+      } finally {
+        unsubscribe();
+      }
     };
     const fork = (
       source: string,
