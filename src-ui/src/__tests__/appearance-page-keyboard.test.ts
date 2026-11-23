@@ -34,13 +34,15 @@ const PRODUCT_FOCUS_RULES = (() => {
   return rules.join('\n');
 })();
 /**
- * The global `button:hover` rule from the real index.css. Its `background`
+ * The global `button:hover` rule from the real index.css (now
+ * `button:hover:where(:not(:disabled))`: a disabled button has no hover
+ * state, and every control measured here is enabled). Its `background`
  * shorthand resets `background-clip`, so a page control that clips its paint
  * must survive it.
  */
 const PRODUCT_BUTTON_HOVER_RULE = (() => {
   const css = readFileSync(resolve(REPO_ROOT, 'src-ui/src/index.css'), 'utf8');
-  const rule = css.match(/(?:^|\n)button:hover\s*\{[^}]*\}/);
+  const rule = css.match(/(?:^|\n)button:hover[^{]*\{[^}]*\}/);
   if (!rule) throw new Error('index.css button:hover rule not found');
   return rule[0];
 })();
