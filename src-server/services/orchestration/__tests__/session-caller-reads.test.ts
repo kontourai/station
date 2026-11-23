@@ -143,6 +143,32 @@ test('authorized existence, binding and conversation reads keep image bytes lazy
   expect(blobs).not.toHaveBeenCalled();
 });
 
+test('metadata reads omit transcript bodies from deeply nested legacy rows', () => {
+  const { store, append } = fixture();
+  append({ method: 'turn.started', turnId: 'turn', prompt: 'legacy input' });
+  // Earlier writers stored arbitrary nested JSON directly in the payload.
+  const row = store.listEventPayloads('thread', ['turn.started'])[0];
+  const payload = JSON.stringify({
+    ...row,
+    metadata: { legacy: JSON.parse('['.repeat(1100) + ']'.repeat(1100)) },
+  });
+  store['db']
+    .prepare('UPDATE orchestration_events SET payload = ? WHERE id = ?')
+    .run(payload, row.eventId);
+  const [metadata] = store.listEventPayloads(
+    'thread',
+    ['turn.started'],
+    false,
+    true,
+  );
+  expect(metadata.eventId).toBe(row.eventId);
+  expect(metadata).not.toHaveProperty('prompt');
+  expect(store.listEventPayloads('thread', ['turn.started'])[0]).toHaveProperty(
+    'prompt',
+    'legacy input',
+  );
+});
+
 // Distinct risk: the real service must wire the narrow usage reader and reuse
 // an unchanged projection, then invalidate it without leaking its mutable result.
 test('usage polling reuses unchanged per-session projections and observes new usage', async () => {
