@@ -8,15 +8,180 @@ import {
   outsideMcpPayload as payload,
   protocols,
 } from '../../../__test-utils__/outside-agent-mcp-fixture.js';
+import { createStationControlCallerRecordResolver } from '../../../runtime/mcp/station-control-caller.js';
+import { createStationControlDispatchScope } from '../../../runtime/mcp/station-control-dispatch-scope.js';
 import { mintStationControlMcpToken } from '../../../runtime/mcp/station-control-mcp-token.js';
 import { outsideAgentReleaseGuard } from '../../../security/outside-agent-release-guard.js';
 import { requiredExternalSurfaceCapability } from '../../../security/pairing-route-scopes.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
+import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { DAY } from '../../../services/outside-agent/oauth-records.js';
 import { OutsideAgentGrantStore } from '../../../services/outside-agent/oauth-store.js';
 
 const resource = `${issuer}/mcp`;
 
 describe('outside-agent MCP transport and live authority', () => {
+  test('list_active_work filters the live grant before projection and refuses another grant’s cursor', async () => {
+    let projectedStore!: EventStore;
+    const f = await fixture(({ home, clock, projects, cleanup }) => {
+      const eventStore = new EventStore(join(home, 'active-work.sqlite'));
+      const service = new OrchestrationService({
+        eventStore,
+        adoptionLedger: eventStore.createAdoptionLedger(),
+        eventBus: new EventBus(),
+        adapterRegistry: {
+          register() {},
+          get: () => undefined,
+          list: () => [],
+        },
+        logger: { debug() {}, warn() {} },
+      });
+      cleanup(async () => {
+        await service.shutdown();
+        eventStore.close();
+      });
+      const seed = (
+        threadId: string,
+        localProjectId: string,
+        owner = 'operator',
+        extra: Record<string, unknown> = {},
+      ) => {
+        const timestamp = new Date(clock.now - 60_000).toISOString();
+        eventStore.appendEvent({
+          eventId: `${threadId}:start`,
+          threadId,
+          sessionId: threadId,
+          provider: 'codex',
+          method: 'session.started',
+          createdAt: timestamp,
+          metadata: {
+            userId: owner,
+            projectSlug: 'alpha',
+            localProjectId,
+            ...extra,
+          },
+        });
+        eventStore.upsertSession({
+          threadId,
+          provider: 'codex',
+          status: 'ready',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          cwd: `/private/${threadId}`,
+        });
+      };
+      seed('alpha-one', 'id-alpha');
+      seed('alpha-two', 'id-alpha');
+      seed('alpha-host', 'id-alpha', 'operator', {
+        stationConfinement: 'host',
+      });
+      seed('foreign-host', 'id-foreign', 'operator', {
+        stationConfinement: 'host',
+      });
+      seed('other-owner', 'id-alpha', 'another-person', {
+        stationConfinement: 'host',
+      });
+      seed('alpha-peer', 'id-alpha', 'operator', {
+        delegation: { environmentKind: 'peer' },
+      });
+      const projectIdForSlug = (slug: string) =>
+        projects.find((project) => project.slug === slug)?.id;
+      const conversationId = (threadId: string) =>
+        eventStore.conversationForSession(threadId)?.conversationId;
+      const conversationSessionIds = (id: string) =>
+        eventStore.conversationSessions(id).map((session) => session.sessionId);
+      const startedMetadata = (threadId: string) =>
+        service.firstStartedMetadataOfThread(threadId);
+      const resolveRecord = createStationControlCallerRecordResolver({
+        actingPrincipal: (id) => service.resolveSessionActingPrincipal(id),
+        startedMetadata,
+        localProjectId: projectIdForSlug,
+        conversationId,
+      });
+      const dispatchScope = createStationControlDispatchScope({
+        resolveRecord,
+        sessionOwnerId: (id) => service.sessionRecordedOwnerId(id),
+        sessionExists: (id) => service.hasSessionStartRecord(id),
+        sessionRunsHost: (id) => service.sessionRunsHost(id),
+        conversationThreads: (id) =>
+          conversationSessionIds(conversationId(id) ?? id),
+        conversationSessionIds,
+        defaultSessionDirectory: () => undefined,
+        projectIdForSlug,
+        projectDirectories: () => projects,
+        sessionCwd: (id) => eventStore.readSessionByThread(id)?.cwd,
+        ownerMay: (owner, id) =>
+          owner === 'operator' && projects.some((project) => project.id === id),
+      });
+      projectedStore = eventStore;
+      return { eventStore, orchestrationService: service, dispatchScope };
+    });
+    const projection = vi.spyOn(
+      projectedStore,
+      'listSessionProjectionEventsForThreads',
+    );
+    const client = async () => {
+      const { accessToken } = f.grant();
+      const { session, response } = await f.initialize(accessToken);
+      await response.text();
+      return {
+        list: () => f.rpc(accessToken, 'tools/list', {}, session),
+        work: (args: Record<string, unknown>) =>
+          f.rpc(
+            accessToken,
+            'tools/call',
+            { name: 'list_active_work', arguments: args },
+            session,
+          ),
+      };
+    };
+    const alpha = await client();
+    const listed = await payload(await alpha.list());
+    expect(listed.result.tools).toContainEqual(
+      expect.objectContaining({
+        name: 'list_active_work',
+        annotations: { readOnlyHint: true },
+        inputSchema: expect.objectContaining({ additionalProperties: false }),
+      }),
+    );
+    const first = JSON.parse(
+      (await payload(await alpha.work({ limit: 1 }))).result.content[0].text,
+    ).data;
+    expect(
+      first.sessions.map((row: { sessionId: string }) => row.sessionId),
+    ).toEqual(['alpha-one']);
+    expect(first.incompleteSources).toEqual([
+      {
+        source: 'station.work',
+        state: 'partial',
+        reason: 'host-execution-filtered',
+        filteredCount: 1,
+      },
+    ]);
+    expect(first.nextCursor).toEqual(expect.any(String));
+    const second = JSON.parse(
+      (await payload(await alpha.work({ cursor: first.nextCursor, limit: 1 })))
+        .result.content[0].text,
+    ).data;
+    expect(
+      second.sessions.map((row: { sessionId: string }) => row.sessionId),
+    ).toEqual(['alpha-two']);
+    expect(second.nextCursor).toBeNull();
+    const otherGrant = await client();
+    const foreignCursor = await payload(
+      await otherGrant.work({ cursor: first.nextCursor }),
+    );
+    expect(foreignCursor.error).toMatchObject({
+      code: -32602,
+      message: 'Invalid active-work cursor',
+    });
+    expect(projection.mock.calls.map(([ids]) => [...ids].sort())).toEqual([
+      ['alpha-one', 'alpha-two'],
+      ['alpha-one', 'alpha-two'],
+    ]);
+  });
+
   test('anonymous GET before initialize challenges with resource metadata; no cookie/query/internal/device substitution', async () => {
     const f = await fixture();
     const token = f.grant().accessToken;

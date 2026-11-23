@@ -5835,7 +5835,8 @@ export class OrchestrationService {
       (threadId) =>
         (!only || only.has(threadId)) &&
         !this.isEphemeralSession(threadId) &&
-        this.sessionAuthz.canReadSession(threadId, authority),
+        this.sessionAuthz.canReadSession(threadId, authority) &&
+        (options.admitThread?.(threadId) ?? true),
     );
     const readableThreadSet = new Set(readableThreadIds);
     sample.threadsConsidered = readableThreadIds.length;

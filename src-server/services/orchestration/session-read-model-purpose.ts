@@ -68,4 +68,6 @@ export interface SessionReadModelReadOptions {
    * readability and ephemeral checks as the full read.
    */
   threadIds?: readonly string[];
+  /** Recheck domain admission after adapter refresh, before reading projection events or counts. */
+  admitThread?: (threadId: string) => boolean;
 }

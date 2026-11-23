@@ -8459,16 +8459,29 @@ export class EventStore {
   // Called by the Project activity route through a `Pick<EventStore>`
   // parameter, which the dead-code audit cannot trace to this class.
   // fallow-ignore-next-line unused-class-member
-  listThreadIdsStartedIn(projectId: string | undefined): string[] {
+  listThreadIdsStartedIn(
+    projectId: string | undefined,
+    bounded?: { limit: number; exactProject: true },
+  ): string[] {
+    const projectColumn = "json_extract(payload, '$.metadata.localProjectId')";
+    const projectFilter =
+      projectId === undefined
+        ? `${projectColumn} IS NULL`
+        : bounded?.exactProject
+          ? `${projectColumn} = ?`
+          : `(${projectColumn} IS NULL OR ${projectColumn} = ?)`;
     const rows = this.db
       .prepare(
         `SELECT DISTINCT thread_id FROM orchestration_events
           WHERE method IN ('session.started', 'session.configured')
             AND json_valid(payload)
-            AND (json_extract(payload, '$.metadata.localProjectId') IS NULL
-              ${projectId === undefined ? '' : "OR json_extract(payload, '$.metadata.localProjectId') = ?"})`,
+            AND ${projectFilter}
+          ${bounded ? 'ORDER BY thread_id LIMIT ?' : ''}`,
       )
-      .all(...(projectId === undefined ? [] : [projectId])) as Array<{
+      .all(
+        ...(projectId === undefined ? [] : [projectId]),
+        ...(bounded ? [bounded.limit] : []),
+      ) as Array<{
       thread_id: string;
     }>;
     return rows.map((row) => row.thread_id);
