@@ -1,10 +1,12 @@
 /**
  * @vitest-environment jsdom
  *
- * A slash command Station answers is not unsent text: once it is answered, the
- * chat's saved draft does not keep its line (#5491). The composer, the send,
- * the command dispatch and the draft store are the real ones; only the
- * contexts around them are stood in for.
+ * A slash command Station runs is not unsent text: once it has run, the
+ * chat's saved draft keeps none of its line, while the draft's quotes stay.
+ * A command that did not run keeps its line in the composer, and saved, so it
+ * can be corrected (#5491). The composer, the send, the command dispatch and
+ * the draft store are the real ones; only the contexts around them are stood
+ * in for.
  */
 
 import { SDKProvider } from '@kontourai/station-sdk';
@@ -50,33 +52,48 @@ import { useChatInput } from '../hooks/useChatInput';
 
 const apiBase = 'http://slash.station';
 const CHAT = 'slash-draft-chat';
+const OTHER = 'slash-draft-other-chat';
 
-function renderComposer(onOpenNewChat = vi.fn()) {
+const QUOTE = {
+  version: 1 as const,
+  origin: apiBase,
+  sessionId: CHAT,
+  turnId: 'turn-1',
+  messageId: 'message-1',
+  revision: 'a'.repeat(64),
+  excerpt: 'the line the person quoted',
+};
+
+function wrapper({ children }: { children: ReactNode }) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, enabled: false } },
   });
-  const wrapper = ({ children }: { children: ReactNode }) => (
+  return (
     <QueryClientProvider client={client}>
       <SDKProvider value={{ apiBase, contexts: {}, hooks: {} }}>
         <ActiveChatsProvider>{children}</ActiveChatsProvider>
       </SDKProvider>
     </QueryClientProvider>
   );
+}
+
+function renderComposer(onOpenNewChat = vi.fn(), sessionId = CHAT) {
   return renderHook(
-    () =>
+    ({ id }: { id: string }) =>
       useChatInput({
         apiBase,
-        sessionId: CHAT,
+        sessionId: id,
         agentSlug: 'assistant',
         conversationId: undefined,
         availableModels: [],
         onOpenNewChat,
       }),
-    { wrapper },
+    { wrapper, initialProps: { id: sessionId } },
   );
 }
 
-const composerText = () => activeChatsStore.getSnapshot()[CHAT]?.input ?? '';
+const composerText = (id = CHAT) =>
+  activeChatsStore.getSnapshot()[id]?.input ?? '';
 const notices = () =>
   (activeChatsStore.getSnapshot()[CHAT]?.ephemeralMessages ?? []).map(
     (message) => String(message.content),
@@ -84,25 +101,38 @@ const notices = () =>
 /** Longer than the composer's 500 ms draft save. */
 const pastDraftSave = () =>
   act(() => new Promise((resolve) => setTimeout(resolve, 650)));
+const helpPick = {
+  cmd: '/help',
+  description: 'Show available commands',
+  source: 'builtin' as const,
+};
+
+function openChat(id: string) {
+  activeChatsStore.removeChat(id);
+  activeChatsStore.initChat(id, {
+    agentSlug: 'assistant',
+    agentName: 'Assistant',
+    title: 'Slash',
+  });
+  activeChatsStore.updateChat(id, { status: 'idle', provider: 'ollama' });
+}
 
 describe('slash commands and the saved draft', () => {
   beforeEach(() => {
-    chatDraftsStore.clear(CHAT);
-    activeChatsStore.removeChat(CHAT);
-    activeChatsStore.initChat(CHAT, {
-      agentSlug: 'assistant',
-      agentName: 'Assistant',
-      title: 'Slash',
-    });
-    activeChatsStore.updateChat(CHAT, { status: 'idle', provider: 'ollama' });
+    for (const id of [CHAT, OTHER]) {
+      chatDraftsStore.clear(id);
+      openChat(id);
+    }
   });
   afterEach(() => {
     cleanup();
-    chatDraftsStore.clear(CHAT);
-    activeChatsStore.removeChat(CHAT);
+    for (const id of [CHAT, OTHER]) {
+      chatDraftsStore.clear(id);
+      activeChatsStore.removeChat(id);
+    }
   });
 
-  test('an answered command leaves no saved draft, so reopening the chat shows none', async () => {
+  test('a command that ran leaves no saved text, so reopening the chat shows none', async () => {
     const { result, unmount } = renderComposer();
     act(() => result.current.handleInputChange('/help'));
     // Typed and not yet sent, the line is unsent text like any other.
@@ -126,18 +156,33 @@ describe('slash commands and the saved draft', () => {
     const { result } = renderComposer();
     act(() => result.current.handleInputChange('/he'));
     await act(async () => {
-      await result.current.handleCommandSelect({
-        cmd: '/help',
-        description: 'Show available commands',
-        source: 'builtin',
-      });
+      await result.current.handleCommandSelect(helpPick);
     });
     await pastDraftSave();
     expect(notices().some((notice) => notice.includes('/help'))).toBe(true);
     expect(chatDraftsStore.get(CHAT)).toBe('');
   });
 
-  test('/new answers by opening New chat and keeps no draft of its line', async () => {
+  for (const path of ['Send', 'menu pick'] as const) {
+    test(`a command that ran by ${path} keeps the draft's quotes, and its draft marker`, async () => {
+      chatDraftsStore.addQuote(CHAT, QUOTE);
+      const { result } = renderComposer();
+      act(() => result.current.handleInputChange('/help'));
+      await waitFor(() => expect(chatDraftsStore.get(CHAT)).toBe('/help'));
+      await act(async () => {
+        if (path === 'Send') await result.current.handleSend();
+        else await result.current.handleCommandSelect(helpPick);
+      });
+      await pastDraftSave();
+      expect(notices().some((notice) => notice.includes('/help'))).toBe(true);
+      expect(chatDraftsStore.get(CHAT)).toBe('');
+      expect(chatDraftsStore.getQuotes(CHAT)).toEqual([QUOTE]);
+      // The inbox row's draft marker reads this: a quote alone still counts.
+      expect(chatDraftsStore.hasDraft(CHAT)).toBe(true);
+    });
+  }
+
+  test('/new runs by opening New chat and keeps no draft of its line', async () => {
     const onOpenNewChat = vi.fn();
     const { result } = renderComposer(onOpenNewChat);
     act(() => result.current.handleInputChange('/new'));
@@ -159,5 +204,38 @@ describe('slash commands and the saved draft', () => {
     expect(onOpenNewChat).not.toHaveBeenCalled();
     expect(composerText()).toBe('/new about the release');
     expect(chatDraftsStore.get(CHAT)).toBe('/new about the release');
+  });
+
+  // Unknown, and refused before running (a line the parser cannot read):
+  // nothing ran, so the line stays to be corrected, saved with it.
+  for (const [line, said] of [
+    ['/hlep me', 'Unknown command: /hlep me'],
+    ['/help "unclosed', 'Could not read /help "unclosed'],
+  ] as const) {
+    test(`a command that did not run (${line}) keeps its line in the composer and saved`, async () => {
+      const { result } = renderComposer();
+      act(() => result.current.handleInputChange(line));
+      await act(async () => {
+        await result.current.handleSend();
+      });
+      await pastDraftSave();
+      expect(notices().some((notice) => notice.startsWith(said))).toBe(true);
+      expect(composerText()).toBe(line);
+      expect(chatDraftsStore.get(CHAT)).toBe(line);
+    });
+  }
+
+  test("a command in one chat leaves another chat's pending save to land", async () => {
+    const { result, rerender } = renderComposer(vi.fn(), OTHER);
+    // Typed in the other chat; its save is still pending when the person
+    // moves to this chat and runs a command there.
+    act(() => result.current.handleInputChange('notes for the other chat'));
+    rerender({ id: CHAT });
+    await act(async () => {
+      await result.current.handleCommandSelect(helpPick);
+    });
+    await pastDraftSave();
+    expect(chatDraftsStore.get(OTHER)).toBe('notes for the other chat');
+    expect(chatDraftsStore.get(CHAT)).toBe('');
   });
 });

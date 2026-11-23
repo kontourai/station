@@ -260,15 +260,21 @@ export function useChatInput({
   const pendingDraftRef = useRef<{ sessionId: string; text: string } | null>(
     null,
   );
-  /** Lets go of the chat's saved draft, including a keystroke not yet saved. */
-  const dropSavedDraft = useCallback(
+  /**
+   * Empties the TEXT of `sid`'s saved draft, including a keystroke of that
+   * chat not yet saved. Its quotes stay: they are the person's, not the
+   * command's. Another chat's pending save is left to land.
+   */
+  const dropSavedDraftText = useCallback(
     (sid: string) => {
-      pendingDraftRef.current = null;
-      if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
-      draftTimerRef.current = null;
-      clearDraft(sid);
+      if (pendingDraftRef.current?.sessionId === sid) {
+        pendingDraftRef.current = null;
+        if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = null;
+      }
+      setDraft(sid, '');
     },
-    [clearDraft],
+    [setDraft],
   );
 
   // Slash commands
@@ -305,19 +311,20 @@ export function useChatInput({
           closeAll,
         },
       });
-      // Answered here, with its line gone from the composer: the command is
-      // not unsent text, so the chat keeps no draft of it. A command that
-      // left its line in place (`/new` with text) keeps it saved.
+      // A command that ran here empties the composer: its line is not unsent
+      // text, so the saved draft keeps none of it. One that did not run
+      // (unknown, refused, unreadable) leaves its line in the composer to be
+      // corrected, and saved with it.
       if (
         (result === true || result === 'CLEAR') &&
         !activeChatsStore.getSnapshot()[sid]?.input
       )
-        dropSavedDraft(sid);
+        dropSavedDraftText(sid);
       return result;
     },
     [
       handleSlashCommand,
-      dropSavedDraft,
+      dropSavedDraftText,
       connection,
       openModel,
       onOpenNewChat,
@@ -842,10 +849,13 @@ export function useChatInput({
 
   const handleClearInput = useCallback(() => {
     if (!sessionId) return;
-    dropSavedDraft(sessionId);
+    pendingDraftRef.current = null;
+    if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+    draftTimerRef.current = null;
+    clearDraft(sessionId);
     clearInput(sessionId);
     onInputCleared();
-  }, [sessionId, dropSavedDraft, clearInput, onInputCleared]);
+  }, [sessionId, clearDraft, clearInput, onInputCleared]);
 
   const handleAddAttachments = useCallback(
     (files: FileAttachment[]) => {

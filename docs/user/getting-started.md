@@ -886,7 +886,8 @@ the Draft; leaving that control or switching Station or account also cancels
 the pending deletion. After the window, Station asks the server to discard it
 and shows any refusal. On a touch row, the message appears below the row’s
 actions. Discarding an **unsent draft** clears the text you typed on this device.
-A slash command Station answers, such as `/help` or `/new`, is not kept as a draft.
+A slash command that runs, such as `/help` or `/new`, is not kept as a draft. One
+that does not run (unknown, or refused) stays in the composer to correct.
 
 With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Settle**

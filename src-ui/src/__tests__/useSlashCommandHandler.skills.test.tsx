@@ -131,7 +131,10 @@ describe('typing a command skill', () => {
       content: '/release-check needs a value for {{ticket}} — nothing was sent',
     });
     expect(mocks.runSkill).not.toHaveBeenCalled();
-    expect(mocks.updateChat).toHaveBeenCalledWith('session-1', { input: '' });
+    // It did not run: the line stays in the composer to be completed (#5491).
+    expect(mocks.updateChat).not.toHaveBeenCalledWith('session-1', {
+      input: '',
+    });
   });
 
   // args parse shell-style — quotes group into one value.
