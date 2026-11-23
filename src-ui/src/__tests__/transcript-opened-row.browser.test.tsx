@@ -279,7 +279,7 @@ test('(desktop) with a row held, one End reaches the end', async () => {
     await settledAtTail(page);
     await openAndGrow(page);
     expect(await distanceFromEnd(page)).toBeGreaterThan(100);
-    expect(await scrollToBottom(page).isVisible()).toBe(true);
+    // (That Scroll to bottom shows is pinned above; this is about End.)
     await page.keyboard.press('End');
     // The smooth scroll settles.
     await page.waitForTimeout(1_500);
