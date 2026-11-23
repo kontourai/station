@@ -1096,6 +1096,7 @@ describe('qualification watchdog workflow authority', () => {
     expect(workflow.on.workflow_run).toEqual({
       workflows: ['Main: Qualification', 'Nightly'],
       types: ['completed'],
+      branches: ['main'],
     });
     expect(Object.keys(workflow.on)).toContain('workflow_dispatch');
     expect(workflow.permissions).toEqual({

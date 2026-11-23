@@ -4544,6 +4544,7 @@ describe('hosted qualification workflow covers the full regression', () => {
         workflow_run: {
           workflows: [qualification.name, nightly.name],
           types: ['completed'],
+          branches: ['main'],
         },
       },
     });
