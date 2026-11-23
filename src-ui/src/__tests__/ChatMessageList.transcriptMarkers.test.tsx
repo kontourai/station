@@ -257,6 +257,34 @@ describe('chat-24 transcript markers', () => {
     expect(container.textContent).not.toContain('Switched to');
   });
 
+  test('a later message in the reused Session does not turn a refused switch into one', () => {
+    // After the refused switch the person writes again: that turn runs in
+    // the fresh context's Session the refused record names, on the old Agent.
+    const handoff = REFUSED.handoffs[0] as ConversationHandoffProjection;
+    const later = Date.parse(handoff.createdAt) + 60_000;
+    const reusedTurn = REFUSED.events.filter(
+      ({ event }) => event.threadId === handoff.sessionId && event.turnId,
+    );
+    expect(reusedTurn.length).toBeGreaterThan(0);
+    const again: CapturedWindow = {
+      ...REFUSED,
+      events: [
+        ...REFUSED.events,
+        ...reusedTurn.map(({ sequence, event }, offset) => ({
+          sequence: sequence + 1000,
+          event: {
+            ...event,
+            eventId: `${event.eventId}-again`,
+            turnId: `${event.turnId}-again`,
+            createdAt: new Date(later + offset).toISOString(),
+          },
+        })),
+      ],
+    };
+    const { container } = renderTranscript(again, transcript(again));
+    expect(container.textContent).not.toContain('Switched to');
+  });
+
   test('a switch that started from an empty fresh context says nothing was read', () => {
     const { container } = renderTranscript(
       RESET_THEN_SWITCH,
@@ -321,6 +349,23 @@ describe('chat-24 transcript markers', () => {
       expect(markers(container, 'model')[0]?.textContent).toBe(
         'Model: Scripted Echo Resolved →  to Scripted Showcase ResolvedSame engine, same memory.',
       );
+    });
+
+    test('one turn with the engine’s report and one without: no pill rather than an alias against an id', () => {
+      const window = rootOnly(COMPLETED);
+      const [first] = turnStarts(window);
+      const { container } = renderTranscript(
+        window,
+        transcript(window, (event) =>
+          event.method === 'turn.completed' && event.turnId === first?.turnId
+            ? {
+                ...event,
+                metadata: { ...event.metadata, reportedModel: 'scripted-echo' },
+              }
+            : event,
+        ),
+      );
+      expect(markers(container, 'model')).toHaveLength(0);
     });
 
     test('a reroute inside one turn keeps its own line and adds no model pill', () => {
@@ -499,9 +544,16 @@ describe('chat-24 transcript markers', () => {
   test('a turn still streaming shows its pill from the model it asked for', () => {
     const window = rootOnly(COMPLETED);
     const [, second] = turnStarts(window);
-    const settled = transcript(window).filter(
-      (message) => message.turnId !== second?.turnId,
-    );
+    // The settled turn carries the engine's own report; the running one has
+    // only what it asked for, compared with what the previous turn asked for.
+    const settled = transcript(window, (event) =>
+      event.method === 'turn.completed'
+        ? {
+            ...event,
+            metadata: { ...event.metadata, reportedModel: 'scripted-echo-ran' },
+          }
+        : event,
+    ).filter((message) => message.turnId !== second?.turnId);
     const { container, getByTestId } = renderTranscript(window, settled, {
       orchestrationSessionStarted: true,
       orchestrationTurnOpen: true,
