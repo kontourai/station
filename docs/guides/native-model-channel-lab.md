@@ -46,9 +46,14 @@ Both request types share the existing byte and concurrency limits. Each
 actual response write checks the captured delivery port, and host settlement
 continues to own completion after a response is sent.
 
-The callback exposes transport. Parent issuance, broker configuration,
-effect admission, and model accounting require their own owners before the
-path can serve inherited delegation.
+The worker also has an internal stdio relay mode for an explicitly bound
+loopback broker. The relay carries the scoped key in its environment and
+forwards requests through the fixed RPC path. It bounds requests, concurrency,
+and output. A reply must name the exact request ID, including its type, and
+contain either a result or an error. An invalid reply closes the relay.
+
+Parent issuance, native launcher configuration, effect admission, and model
+accounting still require their own owners before serving inherited delegation.
 
 The protocol limits requests to 2 MiB, frames to 3 MiB, channel lifetime to
 64 MiB, concurrent requests to four and total requests to 1,024. Response chunks
