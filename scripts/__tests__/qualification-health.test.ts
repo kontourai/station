@@ -1075,7 +1075,7 @@ describe('qualification health through the GitHub API', () => {
 });
 
 describe('qualification watchdog workflow authority', () => {
-  it('runs independently each hour, after qualification, and manually with read-only Actions access', () => {
+  it('runs independently each hour, after qualification and Nightly, and manually with read-only Actions access', () => {
     const workflow = load(
       readFileSync(
         resolve(
@@ -1094,8 +1094,9 @@ describe('qualification watchdog workflow authority', () => {
     };
     expect(workflow.on.schedule).toEqual([{ cron: '43 * * * *' }]);
     expect(workflow.on.workflow_run).toEqual({
-      workflows: ['Main: Qualification'],
+      workflows: ['Main: Qualification', 'Nightly'],
       types: ['completed'],
+      branches: ['main'],
     });
     expect(Object.keys(workflow.on)).toContain('workflow_dispatch');
     expect(workflow.permissions).toEqual({
