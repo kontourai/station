@@ -1,0 +1,363 @@
+/**
+ * The Automations list read: each job's last outcomes and whether Station
+ * paused it itself. Real `BuiltinScheduler` and SQLite ledger behind the real
+ * `GET /jobs` route; only the conversation runner is scripted, because what
+ * is under test is what the list read reports about the runs the scheduler
+ * recorded.
+ */
+import {
+  AUTOMATION_RUN_POLICY,
+  SCHEDULER_RECENT_OUTCOMES_LIMIT,
+  type SchedulerJob,
+} from '@kontourai/station-contracts/scheduler';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import { readJson as json } from '../../../__test-utils__/read-json.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { BuiltinScheduler } from '../../../services/scheduling/builtin-scheduler.js';
+import type { ScheduledConversationRunOutcome } from '../../../services/scheduling/scheduled-conversation-runs.js';
+import { createSchedulerLedger } from '../../../services/scheduling/scheduler-ledger.js';
+import { createSchedulerRoutes } from '../scheduler.js';
+
+const makeTempDir = trackTempDirs();
+const schedulers: BuiltinScheduler[] = [];
+afterEach(async () => {
+  for (const scheduler of schedulers.splice(0)) await scheduler.stop();
+});
+
+const TARGET = { kind: 'conversation', conversationId: 'chat-1' } as const;
+const CREATOR = { userId: 'human:local:operator' };
+const logger = { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() };
+
+function harness(
+  options: { mayReadRun?: (job: SchedulerJob) => boolean } = {},
+) {
+  const root = makeTempDir('station-list-outcomes-');
+  const ledger = createSchedulerLedger({ directory: root });
+  const outcomes: ScheduledConversationRunOutcome['kind'][] = [];
+  const schedule = vi.fn().mockResolvedValue(undefined);
+  const scheduler = new BuiltinScheduler({
+    ledger,
+    turnAdapter: {
+      invoke: async () => ({
+        kind: 'definitely-not-invoked' as const,
+        error: 'provider unavailable',
+      }),
+    },
+    conversationRuns: {
+      run: async () => {
+        const kind = outcomes.shift() ?? 'completed';
+        return kind === 'completed'
+          ? { kind, output: '{}', conversationId: 'chat-1' }
+          : kind === 'failed'
+            ? { kind, error: 'The turn stopped.', conversationId: 'chat-1' }
+            : { kind: 'indeterminate', error: 'unknown' };
+      },
+    },
+    notificationService: {
+      dispatch: (_operation: string, task: () => Promise<unknown>) => {
+        void task().catch(() => undefined);
+        return true;
+      },
+      schedule,
+    } as never,
+  });
+  schedulers.push(scheduler);
+  const service = {
+    listJobs: () => scheduler.listJobs(),
+    // One summary per job, so the route's run visibility check has a run to
+    // decide on.
+    listRunSummaries: async () =>
+      (await scheduler.listJobs()).map((job) => ({
+        runId: `schedule:built-in:${job.name}:fixture`,
+        providerId: 'built-in',
+        source: 'schedule',
+        sourceId: job.name,
+        status: 'completed',
+        startedAt: new Date().toISOString(),
+      })),
+  };
+  const app = createSchedulerRoutes(service as never, logger as never, {
+    mayReadAutomationJob: () => true,
+    mayReadAutomationRun: (_c, job) => options.mayReadRun?.(job) ?? true,
+  });
+  const list = async (): Promise<SchedulerJob[]> => {
+    const response = await app.request('/jobs');
+    expect(response.status).toBe(200);
+    return (await json(response)).data;
+  };
+  const listed = async (name: string) =>
+    (await list()).find((job) => job.name === name)!;
+  const fatigueBells = () =>
+    schedule.mock.calls
+      .map(([, notification]) => notification)
+      .filter((notification) =>
+        String(notification.dedupeTag).startsWith('scheduler:fatigue:'),
+      );
+  return { ledger, scheduler, outcomes, list, listed, fatigueBells };
+}
+
+async function addTargeted(
+  scheduler: BuiltinScheduler,
+  name: string,
+  schedule: SchedulerJob['schedule'] = { kind: 'every', everyMs: 3_600_000 },
+) {
+  await scheduler.addJob({
+    name,
+    schedule,
+    prompt: 'Summarize',
+    target: TARGET,
+    createdBy: CREATOR,
+  });
+}
+
+describe('GET /jobs recent outcomes', () => {
+  test(`carries the last ${SCHEDULER_RECENT_OUTCOMES_LIMIT} outcomes per automation, oldest first`, async () => {
+    expect(SCHEDULER_RECENT_OUTCOMES_LIMIT).toBe(12);
+    const { scheduler, outcomes, listed } = harness();
+    await addTargeted(scheduler, 'digest');
+    await addTargeted(scheduler, 'fresh');
+    // 14 runs. The first two fall off the strip; `more` says so.
+    const ran: ScheduledConversationRunOutcome['kind'][] = [
+      'failed',
+      'failed',
+      'completed',
+      'completed',
+      'indeterminate',
+      'completed',
+      'completed',
+      'failed',
+      'completed',
+      'completed',
+      'completed',
+      'completed',
+      'failed',
+      'completed',
+    ];
+    outcomes.push(...ran);
+    for (const _ of ran) await scheduler.runJob('digest');
+    outcomes.push('completed', 'failed');
+    await scheduler.runJob('fresh');
+    await scheduler.runJob('fresh');
+
+    expect((await listed('digest')).recentOutcomes).toEqual({
+      outcomes: [
+        'worked',
+        'worked',
+        'unknown',
+        'worked',
+        'worked',
+        'failed',
+        'worked',
+        'worked',
+        'worked',
+        'worked',
+        'failed',
+        'worked',
+      ],
+      more: true,
+    });
+    expect((await listed('fresh')).recentOutcomes).toEqual({
+      outcomes: ['worked', 'failed'],
+      more: false,
+    });
+  });
+
+  test('an automation with no runs has an empty strip, not an unknown one', async () => {
+    const { scheduler, listed } = harness();
+    await addTargeted(scheduler, 'never-ran');
+    expect((await listed('never-ran')).recentOutcomes).toEqual({
+      outcomes: [],
+      more: false,
+    });
+  });
+
+  test('a run that retried is one outcome, decided by its last attempt', async () => {
+    const { scheduler, listed } = harness();
+    await scheduler.addJob({
+      name: 'legacy',
+      schedule: { kind: 'every', everyMs: 60_000 },
+      prompt: 'x',
+      retryCount: 4,
+      retryDelaySecs: 0,
+    });
+    await scheduler.runJob('legacy');
+    expect(await scheduler.getJobLogs('legacy')).toHaveLength(5);
+    expect((await listed('legacy')).recentOutcomes).toEqual({
+      outcomes: ['failed'],
+      more: false,
+    });
+  });
+
+  test('a late occurrence recorded missed reads as skipped', async () => {
+    const { ledger, scheduler, listed } = harness();
+    const dueAt = Date.now() + 60_000;
+    await addTargeted(scheduler, 'late', { kind: 'at', timeMs: dueAt });
+    // Station "was off" until well past the lateness cutoff.
+    const claimed = ledger.claimDue(
+      dueAt + AUTOMATION_RUN_POLICY.latenessCutoffMs + 60_000,
+    );
+    expect(claimed).toMatchObject({ kind: 'available', value: [] });
+    expect((await listed('late')).recentOutcomes).toEqual({
+      outcomes: ['skipped'],
+      more: false,
+    });
+  });
+
+  test('a reader who may not read every run gets no outcomes or pause reason', async () => {
+    const threshold = AUTOMATION_RUN_POLICY.fatigueFailureThreshold;
+    const { scheduler, outcomes, listed } = harness({
+      mayReadRun: (job) => job.name !== 'private',
+    });
+    await addTargeted(scheduler, 'private');
+    outcomes.push(...Array(threshold).fill('failed'));
+    for (let run = 0; run < threshold; run += 1)
+      await scheduler.runJob('private');
+    const job = await listed('private');
+    expect(job.enabled).toBe(false);
+    expect(job).not.toHaveProperty('recentOutcomes');
+    expect(job).not.toHaveProperty('pausedItself');
+    expect(job).not.toHaveProperty('consecutiveFailures');
+  });
+});
+
+describe('GET /jobs paused itself', () => {
+  const threshold = AUTOMATION_RUN_POLICY.fatigueFailureThreshold;
+
+  test('is present after Station turns an automation off for failures, until a person turns it back on', async () => {
+    const { scheduler, outcomes, listed } = harness();
+    await addTargeted(scheduler, 'digest');
+    outcomes.push(...Array(threshold).fill('failed'));
+    for (let run = 0; run < threshold; run += 1)
+      await scheduler.runJob('digest');
+
+    const paused = await listed('digest');
+    expect(paused.enabled).toBe(false);
+    expect(paused.pausedItself).toEqual({
+      failures: threshold,
+      at: expect.any(String),
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await scheduler.enableJob('digest');
+    expect(await listed('digest')).not.toHaveProperty('pausedItself');
+
+    // A person pausing it afterwards is not Station pausing it.
+    await scheduler.disableJob('digest');
+    const byPerson = await listed('digest');
+    expect(byPerson.enabled).toBe(false);
+    expect(byPerson).not.toHaveProperty('pausedItself');
+  });
+
+  test('is absent on an automation a person paused', async () => {
+    const { scheduler, outcomes, listed } = harness();
+    await addTargeted(scheduler, 'digest');
+    outcomes.push('failed', 'failed');
+    await scheduler.runJob('digest');
+    await scheduler.runJob('digest');
+    await scheduler.disableJob('digest');
+    const job = await listed('digest');
+    expect(job).toMatchObject({ enabled: false, consecutiveFailures: 2 });
+    expect(job).not.toHaveProperty('pausedItself');
+  });
+});
+
+describe('runs whose outcome is unknown count toward pausing, and are said as such', () => {
+  const threshold = AUTOMATION_RUN_POLICY.fatigueFailureThreshold;
+
+  test('completed, unknown, unknown: two runs that did not work, shown as unknown', async () => {
+    const { scheduler, outcomes, listed } = harness();
+    await addTargeted(scheduler, 'digest');
+    outcomes.push('completed', 'indeterminate', 'indeterminate');
+    for (let run = 0; run < 3; run += 1) await scheduler.runJob('digest');
+    expect(await listed('digest')).toMatchObject({
+      enabled: true,
+      consecutiveFailures: 2,
+      recentOutcomes: {
+        outcomes: ['worked', 'unknown', 'unknown'],
+        more: false,
+      },
+    });
+  });
+
+  test(`${threshold} unknown runs pause it, and the notice does not call them failures`, async () => {
+    const { scheduler, outcomes, listed, fatigueBells } = harness();
+    await addTargeted(scheduler, 'digest');
+    outcomes.push(...Array(threshold).fill('indeterminate'));
+    for (let run = 0; run < threshold; run += 1)
+      await scheduler.runJob('digest');
+    expect(await listed('digest')).toMatchObject({
+      enabled: false,
+      pausedItself: { failures: threshold },
+    });
+    await vi.waitFor(() => expect(fatigueBells()).toHaveLength(1));
+    expect(fatigueBells()[0]).toMatchObject({
+      title: 'Automation "digest" paused itself',
+      body: `Its last ${threshold} runs didn't work. Fix it, then resume it.`,
+    });
+    expect(fatigueBells()[0].body).not.toMatch(/fail/i);
+  });
+});
+
+describe('ledger: recent outcomes leave out runs still in progress', () => {
+  function ledgerWithOneWorkedRun(retryCount: number) {
+    const ledger = createSchedulerLedger({
+      directory: makeTempDir('station-outcomes-live-'),
+    });
+    ledger.create({
+      name: 'nightly',
+      prompt: 'run',
+      enabled: true,
+      retryCount,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    const first = ledger.claimManual(
+      'nightly',
+      Date.parse('2026-01-01T01:00:00.000Z'),
+    );
+    if (first.kind !== 'claimed') throw new Error('expected a claim');
+    first.receipt.beginInvocation();
+    first.receipt.settle({
+      success: true,
+      state: 'completed',
+      completedAt: '2026-01-01T01:00:01.000Z',
+      durationSecs: 1,
+    });
+    const outcomes = () => {
+      const read = ledger.listViews(Date.parse('2026-01-01T02:00:00.000Z'));
+      if (read.kind !== 'available') throw new Error('list unavailable');
+      return read.value[0]!.recentOutcomes;
+    };
+    return { ledger, outcomes };
+  }
+
+  test('a run that is still going is not an outcome yet', () => {
+    const { ledger, outcomes } = ledgerWithOneWorkedRun(0);
+    const live = ledger.claimManual(
+      'nightly',
+      Date.parse('2026-01-01T01:30:00.000Z'),
+    );
+    if (live.kind !== 'claimed') throw new Error('expected a claim');
+    live.receipt.beginInvocation();
+    expect(outcomes()).toEqual({ outcomes: ['worked'], more: false });
+    ledger.close();
+  });
+
+  test('a retry in progress does not show its earlier failed attempt', () => {
+    const { ledger, outcomes } = ledgerWithOneWorkedRun(1);
+    const first = ledger.claimManual(
+      'nightly',
+      Date.parse('2026-01-01T01:30:00.000Z'),
+    );
+    if (first.kind !== 'claimed') throw new Error('expected a claim');
+    first.receipt.beginInvocation();
+    // Attempt 1 failed before reaching the engine; attempt 2 is running.
+    const retry = first.receipt.recordNotInvoked({
+      completedAt: '2026-01-01T01:30:01.000Z',
+      error: 'provider unavailable',
+    });
+    if (retry.kind !== 'claimed') throw new Error('expected the retry claim');
+    retry.receipt.beginInvocation();
+    expect(outcomes()).toEqual({ outcomes: ['worked'], more: false });
+    ledger.close();
+  });
+});

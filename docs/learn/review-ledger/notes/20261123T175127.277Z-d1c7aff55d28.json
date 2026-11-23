@@ -1,0 +1,7 @@
+{
+  "revision": "5e4f5c40c0f0adafb57a60aa05c22a0a8bc4d548",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"The pending list's second reader now reads the list's inbox query from the query cache and no longer observes it, so an invalidation always refetches through the list's own read. Checked the citing pages: chat-composer.md says the chat's context card shows the same count as the pending list from the same facts, which still holds while the list is mounted (the only time the count is current); mobile-release.md and native-shell-verification.md make no claim about this reader.","inputs":["src-ui/src/hooks/useConversationInboxSnapshot.ts"]}
+  ]
+}

@@ -37,6 +37,7 @@ vi.mock('../hooks/useScheduler', () => ({
 }));
 
 import { CronPreview, cronToHuman } from '../components/scheduler/CronEditor';
+import { scheduleSentence } from '../views/schedule/automationRow';
 import { getScheduleStarterTemplates } from '../views/schedule/utils';
 
 const BRISBANE = 'Australia/Brisbane'; // UTC+10, no DST
@@ -151,12 +152,18 @@ describe("CronPreview asks the server in the schedule's zone", () => {
 /**
  * #1536 D6 — the verification the L1 commit claimed but did not run: the
  * starter's schedule, through the SAME projector the scheduler uses, landing on
- * the hour its own `meta` line advertises, on the weekdays it names.
+ * the hour the empty page reads back for it, on the weekdays it names.
  */
-describe('a starter schedule fires when its meta line says', () => {
+describe('a starter schedule fires when its read-back says', () => {
   test('the daily repo digest lands on 8:00 on weekdays in Australia/Brisbane', () => {
     const morning = getScheduleStarterTemplates()[0];
-    expect(morning.meta).toBe('Weekdays · 8:00 AM');
+    // What the empty page shows beside it, read back from the schedule.
+    expect(
+      scheduleSentence(
+        morning.schedule,
+        morning.schedule.kind === 'cron' ? morning.schedule.timezone : 'UTC',
+      ),
+    ).toBe('Weekdays at 8:00 AM');
     expect(morning.schedule.kind).toBe('cron');
     if (morning.schedule.kind !== 'cron') return;
 
