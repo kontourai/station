@@ -37,3 +37,19 @@
   right: var(--k-space-2);
   margin-left: 0;
 }
+
+/* On the rail the Apps header becomes a rule, so Discover's `+` does not sit
+   straight under New Project's `+` with nothing between them. */
+.sidebar--collapsed:has(.sidebar__footer--quiet)
+  .sidebar__section-label--boards {
+  display: block;
+  height: 1px;
+  margin: var(--k-space-2);
+  background: var(--k-line);
+}
+
+.sidebar--collapsed:has(.sidebar__footer--quiet)
+  .sidebar__section-label--boards
+  > * {
+  display: none;
+}

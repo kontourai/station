@@ -113,6 +113,9 @@ vi.mock('@kontourai/station-sdk', () => ({
   useReorderProjectsMutation: () => ({ mutate: vi.fn() }),
   useBoardAvailabilityQuery: () => ({ data: undefined }),
   useAttentionQuery: () => ({ data: { pendingCount: 0 } }),
+  // The open project's channel list (`ProjectConversationList`).
+  useTasksQuery: () => ({ data: [] }),
+  useReadMarkerSummaryQuery: () => ({ data: undefined }),
   usePersonalLayoutsQuery: () => ({ data: state.boards }),
   useCreatePersonalLayoutMutation: () => ({
     mutate: vi.fn(),
