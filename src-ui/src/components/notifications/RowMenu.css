@@ -75,13 +75,13 @@
   background: var(--k-panel-raised);
 }
 
-.row-menu__item--danger {
-  color: var(--error-text);
+.row-menu__item[data-danger] {
+  color: var(--k-negative);
 }
 
-.row-menu__item--danger:hover:not(:disabled),
-.row-menu__item--danger:focus-visible {
-  background: color-mix(in srgb, var(--error-text) 12%, transparent);
+.row-menu__item[data-danger]:hover:not(:disabled),
+.row-menu__item[data-danger]:focus-visible {
+  background: var(--k-negative-soft);
 }
 
 .row-menu__item:disabled {

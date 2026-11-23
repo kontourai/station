@@ -199,7 +199,8 @@ export function RowMenu({
                     key={item.id}
                     type="button"
                     role="menuitem"
-                    className={`row-menu__item${item.danger ? ' row-menu__item--danger' : ''}`}
+                    className="row-menu__item"
+                    data-danger={item.danger || undefined}
                     aria-describedby={headingId}
                     disabled={item.disabled}
                     onClick={() => {
