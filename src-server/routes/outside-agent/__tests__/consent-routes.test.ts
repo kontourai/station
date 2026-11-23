@@ -1,5 +1,12 @@
 import { randomBytes } from 'node:crypto';
 import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts/environment-security';
+import { isObjectRecord } from '@kontourai/station-contracts/record-guard';
+import {
+  AgentRegistry,
+  TriggerRegistry,
+  WorkflowRegistry,
+} from '@voltagent/core';
+import { createVoltAgentApp } from '@voltagent/server-hono';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -827,7 +834,14 @@ test.each(kinds)(
 
 test('real runtime admission hides an outside registration without a passkey ceremony from native consent', async () => {
   const { security, channel } = await fixture();
-  const app = new Hono();
+  const { app } = await createVoltAgentApp(
+    {
+      agentRegistry: AgentRegistry.getInstance(),
+      workflowRegistry: WorkflowRegistry.getInstance(),
+      triggerRegistry: TriggerRegistry.getInstance(),
+    },
+    { configureFullApp: () => {} },
+  );
   configureRuntimeHttp({
     app,
     logger: createLogger({
@@ -913,12 +927,16 @@ test('real runtime admission hides an outside registration without a passkey cer
   const ordinary = create('plugin-trusted-permissions');
   const review = await nativeRequest(ordinary.id, 'native-review', {});
   expect(review.status).toBe(200);
-  const {
-    review: { nonce },
-  } = await review.json();
+  const body = await review.json();
+  if (
+    !isObjectRecord(body) ||
+    !isObjectRecord(body.review) ||
+    typeof body.review.nonce !== 'string'
+  )
+    throw new Error('Native consent review did not return a nonce');
   const decided = await nativeRequest(ordinary.id, 'native-decide', {
     decision: 'approve',
-    nonce,
+    nonce: body.review.nonce,
   });
   expect(decided.status).toBe(200);
   expect(ordinary.commitApproval).toHaveBeenCalledOnce();
