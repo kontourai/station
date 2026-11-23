@@ -23,18 +23,21 @@ function marker(
 
 describe('ConversationContextBoundary', () => {
   test.each([
-    ['continue-from-history', 'The agent rebuilt its memory from this chat.'],
+    [
+      'continue-from-history',
+      'The agent started over and read recent messages from this chat.',
+    ],
     [
       'empty-next-cold-start',
       'The agent forgot everything above. You still see it.',
     ],
     [
       'summary-next-cold-start',
-      'The agent kept only a summary of everything above. You still see it.',
+      'The agent kept only a summary. You still see everything above.',
     ],
     [
       'task-state-next-cold-start',
-      'The agent kept only a summary of everything above. You still see it.',
+      'The agent kept only a summary. You still see everything above.',
     ],
   ] as const)(
     'marks a %s reset as a fresh context with its own line',
@@ -48,6 +51,20 @@ describe('ConversationContextBoundary', () => {
       expect(container.querySelector('[aria-label]')).toBeNull();
     },
   );
+
+  test('names Station’s own engine as an engine, not the product', () => {
+    render(
+      <ConversationContextBoundary
+        boundary={marker('empty-next-cold-start')}
+        previousEngine={{ provider: 'station-agent' }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'Station’s engine forgot everything above. You still see it.',
+      ),
+    ).toBeTruthy();
+  });
 
   test('names the engine the last recorded turn ran on', () => {
     render(

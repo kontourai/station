@@ -1,3 +1,4 @@
+import type { ConversationContextBoundaryPolicy } from '@kontourai/station-contracts/conversation-context-boundary';
 import { readTaskProposal } from '@kontourai/station-contracts/task-graph';
 import {
   isSupportedTurnProvenanceEnvelope,
@@ -249,6 +250,10 @@ interface MessageBubbleProps {
    * recorded turn before it ran on (`transcriptChangeFacts`).
    */
   previousEngine?: TurnProvenanceEngine;
+  /** chat-24: on a switch row, how the fresh context before it started. */
+  startedFrom?: ConversationContextBoundaryPolicy;
+  /** chat-24: the row directly follows a drawn switch or fresh context. */
+  afterMarker?: boolean;
 }
 
 function MessageBubbleComponent({
@@ -271,6 +276,8 @@ function MessageBubbleComponent({
   owner,
   accountableHuman,
   previousEngine,
+  startedFrom,
+  afterMarker = false,
 }: MessageBubbleProps) {
   const isLastMessage = idx === activeSession.messageCount - 1;
   const rowIsLiveTurn =
@@ -441,6 +448,7 @@ function MessageBubbleComponent({
         handoff={handoff}
         agents={agents}
         previousEngine={previousEngine}
+        startedFrom={startedFrom}
       />
     );
   }
@@ -1215,7 +1223,12 @@ function MessageBubbleComponent({
       className={`message-row ${msg.role === 'user' && !sender ? 'message-row--user' : ''}${sender ? ' message-row--agent' : ''}${isMobile ? ' message-row--compact' : ''}${
         // Phone: a thin rule opens every exchange after the first. A steer is
         // more input on the same turn, not a new exchange.
-        isMobile && msg.role === 'user' && idx > 0 && !continuesTurn
+        // A change marker right above already opens it (chat-24).
+        isMobile &&
+        msg.role === 'user' &&
+        idx > 0 &&
+        !continuesTurn &&
+        !afterMarker
           ? ' message-row--exchange-start'
           : ''
       }`}

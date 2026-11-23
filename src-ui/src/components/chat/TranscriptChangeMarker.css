@@ -35,7 +35,7 @@
   max-width: 100%;
   padding: var(--k-space-1) var(--k-space-3);
   border: var(--k-border-thin, 1px) solid var(--k-line);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--k-panel);
   color: var(--k-text);
   font-weight: 500;

@@ -105,7 +105,11 @@ import {
   TranscriptTurnContext,
 } from './transcript-child-work';
 import { BROWSE_TURNS_EVENT } from './transcript-turn-browser-events';
-import { transcriptChangeFacts } from './transcriptChangeMarkers';
+import {
+  lastRecordedTurn,
+  modelChangeBetween,
+  transcriptChangeFacts,
+} from './transcriptChangeMarkers';
 import {
   markTranscriptPhase,
   noteTranscriptProgrammaticScroll,
@@ -754,6 +758,12 @@ function ChatMessageListComponent({
   // The dock supplies the bounded event-window projection. This component
   // owns only that projection's one scroll surface, so it cannot create a
   // second event reader.
+  // chat-24: model changes, fresh contexts and engine switches, derived from
+  // what each turn recorded, so every reader of the chat derives the same rows.
+  const changeFacts = useMemo(
+    () => transcriptChangeFacts(messages),
+    [messages],
+  );
   const transcriptRows = useMemo(() => {
     const projected = projectTranscriptMessages(
       activeSession.id,
@@ -761,12 +771,38 @@ function ChatMessageListComponent({
       previousTranscriptRows.current,
     );
     previousTranscriptRows.current = projected;
+    // A recorded switch that never ran is not a row at all.
+    const shown = projected.some((row) => changeFacts.get(row.index)?.hidden)
+      ? projected.filter((row) => !changeFacts.get(row.index)?.hidden)
+      : projected;
     return projectTranscriptChildRows(
-      projected,
+      shown,
       transcriptChildren,
       approvalEvents,
     );
-  }, [activeSession.id, messages, transcriptChildren, approvalEvents]);
+  }, [
+    activeSession.id,
+    messages,
+    changeFacts,
+    transcriptChildren,
+    approvalEvents,
+  ]);
+  // A turn still streaming outside the rows: its pill shows from the model
+  // its start asked for, so the answer does not move down when it ends.
+  const liveSessionId = activeSession.currentSessionId ?? activeSession.id;
+  const liveRequestedModel =
+    activeSession.orchestrationModel ?? activeSession.model;
+  const liveModelChange = useMemo(
+    () =>
+      isStreaming
+        ? modelChangeBetween(lastRecordedTurn(messages, changeFacts), {
+            sessionId: liveSessionId,
+            ...(liveRequestedModel ? { requested: liveRequestedModel } : {}),
+            settled: false,
+          })
+        : undefined,
+    [isStreaming, messages, changeFacts, liveSessionId, liveRequestedModel],
+  );
   const transcriptRowsRef = useRef(transcriptRows);
   transcriptRowsRef.current = transcriptRows;
   // #342: the user turns, from the whole row model — a virtualized transcript
@@ -1909,13 +1945,6 @@ function ChatMessageListComponent({
     activeSession.id,
   ]);
 
-  // chat-24: model changes, fresh contexts and engine switches, derived from
-  // what each turn recorded, so every reader of the chat derives the same rows.
-  const changeFacts = useMemo(
-    () => transcriptChangeFacts(messages),
-    [messages],
-  );
-
   const renderDefaultMessage = (
     msg: ChatMessage,
     idx: number,
@@ -1950,6 +1979,8 @@ function ChatMessageListComponent({
       owner={owner}
       accountableHuman={accountableHuman}
       previousEngine={changeFacts.get(idx)?.previousEngine}
+      startedFrom={changeFacts.get(idx)?.startedFrom}
+      afterMarker={changeFacts.get(idx)?.afterMarker === true}
     />
   );
 
@@ -1983,7 +2014,7 @@ function ChatMessageListComponent({
       );
     const messageId = (row.message as ChatMessage & { id?: string }).id;
     const modelChange = changeFacts.get(row.index)?.modelChange;
-    return (
+    const article = (
       <article
         className="chat-message-anchor"
         data-chat-message-key={row.id}
@@ -2008,13 +2039,22 @@ function ChatMessageListComponent({
           ? { id: `transcript-message-${encodeURIComponent(messageId)}` }
           : {})}
       >
-        {modelChange ? <ModelChangeMarker change={modelChange} /> : null}
         <TranscriptTurnContext.Provider
           value={rowPresentation.get(row.id)?.turn}
         >
           {renderMessage(row.message, row.index, row.id)}
         </TranscriptTurnContext.Provider>
       </article>
+    );
+    // The model change is its own item before the answer it explains, read
+    // once and never as part of that answer.
+    return modelChange ? (
+      <>
+        <ModelChangeMarker change={modelChange} />
+        {article}
+      </>
+    ) : (
+      article
     );
   };
 
@@ -2312,6 +2352,9 @@ function ChatMessageListComponent({
                           </React.Fragment>
                         ))
                       ))}
+                    {liveModelChange ? (
+                      <ModelChangeMarker change={liveModelChange} />
+                    ) : null}
                     {isStreaming && (
                       <div
                         className="chat-message-anchor"

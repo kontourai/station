@@ -2,11 +2,9 @@ import {
   type ConversationContextBoundaryTranscriptMarker,
   isSummaryContextBoundary,
 } from '@kontourai/station-contracts/conversation-context-boundary';
+import type { TurnProvenanceEngine } from '@kontourai/station-contracts/turn-provenance';
 import {
-  type TurnProvenanceEngine,
-  turnProvenanceEngineLabel,
-} from '@kontourai/station-contracts/turn-provenance';
-import {
+  engineSentenceName,
   FreshContextGlyph,
   TranscriptChangeMarker,
 } from './TranscriptChangeMarker';
@@ -25,12 +23,14 @@ export function ConversationContextBoundary({
   previousEngine?: TurnProvenanceEngine;
 }) {
   const engine = previousEngine
-    ? turnProvenanceEngineLabel(previousEngine)
+    ? engineSentenceName(previousEngine)
     : 'The agent';
+  // A summary start (of the chat, or of its Task's state) and a history
+  // start both give the engine a bounded read, never its memory back.
   const note = isSummaryContextBoundary(boundary.policy)
-    ? `${engine} kept only a summary of everything above. You still see it.`
+    ? `${engine} kept only a summary. You still see everything above.`
     : boundary.priorTranscriptInjected
-      ? `${engine} rebuilt its memory from this chat.`
+      ? `${engine} started over and read recent messages from this chat.`
       : `${engine} forgot everything above. You still see it.`;
   return (
     <TranscriptChangeMarker

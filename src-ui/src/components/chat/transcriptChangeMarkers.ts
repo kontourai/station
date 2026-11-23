@@ -1,10 +1,12 @@
+import type { ConversationContextBoundaryPolicy } from '@kontourai/station-contracts/conversation-context-boundary';
+import type { ConversationHandoffProjection } from '@kontourai/station-contracts/orchestration';
 import {
   isSupportedTurnProvenanceEnvelope,
   type TurnProvenanceEngine,
 } from '@kontourai/station-contracts/turn-provenance';
 import type { ChatMessage } from '../../types';
 
-/** A model the person changed between two turns of one Session. */
+/** The models two adjacent turns of one Session ran on. */
 export interface TranscriptModelChange {
   from: string;
   to: string;
@@ -12,95 +14,204 @@ export interface TranscriptModelChange {
 
 /**
  * What a transcript row says about a change of model or engine, derived only
- * from what each turn recorded (its provenance envelope) and from the
- * handoff and context-boundary rows. Nothing here is written anywhere, so a
- * reload, another device and an old chat all derive the same rows.
+ * from what each turn recorded and from the handoff and context-boundary
+ * rows. Nothing here is written anywhere, so a reload, another device and an
+ * old chat all derive the same rows.
  */
 export interface TranscriptChangeFacts {
-  /** On the first assistant row of a turn that ran a different model. */
+  /** Before the first answer row of a turn that ran another model. */
   modelChange?: TranscriptModelChange;
   /** On an engine-switch or fresh-context row: the engine before it. */
   previousEngine?: TurnProvenanceEngine;
+  /**
+   * On an engine-switch row whose target Session follows a fresh context
+   * that had not run yet: how that reset started it, which is what the new
+   * engine was given instead of recent messages.
+   */
+  startedFrom?: ConversationContextBoundaryPolicy;
+  /** A switch row with no switch behind it: not drawn at all. */
+  hidden?: true;
+  /** The first row after a drawn switch or fresh-context row. */
+  afterMarker?: true;
 }
 
-interface RecordedTurn {
-  sessionId: string;
-  engine: TurnProvenanceEngine;
-  model?: string;
+/** One turn as its rows recorded it. */
+export interface RecordedTurn {
+  sessionId?: string;
+  /** The model Station asked for (the turn's `turn.started`). */
+  requested?: string;
+  /** The model the engine itself reported for this turn, when it did. */
+  reported?: string;
+  engine?: TurnProvenanceEngine;
+  /** True once the turn ended and its record is final. */
+  settled: boolean;
 }
 
-function recordedTurn(message: ChatMessage): RecordedTurn | undefined {
-  const envelope = message.provenance;
-  if (!isSupportedTurnProvenanceEnvelope(envelope)) return undefined;
-  if (envelope.engine.state !== 'observed') return undefined;
+function recordedTurn(message: ChatMessage): RecordedTurn {
+  const envelope = isSupportedTurnProvenanceEnvelope(message.provenance)
+    ? message.provenance
+    : undefined;
+  const requested =
+    envelope?.requestedModel.state === 'observed'
+      ? envelope.requestedModel.value
+      : message.model;
   return {
-    sessionId: envelope.sessionId,
-    engine: envelope.engine.value,
-    ...(envelope.requestedModel.state === 'observed'
-      ? { model: envelope.requestedModel.value }
+    sessionId: envelope?.sessionId ?? message.sessionId,
+    ...(requested ? { requested } : {}),
+    ...(envelope?.reportedModel.state === 'observed'
+      ? { reported: envelope.reportedModel.value }
       : {}),
+    ...(envelope?.engine.state === 'observed'
+      ? { engine: envelope.engine.value }
+      : {}),
+    settled: envelope !== undefined,
   };
 }
 
-function boundaryKind(message: ChatMessage): 'engine' | 'context' | undefined {
-  for (const part of message.contentParts ?? []) {
-    if (part.type === 'conversation-handoff') return 'engine';
-    if (part.type === 'conversation-context-boundary') return 'context';
+/**
+ * The model change between two adjacent turns of one Session, compared on
+ * what ran: the engine's own report when both turns have one, else what
+ * Station asked for when neither has one. One report without the other is
+ * not comparable (an alias against a resolved id), and a turn that recorded
+ * no model at all breaks the comparison. A turn still running has only what
+ * was asked for, compared with what the previous turn asked for; once it
+ * ends, the rule above applies, so the pill names what ran, or goes away
+ * when the same model ran.
+ */
+export function modelChangeBetween(
+  previous: RecordedTurn | undefined,
+  current: RecordedTurn,
+): TranscriptModelChange | undefined {
+  if (!previous?.sessionId || previous.sessionId !== current.sessionId)
+    return undefined;
+  const [from, to] = !current.settled
+    ? [previous.requested, current.requested]
+    : previous.reported && current.reported
+      ? [previous.reported, current.reported]
+      : !previous.reported && !current.reported
+        ? [previous.requested, current.requested]
+        : [undefined, undefined];
+  return from && to && from !== to ? { from, to } : undefined;
+}
+
+function sessionTimes(messages: readonly ChatMessage[]) {
+  const times = new Map<string, number[]>();
+  for (const message of messages) {
+    if (message.role === 'system' || !message.sessionId) continue;
+    if (typeof message.timestamp !== 'number') continue;
+    const list = times.get(message.sessionId) ?? [];
+    list.push(message.timestamp);
+    times.set(message.sessionId, list);
+  }
+  return times;
+}
+
+/**
+ * A switch row is drawn only for a switch that ran: a turn of the target
+ * Session started after the switch was recorded. A record whose target is a
+ * fresh-context Session that had already run turns before it is a refused
+ * switch (the server reuses that Session), never a switch.
+ */
+function switchRan(
+  handoff: ConversationHandoffProjection,
+  times: ReadonlyMap<string, number[]>,
+  resetSessions: ReadonlySet<string>,
+): boolean {
+  const at = Date.parse(handoff.createdAt);
+  const turns = times.get(handoff.sessionId) ?? [];
+  if (Number.isNaN(at)) return false;
+  if (resetSessions.has(handoff.sessionId) && turns.some((t) => t < at))
+    return false;
+  return turns.some((t) => t >= at);
+}
+
+/**
+ * The last turn the rows recorded, for a turn still streaming outside them;
+ * undefined when a switch or fresh context was drawn after it (the next turn
+ * then runs in another Session anyway).
+ */
+export function lastRecordedTurn(
+  messages: readonly ChatMessage[],
+  facts: ReadonlyMap<number, TranscriptChangeFacts>,
+): RecordedTurn | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message) continue;
+    const boundary = message.contentParts?.some(
+      (part) => part.conversationHandoff || part.conversationContextBoundary,
+    );
+    if (boundary && !facts.get(index)?.hidden) return undefined;
+    if (message.role === 'assistant' && message.turnId)
+      return recordedTurn(message);
   }
   return undefined;
 }
 
-/**
- * Facts by message index. A model change is marked only between two turns
- * that both recorded the model Station asked for, ran on the same engine and
- * in the same Session, with nothing unrecorded between them: that is the
- * only case where "same engine, same memory" is true. A turn with no record
- * (an old chat, or one still running) resets the comparison rather than
- * letting a later turn claim a change that may have happened earlier.
- *
- * An engine switch or a fresh context already has its own row, and the turn
- * after it runs in a new Session, so a model change at that point never adds
- * a second row.
- */
+/** Facts by message index; see `TranscriptChangeFacts`. */
 export function transcriptChangeFacts(
   messages: readonly ChatMessage[],
 ): ReadonlyMap<number, TranscriptChangeFacts> {
+  const times = sessionTimes(messages);
+  const resets = new Map<string, ConversationContextBoundaryPolicy>();
+  for (const message of messages)
+    for (const part of message.contentParts ?? [])
+      if (part.conversationContextBoundary)
+        resets.set(
+          part.conversationContextBoundary.successorSessionId,
+          part.conversationContextBoundary.policy,
+        );
+
+  // A turn can span rows (a steer splits it); its record is the settled one.
   const byTurn = new Map<string, RecordedTurn>();
   for (const message of messages) {
     if (message.role !== 'assistant' || !message.turnId) continue;
     const turn = recordedTurn(message);
-    if (turn) byTurn.set(message.turnId, turn);
+    if (turn.settled || !byTurn.has(message.turnId))
+      byTurn.set(message.turnId, turn);
   }
 
   const facts = new Map<number, TranscriptChangeFacts>();
+  const set = (index: number, fact: TranscriptChangeFacts) =>
+    facts.set(index, { ...facts.get(index), ...fact });
   const seen = new Set<string>();
   let previous: RecordedTurn | undefined;
+  let lastEngine: TurnProvenanceEngine | undefined;
+  let markerDrawn = false;
   messages.forEach((message, index) => {
-    const boundary = boundaryKind(message);
-    if (boundary) {
-      if (previous) facts.set(index, { previousEngine: previous.engine });
-      // After a switch the engine before it is no longer the one running, so
-      // a later row with no recorded turn between must not name it. A fresh
-      // context keeps the engine; its successor Session is a new Session, so
-      // the session check below already keeps a model change from spanning it.
-      if (boundary === 'engine') previous = undefined;
+    const parts = message.contentParts ?? [];
+    const handoff = parts.find(
+      (part) => part.conversationHandoff,
+    )?.conversationHandoff;
+    const reset = parts.some((part) => part.conversationContextBoundary);
+    if (handoff) {
+      if (!switchRan(handoff, times, new Set(resets.keys()))) {
+        set(index, { hidden: true });
+        return;
+      }
+      const startedFrom = resets.get(handoff.sessionId);
+      set(index, {
+        ...(lastEngine ? { previousEngine: lastEngine } : {}),
+        ...(startedFrom ? { startedFrom } : {}),
+      });
+      // The engine before a switch is no longer the one running.
+      lastEngine = undefined;
+      markerDrawn = true;
       return;
     }
+    if (reset) {
+      if (lastEngine) set(index, { previousEngine: lastEngine });
+      markerDrawn = true;
+      return;
+    }
+    if (markerDrawn) set(index, { afterMarker: true });
+    markerDrawn = false;
     if (message.role !== 'assistant' || !message.turnId) return;
     if (seen.has(message.turnId)) return;
     seen.add(message.turnId);
-    const current = byTurn.get(message.turnId);
-    if (
-      current?.model &&
-      previous?.model &&
-      previous.model !== current.model &&
-      previous.sessionId === current.sessionId &&
-      previous.engine.provider === current.engine.provider
-    ) {
-      facts.set(index, {
-        modelChange: { from: previous.model, to: current.model },
-      });
-    }
+    const current = byTurn.get(message.turnId) ?? recordedTurn(message);
+    const change = modelChangeBetween(previous, current);
+    if (change) set(index, { modelChange: change });
+    if (current.engine) lastEngine = current.engine;
     previous = current;
   });
   return facts;

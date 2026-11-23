@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 
+import {
+  CONVERSATION_HANDOFF_CARRIED_FIELDS,
+  CONVERSATION_HANDOFF_RESET_FIELDS,
+} from '@kontourai/station-contracts/orchestration';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import { ConversationHandoffBoundary } from '../components/chat/ConversationHandoffBoundary';
@@ -33,17 +37,23 @@ describe('ConversationHandoffBoundary', () => {
   test('a return to an earlier engine says it picked up its own conversation, and lists only what was reset', () => {
     render(
       <ConversationHandoffBoundary
+        // The record a return writes (conversation-handoff-module.ts
+        // `describe`): every carried field plus the native session, and
+        // every reset field but the native cursor.
         handoff={{
           ...handoff,
-          carried: ['nativeSession', 'ownerTenantWorkspace'],
-          reset: ['sessionApprovals'],
+          carried: [...CONVERSATION_HANDOFF_CARRIED_FIELDS, 'nativeSession'],
+          reset: CONVERSATION_HANDOFF_RESET_FIELDS.filter(
+            (field) => field !== 'providerNativeCursor',
+          ),
+          nativeReturn: { sourceSessionId: 'session-0' },
         }}
         agents={[]}
       />,
     );
     expect(
       screen.getByText(
-        'deleted Agent “codex” picked up its earlier conversation and read what it missed. Approvals start fresh. Usage is counted separately.',
+        'deleted Agent “codex” picked up its earlier conversation and read what it missed. Approvals, tool servers and queued messages start fresh.',
       ),
     ).toBeTruthy();
   });
@@ -64,14 +74,15 @@ describe('ConversationHandoffBoundary', () => {
       />,
     );
 
+    // Plain text in reading order, named "agent · engine" (glossary), with
+    // no label that would read it twice.
     expect(
-      screen.getByRole('region', {
-        name: 'Switched to Code reviewer (Codex) · GPT 5',
-      }),
+      screen.getByText('Switched to Code reviewer · Codex · GPT 5'),
     ).toBeTruthy();
+    expect(screen.queryByRole('region')).toBeNull();
     expect(
       screen.getByText(
-        'Code reviewer read up to about 8K tokens of recent messages. Approvals, tool servers and queued messages start fresh. Usage is counted separately.',
+        'Code reviewer read up to about 8K tokens of recent messages. Approvals, tool servers and queued messages start fresh.',
       ),
     ).toBeTruthy();
     expect(screen.queryByText(/codex-private-id/)).toBeNull();
@@ -82,9 +93,9 @@ describe('ConversationHandoffBoundary', () => {
     render(<ConversationHandoffBoundary handoff={handoff} agents={[]} />);
 
     expect(
-      screen.getByRole('region', {
-        name: 'Switched to deleted Agent “codex” (engine unavailable) · GPT 5',
-      }),
+      screen.getByText(
+        'Switched to deleted Agent “codex” · engine unavailable · GPT 5',
+      ),
     ).toBeTruthy();
     expect(
       screen.getByText('Recorded engine connection: codex-private-id'),

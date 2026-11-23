@@ -1,4 +1,8 @@
 import {
+  type ConversationContextBoundaryPolicy,
+  isSummaryContextBoundary,
+} from '@kontourai/station-contracts/conversation-context-boundary';
+import {
   CONVERSATION_HANDOFF_DISCLOSURE_LABELS,
   type ConversationHandoffProjection,
   type ConversationHandoffResetField,
@@ -42,19 +46,45 @@ function startsFreshSentence(handoff: ConversationHandoffProjection): string {
 }
 
 /**
- * chat-24 "engine switch": the chat moved to another Agent or engine and
- * handed over a bounded slice of recent messages. The pill names where it
- * went; the line says what the new engine read and what starts fresh. The
- * full carried and reset lists stay behind "What carried and reset".
+ * What the new engine was given, in one sentence. The record's `carried`
+ * list is the same for every switch, so the start comes from what the
+ * server actually seeds (`conversation-lineage.ts` `handoffTranscriptContext`):
+ * nothing after an empty fresh context, the retained summary after a summary
+ * one, the engine's own earlier conversation on a return, else recent
+ * messages under the default budget.
+ */
+function readSentence(
+  handoff: ConversationHandoffProjection,
+  agentName: string,
+  startedFrom: ConversationContextBoundaryPolicy | undefined,
+): string {
+  if (handoff.nativeReturn || handoff.carried.includes('nativeSession'))
+    return `${agentName} picked up its earlier conversation and read what it missed.`;
+  if (startedFrom === 'empty-next-cold-start') return '';
+  if (startedFrom && isSummaryContextBoundary(startedFrom))
+    return `${agentName} read a summary instead of recent messages.`;
+  return handoff.carried.includes('authorizedTranscript')
+    ? `${agentName} read up to about ${HANDOFF_SEED_BUDGET_LABEL} tokens of recent messages.`
+    : '';
+}
+
+/**
+ * chat-24 "engine switch": the chat moved to another Agent or engine. The
+ * pill names where it went as "agent · engine" (glossary); the line says what
+ * the new engine was given and what starts fresh. The full carried and reset
+ * lists stay behind "What carried and reset". Drawn only for a switch that
+ * ran (`transcriptChangeFacts`).
  */
 export function ConversationHandoffBoundary({
   handoff,
   agents,
   previousEngine,
+  startedFrom,
 }: {
   handoff: ConversationHandoffProjection;
   agents: AgentData[];
   previousEngine?: TurnProvenanceEngine;
+  startedFrom?: ConversationContextBoundaryPolicy;
 }) {
   const agent = agents.find(
     (candidate) => candidate.slug === handoff.targetAgentId,
@@ -69,20 +99,14 @@ export function ConversationHandoffBoundary({
       : 'engine unavailable';
   const repeatsAgent =
     normalizedDisplayLabel(agentName) === normalizedDisplayLabel(engineName);
-  const target = repeatsAgent ? agentName : `${agentName} (${engineName})`;
+  const target = repeatsAgent ? agentName : `${agentName} · ${engineName}`;
   const model = handoff.targetModelId
     ? ` · ${modelIdentityLabel(handoff.targetModelId)}`
     : '';
   const switched = `Switched to ${target}${model}`;
-  const readSentence = handoff.carried.includes('nativeSession')
-    ? `${agentName} picked up its earlier conversation and read what it missed.`
-    : handoff.carried.includes('authorizedTranscript')
-      ? `${agentName} read up to about ${HANDOFF_SEED_BUDGET_LABEL} tokens of recent messages.`
-      : '';
   const note = [
-    readSentence,
+    readSentence(handoff, agentName, startedFrom),
     startsFreshSentence(handoff),
-    'Usage is counted separately.',
   ]
     .filter(Boolean)
     .join(' ');
@@ -90,7 +114,6 @@ export function ConversationHandoffBoundary({
   return (
     <TranscriptChangeMarker
       kind="engine"
-      label={switched}
       pill={
         <>
           {previousEngine || handoff.targetProvider ? (

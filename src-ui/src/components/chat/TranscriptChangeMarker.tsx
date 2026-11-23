@@ -1,3 +1,8 @@
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
+import {
+  type TurnProvenanceEngine,
+  turnProvenanceEngineLabel,
+} from '@kontourai/station-contracts/turn-provenance';
 import type { ReactNode } from 'react';
 import { modelIdentityLabel } from '../../utils/modelCapabilities';
 import { glyph } from '../icons/Glyph';
@@ -10,6 +15,17 @@ export const FreshContextGlyph = /* @__PURE__ */ glyph(
 );
 
 /**
+ * The engine a sentence names. Station's own engine is "Station's engine"
+ * (glossary): a bare "Station" would read as the product itself.
+ */
+export function engineSentenceName(engine: TurnProvenanceEngine): string {
+  return !engine.displayName &&
+    engineDisplayLabel(engine.provider) === 'Station'
+    ? 'Station’s engine'
+    : turnProvenanceEngineLabel(engine);
+}
+
+/**
  * chat-24: one row in the transcript that says what changed between two
  * stretches of a chat — a model change, a fresh context or an engine switch.
  * The pill names the change and the line under it says what the agent kept.
@@ -19,14 +35,11 @@ export function TranscriptChangeMarker({
   kind,
   pill,
   note,
-  label,
   children,
 }: {
   kind: 'model' | 'context' | 'engine';
   pill: ReactNode;
   note?: ReactNode;
-  /** A landmark name, for the one marker that carries more than its text. */
-  label?: string;
   children?: ReactNode;
 }) {
   const body = (
@@ -40,13 +53,9 @@ export function TranscriptChangeMarker({
       {children}
     </>
   );
-  const className = `transcript-change transcript-change--${kind}`;
-  return label ? (
-    <section className={className} aria-label={label}>
-      {body}
-    </section>
-  ) : (
-    <div className={className}>{body}</div>
+  // Its own item in reading order, outside any message, read once.
+  return (
+    <div className={`transcript-change transcript-change--${kind}`}>{body}</div>
   );
 }
 
