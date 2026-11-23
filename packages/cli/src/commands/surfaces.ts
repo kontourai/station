@@ -128,14 +128,22 @@ function isRecord(value: unknown): value is JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+const isNonemptyString = (value: unknown): value is string =>
+  typeof value === 'string' && value.length > 0;
+
+/**
+ * The host derives an unused slug from `displayName` when `name` is omitted,
+ * and judges what a display name may contain; this only refuses a body with
+ * neither.
+ */
 function requireSchedulerCreateBody(body: JsonRecord): AddJobOpts {
   if (
-    typeof body.name !== 'string' ||
-    body.name.length === 0 ||
-    typeof body.prompt !== 'string' ||
-    body.prompt.length === 0
+    !(isNonemptyString(body.name) || isNonemptyString(body.displayName)) ||
+    !isNonemptyString(body.prompt)
   ) {
-    throw new Error('Scheduler create requires nonempty name and prompt');
+    throw new Error(
+      'Scheduler create requires a nonempty prompt and a nonempty name or displayName',
+    );
   }
   return body as AddJobOpts;
 }

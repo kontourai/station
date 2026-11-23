@@ -123,3 +123,26 @@ export function classifyManagedModelBinding(input: {
   }
   return candidates.length === 0 ? { kind: 'none' } : { kind: 'ambiguous' };
 }
+
+/*
+ * The two sentences the server refuses a turn with when more than one
+ * candidate connection is enabled and nothing names one. They reach the UI
+ * only as text: the station-agent relay forwards `/chat`'s error string, and a
+ * failed session's attention body is that recorded reason. The UI recognises
+ * them to say the cause in plain words, so the server throws them from here
+ * and the UI matches them from here; rewording one in one place cannot
+ * silently turn the translation off. Released clients and server tests quote
+ * both, so neither is reworded.
+ */
+
+/** The provider service's refusal: no project or Station default names one. */
+export const AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE =
+  'Multiple enabled LLM provider connections require an application default.';
+
+/**
+ * The managed-binding refusal (`classifyManagedModelBinding` answered
+ * `ambiguous`): an agent that names no connection, with no Station default.
+ * It is also the agent's availability reason, which `/chat` answers with.
+ */
+export const AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE =
+  'Multiple enabled LLM provider connections require an explicit default.';

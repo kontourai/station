@@ -890,7 +890,9 @@ principal currentness and the generation are rechecked before publication.
 **Owner-backed exact open reads (#1363).** The same Task reader now supports a
 fresh personal-only Task/project point read, and the same transcript reader
 supports exact Session metadata and indexed-message event point reads. Hosted
-Task authority is rejected before worker admission. Transcript owner/tenant and
+Task authority is rejected before worker admission. The search route first
+resolves a Project filter given as id or slug to the Project's slug (refusing
+one that names no Project). Transcript owner/tenant and
 optional project filtering happen in SQL before the search limit; parent
 SessionAuthorization, principal currentness, cancellation and runtime generation
 still gate returned facts. Indexed messages carry an exact `matchedEventId`
@@ -2723,6 +2725,8 @@ invocation identity and publishes acceptance synchronously with the start RPC
 response, before a completion in the same transport chunk can arrive. Unknown
 or reused native IDs remain unattributed on notifications. Teardown terminals
 use the departing record's attribution even after it has been unregistered. Embedded memory uses local event/fence ordinals and the public pure decisions without a restart claim; unavailable linked custody refuses.
+
+**Held turn starts.** A send whose engine call failed after invocation leaves its row `indeterminate` under this live process, and later starts on that Session are refused, because the turn may be running. Before such a refusal answers, the [execution coordinator](../../src-server/services/orchestration/session-execution-coordinator.ts) hands this process's own held rows to the service, which settles them through [interrupted-turn recovery](../../src-server/services/orchestration/interrupted-turn-recovery.ts) once the adapter that dispatched the start reports that its engine has ended. The refusal codes, and what clears each, are in the [Session API](../reference/session-api.md).
 
 Local begun/accepted identity, early-terminal memory, lifecycle anchors and workspace release follow actual invocation disposition. Acknowledged definitive refusal removes only its local invocation; uncertain settlement retains it. Cold and batched activity seeds preserve the selected invocation, and live tool updates select that identity before changing its tool ledger. Untagged non-provider starts remain observed facts while structured identity and its tools persist. Bounded reads retain the latest structured or genuine provider start before selecting terminal/error companions; a newer provider start prevents reviving an older invocation. A matching partial index on canonical events bounds positive-start seeks, including long raw suffixes and legacy-only histories. Malformed start rows remain decode blockers. Migration builds the index atomically; required-name and definition checks refuse absent or replaced indexes rather than falling back to a history scan. A terminal cannot release workspace custody while a durable effect remains. Untagged terminal acknowledgement and new native/sequence result effects require a read-only host disposition proving inactive, genuinely inputless storage: full current records and retained prepared audits must contain no captured input. This deliberately makes untagged legacy acknowledgement unavailable on a thread with retained capture history, even after its active fence is gone; exact positively scoped current/witness proof remains a separate path. Missing or corrupt proof holds, and local busy state alone grants no authority. Wait and delegated-result consumers carry the proved settled invocation into bounded output reads; keyed native-return status reads the retained prepared association and canonical terminal disposition. Untagged start observations cannot consume an exact invocation reservation or receive invocation or Skill credit. A separate bounded legacy routing slot can stamp the principal, client origin and send key after matching the accepted native turn; that routing key is not invocation or terminal authority. Internal result keys use distinct versioned invocation/native/sequence tuples. Retained older rows deduplicate by semantic identity across states without changing their delivery ids; ambiguous old encodings hold rather than granting effect authority. Earliest native-only result rows retain their format provenance and block a new invocation-key delivery when the native association is ambiguous; their pending effects cannot borrow a later invocation's proof. Stop uses the same retained-start identity decision while preserving deferred-retry targeting. Inputless engine-opened turns retain their separate accepted-row and event co-commit protocol, capacity, provider-trigger provenance and legacy retirement. Task-dispatch, lifecycle and passive settlement audits remain outside ordinary terminal cleanup.
 
@@ -5601,8 +5605,10 @@ executes those claims through a required `ScheduledTurnAdapter` whose result
 is `completed`, `definitely-not-invoked` or `indeterminate`.
 
 **State, retry and authority.** SQLite serializes claims and mutations across
-processes. A stable `jobId` is distinct from the editable name; deleting and
-recreating a job gives it a new scheduled-job principal. The due claim records
+processes. A stable `jobId` is distinct from the job's `name` (a slug that routes and
+runs are keyed by) and from its optional `displayName`, the only name an edit
+can change; deleting and recreating a job gives it a new scheduled-job
+principal. The due claim records
 its occurrence and firing time. Terminal outcomes consume that occurrence;
 manual runs do not advance the recurring cursor. Claim and `beginInvocation`
 persist before their respective effects. A dead initial pre-invocation owner

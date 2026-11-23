@@ -1,0 +1,7 @@
+{
+  "revision": "fbefd43834d3a9ca94e47e8d232b0edfdb82668f",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"self-configuring-agent's Scheduled jobs section now says add_job can name a job by slug, displayName or both. session-api links to its dispatch-authority and Session control sections, unaffected.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

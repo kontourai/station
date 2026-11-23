@@ -27,6 +27,14 @@ export function defaultConfig(type: string): Record<string, unknown> {
 }
 
 /**
+ * An OpenAI-compatible connection needs the address of its server; the
+ * server refuses a save without one (`connection_address_required`).
+ */
+export function hasConnectionAddress(config: Record<string, unknown>): boolean {
+  return typeof config.baseUrl === 'string' && config.baseUrl.trim().length > 0;
+}
+
+/**
  * Bedrock only persists the fields its selected `authMode` actually uses
  * (docs/design/connections-onboarding.md §3.1):
  * `authMode` itself is omitted for the default "chain" mode (keeping the
@@ -45,6 +53,7 @@ export function isConnectionConfigValid(
   type: string,
   config: Record<string, unknown>,
 ): boolean {
+  if (type === 'openai-compat') return hasConnectionAddress(config);
   if (type !== 'bedrock') return true;
   const authMode =
     typeof config.authMode === 'string' ? config.authMode : 'chain';

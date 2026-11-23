@@ -242,6 +242,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
     const memoryAdapters = new Map();
     const agentMetadataMap = new Map();
     const agentHooksMap = new Map();
+    const agentFixedTokens = new Map();
     const provenanceGeneration = createMCPToolProvenanceGeneration();
 
     const agents = await bootstrapRuntimeDefaultAgent({
@@ -266,6 +267,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
       memoryAdapters,
       agentMetadataMap,
       agentHooksMap,
+      agentFixedTokens,
     });
 
     expect(configLoader.saveIntegration).toHaveBeenCalledWith(
@@ -353,6 +355,17 @@ describe('bootstrapRuntimeDefaultAgent', () => {
         name: 'Station Assistant',
       }),
     );
+    // #5390: the stats estimate of what the agent sends, from the very
+    // instructions and tools it was built with, as a persisted agent's.
+    expect(agentFixedTokens.get('default')).toEqual({
+      systemPromptTokens: Math.ceil(instructions().length / 4),
+      mcpServerTokens: Math.ceil(
+        JSON.stringify([{ name: 'tool-1' }]).length / 4,
+      ),
+    });
+    expect(agentFixedTokens.get('default').systemPromptTokens).toBeGreaterThan(
+      0,
+    );
   });
 
   test('wires the approval guardian into the default agent gate (station#1834 round 2)', async () => {
@@ -414,11 +427,49 @@ describe('bootstrapRuntimeDefaultAgent', () => {
     expect(reviewToolCall).toHaveBeenCalledOnce();
   });
 
+  test('a failed agent build leaves the previous prompt estimate untouched (#5390)', async () => {
+    const previous = { systemPromptTokens: 199, mcpServerTokens: 9 };
+    const agentFixedTokens = new Map([['default', previous]]);
+
+    await expect(
+      bootstrapRuntimeDefaultAgent({
+        appConfig: { defaultModel: 'claude-sonnet' } as any,
+        configLoader: {
+          saveIntegration: vi.fn(async () => {}),
+          hasIntegration: vi.fn(async () => true),
+          getProjectHomeDir: vi.fn(() => '/tmp/project'),
+        } as any,
+        framework: {
+          createTempAgent: vi.fn(async () => {
+            throw new Error('build failed');
+          }),
+        } as any,
+        logger: { info: vi.fn(), warn: vi.fn() } as any,
+        defaultSystemPrompt: 'a different prompt',
+        autoApproveTools: [],
+        replaceTemplateVariables: (text) => text,
+        resolveDefaultModelHint: () => 'claude-sonnet',
+        createModel: vi.fn(async () => ({ id: 'model-1' })),
+        loadAgentTools: vi.fn(async () => [{ name: 'tool-1' }]),
+        activeAgents: new Map(),
+        agentTools: new Map(),
+        memoryAdapters: new Map() as any,
+        agentMetadataMap: new Map(),
+        agentFixedTokens,
+      }),
+    ).rejects.toThrow('build failed');
+
+    expect(agentFixedTokens.get('default')).toBe(previous);
+  });
+
   test('removes stale default-agent state when no launchable model remains', async () => {
     const activeAgents = new Map([['default', { id: 'stale-default' }]]);
     const agentTools = new Map([['default', [{ name: 'stale-tool' }]]]);
     const memoryAdapters = new Map([['default', { stale: true }]]);
     const agentMetadataMap = new Map([['default', { slug: 'default' }]]);
+    const agentFixedTokens = new Map([
+      ['default', { systemPromptTokens: 199, mcpServerTokens: 9 }],
+    ]);
 
     const agents = await bootstrapRuntimeDefaultAgent({
       appConfig: {} as any,
@@ -439,9 +490,11 @@ describe('bootstrapRuntimeDefaultAgent', () => {
       agentTools,
       memoryAdapters: memoryAdapters as any,
       agentMetadataMap,
+      agentFixedTokens,
     });
 
     expect(agents).toEqual({});
+    expect(agentFixedTokens.has('default')).toBe(false);
     expect(activeAgents.has('default')).toBe(false);
     expect(agentTools.has('default')).toBe(false);
     expect(memoryAdapters.has('default')).toBe(false);
@@ -475,6 +528,9 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
     const memoryAdapters = new Map([['default', { stale: true }]]);
     const agentMetadataMap = new Map();
     const agentHooksMap = new Map([['default', { stale: true } as any]]);
+    const agentFixedTokens = new Map([
+      ['default', { systemPromptTokens: 199, mcpServerTokens: 9 }],
+    ]);
     const createModel = vi.fn(async () => ({ id: 'model-1' }));
     const framework = {
       createTempAgent: vi.fn(async () => fixtureAgent()),
@@ -487,6 +543,7 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
       memoryAdapters,
       agentMetadataMap,
       agentHooksMap,
+      agentFixedTokens,
       createModel,
       framework,
       logger,
@@ -511,6 +568,7 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
           memoryAdapters: memoryAdapters as any,
           agentMetadataMap,
           agentHooksMap,
+          agentFixedTokens,
           ...overrides,
         }),
     };
@@ -536,6 +594,8 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
     expect(scenario.agentTools.has('default')).toBe(false);
     expect(scenario.memoryAdapters.has('default')).toBe(false);
     expect(scenario.agentHooksMap.has('default')).toBe(false);
+    // #5390: nor a prompt estimate for an instance that no longer exists.
+    expect(scenario.agentFixedTokens.has('default')).toBe(false);
     expect(scenario.agentMetadataMap.get('default')).toEqual(
       expect.objectContaining({
         slug: 'default',

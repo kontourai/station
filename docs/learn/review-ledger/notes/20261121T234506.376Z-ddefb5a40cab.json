@@ -1,0 +1,7 @@
+{
+  "revision": "684216e0ba9d746784a8bd7314d6342cf512eed8",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Regenerated shipped topics carry the module-map held-start paragraph as edited this round; station-docs.md describes the shipped-topic mechanism, not this paragraph, and remains accurate.","inputs":["src-server/tools/station-docs-content.ts"]}
+  ]
+}

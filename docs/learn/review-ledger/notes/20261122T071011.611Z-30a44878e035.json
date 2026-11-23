@@ -1,0 +1,7 @@
+{
+  "revision": "b03fdb625dcb2d1db25822a1ebdc7c991d312fab",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Delta: an import block was re-sorted on this branch after the last review; no behavior change. Checked the citing page against the start, cancel and pause paths.","inputs":["src-server/runtime/automation-actions-runtime.ts"]}
+  ]
+}

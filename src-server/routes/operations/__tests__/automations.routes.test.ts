@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { createAutomationRule } from '@kontourai/station-sdk/client';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { readJson as json } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { requiredPairingScope } from '../../../security/pairing-route-scopes.js';
@@ -8,7 +10,10 @@ import {
   workflowRun,
 } from '../../../services/automation/__tests__/fixtures/workflow-run-fixture.js';
 import { recordAutomationEvent } from '../../../services/automation/automation-intake.js';
-import { createAutomationLedger } from '../../../services/automation/automation-ledger.js';
+import {
+  type AutomationEpisodeRecord,
+  createAutomationLedger,
+} from '../../../services/automation/automation-ledger.js';
 import {
   projectAutomationEpisode,
   retryAutomationEpisode,
@@ -309,10 +314,20 @@ async function operatorSurface(
     operator?: (request: Request) => Promise<AutomationOperator>;
     preview?: boolean;
     grants?: string[];
+    /** The current Projects, so rules and grants may name one by slug. */
+    projects?: { id: string; slug: string }[];
+    /** Replaces the ledger's open episodes, and reads a Task's status. */
+    episodes?: () => AutomationEpisodeRecord[];
+    taskStatus?: (taskId: string) => string | undefined;
   } = {},
 ) {
   const home = makeTempDir('automation-operator-');
-  const store = new AutomationStore(home);
+  const projects = options.projects;
+  const store = new AutomationStore(
+    home,
+    undefined,
+    projects ? { listProjects: () => projects } : undefined,
+  );
   const ledger = createAutomationLedger({ directory: join(home, 'ledger') });
   let previewOn = options.preview ?? true;
   const app = createAutomationRoutes(
@@ -325,11 +340,14 @@ async function operatorSurface(
       },
       store,
       listOpenEpisodes: (limit) =>
-        ledger.listOpenEpisodes(limit).map(projectAutomationEpisode),
+        (options.episodes?.() ?? ledger.listOpenEpisodes(limit)).map((record) =>
+          projectAutomationEpisode(record, store.read(), options.taskStatus),
+        ),
       retryEpisode: (ruleId, episodeId) =>
         retryAutomationEpisode({
           ledger,
           read: () => store.read(),
+          taskStatus: (taskId) => options.taskStatus?.(taskId),
           ruleId,
           episodeId,
           now: Date.now(),
@@ -534,6 +552,45 @@ describe('Automation operator surface (#4513)', () => {
     expect(episodes.data.episodes[0]).not.toHaveProperty('episodeKey');
   });
 
+  test('a Task that could not be canceled blocks Retry only while it is live', async () => {
+    let status: string | undefined = 'in-progress';
+    const s = await operatorSurface({
+      episodes: () => [
+        {
+          episodeKey: '["rule-1","x"]',
+          ruleId: 'rule-1',
+          episodeId: '42',
+          state: 'open',
+          attemptCount: 0,
+          maxAttempts: 1,
+          openedAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          startFailed: true,
+          startFailure: 'task-not-canceled',
+          failedTaskId: 'task-1',
+        },
+      ],
+      taskStatus: () => status,
+    });
+    const listed = async () =>
+      (
+        (await json(await s.send('GET', '/episodes'))) as {
+          data: { episodes: Record<string, unknown>[] };
+        }
+      ).data.episodes[0];
+    expect(await listed()).toMatchObject({
+      startFailed: true,
+      startFailure: 'task-not-canceled',
+    });
+    status = 'canceled';
+    const after = await listed();
+    expect(after).toMatchObject({ startFailed: true });
+    expect(after).not.toHaveProperty('startFailure');
+    expect(after).not.toHaveProperty('failedTaskId');
+    status = 'done';
+    expect(await listed()).not.toHaveProperty('startFailure');
+  });
+
   test('retry-episode explains each refusal and parses its target', async () => {
     const s = await operatorSurface();
     expect(
@@ -553,4 +610,83 @@ describe('Automation operator surface (#4513)', () => {
     expect(open.status).toBe(409);
     expect(await json(open)).toMatchObject({ code: 'not-exhausted' });
   });
+});
+
+describe('a rule names its Project by slug through the SDK and the route', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const STATION = {
+    id: '5b0d3c1e-8f6a-4c2b-9d7e-1a2b3c4d5e6f',
+    slug: 'station',
+  };
+
+  /** The SDK's `fetch`, answered by the real route. */
+  function sdkAgainst(s: Awaited<ReturnType<typeof operatorSurface>>) {
+    vi.stubGlobal(
+      'fetch',
+      async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const request = new Request(input, init);
+        const url = new URL(request.url);
+        return s.app.request(
+          url.pathname.replace(/^\/automations/, '') + url.search,
+          {
+            method: request.method,
+            headers: request.headers,
+            ...(request.body ? { body: await request.text() } : {}),
+          },
+        );
+      },
+    );
+  }
+
+  test('creating a rule with a slug stores the Project id', async () => {
+    const s = await operatorSurface({ projects: [STATION] });
+    sdkAgainst(s);
+    const rule = await createAutomationRule('http://station.test', {
+      ...DISPATCH_RULE,
+      sourceId: s.sourceId,
+    } as never);
+    expect(rule.action.projectId).toBe(STATION.id);
+    const stored = JSON.parse(readFileSync(s.store.path, 'utf8'));
+    expect(stored.rules[0].action.projectId).toBe(STATION.id);
+    expect(stored.sources[0].grants[0].projectId).toBe(STATION.id);
+  });
+
+  test('creating a rule naming no Project is refused with the value as typed', async () => {
+    const s = await operatorSurface({ projects: [STATION] });
+    sdkAgainst(s);
+    await expect(
+      createAutomationRule('http://station.test', {
+        ...DISPATCH_RULE,
+        action: { ...DISPATCH_RULE.action, projectId: 'nope' },
+        sourceId: s.sourceId,
+      } as never),
+    ).rejects.toThrow('action.projectId: no Project has the id or slug "nope"');
+    expect(s.store.read().rules).toEqual([]);
+  });
+});
+
+test('the open episodes say while automation Tasks cannot start, and stop saying it when they can', async () => {
+  let unavailable:
+    | { reason: 'projects-unreadable'; since: string }
+    | undefined = {
+    reason: 'projects-unreadable',
+    since: '2026-11-21T00:00:00.000Z',
+  };
+  const app = createAutomationRoutes(
+    {
+      listPolls: () => [],
+      listDeliveries: () => [],
+      preview: enabledPreview,
+      listOpenEpisodes: () => [],
+      actionsUnavailable: () => unavailable,
+    },
+    logger,
+  );
+  expect(await json(await app.request('/episodes'))).toMatchObject({
+    data: { episodes: [], actionsUnavailable: unavailable },
+  });
+  unavailable = undefined;
+  expect(
+    ((await json(await app.request('/episodes'))) as { data: object }).data,
+  ).toEqual({ episodes: [] });
 });

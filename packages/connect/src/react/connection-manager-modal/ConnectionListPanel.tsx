@@ -9,6 +9,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { hasCameraApi } from '../../core/cameraSupport';
 import { connectionFailureCopy } from '../../core/environmentProfiles';
 import type { SavedConnection } from '../../core/types';
 import { ConnectionStatusDot } from '../ConnectionStatusDot';
@@ -890,7 +891,9 @@ export function ConnectionListPanel({
         >
           <h3>Connect to another computer</h3>
           <p>
-            Use its Station address, or a QR code or pairing code created there.
+            {hasCameraApi()
+              ? 'Use its Station address, or a QR code or pairing code created there.'
+              : 'Use its Station address, or a pairing code created there.'}
           </p>
           <button
             type="button"
@@ -899,13 +902,15 @@ export function ConnectionListPanel({
           >
             {addStationLabel}
           </button>
-          <button
-            type="button"
-            onClick={onScanQr}
-            className="station-connect-btn station-connect-btn--secondary"
-          >
-            Scan a QR code
-          </button>
+          {hasCameraApi() && (
+            <button
+              type="button"
+              onClick={onScanQr}
+              className="station-connect-btn station-connect-btn--secondary"
+            >
+              Scan a QR code
+            </button>
+          )}
           <button
             ref={enterPairingCodeRef}
             type="button"

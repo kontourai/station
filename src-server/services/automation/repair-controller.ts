@@ -19,6 +19,10 @@ import {
 } from '../../security/managed-network-exposure.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { Logger } from '../../utils/logger.js';
+import {
+  localProjectIdFor,
+  type ProjectIdentityLookup,
+} from '../projects/project-local-id.js';
 import type { TaskGraphService } from '../projects/task-graph-service.js';
 import { sourceGrantsRuleAction } from './automation-config-validation.js';
 import {
@@ -87,6 +91,13 @@ interface RepairControllerOptions {
     'createTaskIdempotent' | 'readTaskView' | 'updateTaskStatus'
   >;
   projectRoot(projectId: string): string | undefined;
+  /**
+   * The current Projects. A repair intent holds the Project's exact id; its
+   * Task is created with that Project's slug (the identity TaskGraph reads a
+   * Project by), and every other Project reference (the Task's, the
+   * execution profile's) is compared by the id it resolves to.
+   */
+  projects: ProjectIdentityLookup;
   isAgentCurrent(agentId: string): Promise<boolean>;
   logger: Pick<Logger, 'warn'>;
   worker?: (input: RepairWorkerInput) => Promise<RepairWorkerEvidence>;
@@ -209,18 +220,22 @@ export class IsolatedRepairController {
         intent.episodeId ||
       !task ||
       task.createdAt !== run.taskIncarnation ||
-      task.projectId !== intent.action.projectId ||
+      !this.sameProject(task.projectId, intent.action.projectId) ||
       task.status === 'canceled' ||
       (task.status === 'done' && !allowReviewed) ||
       !this.options.projectRoot(intent.action.projectId) ||
       !profile?.enabled ||
-      profile.projectId !== intent.action.projectId ||
+      !this.sameProject(profile.projectId, intent.action.projectId) ||
       profile.agentId !== intent.action.agentId ||
       profile.repository !== source.repository ||
       repairDigest(profile) !== run.profileDigest
     )
       throw new Error('repair-authority-changed');
     return profile;
+  }
+  /** Whether `reference` (an id or slug) names the current Project `id`. */
+  private sameProject(reference: string, id: string): boolean {
+    return localProjectIdFor(this.options.projects, reference) === id;
   }
   private async assertCurrent(run: RepairRun, allowReviewed = false) {
     const profile = this.current(run, allowReviewed);
@@ -267,7 +282,7 @@ export class IsolatedRepairController {
     if (
       !task ||
       task.createdAt !== run.taskIncarnation ||
-      task.projectId !== run.intent.action.projectId
+      !this.sameProject(task.projectId, run.intent.action.projectId)
     )
       throw new Error('repair-task-changed');
     await operator.assertCurrent();
@@ -370,9 +385,13 @@ export class IsolatedRepairController {
     const owner = exactProcessIdentity(process.pid);
     if (!profile || !owner)
       throw new Error('repair-profile-or-owner-unavailable');
+    const project = this.options.projects
+      .listProjects()
+      .find(({ id }) => id === intent.action.projectId);
+    if (!project) throw new Error('repair-project-unavailable');
     const task = await this.options.tasks.createTaskIdempotent(
       {
-        projectId: intent.action.projectId,
+        projectId: project.slug,
         agentId: intent.action.agentId,
         title: 'Review isolated GitHub repair',
         description: automationIntentMessage(intent),
@@ -768,7 +787,7 @@ export class IsolatedRepairController {
     if (
       !source?.grants?.some(
         (grant) =>
-          grant.projectId === execution.projectId &&
+          this.sameProject(execution.projectId, grant.projectId) &&
           grant.agentId === execution.agentId &&
           grant.actions.includes('publish-branch'),
       )

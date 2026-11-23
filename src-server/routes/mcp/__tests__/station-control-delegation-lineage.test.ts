@@ -1166,7 +1166,7 @@ describe('#2377 C2b: the route owns the peer-hop timeout', () => {
     });
     expect(sent.isError).toBe(true);
     expect(sent.text).toContain(
-      'Foreground Agent message may have started. Do not retry automatically.',
+      'Foreground Agent message may have started. Do not retry automatically',
     );
     // Both requests reached the peer, and both answers came from the route's
     // bound, well before the peer would have answered.

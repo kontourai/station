@@ -16,6 +16,7 @@
 
 import {
   AUTOMATION_ACTION_KINDS,
+  type AutomationActionsUnavailable,
   type AutomationDeliveryRecord,
   type AutomationEpisodeRecord,
   type AutomationPollRecord,
@@ -32,7 +33,9 @@ import { z } from 'zod';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { automationConfigurationFingerprint } from '../../services/automation/automation-intent.js';
 import type { RetryEpisodeOutcome } from '../../services/automation/automation-ledger.js';
+import { boundedText } from '../../services/automation/automation-operator.js';
 import {
+  AUTOMATION_PROJECTS_UNAVAILABLE,
   AutomationPolicyUnavailableError,
   type AutomationStore,
   AutomationValidationError,
@@ -68,6 +71,8 @@ export interface AutomationRouteDependencies {
     | 'setEnabled'
   >;
   listOpenEpisodes?(limit: number): AutomationEpisodeRecord[];
+  /** Why no automation Task can start now, while that lasts. */
+  actionsUnavailable?(): AutomationActionsUnavailable | undefined;
   retryEpisode?(ruleId: string, episodeId: string): RetryEpisodeOutcome;
   /** Throws unless the request is a person acting in person. */
   operator?(request: Request): Promise<AutomationOperator>;
@@ -111,7 +116,7 @@ const dispatchRule = z
         projectId: id,
         agentId: id,
         instructions: z.string().min(1).max(8192),
-        approvalMode: z.enum(['ask', 'auto']).optional(),
+        approvalMode: z.enum(['ask', 'auto', 'connection-default']).optional(),
         budget: z
           .object({
             maxTurns: z.number().int().positive(),
@@ -174,12 +179,7 @@ class RouteRefusal extends Error {
  * characters before they leave the route.
  */
 function boundedProblems(problems: readonly string[]): string[] {
-  return problems.slice(0, 8).map((problem) =>
-    Array.from(problem.slice(0, 200), (char) => {
-      const code = char.charCodeAt(0);
-      return code < 0x20 || code === 0x7f ? ' ' : char;
-    }).join(''),
-  );
+  return problems.slice(0, 8).map((problem) => boundedText(problem));
 }
 
 /** `<ruleId>:<episodeId>`: a rule id never contains a colon; an episode id may. */
@@ -230,6 +230,11 @@ const RETRY_REFUSALS: Record<
     status: 409,
     message:
       'The rule may not act now (it is not live, or its source no longer grants the action).',
+  },
+  'task-live': {
+    status: 409,
+    message:
+      'The failed start left a Task that is still live; cancel that Task first.',
   },
 };
 
@@ -337,7 +342,10 @@ export function createAutomationRoutes(
         return c.json(
           {
             success: false,
-            error: 'Automation policy is unavailable.',
+            error:
+              error.detail === AUTOMATION_PROJECTS_UNAVAILABLE
+                ? 'Station could not read its Projects, so nothing was changed. Try again.'
+                : 'Automation policy is unavailable.',
             code: error.code,
           },
           503,
@@ -590,7 +598,13 @@ export function createAutomationRoutes(
         throw new RouteRefusal(404, 'Automations not found');
       return c.json({
         success: true,
-        data: { episodes: deps.listOpenEpisodes(limit) },
+        data: {
+          episodes: deps.listOpenEpisodes(limit),
+          ...(() => {
+            const unavailable = deps.actionsUnavailable?.();
+            return unavailable ? { actionsUnavailable: unavailable } : {};
+          })(),
+        },
       });
     }),
   );

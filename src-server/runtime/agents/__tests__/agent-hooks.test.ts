@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runWithAgentTurn } from '@kontourai/agent-runtime';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -419,6 +420,133 @@ describe('createAgentHooks', () => {
       adapter.updateConversation.mock.calls[0]?.[1]?.metadata?.stats;
     expect(persistedStats).not.toHaveProperty('inputTokens');
     expect(persistedStats).toMatchObject({ outputTokens: 7, totalTokens: 7 });
+  });
+});
+
+describe('createAgentHooks — turns a model reported no usage for (#5390)', () => {
+  function statsAdapter() {
+    let metadata: Record<string, unknown> = {};
+    return {
+      getConversation: vi.fn(async () => ({ resourceId: 'station', metadata })),
+      getMessages: vi.fn().mockResolvedValue([
+        { role: 'user', content: 'hello there' },
+        { role: 'assistant', content: 'You said: hello there' },
+      ]),
+      updateConversation: vi.fn(
+        async (_id: string, update: { metadata: Record<string, unknown> }) => {
+          metadata = update.metadata;
+        },
+      ),
+      removeLastMessage: vi.fn().mockResolvedValue(undefined),
+      addMessage: vi.fn().mockResolvedValue(undefined),
+      applyEnrichmentUsage: vi.fn().mockResolvedValue(undefined),
+      stats: () => metadata.stats as Record<string, unknown> | undefined,
+    };
+  }
+  const turn = { agentSlug: 'default', conversationId: 'c1', userId: 'u1' };
+
+  test('counts each turn and its tool calls, and leaves token counts and cost absent', async () => {
+    const adapter = statsAdapter();
+    const hooks = createAgentHooks(
+      createDeps({
+        appConfig: { defaultModel: 'scripted-echo' },
+        configLoader: { loadAgent: vi.fn().mockResolvedValue({}) },
+        memoryAdapters: new Map([['default', adapter]]),
+      }),
+    );
+
+    await hooks.afterInvocation!({ invocation: turn, toolCallCount: 2 });
+    await hooks.afterInvocation!({ invocation: turn, toolCallCount: 1 });
+
+    const stats = adapter.stats()!;
+    expect(stats).toMatchObject({ turns: 2, toolCalls: 3 });
+    for (const field of ['inputTokens', 'outputTokens', 'totalTokens'])
+      expect(stats, field).not.toHaveProperty(field);
+    expect(stats.estimatedCost).toBeNull();
+    // Nothing was reported, so the last message is not re-written.
+    expect(adapter.removeLastMessage).not.toHaveBeenCalled();
+  });
+
+  test('a durable turn replayed under one invocation id is folded into the stats once', async () => {
+    // A durable runtime can run the turn-end hook again for the same
+    // invocation (a resumed turn); the receipt must keep it from counting twice.
+    const adapter = statsAdapter();
+    const hooks = createAgentHooks(
+      createDeps({
+        appConfig: { defaultModel: 'scripted-echo' },
+        configLoader: { loadAgent: vi.fn().mockResolvedValue({}) },
+        memoryAdapters: new Map([['default', adapter]]),
+      }),
+    );
+    const lease = { key: { invocationId: 'invocation-1' } } as any;
+    const end = () =>
+      runWithAgentTurn(lease, () =>
+        hooks.afterInvocation!({
+          invocation: turn,
+          usage: { promptTokens: 4, completionTokens: 2 },
+          toolCallCount: 1,
+        }),
+      );
+
+    await end();
+    await end();
+
+    expect(adapter.stats()).toMatchObject({
+      turns: 1,
+      toolCalls: 1,
+      inputTokens: 4,
+      outputTokens: 2,
+    });
+  });
+
+  test('a failed turn with nothing reported records nothing', async () => {
+    const adapter = statsAdapter();
+    const hooks = createAgentHooks(
+      createDeps({
+        configLoader: { loadAgent: vi.fn().mockResolvedValue({}) },
+        memoryAdapters: new Map([['default', adapter]]),
+      }),
+    );
+
+    await hooks.afterInvocation!({
+      invocation: turn,
+      toolCallCount: 0,
+      error: new Error('model failed'),
+    });
+
+    expect(adapter.updateConversation).not.toHaveBeenCalled();
+  });
+
+  test("records the built-in agent's reported usage although it has no agent file", async () => {
+    // The built-in Station agent: loading its agent file throws. That used to
+    // drop every turn's stats, so a model that did report usage read as one
+    // that reported none.
+    const adapter = statsAdapter();
+    const deps = createDeps({
+      appConfig: { defaultModel: 'scripted-echo' },
+      configLoader: {
+        loadAgent: vi
+          .fn()
+          .mockRejectedValue(new Error("Agent 'default' not found")),
+      },
+      memoryAdapters: new Map([['default', adapter]]),
+    });
+    const hooks = createAgentHooks(deps);
+
+    await hooks.afterInvocation!({
+      invocation: turn,
+      usage: { promptTokens: 1, completionTokens: 0, totalTokens: 1 },
+      toolCallCount: 0,
+    });
+
+    expect(deps.logger.error).not.toHaveBeenCalled();
+    // A reported 0 stays 0.
+    expect(adapter.stats()).toMatchObject({
+      inputTokens: 1,
+      outputTokens: 0,
+      totalTokens: 1,
+      turns: 1,
+    });
   });
 });
 

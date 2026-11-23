@@ -1,0 +1,15 @@
+{
+  "revision": "1d0abda341fd30eacb6b6328bc5b454465fd79ba",
+
+  "notes": [
+    {"path":"README.md","note":"Delta: one sentence on which Agents accept --approval-mode. Checked the citing pages: commands and flags they describe are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Delta: one sentence on which Agents accept --approval-mode. Checked the citing pages: commands and flags they describe are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Delta: one sentence on which Agents accept --approval-mode. Checked the citing pages: commands and flags they describe are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Delta: one sentence on which Agents accept --approval-mode. Checked the citing pages: commands and flags they describe are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Delta: one sentence on which Agents accept --approval-mode. Checked the citing pages: commands and flags they describe are unchanged.","inputs":["docs/reference/cli.md"]}
+  ]
+}

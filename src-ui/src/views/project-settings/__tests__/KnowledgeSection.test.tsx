@@ -138,6 +138,20 @@ describe('project-settings/KnowledgeSection (#242 shell port)', () => {
     expect(screen.queryByText(/Indexed 0 files/)).toBeNull();
   });
 
+  it('reports files a second scan found already indexed apart from skipped ones', async () => {
+    knowledgeMocks.workingDirectory = '/tmp/demo';
+    knowledgeMocks.scan.mockResolvedValueOnce({
+      indexed: 0,
+      alreadyIndexed: 3,
+      skipped: 1,
+    });
+    render(<KnowledgeSection slug="demo-project" />);
+    fireEvent.click(screen.getByRole('button', { name: /Index directory/ }));
+    expect(
+      await screen.findByText('Indexed 0 files, 3 already indexed, skipped 1'),
+    ).toBeTruthy();
+  });
+
   it('reports a failed upload with its filename while continuing the remaining files', async () => {
     knowledgeMocks.save.mockRejectedValueOnce(new Error('Store unavailable'));
     knowledgeMocks.save.mockResolvedValueOnce({});

@@ -1,0 +1,9 @@
+{
+  "revision": "1d0abda341fd30eacb6b6328bc5b454465fd79ba",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Delta: validation problems are bounded and sanitised by the shared boundedText (adds C1 control and bidirectional override removal, code-point cut). Checked the citing pages: the route surface and payload shapes are unchanged.","inputs":["src-server/routes/operations/automations.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Delta: validation problems are bounded and sanitised by the shared boundedText (adds C1 control and bidirectional override removal, code-point cut). Checked the citing pages: the route surface and payload shapes are unchanged.","inputs":["src-server/routes/operations/automations.ts"]}
+  ]
+}

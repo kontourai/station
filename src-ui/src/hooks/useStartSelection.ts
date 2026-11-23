@@ -48,6 +48,12 @@ type StartAgentChoice = {
 const startChoices = {
   agents: new Map<string, StartAgentChoice>(),
   models: new Map<string, NewChatModelChoice>(),
+  /**
+   * Home's own project pick (a context) per Station access, like the Agent
+   * choices: a pick made under one Station is not Home's pick under another.
+   * Nothing the dock reads.
+   */
+  homeProjects: new Map<string, string>(),
   version: 0,
 };
 const startChoiceListeners = new Set<() => void>();
@@ -69,6 +75,7 @@ export function resetStartChoicesForTests() {
   changeStartChoices(() => {
     startChoices.agents.clear();
     startChoices.models.clear();
+    startChoices.homeProjects.clear();
   });
 }
 
@@ -88,7 +95,8 @@ export function resetStartChoicesForTests() {
  *   Reset forgets both. Runtime options are not remembered across sessions:
  *   the memory has no field for them.
  *
- * The project is the context itself; `useBindStartProject` remembers it.
+ * The project is the context itself: the dock's draft remembers it with
+ * `useBindStartProject`, Home keeps its own (`useHomeStartProject`).
  */
 export function useStartSelection(selection: SelectionModel, context: string) {
   const { namespace } = useAuthorityPersistence();
@@ -244,10 +252,10 @@ export function useStartSelection(selection: SelectionModel, context: string) {
 }
 
 /**
- * Remember the project chip: it rebinds the dock (`chatDockProjectSlug`),
- * the setting the dock's project switcher writes and that both surfaces'
- * start context (`resolveNewChatStartContext`) reads, so Home and the dock
- * always open on the same project.
+ * Remember the dock draft's project chip: it rebinds the dock
+ * (`chatDockProjectSlug`), the setting the dock's project switcher writes
+ * and that the dock's draft falls back to off a project page. Home never
+ * writes or reads it (`useHomeStartProject`).
  *
  * "No workspace" stores `null`, the binding's own "no project bound" value,
  * which the start context reads back as No workspace. A project with no
@@ -267,4 +275,44 @@ export function useBindStartProject(): (context: string) => void {
       ),
     [setDeviceSetting],
   );
+}
+
+const homeProjectKey = (namespace: string | null) => JSON.stringify(namespace);
+
+/** Test seam: Home's chip already picked `context` under `namespace`. */
+export function seedHomeStartProjectForTests(
+  context: string | undefined,
+  namespace: string | null = null,
+) {
+  changeStartChoices(() => {
+    if (context === undefined)
+      startChoices.homeProjects.delete(homeProjectKey(namespace));
+    else startChoices.homeProjects.set(homeProjectKey(namespace), context);
+  });
+}
+
+/**
+ * Home's project pick, kept for this tab and this Station access. Home
+ * starts in No project and changes only when the person picks a project in
+ * its chip. It is Home's own: the dock's remembered binding is rebound
+ * silently by opening any project, so Home never reads it, and a pick on
+ * Home never writes it, so the dock never follows a choice made on Home.
+ */
+export function useHomeStartProject(): [
+  string | undefined,
+  (context: string) => void,
+] {
+  const { namespace } = useAuthorityPersistence();
+  const key = homeProjectKey(namespace);
+  const read = () => startChoices.homeProjects.get(key);
+  const picked = useSyncExternalStore(subscribeStartChoices, read, read);
+  const pick = useCallback(
+    (context: string) => {
+      changeStartChoices(() => {
+        startChoices.homeProjects.set(key, context);
+      });
+    },
+    [key],
+  );
+  return [picked, pick];
 }

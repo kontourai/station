@@ -1,0 +1,15 @@
+{
+  "revision": "6659931b719841e861fcefb1186b7d2e448cc158",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Merge with the shared fork and Continue with picker (#5384) plus one guard: prepareConversationHandoff now refuses with conversation_predecessor_engine_live when the predecessor Session failed while its engine still runs, as an ordinary successor already did. Fork source reads are unchanged. Checked each page's lineage, handoff and fork claims against the code; the module map's 'refuses a successor' covers a handoff target, and session-api now names the handoff.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Merge with the shared fork and Continue with picker (#5384) plus one guard: prepareConversationHandoff now refuses with conversation_predecessor_engine_live when the predecessor Session failed while its engine still runs, as an ordinary successor already did. Fork source reads are unchanged. Checked each page's lineage, handoff and fork claims against the code; the module map's 'refuses a successor' covers a handoff target, and session-api now names the handoff.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Merge with the shared fork and Continue with picker (#5384) plus one guard: prepareConversationHandoff now refuses with conversation_predecessor_engine_live when the predecessor Session failed while its engine still runs, as an ordinary successor already did. Fork source reads are unchanged. Checked each page's lineage, handoff and fork claims against the code; the module map's 'refuses a successor' covers a handoff target, and session-api now names the handoff.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Merge with the shared fork and Continue with picker (#5384) plus one guard: prepareConversationHandoff now refuses with conversation_predecessor_engine_live when the predecessor Session failed while its engine still runs, as an ordinary successor already did. Fork source reads are unchanged. Checked each page's lineage, handoff and fork claims against the code; the module map's 'refuses a successor' covers a handoff target, and session-api now names the handoff.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Merge with the shared fork and Continue with picker (#5384) plus one guard: prepareConversationHandoff now refuses with conversation_predecessor_engine_live when the predecessor Session failed while its engine still runs, as an ordinary successor already did. Fork source reads are unchanged. Checked each page's lineage, handoff and fork claims against the code; the module map's 'refuses a successor' covers a handoff target, and session-api now names the handoff.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]}
+  ]
+}

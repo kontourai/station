@@ -308,4 +308,26 @@ describe('IntegrationsView (#771)', () => {
     expect(screen.getByText('Not checked yet')).toBeTruthy();
     expect(screen.queryByText('Never probed')).toBeNull();
   });
+
+  test('keeps the editor and Secret bindings in one scrolling stack', () => {
+    integrations = [
+      {
+        id: 'station-control',
+        kind: 'mcp',
+        displayName: 'Station Control',
+        description: '',
+        enabled: true,
+      },
+    ];
+
+    const { container } = renderView();
+
+    const stack = container.querySelector('.integration-editor-stack');
+    expect(stack?.querySelector('.split-pane')).toBeTruthy();
+    expect(
+      stack?.contains(
+        screen.getByRole('region', { name: 'Advanced: Secret bindings' }),
+      ),
+    ).toBe(true);
+  });
 });

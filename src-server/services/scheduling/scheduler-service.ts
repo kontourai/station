@@ -273,6 +273,23 @@ export class SchedulerService {
     return this.getProvider(providerId).addJob(opts);
   }
 
+  /**
+   * Create a job and answer the slug it was stored under: the built-in
+   * scheduler may pick one from the display name. Another provider stores
+   * the slug it was given.
+   */
+  async createJob(
+    opts: AddJobOpts,
+  ): Promise<{ readonly output: string; readonly name: string }> {
+    const providerId = opts.provider || this.builtin.id;
+    if (providerId === this.builtin.id) return this.builtin.createJob(opts);
+    if (!opts.name) throw new Error('Job name is required');
+    return {
+      output: await this.getProvider(providerId).addJob(opts),
+      name: opts.name,
+    };
+  }
+
   async editJob(
     target: string,
     opts: Record<string, unknown>,

@@ -39,7 +39,6 @@ const RUNG_GLYPHS: Record<
   answer: QuestionGlyph,
   waiting: HandGlyph,
   queued: OutboxGlyph,
-  'delivery-unconfirmed': WarningGlyph,
   blocked: LockGlyph,
   interrupted: WarningGlyph,
   failed: CloseGlyph,
@@ -52,6 +51,7 @@ const RUNG_GLYPHS: Record<
   running: PlayGlyph,
   draft: EditGlyph,
   done: CheckGlyph,
+  cutOff: WarningGlyph,
   idle: MoonGlyph,
   external: MonitorGlyph,
 };

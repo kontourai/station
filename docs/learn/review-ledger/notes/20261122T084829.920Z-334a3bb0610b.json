@@ -1,0 +1,11 @@
+{
+  "revision": "87d58609752522b2501709a3472153762b55a8e2",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"contracts.md changed only by four rows in the failure-kind table for this branch's refusal codes; the citing pages' claims about the contracts reference are unaffected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md changed only by four rows in the failure-kind table for this branch's refusal codes; the citing pages' claims about the contracts reference are unaffected.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"contracts.md changed only by four rows in the failure-kind table for this branch's refusal codes; the citing pages' claims about the contracts reference are unaffected.","inputs":["docs/reference/contracts.md"]}
+  ]
+}

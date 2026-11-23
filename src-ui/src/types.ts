@@ -354,6 +354,8 @@ export interface ChatMessage {
   turnEndedReason?: string;
   /** Who stopped that turn, when Station recorded it. */
   turnStoppedBy?: 'person' | 'stall' | 'restart';
+  /** The turn stopped at the engine's output limit; the reply is incomplete. */
+  turnCutOff?: 'max-tokens';
   /**
    * archive#1410: the turn's provenance envelope exactly as the server sent
    * it. Untyped on purpose — see `TurnProvenanceCard`, which narrows it

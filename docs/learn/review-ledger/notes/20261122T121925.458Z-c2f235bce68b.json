@@ -1,0 +1,7 @@
+{
+  "revision": "07323a9c82896bb5f1fbb9f867b2f5bfa40bad92",
+
+  "notes": [
+    {"path":"packages/sdk/AGENTS.md","note":"sdk.md changes are in the unified search and knowledge scan sections; this file only routes to the SDK reference and states testing rules, unchanged.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}

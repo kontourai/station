@@ -1,0 +1,7 @@
+{
+  "revision": "70659bd2ae0c0e2e09f10722eea772e2d5b3db5c",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Re-read Get Conversation Statistics against conversation-manager.ts and conversation-stats-view.ts: the empty view and the memory-store fallback now omit token counts and cost, and lineage context comes from the newest engine's runs (usage-lineage-fold.ts); the new sentences state exactly that. Other sections untouched.","inputs":["docs/reference/api.md","src-server/runtime/conversation/conversation-manager.ts"]}
+  ]
+}

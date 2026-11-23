@@ -74,6 +74,7 @@ const mockProvider = {
 };
 
 function createMockService() {
+  const addJob = vi.fn().mockResolvedValue('created');
   return {
     listProviders: vi.fn().mockReturnValue([mockProvider]),
     listJobs: vi.fn().mockResolvedValue([mockJob]),
@@ -90,7 +91,12 @@ function createMockService() {
         output: '/path/to/output.md',
       },
     ]),
-    addJob: vi.fn().mockResolvedValue('created'),
+    addJob,
+    // The route creates through `createJob`; it answers what `addJob` does.
+    createJob: vi.fn(async (opts: { name?: string }) => ({
+      output: await addJob(opts),
+      name: opts.name ?? 'derived-slug',
+    })),
     editJob: vi.fn().mockResolvedValue('updated'),
     runJob: vi
       .fn()
@@ -501,6 +507,7 @@ describe('Scheduler Routes', () => {
     await expect(json(response)).resolves.toEqual({
       success: false,
       error: "Job 'test-job' already exists",
+      code: 'job_name_taken',
     });
   });
 

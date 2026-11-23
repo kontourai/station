@@ -347,7 +347,8 @@ Choose **Manage Stations**, then **Connect a Station**; a phone with no saved
 Station also offers **Enter Station address** on its welcome screen, beside
 **Enter a pairing code**, with **Find nearby Stations** and **Manage Stations**
 under **More ways to connect**. Enter its address, a pairing code,
-or scan a QR code. Return in the address field continues. Without a controlling
+or scan a QR code. Scanning is offered only where the browser has a camera
+API, which a plain HTTP page lacks. Return in the address field continues. Without a controlling
 Station there is no peer option to weigh, so the destination goes straight to
 its one Device request instead of a second **Request selected access** step.
 When that request is handed to the application shell, the dialog's status line
@@ -1753,7 +1754,7 @@ anything there that should stay private.
 Many hosted and self-hosted inference servers expose an OpenAI-compatible API (`/v1/chat/completions`, `/v1/models`). Station connects to these as an **OpenAI-compatible** Model connection.
 
 1. On **Customize → Providers**, select **Add model connection** and choose a named service such as **LiteLLM** or **OpenRouter**, or choose **Other OpenAI-compatible**.
-2. Confirm the **server URL** for the service's API root (for example, the URL that serves `/chat/completions` and `/models`).
+2. Confirm the **server URL** for the service's API root (for example, the URL that serves `/chat/completions` and `/models`). The server URL is required: **Create** and **Save** stay unavailable while it is blank, and the server refuses such a save, so a connection with no address is never created. The one exception is a saved connection that is turned off: with **Enabled** cleared, **Save** works without a server URL, so a connection saved before this rule can be turned off. Turning it on again needs the server URL.
 3. Provide an **API key** if the endpoint requires one. Endpoints that need no auth can leave it blank.
 4. Verify the connection, then pick a model when editing a Station agent.
 
@@ -1845,6 +1846,9 @@ preserves them and asks you to reacquire or deliberately choose the folder.
 Acquisition uses this host's Git credentials and currently requires the Station
 operator. URLs containing HTTPS user information, passwords, query strings or
 fragments are refused. An absolute local mirror path is also supported.
+If Station refuses the source or the clone fails, the form stays open with the
+reason under the URL. Correct the source and choose **Acquire repository**
+again; each attempt is a new acquisition.
 Station verifies the clone's origin, resolves its commit and checks it out in
 detached state. For a monorepo, the selected subdirectory becomes the Project
 working directory while the receipt retains the repository root and exact commit.

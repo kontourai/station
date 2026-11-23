@@ -1,0 +1,21 @@
+{
+  "revision": "5b60cfe86e8f2b93211f95b05b11e352489095a8",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"The inline reason text moved into a shared constant (same sentence as the header and the server refusal); no wording any citing page relies on changed.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"The inline reason text moved into a shared constant (same sentence as the header and the server refusal); no wording any citing page relies on changed.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The inline reason text moved into a shared constant (same sentence as the header and the server refusal); no wording any citing page relies on changed.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"The inline reason text moved into a shared constant (same sentence as the header and the server refusal); no wording any citing page relies on changed.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"The inline reason text moved into a shared constant (same sentence as the header and the server refusal); no wording any citing page relies on changed.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"The inline reason text moved into a shared constant (same sentence as the header and the server refusal); no wording any citing page relies on changed.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The inline reason text moved into a shared constant (same sentence as the header and the server refusal); no wording any citing page relies on changed.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The inline reason text moved into a shared constant (same sentence as the header and the server refusal); no wording any citing page relies on changed.","inputs":["src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]}
+  ]
+}

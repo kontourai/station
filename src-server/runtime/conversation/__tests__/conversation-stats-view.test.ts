@@ -75,23 +75,30 @@ describe('conversation-stats-view', () => {
     },
   );
 
-  test('buildEmptyConversationStatsView returns the shared zero-state shape', () => {
-    expect(
-      buildEmptyConversationStatsView({
-        modelId: 'm',
-        systemPromptTokens: 10,
-        mcpServerTokens: 5,
-        notFound: true,
-      }),
-    ).toEqual(
+  test('buildEmptyConversationStatsView reports no token counts or cost, never invented zeros', () => {
+    const view = buildEmptyConversationStatsView({
+      modelId: 'm',
+      systemPromptTokens: 10,
+      mcpServerTokens: 5,
+      notFound: true,
+    });
+    expect(view).toEqual(
       expect.objectContaining({
-        inputTokens: 0,
-        totalTokens: 0,
+        turns: 0,
+        toolCalls: 0,
         contextTokens: 15,
         modelId: 'm',
         notFound: true,
       }),
     );
+    for (const field of [
+      'inputTokens',
+      'outputTokens',
+      'totalTokens',
+      'estimatedCost',
+      'assistantMessageTokens',
+    ])
+      expect(view, field).not.toHaveProperty(field);
   });
 
   test('resolveConversationUserMessageTokens counts only user text content', () => {

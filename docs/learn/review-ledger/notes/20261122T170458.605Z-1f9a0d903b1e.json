@@ -1,0 +1,7 @@
+{
+  "revision": "d479ad8d5290f7379cfdb24aec4ec18ddf8e3de3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Cites voltagent-adapter.ts for composer behavior; the onEnd stats change does not alter what the composer sends or shows.","inputs":["docs/design/chat-composer.md","src-server/runtime/frameworks/voltagent-adapter.ts"]}
+  ]
+}

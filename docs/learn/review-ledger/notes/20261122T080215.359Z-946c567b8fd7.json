@@ -1,0 +1,7 @@
+{
+  "revision": "6fcf24b0e0fa8c4a8ff52a232d93c7c6619a4967",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Arrangement row and load-precedence paragraph now say maximize is not restored from the record at load; only the URL maximizes","inputs":["docs/design/placement.md","src-ui/src/contexts/RegionModelContext.tsx","src-ui/src/contexts/__tests__/RegionModelContext-arrangement-record.test.tsx"]}
+  ]
+}

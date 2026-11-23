@@ -1,0 +1,167 @@
+{
+  "revision": "6e5bff64f89925972ac798de588452d847708695",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Delta checked against the code: approvalMode preflight through modelOptionsRefusal before any Task (automation-actions-runtime.ts startOptions), ask kept for Agents that take it, none for Station-engine and ACP Agents; cancel of an unstarted Task; Retry shown only while the rule may act (AutomationsSection.tsx); pause logged on change and shown via actionsUnavailable; the three accepted pin limits. Evidence: automation-actions-runtime.test.ts, AutomationsSection.test.tsx, automations.routes.test.ts.","inputs":["docs/design/automations.md","src-server/runtime/routes/runtime-route-support.ts","src-server/services/automation/__tests__/repair-controller.test.ts","src-server/services/automation/repair-controller.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Episodes row: startFailed, startFailure and actionsUnavailable, checked against automations.ts, automation-ledger.ts listOpenEpisodes and projectAutomationEpisode.","inputs":["docs/reference/api.md","src-server/routes/operations/automations.ts","src-server/runtime/routes/runtime-routes.ts","src-server/services/automation/repair-controller.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"Delta: the /automations route composition adds actionsUnavailable (the action runtime's current pause) to its dependencies. Checked the citing pages: none describes the automations route composition; auth, transport, capability and other routes are unchanged.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Delta: the actions runtime gains agentEngine (the dispatch's own resolveTaskDispatchAgentStart without per-invocation settings) and the isolated repair controller gains the Project service. Checked the citing pages: scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Delta: the actions runtime gains agentEngine (the dispatch's own resolveTaskDispatchAgentStart without per-invocation settings) and the isolated repair controller gains the Project service. Checked the citing pages: scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Delta: the actions runtime gains agentEngine (the dispatch's own resolveTaskDispatchAgentStart without per-invocation settings) and the isolated repair controller gains the Project service. Checked the citing pages: scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Delta: the actions runtime gains agentEngine (the dispatch's own resolveTaskDispatchAgentStart without per-invocation settings) and the isolated repair controller gains the Project service. Checked the citing pages: scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Delta: the actions runtime gains agentEngine (the dispatch's own resolveTaskDispatchAgentStart without per-invocation settings) and the isolated repair controller gains the Project service. Checked the citing pages: scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Delta: the actions runtime gains agentEngine (the dispatch's own resolveTaskDispatchAgentStart without per-invocation settings) and the isolated repair controller gains the Project service. Checked the citing pages: scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Delta: the actions runtime gains agentEngine (the dispatch's own resolveTaskDispatchAgentStart without per-invocation settings) and the isolated repair controller gains the Project service. Checked the citing pages: scheduler, follow-up, notification and dispatch composition claims are unchanged.","inputs":["src-server/runtime/routes/runtime-route-support.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Refactor only: the per-invocation settings check is extracted as modelOptionsRefusal with the same two messages, and assertModelOptionsSupported throws its answer. Checked the citing pages' claims on per-invocation engine settings, Station Agents and unsupported options: behavior and wording are unchanged.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Refactor only: the per-invocation settings check is extracted as modelOptionsRefusal with the same two messages, and assertModelOptionsSupported throws its answer. Checked the citing pages' claims on per-invocation engine settings, Station Agents and unsupported options: behavior and wording are unchanged.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Refactor only: the per-invocation settings check is extracted as modelOptionsRefusal with the same two messages, and assertModelOptionsSupported throws its answer. Checked the citing pages' claims on per-invocation engine settings, Station Agents and unsupported options: behavior and wording are unchanged.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Refactor only: the per-invocation settings check is extracted as modelOptionsRefusal with the same two messages, and assertModelOptionsSupported throws its answer. Checked the citing pages' claims on per-invocation engine settings, Station Agents and unsupported options: behavior and wording are unchanged.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Refactor only: the per-invocation settings check is extracted as modelOptionsRefusal with the same two messages, and assertModelOptionsSupported throws its answer. Checked the citing pages' claims on per-invocation engine settings, Station Agents and unsupported options: behavior and wording are unchanged.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Refactor only: the per-invocation settings check is extracted as modelOptionsRefusal with the same two messages, and assertModelOptionsSupported throws its answer. Checked the citing pages' claims on per-invocation engine settings, Station Agents and unsupported options: behavior and wording are unchanged.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Refactor only: the per-invocation settings check is extracted as modelOptionsRefusal with the same two messages, and assertModelOptionsSupported throws its answer. Checked the citing pages' claims on per-invocation engine settings, Station Agents and unsupported options: behavior and wording are unchanged.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Refactor only: the per-invocation settings check is extracted as modelOptionsRefusal with the same two messages, and assertModelOptionsSupported throws its answer. Checked the citing pages' claims on per-invocation engine settings, Station Agents and unsupported options: behavior and wording are unchanged.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Refactor only: the per-invocation settings check is extracted as modelOptionsRefusal with the same two messages, and assertModelOptionsSupported throws its answer. Checked the citing pages' claims on per-invocation engine settings, Station Agents and unsupported options: behavior and wording are unchanged.","inputs":["src-server/services/execution-target/execution-target-resolver.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Delta: the repair Task is created with the slug of the Project whose exact id the intent holds, and Task, execution profile and publication grant Projects are compared by resolved id. Checked the citing pages: the canonical Task binding, isolated execution, review and single publication grant they describe are unchanged.","inputs":["src-server/services/automation/repair-controller.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Delta: the repair Task is created with the slug of the Project whose exact id the intent holds, and Task, execution profile and publication grant Projects are compared by resolved id. Checked the citing pages: the canonical Task binding, isolated execution, review and single publication grant they describe are unchanged.","inputs":["src-server/services/automation/repair-controller.ts"]},
+
+    {"path":"docs/design/automations.md","note":"Delta: the repair Task is created with the slug of the Project whose exact id the intent holds, and Task, execution profile and publication grant Projects are compared by resolved id. Checked the citing pages: the canonical Task binding, isolated execution, review and single publication grant they describe are unchanged.","inputs":["src-server/services/automation/repair-controller.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Delta: the repair Task is created with the slug of the Project whose exact id the intent holds, and Task, execution profile and publication grant Projects are compared by resolved id. Checked the citing pages: the canonical Task binding, isolated execution, review and single publication grant they describe are unchanged.","inputs":["src-server/services/automation/repair-controller.ts"]},
+
+    {"path":"docs/guides/feature-previews.md","note":"Delta: the repair Task is created with the slug of the Project whose exact id the intent holds, and Task, execution profile and publication grant Projects are compared by resolved id. Checked the citing pages: the canonical Task binding, isolated execution, review and single publication grant they describe are unchanged.","inputs":["src-server/services/automation/repair-controller.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Delta: the repair Task is created with the slug of the Project whose exact id the intent holds, and Task, execution profile and publication grant Projects are compared by resolved id. Checked the citing pages: the canonical Task binding, isolated execution, review and single publication grant they describe are unchanged.","inputs":["src-server/services/automation/repair-controller.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The fixture can now use real Project files through the real ProjectService (projectRef); a slug-named and an id-named repair rule both reach a proposal. Existing evidence the citing pages name is unchanged.","inputs":["src-server/services/automation/__tests__/repair-controller.test.ts"]},
+
+    {"path":"docs/design/automations.md","note":"The fixture can now use real Project files through the real ProjectService (projectRef); a slug-named and an id-named repair rule both reach a proposal. Existing evidence the citing pages name is unchanged.","inputs":["src-server/services/automation/__tests__/repair-controller.test.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"The fixture can now use real Project files through the real ProjectService (projectRef); a slug-named and an id-named repair rule both reach a proposal. Existing evidence the citing pages name is unchanged.","inputs":["src-server/services/automation/__tests__/repair-controller.test.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Delta: engine-settings preflight before the Task, cancel of a Task whose start never invoked anything, and the pause state logged on change. The cited setup and live-mode steps are unchanged.","inputs":["src-server/runtime/automation-actions-runtime.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Delta: GET /automations/episodes adds actionsUnavailable while no automation Task can start. Checked the API and CLI references; the CLI prints the response as returned.","inputs":["src-server/routes/operations/automations.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Delta: GET /automations/episodes adds actionsUnavailable while no automation Task can start. Checked the API and CLI references; the CLI prints the response as returned.","inputs":["src-server/routes/operations/automations.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Delta: listAutomationEpisodes returns AutomationEpisodeList (episodes plus optional actionsUnavailable). Checked the CLI and SDK reference automation sections: the function list and arguments are unchanged.","inputs":["packages/sdk/src/client/automations.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Delta: listAutomationEpisodes returns AutomationEpisodeList (episodes plus optional actionsUnavailable). Checked the CLI and SDK reference automation sections: the function list and arguments are unchanged.","inputs":["packages/sdk/src/client/automations.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"Delta: the episodes row documents startFailed, startFailure and actionsUnavailable. Checked the citing pages: none summarizes the automations episodes route.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Delta: the episodes row documents startFailed, startFailure and actionsUnavailable. Checked the citing pages: none summarizes the automations episodes route.","inputs":["docs/reference/api.md"]}
+  ]
+}

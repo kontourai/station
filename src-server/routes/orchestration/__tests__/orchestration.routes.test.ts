@@ -1944,8 +1944,11 @@ describe('Orchestration Routes', () => {
       failurePhase: 'indeterminate',
       retryable: false,
       success: false,
-      error:
-        'Foreground Agent message may have started. Do not retry automatically.',
+      error: expect.stringMatching(
+        // Never "later messages are refused": when the engine died during
+        // the start its exit retires the claim and the conversation goes on.
+        /^Foreground Agent message may have started\. Do not retry automatically: check the conversation for that turn\. If Station still cannot tell whether it started when you send again, that message is refused and the refusal says what will clear it\.$/,
+      ),
       code: 'foreground_message_indeterminate',
       outcome: 'indeterminate',
       receipt,
@@ -2562,8 +2565,9 @@ describe('Orchestration Routes', () => {
       failurePhase: 'indeterminate',
       retryable: false,
       success: false,
-      error:
-        'Foreground Agent continuation may have started. Do not retry automatically.',
+      error: expect.stringMatching(
+        /^Foreground Agent continuation may have started\. Do not retry automatically: check the conversation for that turn\./,
+      ),
       code: 'foreground_message_indeterminate',
       outcome: 'indeterminate',
     });
@@ -2659,8 +2663,9 @@ describe('Orchestration Routes', () => {
       failurePhase: 'indeterminate',
       retryable: false,
       success: false,
-      error:
-        'Foreground Agent continuation may have started. Do not retry automatically.',
+      error: expect.stringMatching(
+        /^Foreground Agent continuation may have started\. Do not retry automatically: check the conversation for that turn\./,
+      ),
       code: 'foreground_message_indeterminate',
       outcome: 'indeterminate',
       receipt,

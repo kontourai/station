@@ -1,0 +1,7 @@
+{
+  "revision": "016f5106e259573caeba7474046ebf6fd3fa0b39",
+
+  "notes": [
+    {"path":"examples/self-configuring-agent/README.md","note":"No claims about QR scanning, camera availability or the pairing dialog title; the no-camera-API changes to the pairing panel, Station manager list and Connect Station dialog leave this page accurate.","inputs":["examples/self-configuring-agent/README.md","packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "3d082b11daa728ca8fd77f912429905b62ad61b5",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed the automation-actions paragraph: it claims dispatcher, budget and inbox reuse only, which this Task review-status change leaves accurate.","inputs":["src-server/runtime/automation-actions-runtime.ts"]}
+  ]
+}

@@ -92,6 +92,28 @@
   overflow: hidden;
 }
 
+/* The recorded text behind a translated cause: closed by default. */
+.attention-item__raw {
+  margin-top: var(--k-space-1);
+  font-size: var(--k-text-sm);
+  color: var(--k-text-muted);
+}
+
+.attention-item__raw > summary {
+  cursor: pointer;
+  /* A tap target on a phone: the shared touch floor (44px there, unset on a
+     desktop), reached by padding the one line rather than a flex box, which
+     would drop the disclosure marker. */
+  min-height: var(--touch-target-min, auto);
+  padding-block: max(0px, calc((var(--touch-target-min, 0px) - 1lh) / 2));
+  box-sizing: border-box;
+}
+
+.attention-item__raw > p {
+  margin: var(--k-space-1) 0 0;
+  overflow-wrap: anywhere;
+}
+
 /*
  * archive#3203: which session failed (engine · agent), one step quieter than
  * the cause above it so the cause stays the line you read first.

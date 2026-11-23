@@ -1,0 +1,15 @@
+{
+  "revision": "6b72d68b53ec2c968fc297876e388dc8715645d5",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked acquisition claims: an ssh URL with no repository path is now refused with the missing-path reason, as https already was. No page states otherwise; refusal recording and status codes are unchanged.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked acquisition claims: an ssh URL with no repository path is now refused with the missing-path reason, as https already was. No page states otherwise; refusal recording and status codes are unchanged.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked acquisition claims: an ssh URL with no repository path is now refused with the missing-path reason, as https already was. No page states otherwise; refusal recording and status codes are unchanged.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked acquisition claims: an ssh URL with no repository path is now refused with the missing-path reason, as https already was. No page states otherwise; refusal recording and status codes are unchanged.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked acquisition claims: an ssh URL with no repository path is now refused with the missing-path reason, as https already was. No page states otherwise; refusal recording and status codes are unchanged.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]}
+  ]
+}

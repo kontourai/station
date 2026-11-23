@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { AppConfig } from '@kontourai/station-contracts/config';
+import { AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE } from '@kontourai/station-contracts/managed-model-binding';
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
 import { DEFAULT_OLLAMA_BASE_URL } from '../../constants.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
@@ -304,9 +305,7 @@ export class ProviderService {
       if (enabledProviders.length === 1) {
         fallbackProviderId = enabledProviders[0]!.id;
       } else if (enabledProviders.length > 1) {
-        throw new Error(
-          'Multiple enabled LLM provider connections require an application default.',
-        );
+        throw new Error(AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE);
       }
     }
     const fallbackConnection = this.storageAdapter
@@ -388,9 +387,7 @@ export class ProviderService {
       return enabledProviders[0]!.id;
     }
     if (enabledProviders.length > 1) {
-      throw new Error(
-        'Multiple enabled LLM provider connections require an application default.',
-      );
+      throw new Error(AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE);
     }
     return undefined;
   }

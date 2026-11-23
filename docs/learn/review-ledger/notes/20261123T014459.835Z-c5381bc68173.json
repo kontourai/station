@@ -1,0 +1,7 @@
+{
+  "revision": "d066d0e38d93bc0db42975cb8454f160503cf4b6",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Cites the connections guide for where computers and model connections are managed; it makes no claim about the server URL rule or turning a connection off, so the reworded sentence changes nothing here.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "03608b8d8a6389c15557e84d850bce1b120f7dee",
+
+  "notes": [
+    {"path":"CONTEXT.md","note":"Checked against the glossary's new Flags bullet (#5398): CONTEXT.md describes no inbox status or flag; its delivery mentions are about MCP and notification delivery, unchanged.","inputs":["CONTEXT.md","docs/glossary.md"]}
+  ]
+}

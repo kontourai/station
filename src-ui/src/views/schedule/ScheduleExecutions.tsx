@@ -1,16 +1,21 @@
 import type { RunSummary } from '@kontourai/station-contracts/runs';
+import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import { Button } from '../../components/Button';
+import { jobLabel } from '../../components/scheduler/jobName';
 import { Empty, SkeletonBlock } from '../../components/state';
 import { useFetchRunOutputRef } from '../../hooks/useScheduler';
 
 export function ScheduleExecutions({
   runs,
+  jobs,
   loading,
   unavailable,
   selectedId,
   onSelect,
 }: {
   runs: RunSummary[];
+  /** To name each run's automation as people read it. */
+  jobs: readonly SchedulerJob[];
   loading: boolean;
   unavailable: boolean;
   selectedId: string | null;
@@ -23,6 +28,15 @@ export function ScheduleExecutions({
     .filter((run) => run.source === 'schedule')
     .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
   const selected = scheduled.find((run) => run.runId === selectedId);
+  // A run names its job by slug; a deleted job keeps showing that slug.
+  const automationName = (run: RunSummary) => {
+    const job = jobs.find(
+      (candidate) =>
+        candidate.name === run.sourceId &&
+        candidate.provider === run.providerId,
+    );
+    return job ? jobLabel(job) : (run.sourceId ?? run.providerId);
+  };
   return (
     <>
       {scheduled.length === 0 ? (
@@ -39,7 +53,7 @@ export function ScheduleExecutions({
                 size="sm"
                 onClick={() => onSelect(run.runId)}
               >
-                View run for {run.sourceId ?? run.providerId}
+                View run for {automationName(run)}
               </Button>{' '}
               <time dateTime={run.startedAt}>
                 {new Date(run.startedAt).toLocaleString()}

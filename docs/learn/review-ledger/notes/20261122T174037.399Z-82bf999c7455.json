@@ -1,0 +1,7 @@
+{
+  "revision": "fbefd43834d3a9ca94e47e8d232b0edfdb82668f",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Added one test that drives Station Control add_job over a real MCP connection into the real scheduler route (display name only, refused display names, slug only). module-map cites this file as the service tests that exercise the scheduler boundaries; that statement still holds.","inputs":["src-server/services/__tests__/scheduler.test.ts"]}
+  ]
+}

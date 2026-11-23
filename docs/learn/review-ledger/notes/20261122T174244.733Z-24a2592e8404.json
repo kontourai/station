@@ -1,0 +1,7 @@
+{
+  "revision": "fbefd43834d3a9ca94e47e8d232b0edfdb82668f",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"connections.md's OpenAI-compatible step now says a connection saved with no address can be turned off by clearing Enabled and saving, and needs the URL to turn on. machine-relationships links to connections.md for other topics (paired Devices, fleet inference), unaffected.","inputs":["docs/guides/connections.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "67bc53f6e0384566a0842a955240ff3d0ace0b25",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Amended (#5398 fix round): the Flags bullet now reads Last message may not have arrived, the person's message being what is in doubt. Checked against LAST_MESSAGE_UNCONFIRMED_LABEL.","inputs":["docs/glossary.md"]}
+  ]
+}

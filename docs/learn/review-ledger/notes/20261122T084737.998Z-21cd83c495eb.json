@@ -1,0 +1,7 @@
+{
+  "revision": "faed86953d1729e2b258bd9575746bc7c40dd95b",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"The cited connections guide only gained the New Project clone-failure sentence; no relationship or authority claim here depends on it.","inputs":["docs/guides/machine-relationships.md","docs/guides/connections.md"]}
+  ]
+}

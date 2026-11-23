@@ -31,13 +31,37 @@ describe('connection-manager-modal-utils', () => {
     expect(getConnectionManagerTitle('list')).toBe('Stations');
     expect(getConnectionManagerTitle('add')).toBe('Add Station');
     expect(getConnectionManagerTitle('request-access')).toBe('Request Access');
-    expect(getConnectionManagerTitle('pair-device')).toBe(
-      'Scan a pairing code',
-    );
     expect(getConnectionManagerTitle('pair-code')).toBe('Enter a pairing code');
     expect(getConnectionManagerTitle('pair-host')).toBe('Pair a Device');
     expect(getConnectionManagerTitle('devices')).toBe('Paired Devices');
     expect(getConnectionManagerTitle('discover')).toBe('Nearby Stations');
+  });
+
+  it('titles the scan panel by what it opens on: scanning with a camera API, code entry without', () => {
+    const original = Object.getOwnPropertyDescriptor(
+      globalThis.navigator,
+      'mediaDevices',
+    );
+    try {
+      Object.defineProperty(globalThis.navigator, 'mediaDevices', {
+        configurable: true,
+        value: { getUserMedia: () => Promise.reject(new Error('unused')) },
+      });
+      expect(getConnectionManagerTitle('pair-device')).toBe(
+        'Scan a pairing code',
+      );
+      Object.defineProperty(globalThis.navigator, 'mediaDevices', {
+        configurable: true,
+        value: undefined,
+      });
+      expect(getConnectionManagerTitle('pair-device')).toBe(
+        'Enter a pairing code',
+      );
+    } finally {
+      if (original)
+        Object.defineProperty(globalThis.navigator, 'mediaDevices', original);
+      else Reflect.deleteProperty(globalThis.navigator, 'mediaDevices');
+    }
   });
 
   it('flags a connection as needing an access request when its credential is missing', () => {

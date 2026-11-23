@@ -1,0 +1,7 @@
+{
+  "revision": "1c4a648d1f36f97635edcff9264bdca96e8ef5c3",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Send again sentence now names only an engine-opened turn as having no message of its own; an automation turn that carries a prompt has its own user row and keeps Send again, as findPrecedingUserTurn in ConversationBody implements.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

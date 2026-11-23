@@ -1,0 +1,7 @@
+{
+  "revision": "4f101ab0f8de657ae1782cf97535fc02e19c1715",
+
+  "notes": [
+    {"path":"docs/design/conduit-runtime-integration.md","note":"VoltAgent remains the caller of the shared hooks; it now passes a failure for a stream that ended with finishReason error, which Conduit's stop projection records as failed, consistent with the page. Durable staging and the receipt are unchanged.","inputs":["docs/design/conduit-runtime-integration.md","src-server/runtime/frameworks/voltagent-adapter.ts"]}
+  ]
+}

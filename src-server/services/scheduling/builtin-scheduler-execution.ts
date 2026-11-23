@@ -284,6 +284,7 @@ export async function executeSchedulerJobAttempt({
       // decision is made.
       await announceSchedulerJobFailure({
         job: job.name,
+        label: job.displayName ?? job.name,
         id,
         error: notInvokedError,
         broadcast,
@@ -402,6 +403,7 @@ export async function executeSchedulerJobAttempt({
       recordSettledJob('error', durationSecs);
     await announceSchedulerJobFailure({
       job: job.name,
+      label: job.displayName ?? job.name,
       id,
       error: errorMessage,
       broadcast,
@@ -438,6 +440,7 @@ export async function executeSchedulerJobAttempt({
  */
 export async function announceSchedulerJobFailure({
   job,
+  label,
   id,
   error,
   broadcast,
@@ -445,8 +448,10 @@ export async function announceSchedulerJobFailure({
   outbox,
   announcedRunIds,
 }: {
-  /** Job NAME, as it appears on the Schedule page. */
+  /** Job NAME (the slug): the identity events and links carry. */
   job: string;
+  /** What the person calls the job; the notification title says it. */
+  label?: string;
   /** The run/log id this failure belongs to. Announced at most once. */
   id: string;
   /** Why it failed. Never empty — every caller derives a specific reason. */
@@ -505,6 +510,7 @@ export async function announceSchedulerJobFailure({
   );
   const delivered = await persistFailureNotification({
     job,
+    label: label ?? job,
     id,
     error,
     notificationService,
@@ -552,11 +558,13 @@ export async function announceSchedulerJobFailure({
  */
 function persistFailureNotification({
   job,
+  label,
   id,
   error,
   notificationService,
 }: {
   job: string;
+  label: string;
   id: string;
   error: string;
   notificationService: NotificationService | null;
@@ -571,7 +579,7 @@ function persistFailureNotification({
         try {
           await notificationService.schedule('scheduler', {
             category: 'job-failure',
-            title: `Job "${job}" failed`,
+            title: `Job "${label}" failed`,
             body: error,
             priority: 'high',
             dedupeTag: `scheduler:fail:${job}:${id}`,

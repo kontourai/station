@@ -1,0 +1,7 @@
+{
+  "revision": "d479ad8d5290f7379cfdb24aec4ec18ddf8e3de3",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Station-agent counting paragraph re-read against voltagent-adapter.ts and strands-agent-hooks.ts: a stopped built-in-agent turn is not counted, a Strands stopped turn ending in an assistant message is, and a turn's tokens are the total over its model steps (totalUsage). The edited sentences say that.","inputs":["docs/reference/api.md"]}
+  ]
+}

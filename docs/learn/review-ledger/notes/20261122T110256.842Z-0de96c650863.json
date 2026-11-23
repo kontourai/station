@@ -1,0 +1,7 @@
+{
+  "revision": "297d94bd66b3a4df8d9c48acc81269ee89123e28",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"No vocabulary change: the manager line and the HTTPS note reuse existing words.","inputs":["docs/glossary.md","docs/reference/connect.md"]}
+  ]
+}

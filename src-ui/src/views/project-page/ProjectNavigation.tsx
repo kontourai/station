@@ -72,11 +72,9 @@ const SETTINGS_KEY = 'settings';
 export function ProjectNavigation({
   slug,
   member = false,
-  projectId,
 }: {
   slug: string;
   member?: boolean;
-  projectId?: string;
 }) {
   const { destination, selectDestination } = useProjectDestination(slug);
   const { navigate } = useNavigation();
@@ -110,7 +108,7 @@ export function ProjectNavigation({
         else selectDestination(key as ProjectDestination);
       }}
     >
-      {projectId && <ProjectSearch key={projectId} projectId={projectId} />}
+      {!member && <ProjectSearch key={slug} slug={slug} />}
     </SectionNavigation>
   );
 }

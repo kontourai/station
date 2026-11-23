@@ -45,36 +45,49 @@ export function useRecheckMessageDelivery(
 ): (clientTurnId: string) => Promise<TurnDeliveryOutcome | undefined> {
   const connection = useOptionalConversationConnection()?.station;
   return useCallback(
-    async (clientTurnId: string) => {
-      const { recheckOutboundTurn } = await import('../lib/deliveryLookup');
-      const chatOwner = activeChatsStore.getSnapshot()[chatKey];
-      if (connection && !connection.isCurrent()) return;
-      const outcome = connection
-        ? await recheckOutboundTurn(clientTurnId, {
-            station: outboundStationIdentity(connection),
-            requestScope: connection.requestScope,
-            conversationId: chatOwner?.conversationId,
-          })
-        : await recheckOutboundTurn(clientTurnId);
-      if (connection && !connection.isCurrent()) return;
-      if (outcome) {
-        const chat = activeChatsStore.getSnapshot()[chatKey];
-        activeChatsStore.updateChat(chatKey, {
-          deliveryChecks: {
-            ...(chat?.deliveryChecks ?? {}),
-            [clientTurnId]: outcome,
-          },
-          ...(outcome === 'started'
-            ? {
-                localSendKeys: chat?.localSendKeys?.filter(
-                  (key) => key !== clientTurnId,
-                ),
-              }
-            : {}),
-        });
-      }
-      return outcome;
-    },
+    (clientTurnId: string) =>
+      recheckChatMessageDelivery(chatKey, clientTurnId, connection),
     [chatKey, connection],
   );
+}
+
+/**
+ * `useRecheckMessageDelivery`'s work for a caller that checks messages of
+ * several chats at once (an inbox row whose conversation two chats hold).
+ */
+export async function recheckChatMessageDelivery(
+  chatKey: string,
+  clientTurnId: string,
+  connection?: NonNullable<
+    ReturnType<typeof useOptionalConversationConnection>
+  >['station'],
+): Promise<TurnDeliveryOutcome | undefined> {
+  const { recheckOutboundTurn } = await import('../lib/deliveryLookup');
+  const chatOwner = activeChatsStore.getSnapshot()[chatKey];
+  if (connection && !connection.isCurrent()) return;
+  const outcome = connection
+    ? await recheckOutboundTurn(clientTurnId, {
+        station: outboundStationIdentity(connection),
+        requestScope: connection.requestScope,
+        conversationId: chatOwner?.conversationId,
+      })
+    : await recheckOutboundTurn(clientTurnId);
+  if (connection && !connection.isCurrent()) return;
+  if (outcome) {
+    const chat = activeChatsStore.getSnapshot()[chatKey];
+    activeChatsStore.updateChat(chatKey, {
+      deliveryChecks: {
+        ...(chat?.deliveryChecks ?? {}),
+        [clientTurnId]: outcome,
+      },
+      ...(outcome === 'started'
+        ? {
+            localSendKeys: chat?.localSendKeys?.filter(
+              (key) => key !== clientTurnId,
+            ),
+          }
+        : {}),
+    });
+  }
+  return outcome;
 }

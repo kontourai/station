@@ -4,6 +4,7 @@ import {
   BUILTIN_KNOWLEDGE_NAMESPACES,
   type KnowledgeNamespaceConfig,
 } from '@kontourai/station-contracts/knowledge';
+import { FileStorageConflictError } from '../../domain/project-file-transactions.js';
 import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import { createLogger } from '../../utils/logger.js';
 import { expandTilde } from '../../utils/paths.js';
@@ -106,13 +107,24 @@ export async function registerKnowledgeNamespace(
   storageAdapter?: IStorageAdapter,
 ): Promise<void> {
   if (!storageAdapter) throw new Error('Storage adapter required');
-  const revision = storageAdapter.projectRevision(projectSlug);
-  const project = revision.value;
-  const existing = project.knowledgeNamespaces ?? [];
-  if (existing.some((entry) => entry.id === namespace.id)) return;
-  project.knowledgeNamespaces = [...existing, namespace];
-  project.updatedAt = new Date().toISOString();
-  await revision.replace(project);
+  // Two first scans can register the same namespace at once; the loser of
+  // the revision race re-reads and is done if the winner added it. One more
+  // conflict after that is a real contention and is refused.
+  for (let attempt = 0; ; attempt += 1) {
+    const revision = storageAdapter.projectRevision(projectSlug);
+    const project = revision.value;
+    const existing = project.knowledgeNamespaces ?? [];
+    if (existing.some((entry) => entry.id === namespace.id)) return;
+    project.knowledgeNamespaces = [...existing, namespace];
+    project.updatedAt = new Date().toISOString();
+    try {
+      await revision.replace(project);
+      return;
+    } catch (error) {
+      if (!(error instanceof FileStorageConflictError) || attempt >= 1)
+        throw error;
+    }
+  }
 }
 
 export async function removeKnowledgeNamespace(

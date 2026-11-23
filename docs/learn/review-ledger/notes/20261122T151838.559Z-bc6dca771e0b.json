@@ -1,0 +1,7 @@
+{
+  "revision": "e88633bcb6a218871895902d9c0bd707a8f92ddc",
+
+  "notes": [
+    {"path":"docs/design/conduit-runtime-integration.md","note":"The durable-turn paragraph's receipt claim (replay does not charge stats twice) is now pinned by an agent-hooks test; the Strands change only adds a failure signal for turns without an answer and does not alter staging or settlement.","inputs":["docs/design/conduit-runtime-integration.md","src-server/runtime/frameworks/strands-agent-hooks.ts"]}
+  ]
+}

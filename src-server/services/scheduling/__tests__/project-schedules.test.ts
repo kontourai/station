@@ -314,6 +314,7 @@ describe('ScheduledProjectRuns', () => {
     runs.invoke({
       projectId: PROJECT,
       jobName: 'monday-digest',
+      jobLabel: 'monday-digest',
       createdBy,
       agentSlug: 'writer',
       prompt: 'Summarize last week',
@@ -533,9 +534,14 @@ describe("a Project job's run acts as its creator (#5126)", () => {
       },
     });
     schedulers.push(scheduler);
-    const addJob = (name: string, createdBy?: SchedulerAutomationCreator) =>
+    const addJob = (
+      name: string,
+      createdBy?: SchedulerAutomationCreator,
+      displayName?: string,
+    ) =>
       scheduler.addJob({
         name,
+        ...(displayName ? { displayName } : {}),
         schedule: { kind: 'every', everyMs: 3_600_000 },
         prompt: `Run ${name}`,
         agent: 'writer',
@@ -571,6 +577,28 @@ describe("a Project job's run acts as its creator (#5126)", () => {
     expect(ran).toMatchObject({ outcome: 'completed' });
     expect(world.dispatches).toEqual([
       expect.objectContaining({ ownerUserId: LOCAL_OPERATOR_PRINCIPAL_ID }),
+    ]);
+  });
+
+  test("a run's Task is titled with the job's display name; the agent's message names the slug", async () => {
+    const { projectId, membership } = await membershipWorld();
+    const world = runWorld(projectId, membership);
+    await world.addJob(
+      'monday-digest',
+      { userId: LOCAL_OPERATOR_PRINCIPAL_ID },
+      'Monday digest',
+    );
+
+    const ran = await world.scheduler.runJob('monday-digest');
+
+    expect(ran).toMatchObject({ outcome: 'completed' });
+    expect(world.tasks).toEqual([
+      expect.objectContaining({ title: 'Scheduled: Monday digest' }),
+    ]);
+    // Station Control tools address a job by its slug, so the framing the
+    // agent reads keeps it.
+    expect(world.turns).toEqual([
+      expect.objectContaining({ jobName: 'monday-digest' }),
     ]);
   });
 
