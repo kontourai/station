@@ -63,6 +63,21 @@ The protocol limits requests to 2 MiB, frames to 3 MiB, channel lifetime to
 are at most 64 KiB. These transport bounds do not establish token or fiscal
 budgets. Client credentials are stripped from forwarded request headers.
 
+The [fixed-text request preparer](../../src-server/runtime/conversation/native-text-model-request.ts)
+is a dormant prerequisite. It validates bounded JSON, applies the selected
+model and output cap, and strips tools and opaque provider state from the
+final request. A future caller must authorize those final bytes through the
+source, credential, and reservation owners before any provider request.
+
+The separate brokered request profile is also dormant. It replaces native tool
+declarations with the host's selected MCP tools, keeps the requested model and
+output cap, and accepts only text plus matched calls and results in the
+Station delegation namespace. Requests with unknown, duplicate, or incomplete
+tool history are refused. For Responses requests, an explicit no-tools choice
+remains in force.
+The host still needs a current parent grant, effect authority, and a reservation
+for each physical attempt before forwarding these bytes.
+
 ## Run the lab
 
 Use a local Linux/arm64 Docker daemon and the repository's managed dependencies.
@@ -112,6 +127,17 @@ completion receipt requires a successful single-turn result and one channel
 request. Brokered launches cannot issue that fixed-text receipt. The two
 receipts describe observations. Provider qualification, funding, and namespace
 cleanup keep their own independent checks.
+
+Add `--with-native-brokered-rpc` to the opt-in lab invocation with
+`--with-native-engines` to exercise the pinned Claude and Codex clients in
+separate owned namespaces. The loopback broker offers one synthetic tool.
+The probe checks the selected catalog, one actual tool invocation, the exact
+tool result in the follow-up model request, final CLI completion, executable
+identity, and cleanup. It saves the original and prepared bytes separately.
+The container retains bounded private output for brokered terminal exits,
+including a failure before the first model request. The probe makes zero
+external provider calls. Parent grants, provider qualification, and funding
+authority keep their own checks.
 
 ### Create-only lifecycle controls
 

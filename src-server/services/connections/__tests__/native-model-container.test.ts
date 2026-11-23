@@ -1,6 +1,7 @@
 import { ChildProcess } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { realpathSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
+import { join } from 'node:path';
 import { PassThrough, type Writable } from 'node:stream';
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -54,6 +55,7 @@ function processFixture() {
 
 async function fixture({
   failExecRetirement = false,
+  execExitCode = 0,
   execStopGate,
   delegationRpc,
   request = () => {
@@ -61,6 +63,7 @@ async function fixture({
   },
 }: {
   failExecRetirement?: boolean;
+  execExitCode?: number;
   execStopGate?: Promise<void>;
   delegationRpc?: NativeModelContainerOptions['delegationRpc'];
   request?: NativeModelContainerOptions['request'];
@@ -149,7 +152,7 @@ async function fixture({
           const chunks: Buffer[] = [];
           child.proc.stdin.on('data', (chunk: Buffer) => chunks.push(chunk));
           child.proc.stdin.on('end', () =>
-            child.finish(Buffer.concat(chunks).toString()),
+            child.finish(Buffer.concat(chunks).toString(), execExitCode),
           );
           break;
         }
@@ -478,4 +481,33 @@ test('retains exact producer and single-request completion facts for the origina
     executableSha256: fixtureExecutableDigest,
     cliVersion: '2.1.322',
   });
+});
+
+test('a failed brokered exec retains bounded private output before reporting settlement', async () => {
+  const f = await fixture({ delegationRpc: unusedBroker, execExitCode: 1 });
+  const expected = 'Fixture output before the first model request';
+  const run = await f.controller.startBrokeredText({
+    engine: 'claude',
+    modelId: 'fixture-model',
+    signal: new AbortController().signal,
+    writePrompt: (stdin) => writePrompt(stdin, expected),
+  });
+  await expect(run.result).rejects.toThrow('native_text_failed');
+  await run.settled;
+  const path = join(
+    f.controller.inspect().journalDirectory,
+    'native-text-output.json',
+  );
+  const record = JSON.parse(readFileSync(path, 'utf8'));
+  expect(record).toMatchObject({
+    containerId,
+    brokered: true,
+    terminal: { code: 1, signal: null },
+    bytesReceived: Buffer.byteLength(expected),
+    truncated: false,
+  });
+  expect(Buffer.from(record.stdoutBase64, 'base64').toString('utf8')).toBe(
+    expected,
+  );
+  expect(f.controller.inspect().modelChannel?.requests).toBe(0);
 });
