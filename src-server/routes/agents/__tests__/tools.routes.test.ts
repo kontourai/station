@@ -214,7 +214,10 @@ describe('Tool Routes', () => {
       );
       let operator = true;
       let integration = true;
-      const pendingFrame = Promise.withResolvers<void>();
+      let stageFrame!: () => void;
+      const pendingFrame = new Promise<void>((resolve) => {
+        stageFrame = resolve;
+      });
       let sourceSignal: AbortSignal | undefined;
       vi.spyOn(service, 'readMCPEventStream').mockImplementation(
         async (_server, _input, publish, signal) => {
@@ -241,7 +244,7 @@ describe('Tool Routes', () => {
             },
             assertCurrent,
           );
-          pendingFrame.resolve();
+          stageFrame();
           await held;
         },
       );
@@ -262,7 +265,7 @@ describe('Tool Routes', () => {
         expect(new TextDecoder().decode(active.value)).toContain(
           'approved-cursor',
         );
-        await pendingFrame.promise;
+        await pendingFrame;
         if (owner === 'operator') operator = false;
         else integration = false;
         expect(await reader.read()).toEqual({ done: true, value: undefined });

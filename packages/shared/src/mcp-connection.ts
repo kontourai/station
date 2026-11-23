@@ -91,7 +91,11 @@ export type MCPElicitationRoute = (request: {
 }) => Promise<ElicitResult>;
 
 type EventStreamReceiver = (frame: ToolServerEventStreamFrame) => Promise<void>;
-type EventStreamScope = { receive: EventStreamReceiver; signal: AbortSignal };
+type EventStreamScope = {
+  receive: EventStreamReceiver;
+  signal: AbortSignal;
+  send?: Promise<void>;
+};
 
 export interface MCPConnection {
   client: Client;
@@ -414,7 +418,19 @@ export function prepareMCPConnection(
                   // no later start/send may resurrect that local handle.
                   assertCurrent();
                   return track(() => {
+                    const stream =
+                      property === 'send' &&
+                      isObjectRecord(args[0]) &&
+                      args[0].method === 'events/stream'
+                        ? eventScope.getStore()
+                        : undefined;
+                    stream?.signal.throwIfAborted();
                     const result = Reflect.apply(value, target, args);
+                    if (stream)
+                      stream.send = Promise.resolve(result).then(
+                        () => {},
+                        () => {},
+                      );
                     if (
                       result &&
                       typeof (result as { then?: unknown }).then === 'function'
@@ -578,13 +594,23 @@ export function prepareMCPConnection(
               isUsable: () => current() && phase === 'connected',
               localState: handle.inspect,
               readEventStream: async (input, receive, signal) => {
-                await eventScope.run({ receive, signal }, () =>
-                  guardedClient.request(
-                    { method: 'events/stream', params: { ...input } },
-                    z.object({}),
-                    { signal, timeout: 65_000 },
-                  ),
-                );
+                const controller = new AbortController();
+                const scope: EventStreamScope = {
+                  receive,
+                  signal: AbortSignal.any([signal, controller.signal]),
+                };
+                try {
+                  await eventScope.run(scope, () =>
+                    guardedClient.request(
+                      { method: 'events/stream', params: { ...input } },
+                      z.object({}),
+                      { signal: scope.signal, timeout: 65_000 },
+                    ),
+                  );
+                } finally {
+                  controller.abort();
+                  await scope.send;
+                }
               },
               withElicitationRoute: async (route, operation) => {
                 const scope: ElicitationScope = { route, open: true };

@@ -734,16 +734,19 @@ export function createToolRoutes(
         assertCurrent?: () => void,
       ) => {
         signal.throwIfAborted();
-        const consumed = Promise.withResolvers<void>();
-        const releaseOnAbort = () => consumed.resolve();
+        let acknowledge!: () => void;
+        const consumed = new Promise<void>((resolve) => {
+          acknowledge = resolve;
+        });
+        const releaseOnAbort = () => acknowledge();
         signal.addEventListener('abort', releaseOnAbort, { once: true });
         try {
           await writer.write({
             frame,
             assertCurrent,
-            acknowledge: consumed.resolve,
+            acknowledge,
           });
-          await consumed.promise;
+          await consumed;
           signal.throwIfAborted();
         } finally {
           signal.removeEventListener('abort', releaseOnAbort);

@@ -114,26 +114,42 @@ export async function streamIntegrationEvents(
   signal: AbortSignal,
   receive: (frame: ToolServerEventStreamFrame) => void,
 ): Promise<void> {
-  const response = await mutateJson(
-    `${requestScope.apiBase}/integrations/${encodeURIComponent(id)}/events/stream`,
-    'POST',
-    { requestScope, signal, readOnly: true, maxResponseBytes: 3 * 1024 * 1024 },
-    input,
-  );
-  if (
-    response.ok &&
-    !response.headers
-      .get('content-type')
-      ?.toLowerCase()
-      .startsWith('text/event-stream')
-  ) {
-    await response.body?.cancel();
-    throw new Error('Event stream response is invalid.');
+  const controller = new AbortController();
+  const lifetime = AbortSignal.any([signal, controller.signal]);
+  try {
+    const response = await mutateJson(
+      `${requestScope.apiBase}/integrations/${encodeURIComponent(id)}/events/stream`,
+      'POST',
+      {
+        requestScope,
+        signal: lifetime,
+        readOnly: true,
+        maxResponseBytes: 3 * 1024 * 1024,
+      },
+      input,
+    );
+    if (
+      response.ok &&
+      !response.headers
+        .get('content-type')
+        ?.toLowerCase()
+        .startsWith('text/event-stream')
+    )
+      throw new Error('Event stream response is invalid.');
+    let ended = false;
+    await consumeSseResponse(response, lifetime, ({ data }) => {
+      lifetime.throwIfAborted();
+      if (ended) throw new Error('Event stream sent data after ending.');
+      const frame = eventStreamFrame.parse(JSON.parse(data));
+      receive(frame);
+      ended = frame.type === 'ended';
+    });
+    lifetime.throwIfAborted();
+    if (!ended)
+      throw new Error('Live events closed without a completion frame.');
+  } finally {
+    controller.abort();
   }
-  await consumeSseResponse(response, signal, ({ data }) => {
-    signal.throwIfAborted();
-    receive(eventStreamFrame.parse(JSON.parse(data)));
-  });
 }
 
 /** `POST /integrations` — create an integration. */

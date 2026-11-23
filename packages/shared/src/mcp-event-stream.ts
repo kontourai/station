@@ -133,10 +133,15 @@ export async function observeMcpEventStream(
   };
 
   const reader = body.getReader();
+  let cancellation: Promise<void> | undefined;
   const cancel = () => {
-    void reader.cancel().catch(() => {});
+    cancellation ??= reader.cancel().catch(() => {});
+    return cancellation;
   };
-  signal.addEventListener('abort', cancel, { once: true });
+  const onAbort = () => {
+    void cancel();
+  };
+  signal.addEventListener('abort', onAbort, { once: true });
   try {
     while (!reply) {
       signal.throwIfAborted();
@@ -148,7 +153,7 @@ export async function observeMcpEventStream(
       totalBytes += value.byteLength;
       if (totalBytes > maxStreamBytes)
         throw new Error('MCP event stream exceeds the read limit');
-      let text =
+      let text: string =
         (pendingCR ? '\r' : '') + decoder.decode(value, { stream: true });
       pendingCR = text.endsWith('\r');
       if (pendingCR) text = text.slice(0, -1);
@@ -158,8 +163,8 @@ export async function observeMcpEventStream(
     if (!reply) throw new Error('MCP event stream closed without its reply');
     return reply;
   } finally {
-    signal.removeEventListener('abort', cancel);
-    await reader.cancel().catch(() => {});
+    signal.removeEventListener('abort', onAbort);
+    await cancel();
     reader.releaseLock();
   }
 }
