@@ -1,0 +1,7 @@
+{
+  "revision": "a51d917c15efcbf8b9e79f1a6fc19a9645f0fa79",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Verified the broker fixture keeps the Docker process mocks installed through registered owned cleanup. The launch configuration, namespace custody and result assertions are unchanged.","inputs":["src-server/services/connections/__tests__/native-model-container.test.ts"]}
+  ]
+}
