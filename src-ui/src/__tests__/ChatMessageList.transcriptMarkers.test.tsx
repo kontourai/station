@@ -333,14 +333,18 @@ describe('chat-24 transcript markers', () => {
     expect(container.textContent).not.toContain('Switched to');
   });
 
-  test('a switch that started from an empty fresh context says nothing was read', () => {
+  test('a switch that started from a fresh context not yet used is one row, saying nothing was read', () => {
+    // Captured: one turn, Start fresh, then the switch with no turn between.
+    // The reset is consumed by the switch's catch-up turn, so it would sort
+    // after the switch and name no engine; the switch row says it all.
     const { container } = renderTranscript(
       RESET_THEN_SWITCH,
       transcript(RESET_THEN_SWITCH),
     );
+    expect(kinds(container)).toEqual(['engine']);
     const [engine] = markers(container, 'engine');
     expect(engine?.querySelector('.transcript-change__note')?.textContent).toBe(
-      'Approvals, tool servers and queued messages start fresh.',
+      'Reviewer read no earlier messages. Approvals, tool servers and queued messages start fresh.',
     );
   });
 
@@ -697,6 +701,116 @@ describe('chat-24 transcript markers', () => {
       }),
     );
     expect(markers(container, 'model')).toHaveLength(0);
+  });
+
+  describe('a turn still streaming after the engine rerouted the session', () => {
+    /**
+     * Codex-shaped turns on the refused window's first Session (no per-turn
+     * report): every turn asks for gpt-a except the last, which is left
+     * streaming and asks for gpt-b. `reroute` adds one `model.rerouted`.
+     */
+    function liveAfter(reroute: {
+      scope: 'turn' | 'session';
+      /** Index of the turn it names; undefined: a line after the last turn. */
+      at?: number;
+    }) {
+      const window = rootOnly(REFUSED);
+      const turns = turnStarts(window);
+      const last = turns.at(-1);
+      const beforeLast = turns.at(-2);
+      const named = reroute.at === undefined ? undefined : turns[reroute.at];
+      const settled = transcript(window, (event) => {
+        const base = isTurnEvent(event)
+          ? {
+              ...event,
+              provider: 'codex',
+              metadata: { ...event.metadata, effectiveModel: 'gpt-a' },
+            }
+          : { ...event, provider: 'codex' };
+        const line = {
+          ...event,
+          eventId: `${event.eventId}-reroute`,
+          method: 'model.rerouted',
+          provider: 'codex',
+          fromModel: 'gpt-a',
+          toModel: 'gpt-c',
+          trigger: 'availability',
+          scope: reroute.scope,
+          ...(named ? { turnId: named.turnId } : { turnId: undefined }),
+        } as unknown as RecordedEvent;
+        if (
+          named &&
+          event.method === 'turn.started' &&
+          event.turnId === named.turnId
+        )
+          return [base as RecordedEvent, line];
+        if (
+          !named &&
+          event.method === 'turn.completed' &&
+          event.turnId === beforeLast?.turnId
+        )
+          return [
+            base as RecordedEvent,
+            {
+              ...line,
+              createdAt: new Date(
+                Date.parse(event.createdAt) + 1,
+              ).toISOString(),
+            },
+          ];
+        return base as RecordedEvent;
+      }).filter((message) => message.turnId !== last?.turnId);
+      return renderTranscript(window, settled, {
+        orchestrationSessionStarted: true,
+        orchestrationTurnOpen: true,
+        orchestrationModel: 'gpt-b',
+        currentSessionId: rootSession(window),
+      } as Partial<ChatSession>);
+    }
+
+    test('control: with no reroute, the live pill shows', () => {
+      const window = rootOnly(REFUSED);
+      const turns = turnStarts(window);
+      const last = turns.at(-1);
+      const settled = transcript(window, (event) =>
+        isTurnEvent(event)
+          ? ({
+              ...event,
+              provider: 'codex',
+              metadata: { ...event.metadata, effectiveModel: 'gpt-a' },
+            } as RecordedEvent)
+          : ({ ...event, provider: 'codex' } as RecordedEvent),
+      ).filter((message) => message.turnId !== last?.turnId);
+      const { container } = renderTranscript(window, settled, {
+        orchestrationSessionStarted: true,
+        orchestrationTurnOpen: true,
+        orchestrationModel: 'gpt-b',
+        currentSessionId: rootSession(window),
+      } as Partial<ChatSession>);
+      expect(markers(container, 'model')).toHaveLength(1);
+    });
+
+    test('a session-scope reroute on an earlier turn: no live pill', () => {
+      const { container } = liveAfter({ scope: 'session', at: 1 });
+      expect(
+        container.querySelector('[data-testid="streaming-row"]'),
+      ).toBeTruthy();
+      expect(markers(container, 'model')).toHaveLength(0);
+    });
+
+    test('a session-scope reroute line as the last row before the stream: no live pill', () => {
+      const { container } = liveAfter({ scope: 'session' });
+      expect(container.textContent).toContain('for the rest of this session');
+      expect(markers(container, 'model')).toHaveLength(0);
+    });
+
+    test('a reroute line naming no turn as the last row before the stream: no live pill', () => {
+      const { container } = liveAfter({ scope: 'turn' });
+      expect(container.textContent).toContain(
+        'Model switched from gpt-a to gpt-c',
+      );
+      expect(markers(container, 'model')).toHaveLength(0);
+    });
   });
 
   describe('a turn still streaming', () => {

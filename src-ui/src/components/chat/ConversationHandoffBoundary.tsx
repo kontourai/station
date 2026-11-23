@@ -60,7 +60,8 @@ function readSentence(
 ): string {
   if (handoff.nativeReturn || handoff.carried.includes('nativeSession'))
     return `${agentName} picked up its earlier conversation and read what it missed.`;
-  if (startedFrom === 'empty-next-cold-start') return '';
+  if (startedFrom === 'empty-next-cold-start')
+    return `${agentName} read no earlier messages.`;
   if (startedFrom && isSummaryContextBoundary(startedFrom))
     return `${agentName} read a summary instead of recent messages.`;
   return handoff.carried.includes('authorizedTranscript')

@@ -254,6 +254,22 @@ export function transcriptChangeFacts(
     facts.set(index, { ...facts.get(index), ...fact });
   const seen = new Set<string>();
   let previous: RecordedTurn | undefined;
+  // A switch that started from a fresh context not yet used: the reset is
+  // consumed by the switch's own first turn, so its stored time puts it after
+  // the switch, and it records no time of its own request. The switch row
+  // already says what the new engine was given; it is the one row drawn.
+  const resetsTakenBySwitch = new Set<string>();
+  for (const message of messages)
+    for (const part of message.contentParts ?? []) {
+      const handoff = part.conversationHandoff;
+      if (
+        handoff &&
+        resets.has(handoff.sessionId) &&
+        switchRan(handoff, times, resets)
+      )
+        resetsTakenBySwitch.add(handoff.sessionId);
+    }
+
   let lastEngine: TurnProvenanceEngine | undefined;
   let markerDrawn = false;
   messages.forEach((message, index) => {
@@ -261,7 +277,9 @@ export function transcriptChangeFacts(
     const handoff = parts.find(
       (part) => part.conversationHandoff,
     )?.conversationHandoff;
-    const reset = parts.some((part) => part.conversationContextBoundary);
+    const reset = parts.find(
+      (part) => part.conversationContextBoundary,
+    )?.conversationContextBoundary;
     if (handoff) {
       if (!switchRan(handoff, times, resets)) {
         set(index, { hidden: true });
@@ -278,6 +296,10 @@ export function transcriptChangeFacts(
       return;
     }
     if (reset) {
+      if (resetsTakenBySwitch.has(reset.successorSessionId)) {
+        set(index, { hidden: true });
+        return;
+      }
       if (lastEngine) set(index, { previousEngine: lastEngine });
       markerDrawn = true;
       return;
