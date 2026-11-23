@@ -1,4 +1,3 @@
-import { Badge } from '@kontourai/ui/react';
 import { Fragment } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
@@ -147,24 +146,22 @@ function AgentPickerRow({
           >
             {agent.name}
           </span>
-          {/* What runs it, as the quiet engine pill, right after the name. */}
-          {engineLabel && (
+          {/* What runs it, as the quiet engine pill, right after the name,
+              then the tag naming the Station's default for new chats. Both
+              share the flexible track, so they give up width before the
+              name does. */}
+          {(engineLabel || isNewChatDefault) && (
             <span className="new-chat-modal__agent-engine" title={engineLabel}>
-              <span className="engine-chip__pill">{engineLabel}</span>
+              {engineLabel && (
+                <span className="engine-chip__pill">{engineLabel}</span>
+              )}
+              {isNewChatDefault && (
+                <span className="engine-chip__pill new-chat-modal__agent-default">
+                  Default for new chats
+                </span>
+              )}
             </span>
           )}
-          {isNewChatDefault && (
-            <Badge value="Default for new chats" tone="neutral" />
-          )}
-          {/* A state only when nothing else on the row says it. "Ready" is
-              what an enabled row says by being choosable, and a row that
-              cannot start is already disabled, dimmed, and carries its one
-              fixing button (Enable, Connect, Set up, Edit agent) at the end.
-              Only a row with no fix of its own (a policy, or no fix kind at
-              all) keeps the badge, so it is never a dead row with no reason.
-              When shown it is the SHORT state (archive#4521), the Agents
-              list's own word, never the server's paragraph, which stays on
-              the row's title and assistive node. */}
           {!runnable && !agentFixLabel(agent) && (
             <AgentReadinessCell agent={agent} part="status" compact />
           )}
