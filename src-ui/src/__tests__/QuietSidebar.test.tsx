@@ -47,6 +47,8 @@ const state = vi.hoisted(() => ({
   tools: [] as unknown[],
   knowledge: undefined as unknown,
   isMobile: false,
+  /** The Station's durable namespace (`useAuthorityPersistence`). */
+  namespace: 'station-a' as string | null,
 }));
 const navigate = vi.hoisted(() => vi.fn());
 const setProject = vi.hoisted(() => vi.fn());
@@ -73,6 +75,12 @@ vi.mock('../contexts/NavigationContext', () => {
     useNavigationActions: navigation,
   };
 });
+vi.mock('../contexts/AuthorityPersistenceContext', async (importActual) => ({
+  ...(await importActual<
+    typeof import('../contexts/AuthorityPersistenceContext')
+  >()),
+  useAuthorityPersistence: () => ({ namespace: state.namespace }),
+}));
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://test.local' }),
   useHostRequestAuthorityScope: () => undefined,
@@ -149,7 +157,9 @@ import { deviceSettingsStore } from '../lib/device-settings-store';
 import { OPEN_NEW_CHAT_EVENT } from '../lib/newChatIntent';
 
 const QUIET_ON = [{ id: 'quiet-sidebar', enabled: true }];
-const LAST_KNOWN_KEY = 'station.quietSidebar.lastKnown';
+const lastKnownKey = (namespace: string) =>
+  `station.quietSidebar.lastKnown:${namespace}`;
+const LAST_KNOWN_KEY = lastKnownKey('station-a');
 
 /** Registers the dock's New chat shortcut the way the dock does, and hands
  *  the registry's rebinding to the test. */
@@ -209,6 +219,7 @@ beforeEach(() => {
   state.tools = [];
   state.knowledge = undefined;
   state.isMobile = false;
+  state.namespace = 'station-a';
   navigate.mockClear();
   setProject.mockClear();
   setDockState.mockClear();
@@ -603,6 +614,34 @@ describe('the quiet sidebar before the previews read answers', () => {
     await screen.findByRole('button', { name: 'New Board' });
     expect(window.localStorage.getItem(LAST_KNOWN_KEY)).toBe('off');
   });
+
+  test("one Station's remembered answer is never another's", async () => {
+    window.localStorage.setItem(lastKnownKey('station-a'), 'on');
+    state.namespace = 'station-b';
+    state.previews = undefined;
+    const view = renderSidebar();
+    expect(
+      await screen.findByRole('button', { name: 'New Board' }),
+    ).toBeTruthy();
+    expect(document.querySelector('.sidebar__footer--quiet')).toBeNull();
+    view.unmount();
+    // Its own answer arrives and is kept under its own name only.
+    state.previews = [{ id: 'quiet-sidebar', enabled: false }];
+    renderSidebar();
+    await screen.findByRole('button', { name: 'New Board' });
+    expect(window.localStorage.getItem(lastKnownKey('station-b'))).toBe('off');
+    expect(window.localStorage.getItem(lastKnownKey('station-a'))).toBe('on');
+  });
+
+  test('with no verified namespace nothing is remembered or read', async () => {
+    window.localStorage.setItem(lastKnownKey('station-a'), 'on');
+    state.namespace = null;
+    state.previews = undefined;
+    renderSidebar();
+    expect(
+      await screen.findByRole('button', { name: 'New Board' }),
+    ).toBeTruthy();
+  });
 });
 
 describe('the quiet sidebar New chat row', () => {
@@ -696,4 +735,88 @@ describe('the quiet sidebar New chat row', () => {
       window.removeEventListener(OPEN_NEW_CHAT_EVENT, accept);
     }
   });
+
+  test('in the phone drawer it leaves focus to the chat, not the menu button', async () => {
+    state.isMobile = true;
+    const trigger = document.createElement('button');
+    trigger.setAttribute('aria-controls', 'mobile-navigation');
+    trigger.textContent = 'Toggle menu';
+    document.body.append(trigger);
+    // A dock that draws its composer when asked, the way the real one does.
+    const dock = document.createElement('div');
+    dock.id = 'chat-dock';
+    document.body.append(dock);
+    const accept = (event: Event) => {
+      event.preventDefault();
+      dock.innerHTML = '<textarea aria-label="Message"></textarea>';
+    };
+    window.addEventListener(OPEN_NEW_CHAT_EVENT, accept);
+    try {
+      trigger.focus();
+      renderSidebar();
+      act(() => {
+        window.dispatchEvent(
+          new CustomEvent('toggle-sidebar', { detail: { trigger } }),
+        );
+      });
+      await waitFor(() =>
+        expect(document.activeElement?.getAttribute('aria-label')).toBe(
+          'Close navigation',
+        ),
+      );
+      fireEvent.click(await screen.findByRole('button', { name: 'New chat' }));
+      await waitFor(() =>
+        expect(document.activeElement?.getAttribute('aria-label')).toBe(
+          'Message',
+        ),
+      );
+      // Give the drawer's own return-focus frame every chance to run.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      expect(document.activeElement).not.toBe(trigger);
+      expect(document.activeElement?.getAttribute('aria-label')).toBe(
+        'Message',
+      );
+    } finally {
+      window.removeEventListener(OPEN_NEW_CHAT_EVENT, accept);
+      trigger.remove();
+      dock.remove();
+    }
+  });
+
+  test.each(['Escape', 'Automations'])(
+    'closing the quiet drawer by %s returns focus to the menu button',
+    async (how) => {
+      state.isMobile = true;
+      const trigger = document.createElement('button');
+      trigger.setAttribute('aria-controls', 'mobile-navigation');
+      trigger.textContent = 'Toggle menu';
+      document.body.append(trigger);
+      try {
+        trigger.focus();
+        renderSidebar();
+        act(() => {
+          window.dispatchEvent(
+            new CustomEvent('toggle-sidebar', { detail: { trigger } }),
+          );
+        });
+        await waitFor(() =>
+          expect(document.activeElement?.getAttribute('aria-label')).toBe(
+            'Close navigation',
+          ),
+        );
+        const nav = screen.getByRole('navigation', {
+          name: 'Mobile navigation',
+        });
+        if (how === 'Escape') fireEvent.keyDown(nav, { key: 'Escape' });
+        else
+          fireEvent.click(
+            await within(nav).findByRole('button', { name: 'Automations' }),
+          );
+        expect(nav.classList.contains('sidebar--expanded')).toBe(false);
+        await waitFor(() => expect(document.activeElement).toBe(trigger));
+      } finally {
+        trigger.remove();
+      }
+    },
+  );
 });

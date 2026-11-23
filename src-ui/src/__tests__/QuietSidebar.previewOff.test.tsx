@@ -15,8 +15,16 @@
  * The fresh form has no Projects and no Boards, so the empty Boards line is
  * in it. Two ways of being off are checked against the same markup: the read says
  * off, and the read has not answered on a device with no remembered answer.
+ *
+ * This test and its fixtures are deleted with the old sidebar, when the quiet
+ * sidebar is turned on for everyone (slice 1.12). Until then, a deliberate
+ * change to the old sidebar refreshes the fixtures by running this file with
+ * `UPDATE_QUIET_SIDEBAR_FIXTURES=1`: the "read says off" cases write the
+ * rendered markup instead of comparing it, and the "not answered" cases still
+ * compare against what was just written. It refuses to write when `CI` is set.
+ * Review the fixture diff like any other change.
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen, waitFor } from '@testing-library/react';
@@ -171,6 +179,12 @@ async function renderForm(form: Form): Promise<string> {
   return html;
 }
 
+const UPDATE = process.env.UPDATE_QUIET_SIDEBAR_FIXTURES === '1';
+if (UPDATE && process.env.CI)
+  throw new Error(
+    'UPDATE_QUIET_SIDEBAR_FIXTURES refreshes fixtures locally; it is refused in CI.',
+  );
+
 function fixture(form: Form): string {
   return readFileSync(resolve(FIXTURES, `${form}.html`), 'utf8');
 }
@@ -189,7 +203,10 @@ describe.each([
     'the %s sidebar is the base markup',
     async (form) => {
       state.previews = previews;
-      expect(await renderForm(form)).toBe(fixture(form));
+      const html = await renderForm(form);
+      if (UPDATE && previews !== undefined)
+        writeFileSync(resolve(FIXTURES, `${form}.html`), html);
+      else expect(html).toBe(fixture(form));
     },
   );
 });

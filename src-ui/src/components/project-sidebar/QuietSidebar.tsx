@@ -10,6 +10,7 @@ import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
 import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
 import { dispatchNewChatIntent } from '../../lib/newChatIntent';
+import { FOCUSABLE_SELECTOR } from '../../utils/focusable';
 import { useCustomizeGroups } from '../../views/customize/useCustomizeGroups';
 import { NewChatGlyph } from '../icons/Glyph';
 import { UpdatesControl } from '../updates/UpdatesControl';
@@ -161,6 +162,27 @@ function QuietFooter({
 }
 
 /**
+ * After the phone drawer closes for New chat, focus is nowhere: the drawer
+ * leaves it to the chat. Once the chat dock has drawn, its composer takes it,
+ * or its first control when it has no composer. A dock that focuses itself
+ * first wins, and the wait gives up after about a second.
+ */
+function focusChatWhenItOpens() {
+  let frames = 0;
+  const step = () => {
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    const dock = document.getElementById('chat-dock');
+    const target =
+      dock?.querySelector<HTMLElement>('textarea') ??
+      dock?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
+    if (target) target.focus();
+    else if (++frames < 60) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+
+/**
  * New chat: the same request the dock's own New chat makes. With no dock
  * listening, it shows Chat the way the palette's "Open chat dock" does. It is
  * an action, so it is never the current row. Its hint is the dock's shortcut
@@ -194,6 +216,7 @@ function QuietNewChat({
         if (isMobile) flushSync(() => onCloseForChat?.());
         if (!dispatchNewChatIntent({}))
           showChatPageOrDock(() => setDockState(true));
+        if (isMobile) focusChatWhenItOpens();
       }}
     />
   );
