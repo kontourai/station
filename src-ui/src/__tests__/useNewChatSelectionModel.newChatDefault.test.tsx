@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
   firstSignedInEngine,
   GLOBAL_CONTEXT,
+  newChatDefaultRow,
   newChatFallbackAgent,
 } from '../components/modals/new-chat-modal-utils';
 import type { AgentData } from '../contexts/AgentsContext';
@@ -594,5 +595,36 @@ describe('the fixed order', () => {
     } as AgentData;
     expect(newChatFallbackAgent([alias, materialized])).toBe(materialized);
     expect(newChatFallbackAgent([authored, alias])).toBe(alias);
+  });
+});
+
+describe('the row standing in for a stored engine alias', () => {
+  const alias = {
+    ...engineAgent('claude', 'Claude Code', true),
+    engineDefault: true,
+  } as AgentData;
+  /** Another of Claude Code's own Agents, on the alias's connection. */
+  const standIn = (id: string, available: boolean) =>
+    ({
+      ...engineAgent('claude', 'Claude Code', available),
+      slug: agentId(id),
+    }) as AgentData;
+
+  test('a stand-in that can start wins over one whose id sorts first', () => {
+    expect(
+      newChatDefaultRow(
+        [alias, standIn('claude-a', false), standIn('claude-b', true)],
+        'claude',
+      ),
+    ).toBe('claude-b');
+  });
+
+  test('between stand-ins that can both start, the lower id wins', () => {
+    expect(
+      newChatDefaultRow(
+        [alias, standIn('claude-b', true), standIn('claude-a', true)],
+        'claude',
+      ),
+    ).toBe('claude-a');
   });
 });
