@@ -1024,8 +1024,10 @@ export const ROUTE_WRITTEN_APP_CONFIG_KEYS = {
 export function routeWrittenKeyRefusal(
   updates: Record<string, unknown>,
 ): string | undefined {
-  const key = Object.keys(ROUTE_WRITTEN_APP_CONFIG_KEYS).find((candidate) =>
-    Object.hasOwn(updates, candidate),
+  // `in` rather than `Object.hasOwn`: SDK consumers compile contracts for
+  // ES2020. `updates` is a parsed request body or a CLI-built literal.
+  const key = Object.keys(ROUTE_WRITTEN_APP_CONFIG_KEYS).find(
+    (candidate) => candidate in updates,
   ) as keyof typeof ROUTE_WRITTEN_APP_CONFIG_KEYS | undefined;
   return key
     ? `${key} is written through ${ROUTE_WRITTEN_APP_CONFIG_KEYS[key]}; no settings were saved.`
