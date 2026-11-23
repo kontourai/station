@@ -443,6 +443,75 @@ interface ChatInputAreaProps {
 }
 
 /**
+ * The least transcript height that floats the status row over the
+ * transcript's end. The end keeps room for the row (chat.css), and below this
+ * that room would cost a short dock's last message its header line.
+ */
+const STATUS_FLOAT_MIN_TRANSCRIPT_PX = 240;
+
+/**
+ * What keeps the status row in the composer however much room there is: text
+ * with no surface of its own, and Scroll to bottom (chat.css names the same).
+ */
+const STATUS_ROW_STAYS =
+  '.chat-input__next-turn-notice, .chat-input__composer-notice, .agent-schedule-notes, .chat-check-backs, .chat-scroll-to-bottom';
+
+/**
+ * The status row floats over the transcript's end (`data-status-floats` on
+ * the dock body) only when that end is directly above the composer: a
+ * transcript with rows, nothing that takes room between it and the composer
+ * (a notice card, the pending list, a banner), and room to spare. Anywhere
+ * else the row keeps its line in the composer, so the pill never covers a
+ * card or its controls.
+ *
+ * The end keeps the row's room (`data-status-room`) wherever the row could
+ * float, including while what it holds keeps it in the composer: Scroll to
+ * bottom appears as the reader leaves the end, and taking the room away then
+ * would move the rows under them (a phone moved them by the room's height).
+ */
+function placeStatusRow(body: HTMLElement, composer: HTMLElement) {
+  const transcript = body.querySelector<HTMLElement>(
+    ':scope > .chat-messages[data-surface="transcript"]',
+  );
+  let floats =
+    transcript !== null && !body.hasAttribute('data-composer-priority');
+  for (
+    let node = transcript?.nextElementSibling;
+    floats && node && node !== composer;
+    node = node.nextElementSibling
+  ) {
+    const style = getComputedStyle(node);
+    if (
+      style.display !== 'none' &&
+      style.position !== 'absolute' &&
+      style.position !== 'fixed' &&
+      node.getBoundingClientRect().height > 0
+    )
+      floats = false;
+  }
+  const row = composer.querySelector<HTMLElement>(':scope > .chat-input__meta');
+  if (floats && transcript) {
+    // Measured the same way floating or not, so the decision cannot flip
+    // itself: a row in the composer's flow would be the transcript's if it
+    // floated.
+    const rowInFlow =
+      row && getComputedStyle(row).position !== 'absolute'
+        ? row.getBoundingClientRect().height
+        : 0;
+    floats =
+      transcript.clientHeight + rowInFlow >= STATUS_FLOAT_MIN_TRANSCRIPT_PX;
+  }
+  const room = floats;
+  // A row that stays in the composer does not float, and the turn rail's
+  // steps (keyed to `data-status-floats`) come down with it.
+  if (row?.querySelector(STATUS_ROW_STAYS)) floats = false;
+  if (room !== body.hasAttribute('data-status-room'))
+    body.toggleAttribute('data-status-room', room);
+  if (floats !== body.hasAttribute('data-status-floats'))
+    body.toggleAttribute('data-status-floats', floats);
+}
+
+/**
  * The textarea's auto-height, clamped to the viewport, and the draft's floor:
  * two lines (or its whole content, when shorter). In a short dock the draft
  * may shrink to the floor and scroll, never below it.
@@ -1053,7 +1122,13 @@ export function ChatInputArea({
       // transcript pinned to its newest message to the taller box. Restoring
       // the textarea does not restore the scroll position, so the frame
       // painted with a one-line gap under the newest message.
+      // With transitions off: reduced motion leaves every property a 0.01ms
+      // transition, and a transition read in the same task still holds its
+      // starting value, so the old reservation measured as the natural height
+      // and the composer could grow but never shrink back.
       const measure = () => {
+        const transition = root.style.transition;
+        root.style.transition = 'none';
         root.style.minHeight = '';
         root.style.flexShrink = '0';
         root.style.maxHeight = 'none';
@@ -1064,6 +1139,7 @@ export function ChatInputArea({
         );
         root.style.flexShrink = saved[1];
         root.style.maxHeight = saved[2];
+        root.style.transition = transition;
         return height;
       };
       if (!body?.classList.contains('chat-dock__body')) {
@@ -1140,6 +1216,7 @@ export function ChatInputArea({
       textarea.style.minHeight = `${Math.max(0, floor - (needed - granted))}px`;
       const next = `${granted}px`;
       root.style.minHeight = saved[0] === next ? saved[0] : next;
+      placeStatusRow(body, root);
     };
     reserve();
 
@@ -1163,6 +1240,8 @@ export function ChatInputArea({
       // `.chat-dock__body`, which outlives this composer (replay mounts
       // none): do not leave it behind.
       body?.removeAttribute('data-composer-priority');
+      body?.removeAttribute('data-status-floats');
+      body?.removeAttribute('data-status-room');
       root.style.minHeight = '';
       textarea.style.minHeight = '';
     };
@@ -1171,7 +1250,17 @@ export function ChatInputArea({
     if (typeof ResizeObserver === 'undefined') return cleanup;
     const observed =
       '.chat-input__meta, .chat-controls-row, .chat-input__textarea-wrapper > :not(textarea)';
-    const observer = new ResizeObserver(scheduleReserve);
+    // A card that appears, or grows from nothing, above the composer takes
+    // the status row back into the composer before that frame paints (the
+    // reservation waits a frame).
+    const placeNow = () => {
+      if (body?.classList.contains('chat-dock__body'))
+        placeStatusRow(body, root);
+    };
+    const observer = new ResizeObserver(() => {
+      placeNow();
+      scheduleReserve();
+    });
     const observeRows = () => {
       observer.disconnect();
       if (body) {
@@ -1194,6 +1283,7 @@ export function ChatInputArea({
     observeRows();
     const mutations = new MutationObserver(() => {
       observeRows();
+      placeNow();
       scheduleReserve();
     });
     mutations.observe(root, { childList: true, subtree: true });

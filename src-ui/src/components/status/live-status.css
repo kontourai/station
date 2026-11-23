@@ -109,9 +109,9 @@
 }
 
 /* ── The chat pane's floating status pill ────────────────────────────────
-   Anchored to the pane's content area, top right, below the pane header, so
-   it never covers the header's `…` menu. Floating (absolute), so appearing,
-   changing and leaving move nothing in the transcript. */
+   Shown in the composer's status row, which floats over the transcript's
+   bottom edge (chat.css), so appearing, changing and leaving move nothing in
+   the transcript. */
 .chat-status-pill-host {
   position: relative;
   z-index: 3;

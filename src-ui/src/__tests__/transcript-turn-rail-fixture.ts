@@ -98,7 +98,7 @@ export const shellStubs: Plugin = {
 };
 
 let cachedCss: string | undefined;
-function appCss(): string {
+export function appCss(): string {
   if (cachedCss) return cachedCss;
   const css = [
     'src-ui/src/index.css',
