@@ -486,7 +486,8 @@ requests, grants and MCP URL. It distinguishes a guarded or older host from a
 Station that requires operator sign-in. `useOutsideClientReviewMutation(requestScope)`
 prepares a consent review with an exact request fingerprint or grant version
 and digest. Project selections include the stable Project ID. The returned
-review URL opens the passkey ceremony. See the
+review URL opens the passkey ceremony. `useOutsideClientReviewStatusQuery(requestScope, id)`
+reads the decision through the same operator's session. See the
 [outside-agent reference](outside-agent-oauth.md) for enablement and scope.
 
 ## Project tool library

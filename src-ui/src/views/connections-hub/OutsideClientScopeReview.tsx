@@ -31,12 +31,12 @@ const durations = [
 export function OutsideClientScopeReview({
   formId,
   target,
-  scopeField,
+  scopeForm,
   onSubmit,
 }: {
   formId: string;
   target: OutsideClientScopeTarget;
-  scopeField: RefObject<HTMLSelectElement | null>;
+  scopeForm: RefObject<HTMLFormElement | null>;
   onSubmit: (action: ScopeAction) => void;
 }) {
   const id = useId();
@@ -67,6 +67,7 @@ export function OutsideClientScopeReview({
   return (
     <form
       id={formId}
+      ref={scopeForm}
       className="content-stack"
       onSubmit={(event) => {
         event.preventDefault();
@@ -95,7 +96,6 @@ export function OutsideClientScopeReview({
     >
       <Field label="Scope" htmlFor={`${id}-scope`}>
         <Select
-          ref={scopeField}
           id={`${id}-scope`}
           required
           value={projectId === 'global' || project ? projectId : ''}

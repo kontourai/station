@@ -1,5 +1,4 @@
 import {
-  type ApiRequestScope,
   type OutsideClientReviewAction,
   useOutsideClientReviewMutation,
   useOutsideClientReviewStatusQuery,
@@ -57,7 +56,11 @@ export function OutsideClientsSection() {
   );
 }
 
-function ScopedOutsideClients({ scope }: { scope: ApiRequestScope }) {
+function ScopedOutsideClients({
+  scope,
+}: {
+  scope: NonNullable<ReturnType<typeof useHostRequestAuthorityScope>>;
+}) {
   const { isTauri } = usePlatformProfile();
   const clients = useOutsideClientsQuery(scope);
   const review = useOutsideClientReviewMutation(scope);
@@ -80,11 +83,13 @@ function ScopedOutsideClients({ scope }: { scope: ApiRequestScope }) {
   const scopeFormId = useId();
   const selectionOpener = useRef<HTMLButtonElement>(null);
   const opener = useRef<HTMLButtonElement>(null);
-  const scopeField = useRef<HTMLSelectElement>(null);
+  const scopeForm = useRef<HTMLFormElement>(null);
   const continueReview = useRef<HTMLButtonElement>(null);
   useLayoutEffect(() => {
     if (selection) {
-      (scopeField.current ?? continueReview.current)?.focus();
+      (
+        scopeForm.current?.querySelector('select') ?? continueReview.current
+      )?.focus();
     } else if (open && selectionOpener.current) {
       selectionOpener.current.focus();
       selectionOpener.current = null;
@@ -303,7 +308,7 @@ function ScopedOutsideClients({ scope }: { scope: ApiRequestScope }) {
               <OutsideClientScopeReview
                 formId={scopeFormId}
                 target={scopeTarget}
-                scopeField={scopeField}
+                scopeForm={scopeForm}
                 onSubmit={requestReview}
               />
             ) : (

@@ -187,8 +187,11 @@ grants and can copy the MCP URL. The operator can prepare an approval, denial,
 grant change or revocation and complete it on the consent listener with their
 passkey. Approval selects a single Project or work outside Projects and a
 read-only expiry. A grant change can keep or shorten the displayed expiry.
-A paired Device receives an operator sign-in action when the listener is
-configured. The release guard returns 404 before this panel can load inventory.
+The panel reports the passkey decision and refreshes the inventory. It lists
+current grants and up to 50 recently ended grants. In a paired browser, the
+panel offers operator sign-in when the listener is configured. The native app
+directs the operator to a paired browser. The release guard returns 404 before
+this panel can load inventory.
 
 The negative outside-token audience middleware is live in release builds even
 while `/mcp` itself remains compiled off. It matches only complete 47-character
