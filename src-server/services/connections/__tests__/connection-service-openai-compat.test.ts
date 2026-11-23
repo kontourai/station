@@ -232,4 +232,25 @@ describe('OpenAI-compatible Test Connection (delta2 review H1)', () => {
       source: 'explicit-test',
     });
   });
+
+  test('a connection saved with no server URL reads as missing an address, not a URL parse error', async () => {
+    // The shape the form wrote before saves required an address.
+    const service = serviceFor({ baseUrl: '', apiKey: '' });
+    const plain =
+      'This connection has no server URL. Add one, turn the connection off, or delete it.';
+
+    // Listing alone runs catalogue discovery, which records the receipt the
+    // Setup required panel reads.
+    const [listed] = await service.listModelConnections();
+    expect(listed.readinessEvidence?.summary).toBe(plain);
+    expect(JSON.stringify(listed.readinessEvidence)).not.toMatch(
+      /parse URL|undefined\/models/,
+    );
+
+    const result = await service.testConnection('compat-1');
+    expect(result.healthy).toBe(false);
+    expect(result.reason).toBe(plain);
+    const [view] = await service.listModelConnections();
+    expect(view.readinessEvidence?.summary).toBe(plain);
+  });
 });

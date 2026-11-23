@@ -327,7 +327,7 @@ region adopts it.
 | **Layout** | a project's named view the sidebar navigates between (Coding, Tasks, Session board, a plugin's) | `LayoutConfig` server record; renderer resolution considers type and plugin contribution |
 | **Pane** | the smallest addressable UI unit; what plugins contribute | `WorkspacePaneDescriptor`, `WorkspacePaneInstance` |
 | **Pane host** | a tree of panes arranged as splits and tab groups, inside a region or a layout | `WorkspacePaneHost`, `WorkspacePaneHostDocumentV1` |
-| **Arrangement** | the user's placement choices: which surfaces in which region and in what order, which of them is selected, each region's size and visibility, which region (at most one) is maximized, each pane host's tree | `RegionArrangement` for the region half; persisted per device by #928 slice D, `maximized` added by slice iii (#1385), `panes` and the selection by #2046 2a, written by the tab strip since 2b |
+| **Arrangement** | the user's placement choices: which surfaces in which region and in what order, which of them is selected, each region's size and visibility, which region (at most one) is maximized on the current page, each pane host's tree | `RegionArrangement` for the region half; persisted per device by #928 slice D (except maximize, which is the page's own: #5397), `panes` and the selection by #2046 2a, written by the tab strip since 2b |
 | **Destination** | a navigable place in the app the palette and sidebar can send you to | `APP_DESTINATION_REGISTRY` (`src-ui/src/app-shell/destination-registry.ts`) |
 | **Panel** | a bounded visual grouping inside a page or pane (Trust panel, inspector) | unchanged; see the glossary |
 
@@ -373,7 +373,7 @@ map; anything not listed is a label.
 | `WorkspacePanePlacement.preferredRegion` | same | parse validation and canonical-identity equality only |
 | `WorkspaceCompositionPaneSpec.role` | `navigation`, `content`, `auxiliary`, `inspector` | the composition algorithm groups panes by role: tabs within a role, splits between roles. Runs on real data through the coding file/diff/evidence compositions (behind `workspaceComposition*` layout config controls). The public `composeTaskRoomWorkspace` helper remains exported but is not the mounted Task page: `TaskWorkspaceView` composes Chat, Brief and Results directly and creates its on-demand Basis host separately. |
 | `RegionState.size` | pixels | round-trips through the record; a shell seeds its own region's size from it and falls back to the legacy keys only without a region model (`useDockShellChrome`, #928 D, closed #1380) |
-| `RegionState.maximized` | boolean, at most one region, never `main`, never a hidden or empty region (`updateRegion`, the parser) | `useDockShellChrome` (the shell's `isDockMaximized`, for ANY occupant — `DockShell` renders the class and side-panel width from it), `App.tsx` (mobile full-screen, the folded dock region whatever its occupant), `placeSurface` (clears both ends of a move or swap, #1385); navigation's `maximize` param and `lastDockMaximized` are Chat's MIRROR of it (`dockMirrorDiff`, `RegionModelContext`), never its source — the region is also seeded from them inbound (`?maximize=true`, `focusSession`'s restore) |
+| `RegionState.maximized` | boolean, at most one region, never `main`, never a hidden or empty region (`updateRegion`); not persisted (the record parser reads none, #5397) | `useDockShellChrome` (the shell's `isDockMaximized`, for ANY occupant — `DockShell` renders the class and side-panel width from it), `App.tsx` (mobile full-screen, the folded dock region whatever its occupant), `placeSurface` (clears both ends of a move or swap, #1385); navigation's `maximize` param and `lastDockMaximized` are Chat's MIRROR of it (`dockMirrorDiff`, `RegionModelContext`), never its source — the region is also seeded from them inbound (`?maximize=true`, `focusSession`'s restore) |
 
 Two facts that follow from the map and are easy to get wrong:
 
@@ -401,8 +401,9 @@ Two facts that follow from the map and are easy to get wrong:
   (`packages/contracts/src/device-settings.ts`), one versioned record per
   device inside the device-settings envelope: for each of `main`, `left`,
   `right` and `bottom`, its `visible`, its `size` along its own edge, its
-  occupant, and (additive, #928 slice iii) its `maximized`, absent in older
-  records and read as false. The occupant is `null` for an empty region,
+  occupant, and a `maximized` field that this build always writes as false
+  and never reads (#5397; #928 slice iii had persisted it, and an older build
+  reading the record still finds the field). The occupant is `null` for an empty region,
   `{ kind: 'surface', id }` for a region holding one surface, and — since
   #2046 2a (decisions 1 and 2) — `{ kind: 'pane-host', panes:
   [{ kind: 'surface', id }, …], selected }` for a region holding two or more:
@@ -422,9 +423,16 @@ Two facts that follow from the map and are easy to get wrong:
   burst (150 ms trailing edge, flushed on `pagehide`), and adopts another
   tab's write through the store's `storage` listener without writing it back.
   A mount never writes.
-  Maximize persists across launches through the record (#928 slice iii);
-  before it, `maximize=true` lived in the URL alone and a relaunch lost it.
-  A maximized region also owns the dock area in CSS: while one shell is
+  A maximize belongs to the page where the person made it (#5397), so the
+  record does not carry it: a freshly loaded page opens every region at its
+  normal size, another tab's write never maximizes or restores this tab (on
+  adoption, this tab keeps its own maximize while that region still shows
+  something; the desktop and mobile shells' windows share this storage and
+  follow the same rule), and a `maximized: true` an earlier build stored
+  (#928 slice iii) is read as false. Only Chat's maximize has a URL form,
+  `maximize=true`, which a reload of that page keeps; a maximized region
+  holding anything else (Activity in `right`, say) has none and reloads at
+  normal size. A maximized region also owns the dock area in CSS: while one shell is
   maximized every other shell is hidden (`index.css`, pinned by
   `region-maximize-owns-dock-area.test.ts`).
   Precedence at load, highest first: a URL deep link, for Chat only —
@@ -432,12 +440,13 @@ Two facts that follow from the map and are easy to get wrong:
   panes the region holds), `dock=open` shows it, and `maximize=true`
   maximizes Chat's region (restoring any other). A placement, open or maximize
   that changes the stored state selects Chat's tab. A URL value that merely
-  repeats the record's current placement, visibility or maximize is treated
-  as a reload and preserves the record's selected tab;
+  repeats the record's current placement or visibility is treated
+  as a reload and preserves the record's selected tab (a `maximize=true`
+  always selects Chat's tab, since the record holds no maximize to repeat);
   the same holds for the inbound `dock=open` and `maximize` a
   `focusSession` reveal writes later; then the
   record, when it differs from the registry default, for every surface's
-  placement, size, visibility and maximize, Chat's included; then the legacy dock seed
+  placement, size and visibility, Chat's included; then the legacy dock seed
   (`chatDockHeight`/`chatDockWidth`, the `dockSlotPlacement` device setting),
   which is all a pre-record device has. A record equal to the default is
   treated as absent, even if it was explicitly written, which carries a
@@ -470,9 +479,7 @@ Two facts that follow from the map and are easy to get wrong:
   pane, its selected one, and refuses an instance-keyed id outright, because
   every instance family declares the dock regions only and that region rule
   is untouched — the tolerance did not widen where a pane may
-  live; `main` is always visible and never maximized, nor
-  is a hidden or empty region, and a second maximized region reads as
-  restored. Chat's placement, visibility, size and
+  live. Chat's placement, visibility, size and
   maximize are still mirrored to the
   legacy keys, which keep every existing reader working. The `?surface=` deep
   link reveals a surface once and then clears itself; it is a command, not
@@ -1446,7 +1453,7 @@ pane still mounts its host whether or not it is visible, because hidden IS
 the collapsed bar for an occupied region (fork D1) — unmounting there would
 take the bar the chevron collapses to off screen with it.
 
-An empty region is still never maximized (`updateRegion`, the parser), and
+An empty region is still never maximized (`updateRegion`), and
 `main` is unaffected: it was always visible with a null occupant, which the
 outlet renders as Home.
 

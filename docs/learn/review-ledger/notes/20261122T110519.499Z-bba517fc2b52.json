@@ -1,0 +1,7 @@
+{
+  "revision": "03608b8d8a6389c15557e84d850bce1b120f7dee",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Amended in this change (#5398): the inbox reads only waiting-to-send or not-sent outbox messages as Queued to send; an unconfirmed one is a row flag with Check, device-local beside the synced status. Checked against chatQueuedToSend and buildWorkFacts.","inputs":["docs/design/offline-outbound-queue.md"]}
+  ]
+}

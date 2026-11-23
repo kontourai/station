@@ -30,6 +30,15 @@ import type {
 
 const logger = createLogger({ name: 'openai-compat-provider' });
 
+/**
+ * What a check says about a connection saved with no address (only possible
+ * for records written before saves required one). Without it the catalog
+ * request ran against `undefined/models` and the runtime's URL parse error
+ * became the connection's readiness text.
+ */
+const OPENAI_COMPAT_NO_ADDRESS_REASON =
+  'This connection has no server URL. Add one, turn the connection off, or delete it.';
+
 export class OpenAICompatLLMProvider extends AiSdkLLMProvider {
   readonly id = 'openai-compat';
   readonly displayName = 'OpenAI-Compatible';
@@ -86,6 +95,7 @@ export class OpenAICompatLLMProvider extends AiSdkLLMProvider {
   }
 
   async listModels(options?: ModelCatalogRequest): Promise<LLMModel[]> {
+    if (!this.baseUrl) throw new Error(OPENAI_COMPAT_NO_ADDRESS_REASON);
     const res = await fetch(`${this.baseUrl}/models`, {
       headers: this.listHeaders(),
       signal: options?.signal,

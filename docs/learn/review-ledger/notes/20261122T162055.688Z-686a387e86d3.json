@@ -1,0 +1,7 @@
+{
+  "revision": "4f101ab0f8de657ae1782cf97535fc02e19c1715",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Default Agent claims unaffected; the test change adds a failed-build case for the prompt estimate.","inputs":["docs/design/mcp-ui-host.md","src-server/runtime/agents/__tests__/runtime-default-agent.test.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "0d8a3ff687e275de864403f16747a82d41fe7a33",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"No claim about the model connection form's Server URL or Create gate; unaffected.","inputs":["docs/guides/self-configuring-agent.md","src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]}
+  ]
+}

@@ -139,3 +139,18 @@ export function buildProjectForm(project: ProjectConfig): ProjectForm {
 export function getKnowledgeTimeAgo(iso: string, now = Date.now()): string {
   return relativeTimeAgoFromIso(iso, now);
 }
+
+/** What a directory scan reported; an older server omits `alreadyIndexed`. */
+export interface KnowledgeScanResult {
+  indexed: number;
+  alreadyIndexed?: number;
+  skipped: number;
+}
+
+/** The result line after "Index directory", e.g. "Indexed 0 files, 3 already indexed, skipped 0". */
+export function knowledgeScanResultText(result: KnowledgeScanResult): string {
+  const already = result.alreadyIndexed
+    ? `, ${result.alreadyIndexed} already indexed`
+    : '';
+  return `Indexed ${result.indexed} files${already}, skipped ${result.skipped}`;
+}

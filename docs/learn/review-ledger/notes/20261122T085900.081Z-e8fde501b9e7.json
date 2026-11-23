@@ -1,0 +1,7 @@
+{
+  "revision": "a46df40a2bef79288a97a4cb4ead44e5325e4b44",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"ProjectPage.tsx change only stops passing the Project id to ProjectNavigation; the composer claims in this design are unaffected.","inputs":["docs/design/chat-composer.md","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

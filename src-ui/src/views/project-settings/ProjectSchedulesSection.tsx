@@ -14,6 +14,7 @@ import {
   localTime,
   scheduleForJob,
 } from '../../components/scheduler';
+import { jobLabel } from '../../components/scheduler/jobName';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
@@ -93,7 +94,7 @@ export function ProjectSchedulesSection({
         jobs.map((job) => (
           <PageRow
             key={job.name}
-            label={job.name}
+            label={jobLabel(job)}
             description={scheduleLabel(job)}
             status={
               !job.enabled

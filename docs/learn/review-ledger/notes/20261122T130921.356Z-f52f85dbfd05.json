@@ -1,0 +1,17 @@
+{
+  "revision": "7ad751e2e238dad405f4349e4b2f27e894e1d14a",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Re-checked after the spec edit (a failure message on one poll only): still one added tool server editor test; no documented behavior, coverage row or capture content changes.","inputs":["tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Re-checked after the spec edit (a failure message on one poll only): still one added tool server editor test; no documented behavior, coverage row or capture content changes.","inputs":["tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Re-checked after the spec edit (a failure message on one poll only): still one added tool server editor test; no documented behavior, coverage row or capture content changes.","inputs":["tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Re-checked after the spec edit (a failure message on one poll only): still one added tool server editor test; no documented behavior, coverage row or capture content changes.","inputs":["tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Re-checked after the spec edit (a failure message on one poll only): still one added tool server editor test; no documented behavior, coverage row or capture content changes.","inputs":["tests/connections-crud.spec.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Re-checked after the spec edit (a failure message on one poll only): still one added tool server editor test; no documented behavior, coverage row or capture content changes.","inputs":["tests/connections-crud.spec.ts"]}
+  ]
+}

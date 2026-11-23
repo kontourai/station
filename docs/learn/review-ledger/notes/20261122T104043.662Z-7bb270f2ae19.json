@@ -1,0 +1,7 @@
+{
+  "revision": "70659bd2ae0c0e2e09f10722eea772e2d5b3db5c",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Conversation measurements: the server projection in conversation-stats-view.ts still owns the storage-to-wire conversion and now omits unreported tokens and cost rather than zeros, matching 'absence as unreported'. The provider-failure inventory change is one added exclusion for a connection save validation code, consistent with the guard's description.","inputs":["docs/reference/contracts.md","scripts/__tests__/provider-failure-inventory.test.ts","src-server/runtime/conversation/conversation-stats-view.ts"]}
+  ]
+}

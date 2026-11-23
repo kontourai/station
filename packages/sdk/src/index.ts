@@ -1264,6 +1264,7 @@ export {
   useSaveIntegrationMutation,
   useSaveModelConnectionMutation,
   useScheduledConversationTargetCapability,
+  useSchedulerJobDisplayNameCapability,
   useSchedulerJobs,
   useSchedulerProviders,
   useSchedulerStats,

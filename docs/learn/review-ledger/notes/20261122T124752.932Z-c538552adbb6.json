@@ -1,0 +1,7 @@
+{
+  "revision": "67bc53f6e0384566a0842a955240ff3d0ace0b25",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Rechecked (#5398 fix round): no contract changed.","inputs":["docs/reference/contracts.md","src-ui/src/views/home/work-facts.ts"]}
+  ]
+}

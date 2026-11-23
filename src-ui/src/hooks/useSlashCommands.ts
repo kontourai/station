@@ -193,11 +193,7 @@ export function useSlashCommands(
         aliases: ['/prompts'],
         description: 'List the commands available in this chat',
       },
-      {
-        cmd: '/clear',
-        aliases: ['/new'],
-        description: 'Clear conversation and start fresh',
-      },
+      { cmd: '/new', description: 'Start a new chat' },
       { cmd: '/stats', description: 'Show conversation statistics' },
       {
         cmd: '/help',

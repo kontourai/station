@@ -1,0 +1,7 @@
+{
+  "revision": "07323a9c82896bb5f1fbb9f867b2f5bfa40bad92",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"sdk.md gained the unified search projectId resolution and scan counts; this guide only routes integrators to the SDK, API and contract references, so its routing stays accurate.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]}
+  ]
+}

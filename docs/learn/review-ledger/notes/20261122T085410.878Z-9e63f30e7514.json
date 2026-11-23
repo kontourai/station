@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Create documents displayName (one trimmed line, bounded by SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS) and that deleteAfterRun removes a one-time job only when true; Update documents displayName with null removing it and that a rename keeps slug, job id and runs. Checked against the zod schemas, BuiltinScheduler.editJob and the ledger update path.","inputs":["docs/reference/api.md","packages/contracts/src/scheduler.ts","src-server/routes/schemas/schema-definitions/scheduler.ts","src-server/services/scheduling/builtin-scheduler.ts"]}
+  ]
+}

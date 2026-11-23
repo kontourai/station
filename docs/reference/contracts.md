@@ -432,7 +432,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/project-chat-defaults` | How a Project's new chat picks its model and approval mode (`fixed` or `last-used`), the `GET /api/projects/:slug/chat-defaults` view, and `resolveProjectChatApprovalDefault`, the one resolution the session start and that view share |
 | `@kontourai/station-contracts/project-membership` | Exact Station/local/portable Project scope, member roles/actions including Commenter (view and discuss), invitations, administration projections, sharing enablement and refusal details |
 | `@kontourai/station-contracts/provider` | Provider kinds and provider-facing contract enums/types, including `PROVIDER_OPENCODE` and `isAcpFamilyEngine` (`ACP_FAMILY_ENGINE_IDS`: `acp` and `opencode`, the engines that run saved ACP connection records). Read it where a behaviour belongs to the ACP connection a session runs on, never to tell the engines apart. See [the OpenCode native transport decision](../decisions/opencode-native-transport.md) |
-| `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses. `ConversationStatsResponse.engineMcp` is the folded engine MCP status (`foldEngineMcpStatus`, also the live chat's reducer); the stats parser drops a server entry that does not parse and keeps the first 64 of the rest, and refuses an `engineMcp` of the wrong shape |
+| `@kontourai/station-contracts/runtime` | Session metadata, workflow metadata, runtime responses. `ConversationStatsResponse.engineMcp` is the folded engine MCP status (`foldEngineMcpStatus`, also the live chat's reducer); the stats parser drops a server entry that does not parse and keeps the first 64 of the rest, and refuses an `engineMcp` of the wrong shape. `ConversationStatsResponse.engines` (`ConversationEngineUsage`) is each engine's own usage, one row per engine on every engine-events view (one row for a single-engine conversation); `reportsEngineTokens` says whether a row reported any token figure, cache figures included; the parser refuses a malformed entry, an engine listed twice and a list longer than `CONVERSATION_STATS_ENGINES_MAX` |
 | `@kontourai/station-contracts/runtime-events` | Runtime event stream payloads; `engine-mcp.status` bounds (`ENGINE_MCP_STATUS_MAX_SERVERS` 64, `ENGINE_MCP_SERVER_NAME_MAX_CHARS` 128, `ENGINE_MCP_ERROR_MAX_CHARS` 512) |
 | `@kontourai/station-contracts/session-inventory` | Closed Session inventory rows, gaps, and current-answer Basis projection |
 | `@kontourai/station-contracts/session-work-item` | Closed immutable Session-to-work-item association observations |
@@ -932,6 +932,13 @@ reason. A later successful terminal clears them. `lastRuntimeErrorUsageLimit`
 is `true` when that terminal error carried an engine adapter's
 `UsageLimitFailureDetails` (a Claude Code or Codex usage limit); clients hold
 queued follow-ups on it until a turn starts or the user sends one.
+`lastTurnCutOff` (`'max-tokens'`) is set while the latest turn completed with
+`finishReason: 'max-tokens'` and no turn is open after it: the reply is
+incomplete, and `sessionLadderWord` answers "Cut off" instead of "Done".
+Engines that report no finish reason are never marked. Claude Code, ACP
+agents, the Station agent, Ollama and Bedrock report an output-limit stop.
+Codex, Muse Code, OpenCode and Copilot never do (their adapters report only
+`stop`, `cancelled` or `other`), so their cut-off replies still read "Done".
 
 `ConnectionRecoveryProjection.outcomeReason` says why a usage-limit stop did
 not resume on its own: `auto-resume-off`, `superseded`, `request-pending`,
@@ -967,6 +974,14 @@ untargeted run; absent for older records),
 `AUTOMATION_RUN_POLICY` (fatigue threshold, lateness cutoff, turn deadline),
 `automationRunClientTurnId`, and `SCHEDULER_EXECUTION_LIMITS.maxConcurrentConversationHandoffs`
 (the separate pool a targeted run holds only until its turn is queued).
+It also owns a job's name: `SchedulerJob.name` is the internal slug, and the
+optional `displayName` (at most `SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS`,
+checked by `isSchedulerJobDisplayName`) is what people read and rename.
+`schedulerJobSlug` and `schedulerJobSlugCandidates` derive the slugs a
+display name suggests, up to `SCHEDULER_JOB_SLUG_ATTEMPTS`, and
+`SCHEDULER_JOB_NAME_TAKEN` is the refusal code for a taken slug.
+`SchedulerCreateResponse` is the create answer, with the stored slug as
+`name`.
 
 `@kontourai/station-contracts/coordinator` owns a person's coordinator Session
 (#3628): `CoordinatorDesignation`, the route bodies

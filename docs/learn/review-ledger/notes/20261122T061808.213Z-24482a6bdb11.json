@@ -1,0 +1,7 @@
+{
+  "revision": "0d8a3ff687e275de864403f16747a82d41fe7a33",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Smoke/check precedence claims unaffected; the change only refuses saving an openai-compat connection without a server URL.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/routes/schemas/schema-definitions/runtime.ts","src-ui/src/views/ProviderSettingsView.tsx","src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]}
+  ]
+}

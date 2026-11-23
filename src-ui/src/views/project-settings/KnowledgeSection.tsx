@@ -18,7 +18,11 @@ import { useScopedProjectQuery } from '../../contexts/ProjectsContext';
 import { errorText } from '../../utils/errorText';
 import { plural } from '../../utils/plural';
 import type { DocMeta, KnowledgeStatus } from './types';
-import { getKnowledgeTimeAgo } from './utils';
+import {
+  getKnowledgeTimeAgo,
+  type KnowledgeScanResult,
+  knowledgeScanResultText,
+} from './utils';
 
 /** Keep source recovery and cutover limits aligned with docs/guides/knowledge.md. */
 const MIGRATE_GUARANTEE_TEXT =
@@ -109,10 +113,9 @@ function KnowledgeStoreSubsection({ slug }: { slug: string }) {
 export function KnowledgeSection({ slug }: { slug: string }) {
   const { navigate } = useNavigation();
   const [scanning, setScanning] = useState(false);
-  const [scanResult, setScanResult] = useState<{
-    indexed: number;
-    skipped: number;
-  } | null>(null);
+  const [scanResult, setScanResult] = useState<KnowledgeScanResult | null>(
+    null,
+  );
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [operationError, setOperationError] = useState<string | null>(null);
@@ -283,8 +286,7 @@ export function KnowledgeSection({ slug }: { slug: string }) {
         )}
         {scanResult && (
           <div className="knowledge-section__scan-result">
-            <CheckGlyph /> Indexed {scanResult.indexed} files, skipped{' '}
-            {scanResult.skipped}
+            <CheckGlyph /> {knowledgeScanResultText(scanResult)}
           </div>
         )}
       </div>

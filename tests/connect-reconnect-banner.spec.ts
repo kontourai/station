@@ -1091,8 +1091,20 @@ test.describe('compatibility-aware reconnect', () => {
               await setup
                 .getByRole('button', { name: 'Scan QR', exact: true })
                 .tap();
+              // Headless Chromium has no camera, so the scan falls back to
+              // code entry and withdraws Scan QR instead of a camera error.
+              await expect(
+                setup.getByRole('button', { name: 'Scan QR', exact: true }),
+              ).toHaveCount(0);
+              await expect(
+                setup.getByRole('button', {
+                  name: 'Pairing code',
+                  exact: true,
+                }),
+              ).toHaveAttribute('aria-pressed', 'true');
+              await expect(setup.getByText(/Camera error/)).toHaveCount(0);
               await setup
-                .getByRole('button', { name: 'Cancel', exact: true })
+                .getByRole('button', { name: 'Station address', exact: true })
                 .tap();
               await expect(
                 setup.getByRole('textbox', {
@@ -1100,9 +1112,6 @@ test.describe('compatibility-aware reconnect', () => {
                   exact: true,
                 }),
               ).toBeVisible();
-              await setup
-                .getByRole('button', { name: 'Station address', exact: true })
-                .tap();
               await expect(
                 setup.getByRole('button', {
                   name: 'Station address',
@@ -2014,12 +2023,13 @@ test.describe('compatibility-aware reconnect', () => {
               const scan = page.getByRole('dialog', {
                 name: 'Scan a pairing code',
               });
+              // Headless Chromium has no camera, so the scanner gives way to
+              // code entry instead of a camera error.
+              await expect(scan.getByLabel('Pairing code')).toBeVisible();
               await expect(
                 scan.getByRole('button', { name: 'Scan code', exact: true }),
-              ).toHaveAttribute('aria-pressed', 'true');
-              await scan
-                .getByRole('button', { name: 'Enter manually', exact: true })
-                .tap();
+              ).toHaveCount(0);
+              await expect(scan.getByText(/Camera error/)).toHaveCount(0);
               await scan
                 .getByRole('button', { name: 'Back', exact: true })
                 .tap();

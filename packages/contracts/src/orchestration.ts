@@ -1324,6 +1324,14 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   lastRuntimeErrorUsageLimit?: true;
   /** Reason from the latest non-recovery turn abort, when it is terminal. */
   lastTurnAbortReason?: string;
+  /**
+   * Present when this Session's latest turn completed because the engine
+   * reached its output limit (`turn.completed` `finishReason: 'max-tokens'`),
+   * so its reply is incomplete. Absent while a later turn runs, for every
+   * other ending, and for engines that report no finish reason. Absent on
+   * older hosts.
+   */
+  lastTurnCutOff?: 'max-tokens';
   /** Present only while this process is watching this session's active turn. */
   turnProgress?: TurnProgressObservation;
   /**

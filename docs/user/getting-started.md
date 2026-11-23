@@ -664,10 +664,12 @@ not interrupted for that Project's finished turns.
 
 Choosing on a chip starts nothing, and Station remembers it. An Agent is
 remembered only once it can start, and for each project and for **No project** on this browser and
-Station access, and the Model for each Agent. The project is remembered as the
-chat dock's project for new chats, the same setting the dock's project
-switcher changes, so Home and the dock always open on the same choices.
-**No project** clears it.
+Station access, and the Model for each Agent. Home always starts in
+**No project**, and the project you pick on its chip holds in this browser tab,
+for this Station access, until you reload the page; opening a Project elsewhere
+never changes it, and the chat dock does not follow it. Anywhere, the dock's own
+new chat opens on the project last chosen in the dock (its chip, or the Project
+you last opened), and its chip shows which.
 Runtime options such as reasoning effort stay with the Model choice for this
 browser tab only; they are not remembered after it. A choice you make stays on
 both surfaces for this browser tab, even if another chat later runs on a
@@ -701,8 +703,8 @@ the active mode is confirmed after startup.
 Until Station has loaded your projects, the chips show placeholders and
 **Start** waits, so a start never runs in a project Station has guessed. If
 the project list cannot be read, the composer says so instead. A
-chat started from Home opens in the chat dock's current project (by default,
-the project you last opened), so that project's default Agent and Model apply.
+chat started from Home opens in the project its chip shows, **No project** until
+you pick one, so that project's default Agent and Model apply.
 With no Agent ready at all, **Start** still works: Station uses working
 defaults, waits for discovery, and carries your original request into the
 conversation. An already-ready engine can be prepared through the existing
@@ -829,6 +831,11 @@ for creating a project, including a short first-project prompt when empty.
 On a phone, pull down from the top of Inbox, Home’s **Recent work**, or the
 Project **Tasks** list. Release when the ring fills. Use **Refresh inbox** in Inbox actions or the refresh button beside **Recent work** on Home. A floating status pill shows what’s refreshing.
 
+Each chat appears once in Inbox and on Home, under the group its status puts it
+in. When this device sent a message whose delivery Station can't confirm, the
+row keeps that status and adds **Last message may not have arrived** with **Check**,
+which asks Station once and says what it found. It never sends the message again.
+
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
 visible. Authorized work chats appear under their Task, including independent
@@ -855,8 +862,9 @@ Developer tools, swipe left to reveal labelled actions; the row follows your
 finger and snaps open when released. Only one row's actions stay revealed.
 **Snooze** opens duration choices, and **Dismiss** hides the conversation.
 Swiping itself never runs an action. Dismissal leaves running work and history intact.
-Choose **Undo** in the toast, press **⌘Z** / **Ctrl+Z** outside an editor,
-or search the inbox, find matching **Dismissed** results, and choose
+Choose **Undo** in the toast, or press **⌘Z** / **Ctrl+Z** outside an editor
+while the toast is shown. After the toast has gone, search the inbox for the
+conversation, find it under **Dismissed** in the results, and choose
 **Restore to inbox**.
 Dismissal is saved on this browser/device, like Snooze. A changed status, a
 changed attention kind, or newer activity outside a running turn brings the
@@ -1069,11 +1077,11 @@ outcome unresolved rather than declaring success.
 
 For a running Codex subagent that supports direct instructions, expand its
 card and use **Send to** that subagent. Station shows those instructions and
-their delivery status separately from the engine transcript: **Sent**, **Not
-sent**, or **Delivery unconfirmed**. Sending requires permission to continue the
+their delivery status separately from the engine transcript: sent, **Not
+sent**, or **May have reached the agent**. Sending requires permission to continue the
 chat and an operator or device grant that can operate it. If delivery is
-unconfirmed, **Check saved instruction** retries the same instruction and target
-with its original key; Station will not automatically send a new instruction.
+unconfirmed, **Check** looks the saved instruction up in the subagent's history
+and never sends it again; Station will not automatically send a new instruction.
 Once the saved one is resolved, you can submit a new instruction if the
 subagent is still eligible. Some Codex
 subagents cannot accept direct instructions. Older Stations need an update to

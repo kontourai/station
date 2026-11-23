@@ -585,12 +585,17 @@ provider calls and at response-body release.
 responses. This host-local operation uses the operator's Git configuration;
 operator authority is required for every read and write. Agent-originated
 internal requests and delegated or paired-device credentials are refused, even
-when the device can run commands.
+when the device can run commands. That refusal is 403 with
+`code: "repository_operator_required"`; other 403s on these paths come from
+request admission (origin, device scope, sign-in) and carry their own codes.
 
 The response is `{success:true,data}` where `data.phase` is `acquiring`, `ready`,
 `failed` or `cancelled`. A ready receipt includes `checkoutPath`, `canonicalRemote` and
 `resolvedCommit`. Failed acquisition is a recorded domain result, returned with
-HTTP 200 and a fixed safe explanation. Invalid input is 400, reuse of an ID for
+HTTP 200 and a fixed safe explanation. Invalid input is 400 and records nothing;
+`details` carries the validation reasons. For a refused source, `error` names
+the rule it broke; a body that fails the request schema answers
+`Validation failed`. Reuse of an ID for
 a different source/ref is 409, and unavailable storage is 503.
 
 `GET /api/projects/repository-acquisitions/:id` reads the receipt (404 when
@@ -1987,8 +1992,9 @@ Station-engine Agent is launchable.
 
 The [default-Agent builder](../../src-server/runtime/agents/runtime-default-agent.ts)
 loads `station-control`, `station-knowledge`, and `station-docs` on the Station-engine path, installs
-approval hooks and memory, and processes the configured system prompt. This is
-not a tool-free text helper. Delivery to an external engine depends on that
+approval hooks and memory, and processes the configured system prompt. It also
+records the estimate of that prompt and its tools that conversation stats show,
+as a persisted Agent's framework does. This is not a tool-free text helper. Delivery to an external engine depends on that
 engine's supported delivery mechanisms. The catalog projection is separate
 from proof that a particular engine received its tools.
 
@@ -3058,7 +3064,42 @@ message read, stats cover every Session in the conversation's lineage: stored
 cumulative figures (tokens, turns, tool calls, cost) sum across the Sessions'
 records, and context occupancy comes from the newest one. Without a stored
 record, the orchestration usage fold runs over every authorized Session's
-events in lineage order.
+events in lineage order, kept per engine (#5389). An engine that reports a
+running total (Codex) continues a run of Sessions only on the same native
+thread: a Session whose first recorded `codexThreadId` equals an earlier
+run's last one continues that run's total, and any other Session, including one that recorded
+no thread id, adds a new total to that engine's earlier ones. Other engines
+continue the run of the Session before them when it ran the same engine;
+their tokens add per turn, and their cost continues only after a recorded
+resume (`nativeSessionResumed`). `engines` lists each engine's own figures
+(`provider`, `turns`, `toolCalls`, token figures, `estimatedCost`,
+`reportedCosts`, `modelId`), one row per engine in the order the engines
+first ran, on every engine-events view. When more than one engine reported
+tokens, the response's own token figures are absent: engines count on
+different scales, so no single total exists. Turns, tool calls and costs (per
+unit) stay conversation-wide. Context occupancy and the model come from the
+runs since the last engine change, so once a Session of the new engine has
+recorded events, both are absent until that engine reports them, never the
+previous engine's. A successor Session with no events yet has no engine, so
+until its first event the previous engine's figures still show. After an
+engine change, the context window is resolved only from a model the new
+engine reported. Token counts and cost that nothing recorded are absent
+rather than zero, including for a conversation with no stored stats and for
+the empty view, and a system prompt Station cannot see is absent too.
+
+For a Station-agent conversation, the stored stats count every turn that
+ended with an answer or reported usage, including answered turns whose model
+reported no usage, so per-turn averages divide by all counted turns. A turn
+that failed with nothing reported is not counted; one that failed after
+reporting usage keeps its tokens. On the built-in Station agent a turn a
+person stops is not counted; on a Strands Agent a stopped turn that ended in
+an assistant message is. A turn's tokens are the sum over all its model steps,
+so a turn that called tools counts every step. `systemPromptTokens` there is
+an estimate of the prompt the Agent was built with (its configured or
+bootstrap prompt, a quarter token per character), as for a persisted Agent.
+The built-in Station Assistant records stats from #5390 on, so a conversation
+with it that began earlier counts turns, tokens and the user-message estimate
+only from its next turn on; the response does not say when counting started.
 
 `engineMcp`, present when the engine reported its MCP servers, is the latest
 `engine-mcp.status` reports folded per Session of the lineage (a later
@@ -3443,7 +3484,15 @@ kind/name does not invent a new engine adapter.
 Creation normally returns 201, update 200, with `{success: true, data}`. A saved
 configuration awaiting runtime activation returns 202 and
 `configurationActivation`, as with Agent writes. The returned definition is
-redacted. Invalid saves return a structured 400 response. A POST whose `id`
+redacted. Invalid saves return a structured 400 response. An
+OpenAI-compatible (`openai-compat`) Model connection without a non-blank
+`config.baseUrl` is refused on both POST and PUT with 400 and
+`code: "connection_address_required"`, and nothing is stored. One exception:
+a PUT with `enabled: false` is accepted without an address, so a connection
+saved before the rule can be turned off; turning it on, a create (even with
+`enabled: false`), and a `/api/providers` PUT that omits `enabled` still need
+the address. The `/api/providers` writes (used by the `create_provider`
+control tool) apply the same rule. A POST whose `id`
 names an existing Model connection returns 409 and changes nothing; replacing
 it, including its stored API key, is a PUT.
 
@@ -6081,13 +6130,36 @@ POST /scheduler/jobs
 }
 ```
 
-`name` and `prompt` are required. Use either legacy `cron` or the `schedule`
-union, not both. Other schedule variants are `{kind: "every", everyMs}` and
-`{kind: "at", timeMs, deleteAfterRun?}`. The
+`prompt` is required, with `name`, `displayName` or both. `name` is the
+job's slug and identity (lowercase letters, digits and hyphens); a `name`
+another job already has is refused with 409 and `code: "job_name_taken"`.
+`displayName` is what people read, and `GET /scheduler/jobs` returns it when
+set: trimmed, at most `SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS` characters (a
+longer one is 400 "A name can be at most 120 characters."), with at least one
+letter, digit, symbol or punctuation mark that draws something (Hangul fillers
+and the braille blank do not count), and none of the characters that hide or
+reorder text (`isSchedulerJobDisplayName`): controls, line and paragraph
+separators, bidi embedding, override and isolate controls, zero-width space,
+word joiner, byte-order mark, soft hyphen, combining grapheme joiner, Mongolian
+vowel separator, interlinear annotation marks and tag characters, so
+subdivision flags are refused. The zero-width non-joiner and joiner and the
+direction marks are accepted. Anything else is 400.
+A body with `displayName` and no `name` gets the first unused slug of
+`schedulerJobSlugCandidates` (the slug the name suggests, then `-2` up to
+`SCHEDULER_JOB_SLUG_ATTEMPTS`), checked against every job, including those
+the caller cannot list; when all are taken it is 409 `job_name_taken`.
+Hosts that support this advertise the
+`schedulerJobDisplayName` capability flag. Use either legacy
+`cron` or the `schedule` union, not both. Other schedule variants are
+`{kind: "every", everyMs}` and `{kind: "at", timeMs, deleteAfterRun?}`; the
+scheduler removes a one-time job after its run only when `deleteAfterRun` is
+`true`. The
 [request schemas](../../src-server/routes/schemas/schema-definitions/scheduler.ts)
 apply prompt limits and schedule validation. The response is
-`{success: true, data: {output}}`, where output is the provider's result text;
-it is not proof that a future run completed.
+`{success: true, data: {output, name}}` (`SchedulerCreateResponse`), where
+output is the provider's result text and `name` is the slug the job was
+stored under, including one the scheduler picked; output is not proof that a
+future run completed. A host without `schedulerJobDisplayName` omits `name`.
 
 An optional `target` (`SchedulerAutomationTarget`) makes the job an
 automation that runs in a conversation: `{kind: "conversation",
@@ -6279,8 +6351,11 @@ are the coordinator's account, not live work status.
 
 `PUT /scheduler/jobs/:target` accepts supported partial job options, including
 that schedule union and `target` (`null` removes it, under the same admission
-as create), and returns `{success: true, data: {output}}`. An edit never
-changes `createdBy`. Re-enabling a disabled job resets its
+as create), and `displayName` (validated as on create; `null` removes it),
+and returns `{success: true, data: {output}}`. A host without the
+`schedulerJobDisplayName` flag drops `displayName` and still answers success,
+so clients offer renaming only with the flag. Renaming changes only `displayName`: the
+slug, the job id and its runs stay. An edit never changes `createdBy`. Re-enabling a disabled job resets its
 `consecutiveFailures`.
 
 Every job records `createdBy`, the owner its runs act as, resolved from the

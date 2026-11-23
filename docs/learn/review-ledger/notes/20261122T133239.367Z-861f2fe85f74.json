@@ -1,0 +1,7 @@
+{
+  "revision": "b78420825342ac366cf00977a2a36b2fc40ec1a9",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"No claim about the default Agent's prompt estimate or stats; its knowledge tool delivery claims are unchanged by runtime-default-agent.ts recording fixed tokens.","inputs":["docs/guides/knowledge.md","src-server/runtime/agents/runtime-default-agent.ts"]}
+  ]
+}

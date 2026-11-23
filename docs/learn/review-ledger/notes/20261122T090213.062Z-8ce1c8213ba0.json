@@ -1,0 +1,7 @@
+{
+  "revision": "a46df40a2bef79288a97a4cb4ead44e5325e4b44",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Checked the unified search and useKnowledgeScanMutation sections: SDK functions are unchanged; the palette still consumes useUnifiedSearchQuery with a projectId filter, now the Project slug the server filters on; the scan still invalidates docs and status queries.","inputs":["docs/reference/sdk.md","src-ui/src/components/search/WorkspaceSearchPalette.tsx","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "revision": "faed86953d1729e2b258bd9575746bc7c40dd95b",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"The API reference change only adds the refused-source 400 body for repository acquisition. Checked that this page cites the reference for other sections and states nothing about that body.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The API reference change only adds the refused-source 400 body for repository acquisition. Checked that this page cites the reference for other sections and states nothing about that body.","inputs":["docs/reference/api.md"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "e88633bcb6a218871895902d9c0bd707a8f92ddc",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"afterInvocation row and sentence checked against agent-hooks.ts and strands-agent-hooks.ts: a Strands turn ending without an assistant message is passed as failed, so with no usage it is not counted; the new sentence says that.","inputs":["docs/guides/agent-configuration.md","src-server/runtime/agents/runtime-default-agent.ts"]}
+  ]
+}

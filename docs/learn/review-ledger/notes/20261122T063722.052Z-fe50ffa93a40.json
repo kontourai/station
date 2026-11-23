@@ -1,0 +1,7 @@
+{
+  "revision": "ed86b1fd40ab3d263c682358fff4f37ac18718a8",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Scan-or-enter claims still hold: the scanner is dropped only without a camera API or after capture finds no camera.","inputs":["docs/guides/connections.md","packages/connect/src/__tests__/DevicePairingPanel.test.tsx"]}
+  ]
+}

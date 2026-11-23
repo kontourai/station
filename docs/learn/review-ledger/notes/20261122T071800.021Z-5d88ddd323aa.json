@@ -1,0 +1,7 @@
+{
+  "revision": "016f5106e259573caeba7474046ebf6fd3fa0b39",
+
+  "notes": [
+    {"path":"packages/connect/README.md","note":"README names no scanner props or titles; the new hasCameraApi export and title change need no README change.","inputs":["packages/connect/README.md","packages/connect/src/index.ts","packages/connect/src/react/connection-manager-modal-utils.ts"]}
+  ]
+}

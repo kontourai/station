@@ -1,0 +1,9 @@
+{
+  "revision": "832f3ec1928bde8f91f05190d4088a2919608fc5",
+
+  "notes": [
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Checked against the new inbox-dismissal test: a dismissal notice closed without Undo leaves the stack and Cmd+Z undoes the earlier action still on screen, which matches 'each press undoes one action, newest first, among the notices still on screen'","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/__tests__/inbox-dismissal.test.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked against the new inbox-dismissal test (undo stack after a closed dismissal notice): Cmd+Z restores a dismissal only while its toast is shown, as this page says; no wording change needed","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-dismissal.test.tsx"]}
+  ]
+}

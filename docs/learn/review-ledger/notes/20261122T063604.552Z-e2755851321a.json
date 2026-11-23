@@ -1,0 +1,7 @@
+{
+  "revision": "43984b24fef216b82a179674f66432259a25223d",
+
+  "notes": [
+    {"path":"docs/reference/shared.md","note":"#5389: usage entry names the new usage-lineage-fold subpath (foldLineageUsageEvents, EngineUsageAggregate); checked against packages/shared/package.json exports and packages/shared/src/usage-lineage-fold.ts; usage-fold.ts is unchanged.","inputs":["docs/reference/shared.md","packages/shared/package.json#/exports","packages/shared/src/usage-fold.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "e88633bcb6a218871895902d9c0bd707a8f92ddc",
+
+  "notes": [
+    {"path":"docs/reference/station-docs.md","note":"Station Assistant identity and delivery claims unchanged by removing the prompt estimate on teardown paths.","inputs":["docs/reference/station-docs.md","src-server/runtime/agents/runtime-default-agent.ts"]}
+  ]
+}

@@ -41,7 +41,10 @@ import {
   buildLastChosenModelBindingKey,
   trackLastChosenModel,
 } from '../hooks/lastChosenModel';
-import { resetStartChoicesForTests } from '../hooks/useStartSelection';
+import {
+  resetStartChoicesForTests,
+  seedHomeStartProjectForTests,
+} from '../hooks/useStartSelection';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 
 /** jsdom runs `history.back()` as chained 0ms tasks; let queued ones land. */
@@ -315,6 +318,41 @@ afterEach(async () => {
   for (const listener of dockListeners.splice(0))
     window.removeEventListener('station:open-new-chat', listener);
 });
+
+/**
+ * The dock is bound to `slug` and Home's own chip picked it too, under the
+ * Station access `renderBoth` renders (`ns-1`).
+ */
+function rememberProject(slug: string) {
+  deviceSettingsStore.set('chatDockProjectSlug', slug);
+  seedHomeStartProjectForTests(slug, 'ns-1');
+}
+
+/** Home alone, under the Station access `namespace`. */
+function renderHomeUnder(namespace: string) {
+  return render(
+    <AuthorityPersistenceContext.Provider
+      value={{ status: 'verified', namespace, observation: null }}
+    >
+      <div data-testid="home">
+        <HomeStartComposer />
+      </div>
+    </AuthorityPersistenceContext.Provider>,
+  );
+}
+
+/** Picks `slug` (a context value) in `root`'s project chip. */
+async function pickProject(root: HTMLElement, slug: string) {
+  fireEvent.click(projectChip(root));
+  const menu = await screen.findByRole(
+    'dialog',
+    { name: 'Choose project' },
+    { timeout: 15_000 },
+  );
+  fireEvent.click(
+    menu.querySelector<HTMLButtonElement>(`[data-context-value="${slug}"]`)!,
+  );
+}
 
 function renderBoth(projectSlug?: string) {
   const dockSelect = vi.fn();
@@ -881,20 +919,36 @@ describe('Home and the dock start the same way', () => {
     ui.cleanupListener();
   });
 
-  test('with the dock bound to a project both open on that project', () => {
+  test('with the dock bound to a project Home still starts in No project', async () => {
+    // Opening a project rebinds the dock silently; the chip on Home says No
+    // project, and so does the chat Start sends.
     deviceSettingsStore.set('chatDockProjectSlug', 'station');
     const ui = renderBoth();
     const home = screen.getByTestId('home');
     const dock = ui.dock();
     expect(projectChip(home).getAttribute('aria-label')).toBe(
-      'Project: Station',
+      'Project: No project',
     );
     expect(projectChip(dock).getAttribute('aria-label')).toBe(
       'Project: Station',
     );
-    expect(agentChip(home).getAttribute('aria-label')).toBe(
-      agentChip(dock).getAttribute('aria-label'),
+    fireEvent.change(
+      within(formOf(home)).getByRole('textbox', {
+        name: 'What would you like done?',
+      }),
+      { target: { value: 'Hello' } },
     );
+    const start = within(formOf(home)).getByRole('button', { name: 'Start' });
+    await waitFor(() =>
+      expect((start as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(start);
+    expect(ui.starts.at(-1)?.detail.selection).toMatchObject({
+      context: '__global__',
+    });
+    expect(ui.starts.at(-1)?.detail.selection.context).not.toBe('station');
+    // Starting did not rewrite what the dock remembers.
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('station');
     ui.cleanupListener();
   });
 
@@ -1125,7 +1179,7 @@ describe('Home and the dock start the same way', () => {
     ui.cleanupListener();
   }, 30_000);
 
-  test("Home's project pick yields when the dock is rebound elsewhere", async () => {
+  test("Home's project pick stays when the dock is rebound elsewhere", async () => {
     const ui = renderBoth();
     const home = screen.getByTestId('home');
     fireEvent.click(projectChip(home));
@@ -1142,43 +1196,112 @@ describe('Home and the dock start the same way', () => {
         'Project: Station',
       ),
     );
+    // Navigating into another project rebinds the dock; the chip the person
+    // chose on Home does not move under them.
     act(() => deviceSettingsStore.set('chatDockProjectSlug', null));
-    await waitFor(() =>
-      expect(projectChip(home).getAttribute('aria-label')).toBe(
-        'Project: No project',
-      ),
+    expect(projectChip(home).getAttribute('aria-label')).toBe(
+      'Project: Station',
     );
     ui.cleanupListener();
   }, 30_000);
 
-  test('the project chip rebinds the dock, and No workspace clears the binding', async () => {
+  // Home's pick is Home's own: the dock never follows it, in either
+  // direction (a project picked on Home, or No project declining the one
+  // the dock remembers).
+  test("Home's project pick writes nothing the dock reads", async () => {
+    deviceSettingsStore.set('chatDockProjectSlug', 'notes');
+    state.projects = [
+      STATION,
+      { id: 'p2', slug: 'notes', name: 'Notes', workingDirectory: '/w/n' },
+    ];
     const ui = renderBoth();
     const home = screen.getByTestId('home');
-    fireEvent.click(projectChip(home));
-    const menu = await screen.findByRole('dialog', { name: 'Choose project' });
-    fireEvent.click(
-      menu.querySelector<HTMLButtonElement>('[data-context-value="station"]')!,
-    );
-    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('station');
+    await pickProject(home, 'station');
     await waitFor(() =>
       expect(projectChip(home).getAttribute('aria-label')).toBe(
         'Project: Station',
       ),
     );
-    fireEvent.click(projectChip(home));
-    const again = await screen.findByRole('dialog', { name: 'Choose project' });
-    fireEvent.click(
-      again.querySelector<HTMLButtonElement>(
-        '[data-context-value="__global__"]',
-      )!,
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('notes');
+    await pickProject(home, '__global__');
+    await waitFor(() =>
+      expect(projectChip(home).getAttribute('aria-label')).toBe(
+        'Project: No project',
+      ),
     );
-    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBeNull();
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('notes');
+    expect(projectChip(ui.dock()).getAttribute('aria-label')).toBe(
+      'Project: Notes',
+    );
     ui.cleanupListener();
-  });
+  }, 30_000);
+
+  test("the dock's project chip rebinds the dock, and No workspace clears the binding", async () => {
+    const ui = renderBoth();
+    const dock = ui.dock();
+    await pickProject(dock, 'station');
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('station');
+    await waitFor(() =>
+      expect(projectChip(dock).getAttribute('aria-label')).toBe(
+        'Project: Station',
+      ),
+    );
+    await pickProject(dock, '__global__');
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBeNull();
+    // Home did not follow either choice.
+    expect(
+      projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+    ).toBe('Project: No project');
+    ui.cleanupListener();
+  }, 30_000);
+
+  // Leaving Home unmounts its composer; navigating into a project rebinds
+  // the dock. Neither moves the project the person picked on Home.
+  test('a Home pick holds across navigation within the tab', async () => {
+    state.projects = [
+      STATION,
+      { id: 'p2', slug: 'notes', name: 'Notes', workingDirectory: '/w/n' },
+    ];
+    renderHomeUnder('ns-1');
+    await pickProject(screen.getByTestId('home'), 'station');
+    await waitFor(() =>
+      expect(
+        projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+      ).toBe('Project: Station'),
+    );
+    cleanup();
+    act(() => deviceSettingsStore.set('chatDockProjectSlug', 'notes'));
+    renderHomeUnder('ns-1');
+    expect(
+      projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+    ).toBe('Project: Station');
+  }, 30_000);
+
+  // Like the Agent choices beside it, a pick belongs to the Station access
+  // it was made under: switching Station in the same tab does not carry it.
+  test('a Home pick does not carry into another Station access in the same tab', async () => {
+    renderHomeUnder('ns-1');
+    await pickProject(screen.getByTestId('home'), 'station');
+    await waitFor(() =>
+      expect(
+        projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+      ).toBe('Project: Station'),
+    );
+    cleanup();
+    renderHomeUnder('ns-2');
+    expect(
+      projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+    ).toBe('Project: No project');
+    cleanup();
+    renderHomeUnder('ns-1');
+    expect(
+      projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
+    ).toBe('Project: Station');
+  }, 30_000);
 
   // #3350 item 1, on Home: the dock names a project the list has not loaded.
   test('Home holds its chips and Start while the bound project list loads', () => {
-    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    rememberProject('station');
     state.projectsLoading = true;
     render(
       <AuthorityPersistenceContext.Provider
@@ -1293,7 +1416,6 @@ describe('Home and the dock start the same way', () => {
         ?.getAttribute('title'),
     ).toBe('Runs in your home folder (~)');
     fireEvent.click(notes);
-    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('notes');
     await waitFor(() =>
       expect(
         projectChip(screen.getByTestId('home')).getAttribute('aria-label'),
@@ -1302,9 +1424,13 @@ describe('Home and the dock start the same way', () => {
     expect(projectChip(screen.getByTestId('home')).getAttribute('title')).toBe(
       'Runs in your home folder (~)',
     );
+    // The dock remembers its own choice (Home's is not written to it).
+    await pickProject(first.dock(), 'notes');
+    expect(deviceSettingsStore.get('chatDockProjectSlug')).toBe('notes');
     first.cleanupListener();
     cleanup();
-    // Remounted: both read the remembered binding the same way.
+    // Remounted: Home keeps its pick for the tab and the dock reads its
+    // binding, and both name it the same way.
     const second = renderBoth();
     for (const root of [screen.getByTestId('home'), second.dock()]) {
       expect(projectChip(root).getAttribute('aria-label')).toBe(
@@ -1391,7 +1517,7 @@ describe('Home and the dock start the same way', () => {
   // Review FI-B: an errored project list is not a loaded one. Home must not
   // resolve the dock's bound project to No project and start there.
   test('an errored project list holds Home rather than starting in No project', async () => {
-    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    rememberProject('station');
     state.projectsError = true;
     const taken: CustomEvent[] = [];
     window.addEventListener('station:open-new-chat', (event) => {
@@ -1432,7 +1558,7 @@ describe('Home and the dock start the same way', () => {
       STATION,
       { id: 'p2', slug: 'notes', name: 'Notes', workingDirectory: '' },
     ];
-    deviceSettingsStore.set('chatDockProjectSlug', 'notes');
+    rememberProject('notes');
     const ui = renderBoth();
     const home = screen.getByTestId('home');
     await waitFor(() =>
@@ -1942,7 +2068,7 @@ test("the dock's draft reports its text as it changes, so a dismissal can return
 // text. Home keeps its start box with the hero above it.
 describe("the dock's New chat is a draft, not a dialog", () => {
   test('Home and New Chat put the Project in the heading and the Station below the composer', async () => {
-    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    rememberProject('station');
     state.device = { hostName: 'Kontour' };
     const ui = renderBoth();
     const dock = ui.dock();
@@ -1967,7 +2093,7 @@ describe("the dock's New chat is a draft, not a dialog", () => {
   });
 
   test('the inline Project remains available while drafting', async () => {
-    deviceSettingsStore.set('chatDockProjectSlug', 'station');
+    rememberProject('station');
     const dock = renderBoth().dock();
     const heading = await within(dock).findByRole('heading', {
       name: /What would you like to do.*Station/,
@@ -2257,7 +2383,7 @@ describe('project icons in the start composer', () => {
     ['legacy', { img: null, glyph: null, dot: true }],
   ])('the chip on both surfaces draws %s', async (slug, expected) => {
     state.projects = iconProjects;
-    deviceSettingsStore.set('chatDockProjectSlug', slug);
+    rememberProject(slug);
     const ui = renderBoth();
     for (const root of [screen.getByTestId('home'), ui.dock()]) {
       await waitFor(() => expect(markOf(projectChip(root))).toEqual(expected));
@@ -2329,7 +2455,7 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
     state.runLocations = {
       mono: { kind: 'execution-root', path: '/work/mono/packages/app' },
     };
-    deviceSettingsStore.set('chatDockProjectSlug', 'mono');
+    rememberProject('mono');
     const ui = renderBoth();
     for (const root of [screen.getByTestId('home'), ui.dock()]) {
       await waitFor(() =>
@@ -2369,7 +2495,7 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
         workingDirectory: '/work/mono',
       },
     ] as ProjectMetadata[];
-    deviceSettingsStore.set('chatDockProjectSlug', 'mono');
+    rememberProject('mono');
     const before = renderBoth();
     for (const root of [screen.getByTestId('home'), before.dock()])
       await waitFor(() =>
@@ -2405,7 +2531,7 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
       },
     ] as ProjectMetadata[];
     state.runLocations = { slow: { kind: 'unchecked', reason } };
-    deviceSettingsStore.set('chatDockProjectSlug', 'slow');
+    rememberProject('slow');
     const ui = renderBoth();
     const home = screen.getByTestId('home');
     await waitFor(() =>
@@ -2445,7 +2571,7 @@ describe('the run-location hint follows the server resolution (#3370)', () => {
       },
     ] as ProjectMetadata[];
     state.runLocations = { gone: { kind: 'unavailable', reason } };
-    deviceSettingsStore.set('chatDockProjectSlug', 'gone');
+    rememberProject('gone');
     const ui = renderBoth();
     const home = screen.getByTestId('home');
     await waitFor(() =>

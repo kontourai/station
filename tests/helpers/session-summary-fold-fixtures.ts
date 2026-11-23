@@ -62,6 +62,7 @@ export const FOLD_FIXTURE_KEYS: readonly (keyof OrchestrationSessionSummary)[] =
     'conversationActivity',
     'draft',
     'turnProgress',
+    'lastTurnCutOff',
     'updatedAt',
   ];
 
@@ -158,6 +159,13 @@ const SEQUENCES = {
     ],
   },
   turnCompleted: { events: [TURN, { method: 'turn.completed', turnId: 't1' }] },
+  /** The engine stopped the turn at its output limit. */
+  turnCutOff: {
+    events: [
+      TURN,
+      { method: 'turn.completed', turnId: 't1', finishReason: 'max-tokens' },
+    ],
+  },
   /** The turn ended (`idle` since #2540) while its sub-agents kept running. */
   idleWithChildren: {
     events: [TURN, { method: 'turn.completed', turnId: 't1' }],
@@ -520,6 +528,29 @@ const SUMMARIES: Record<FoldFixtureName, FoldSummary> = {
     draft: false,
     updatedAt: '2026-09-30T10:00:04.000Z',
   },
+  turnCutOff: {
+    threadId: 'T',
+    status: 'running',
+    controlMode: 'station-owned',
+    lifecycleState: 'idle',
+    previousLifecycleState: 'running',
+    transitionReason: 'turn_completed',
+    transitionSource: 'runtime',
+    pendingReview: false,
+    hasActiveTurn: false,
+    answerability: {
+      answerable: true,
+    },
+    conversationActivity: {
+      conversationId: 'T',
+      currentThreadId: 'T',
+      asOfSequence: 2,
+      lastActivityAt: '2026-09-30T10:00:04.000Z',
+    },
+    draft: false,
+    lastTurnCutOff: 'max-tokens',
+    updatedAt: '2026-09-30T10:00:04.000Z',
+  },
   idleWithChildren: {
     threadId: 'T',
     status: 'running',
@@ -593,6 +624,7 @@ export const FOLD_FIXTURES: Record<FoldFixtureName, FoldFixture> = {
   approvalSettledByInterruption: fixture('approvalSettledByInterruption'),
   blocked: fixture('blocked'),
   turnCompleted: fixture('turnCompleted'),
+  turnCutOff: fixture('turnCutOff'),
   idleWithChildren: fixture('idleWithChildren'),
   failed: fixture('failed'),
 };

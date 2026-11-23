@@ -724,6 +724,14 @@ created it. Use a reachable HTTPS endpoint for that scan flow. Browser camera
 and mixed-content restrictions still apply. The
 QR contains that offer only—never a bearer credential. A 10-character manual
 code plus the Station address is available when camera access is unavailable.
+Where the browser has no camera API, **Manage Stations** does not offer **Scan
+a QR code** and says to use the Station address or a pairing code, the pairing
+dialog is titled **Enter a pairing code** and opens on code entry, and the
+Connect Station dialog has no **Scan QR** method. Only when the page is not a
+secure context (plain HTTP) does code entry add the note "Camera scanning
+requires HTTPS or localhost."; a secure page without the API gets no note. Where
+the API exists but a capture attempt finds no camera, both dialogs switch to
+code entry without an error or a note.
 
 For another browser, set **Browser app address** to a reachable Station web
 address and choose **Copy browser link**. That address must serve the web UI
@@ -1317,6 +1325,20 @@ for a schema-valid, unexpired `station-pairing:v1` offer. Raw endpoint URLs are
 not accepted. Camera access requires a secure context (HTTPS or localhost); the
 connection modal always exposes the accessible manual-code fallback.
 
+With `onUnavailable`, a browser with no camera is not shown an error: no camera
+API, or a capture refusal that means no camera (`NotFoundError`,
+`NotSupportedError`, `OverconstrainedError`), calls `onUnavailable` instead.
+The device list is not consulted, because before a grant some engines list no
+camera even when one exists. A camera that exists but is refused or busy still
+shows the error as an alert, with **Enter the pairing code manually** when
+`onManualEntry` is set. Only the capture request can report a missing camera: a
+granted camera whose video fails to play shows its error whatever the error
+name. `JoinDevicePairingPanel` opens on code entry without mounting the scanner
+when there is no camera API, and drops the scanner when capture reports no
+camera; either way the cursor goes to the first empty field. `hasCameraApi()`
+reports whether the browser exposes the capture API at all; it does not prove a
+camera exists.
+
 **props**
 
 ```ts
@@ -1324,7 +1346,10 @@ interface QRScannerProps {
   onScan: (payload: string) => void;
   onCancel: () => void;
   onManualEntry?: () => void;
+  onUnavailable?: () => void;
 }
+
+function hasCameraApi(): boolean;
 ```
 
 **example**

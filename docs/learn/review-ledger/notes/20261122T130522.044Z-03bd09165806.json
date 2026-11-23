@@ -1,0 +1,15 @@
+{
+  "revision": "caf947c82dab28bb4ed4c24798afcaa9b2d11991",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked acquisition claims: a URL with no host or repository path now gets its own fixed reason. Refusal rules, recording and status codes are unchanged; no page quotes the changed sentences.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Checked acquisition claims: a URL with no host or repository path now gets its own fixed reason. Refusal rules, recording and status codes are unchanged; no page quotes the changed sentences.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked acquisition claims: a URL with no host or repository path now gets its own fixed reason. Refusal rules, recording and status codes are unchanged; no page quotes the changed sentences.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Checked acquisition claims: a URL with no host or repository path now gets its own fixed reason. Refusal rules, recording and status codes are unchanged; no page quotes the changed sentences.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked acquisition claims: a URL with no host or repository path now gets its own fixed reason. Refusal rules, recording and status codes are unchanged; no page quotes the changed sentences.","inputs":["src-server/services/projects/repository-acquisition-service.ts"]}
+  ]
+}

@@ -406,20 +406,16 @@ describe('default-agent slash commands', () => {
     expect(message.content).not.toContain('plain-skill');
   });
 
-  test('/clear and /new both clear the conversation with ephemeral confirmation', async () => {
+  test('/new opens New chat instead of emptying the list on screen', async () => {
     const { getCommand } = await import('../slashCommands/registry');
-    for (const cmd of ['clear', 'new']) {
-      const handler = getCommand(cmd);
-      const context = baseContext();
+    expect(getCommand('clear')).toBeUndefined();
+    const context = baseContext();
 
-      await handler!(context);
+    await getCommand('new')!(context);
 
-      expect(context.updateChat).toHaveBeenCalledWith('s1', { messages: [] });
-      expect(context.addEphemeralMessage).toHaveBeenCalledWith(
-        's1',
-        expect.objectContaining({ content: 'Conversation cleared' }),
-      );
-    }
+    expect(context.autocomplete.openNewChat).toHaveBeenCalledTimes(1);
+    expect(context.updateChat).not.toHaveBeenCalled();
+    expect(context.addEphemeralMessage).not.toHaveBeenCalled();
   });
 
   test('/resume and /chat open the conversation picker', async () => {

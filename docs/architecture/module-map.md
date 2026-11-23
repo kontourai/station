@@ -881,7 +881,9 @@ principal currentness and the generation are rechecked before publication.
 **Owner-backed exact open reads (#1363).** The same Task reader now supports a
 fresh personal-only Task/project point read, and the same transcript reader
 supports exact Session metadata and indexed-message event point reads. Hosted
-Task authority is rejected before worker admission. Transcript owner/tenant and
+Task authority is rejected before worker admission. The search route first
+resolves a Project filter given as id or slug to the Project's slug (refusing
+one that names no Project). Transcript owner/tenant and
 optional project filtering happen in SQL before the search limit; parent
 SessionAuthorization, principal currentness, cancellation and runtime generation
 still gate returned facts. Indexed messages carry an exact `matchedEventId`
@@ -5588,8 +5590,10 @@ executes those claims through a required `ScheduledTurnAdapter` whose result
 is `completed`, `definitely-not-invoked` or `indeterminate`.
 
 **State, retry and authority.** SQLite serializes claims and mutations across
-processes. A stable `jobId` is distinct from the editable name; deleting and
-recreating a job gives it a new scheduled-job principal. The due claim records
+processes. A stable `jobId` is distinct from the job's `name` (a slug that routes and
+runs are keyed by) and from its optional `displayName`, the only name an edit
+can change; deleting and recreating a job gives it a new scheduled-job
+principal. The due claim records
 its occurrence and firing time. Terminal outcomes consume that occurrence;
 manual runs do not advance the recurring cursor. Claim and `beginInvocation`
 persist before their respective effects. A dead initial pre-invocation owner
