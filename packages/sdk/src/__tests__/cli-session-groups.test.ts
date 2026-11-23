@@ -11,6 +11,7 @@ import {
   listCliSessionGroups,
   parseCliSessionGroupInput,
   runCliSessionGroup,
+  syncCliSessionGroup,
 } from '../client/cli-session-groups';
 import { resetPublicStationCapabilities } from '../client/publicStationCapabilities';
 
@@ -77,8 +78,8 @@ test('a Station without the Session groups capability is never sent a group muta
   expect(fetchMock).toHaveBeenCalledTimes(1);
 });
 
-test('group requests use the advertised API and retain the zero-dispatch receipt', async () => {
-  const view = {
+function groupView() {
+  return {
     version: 'station.cli-session-group/v1',
     groupId: 'group-one',
     revision: 1,
@@ -101,6 +102,10 @@ test('group requests use the advertised API and retain the zero-dispatch receipt
     acceptance: 'unassessed',
     members: [{ seatId: 'seat-one', needs: [], state: 'pending' }],
   };
+}
+
+test('group requests use the advertised API and retain the zero-dispatch receipt', async () => {
+  const view = groupView();
   const requested: { url: string; method: string; body?: unknown }[] = [];
   const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
     if (String(url) === handshakeUrl) return handshake(true);
@@ -138,4 +143,72 @@ test('listing encodes the cursor and handles a Station that only has the origina
     listCliSessionGroups(apiBase, { afterGroupId: 'group:previous' }),
   ).rejects.toThrow('Enable the preview on an updated personal Station');
   expect(fetchMock).toHaveBeenCalledTimes(2);
+});
+
+test('sync binds the returned receipt to its operation and opts in to receipt inspection', async () => {
+  const view = groupView();
+  const sent = {
+    operationId: 'sync-one',
+    runId: 'fold-one',
+    content: 'Folded result',
+    deadlineAt: 2_000_000_000_000,
+  };
+  const receipt = {
+    operationId: sent.operationId,
+    runId: sent.runId,
+    contentHash: `sha256:${'a'.repeat(64)}`,
+    timestamp: '2026-09-01T12:00:00.000Z',
+    status: 'acknowledged',
+    members: [
+      {
+        seatId: 'seat-one',
+        attempts: 1,
+        status: 'acknowledged',
+        turnId: 'turn-one',
+        terminalEventId: 'event-one',
+        nativeIdentityHash: `sha256:${'b'.repeat(64)}`,
+        toolCalls: 0,
+      },
+    ],
+  };
+  let wrongOperation = false;
+  const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+    if (String(url) === handshakeUrl) return handshake(true);
+    if (String(url) === `${groupsUrl}/${view.groupId}/sync`) {
+      expect(init?.method).toBe('POST');
+      expect(JSON.parse(String(init?.body))).toEqual(sent);
+      return Response.json({
+        success: true,
+        data: {
+          ...view,
+          contextSync: wrongOperation
+            ? { ...receipt, operationId: 'sync-other' }
+            : receipt,
+        },
+      });
+    }
+    expect(String(url)).toBe(
+      `${groupsUrl}/${view.groupId}?includeContextSync=1`,
+    );
+    return Response.json({
+      success: true,
+      data: { ...view, contextSync: receipt },
+    });
+  });
+  vi.stubGlobal('fetch', fetchMock);
+
+  expect(
+    (await syncCliSessionGroup(apiBase, view.groupId, sent)).contextSync,
+  ).toEqual(receipt);
+  expect(
+    (
+      await getCliSessionGroup(apiBase, view.groupId, {
+        includeContextSync: true,
+      })
+    ).contextSync,
+  ).toEqual(receipt);
+  wrongOperation = true;
+  await expect(
+    syncCliSessionGroup(apiBase, view.groupId, sent),
+  ).rejects.toThrow('Unexpected Session-group sync receipt');
 });

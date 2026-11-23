@@ -25,6 +25,7 @@ import { createRemoteStationForwarder } from '../../../services/remote-stations/
 import {
   delegateTask,
   interruptDelegatedTask,
+  observeDelegatedTask,
 } from '../../../tools/station-control-delegation.js';
 import { createOrchestrationRoutes } from '../orchestration.js';
 
@@ -199,6 +200,8 @@ async function fixture() {
       },
       interruptDelegatedTask: (input) =>
         interruptDelegatedTask(input, service, remote),
+      observeDelegatedTask: (input) =>
+        observeDelegatedTask(input, service, remote),
     }),
   );
   const server = serve({ fetch: app.fetch, port: 0, hostname: '127.0.0.1' });
@@ -215,8 +218,10 @@ async function fixture() {
   vi.stubEnv('STATION_INTERNAL_API_TOKEN', 'group-test');
   return {
     app,
+    actor,
     adapter,
     store,
+    service,
     pendingDispatches,
     setBeforeReceipt: (work: typeof beforeReceipt) => {
       beforeReceipt = work;
@@ -455,3 +460,43 @@ test('a receipt arriving after cancellation reserves the exact stop without gues
     await Promise.allSettled(f.pendingDispatches);
   }
 }, 30_000);
+
+test('sync resolves the exact completed member and refuses before journaling on an unsupported runtime', async () => {
+  const f = await fixture();
+  const group = await create(f, 1);
+  const path = `/api/orchestration/session-groups/${group.groupId}`;
+  const ran = await f.app.request(`${path}/run`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(5000),
+  });
+  expect(ran.status, await ran.clone().text()).toBe(200);
+  const completed = ((await ran.json()) as { data: CliSessionGroupView }).data;
+  expect(completed.members[0]?.outcome).toBe('completed');
+  expect(f.adapter.turns).toHaveLength(1);
+  const preflight = vi.spyOn(f.service, 'assertRetainedSessionSyncAvailable');
+  const sync = await f.app.request(`${path}/sync`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      operationId: 'sync-one',
+      runId: 'fold-one',
+      content: 'Folded result',
+      deadlineAt: Date.now() + 30_000,
+    }),
+  });
+  expect(sync.status, await sync.clone().text()).toBe(503);
+  expect(await sync.json()).toEqual({
+    success: false,
+    code: 'group_unavailable',
+  });
+  expect(preflight).toHaveBeenCalledExactlyOnceWith(
+    completed.members[0]?.handle?.sessionId,
+    expect.objectContaining({ userId: f.actor.id }),
+  );
+  const read = await f.app.request(`${path}?includeContextSync=1`);
+  expect(read.status).toBe(200);
+  expect(((await read.json()) as { data: CliSessionGroupView }).data).toEqual(
+    completed,
+  );
+  expect(f.adapter.turns).toHaveLength(1);
+});

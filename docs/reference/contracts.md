@@ -24,8 +24,8 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 for the personal Session groups preview. It describes reserved member starts,
 observed Session state and Flow lineage. The dispatch allowance bounds
 reservations. The optional `contextSync` receipt identifies an operation, its
-content hash, and each member's observed disposition. The internal sync journal
-is dormant until the retained Session adapter and route are composed. The view
+content hash, and each member's observed disposition. The sync operation returns
+this receipt, and group reads include it when explicitly requested. The view
 carries neither dispatch authority nor a portable Flow envelope.
 
 `LayoutPanelsRecord` holds device-local side/lower-panel state by layout host

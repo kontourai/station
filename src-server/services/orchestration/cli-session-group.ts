@@ -604,7 +604,7 @@ export class CliSessionGroups<T> {
     });
   }
 
-  // UNWIRED(#91): The retained Session adapter and credential-bound route own delivery.
+  // The retained Session adapter and credential-bound route own delivery.
   async sync(
     groupId: string,
     owner: string,

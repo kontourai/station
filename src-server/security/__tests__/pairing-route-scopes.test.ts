@@ -308,6 +308,11 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
       '/api/orchestration/session-groups/group-one/cancel',
       'orchestration:operate',
     ],
+    [
+      'POST',
+      '/api/orchestration/session-groups/group-one/sync',
+      'orchestration:operate',
+    ],
   ] as const)('Session groups %s %s requires %s', (method, path, scope) => {
     expect(requiredPairingScope(method, path)).toBe(scope);
     expect(pairingScopeSatisfiesHttpRoute('', scope, { method, path })).toBe(

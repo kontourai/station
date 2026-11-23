@@ -461,6 +461,11 @@ a group request. The personal Station must also have the preview enabled.
 `parseCliSessionGroupInput` validates a local plan before creation.
 Use [the group projection](api.md#personal-session-group-preview) to inspect
 the original member identities, dispatch limit, and observed completion.
+`syncCliSessionGroup` submits folded context to completed retained members
+and checks the returned operation and run IDs. Request
+`includeContextSync: true` to inspect the latest receipt with
+`getCliSessionGroup` or `listCliSessionGroups`. A matching sync operation may
+be replayed to observe its own receipt without another send.
 
 ## Integration capability status and Task write-back
 

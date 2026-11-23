@@ -2493,7 +2493,7 @@ export class OrchestrationService {
     );
   }
 
-  // UNWIRED(#91): a group host must own the durable attempt and authorize its Session.
+  // The group host owns the durable attempt and authorizes its Session.
   async assertRetainedSessionSyncAvailable(
     threadId: string,
     context: Parameters<OrchestrationService['dispatchWithReceipt']>[1],

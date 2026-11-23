@@ -2439,13 +2439,15 @@ closes admission at creation. The allowance counts reserved member starts.
 Dollar, token, and physical-attempt caps are unavailable in this preview.
 
 The [retained activation owner](../../src-server/services/orchestration/orchestration-service.ts)
-is also dormant. It admits one reserved turn in a persistent personal Claude
-Session, waits for the previous process exit, and resumes the same native
-conversation with wildcard tool denial. The adapter qualifies the launched
-runtime before accepting the turn. The owner reads the exact terminal event
-and requires confirmed release before returning its receipt. An uncertain
-activation remains fenced until explicit teardown. Group reservation,
-acknowledgment, and the HTTP, SDK, and CLI callers remain separate work in #91.
+serves context sync through the personal Station's Session groups preview.
+The group journal reserves one operation and checks each completed member
+before admitting an attempt. The retained owner waits for the previous process
+exit and resumes the same persistent personal Claude Session with wildcard
+tool denial. The adapter qualifies the launched runtime before accepting the
+turn. The owner reads the exact terminal event and requires confirmed release
+before returning its receipt. An uncertain activation remains fenced until
+explicit teardown. A matching group operation can read its stored receipt
+without another send.
 The [service tests](../../src-server/services/orchestration/__tests__/retained-session-sync.test.ts)
 exercise restricted activation, authority withdrawal, and exit custody.
 
