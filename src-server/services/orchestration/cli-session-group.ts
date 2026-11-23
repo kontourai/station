@@ -9,10 +9,9 @@ import {
   startRun,
   validateDefinition,
 } from '@kontourai/flow';
-import {
-  type FlowMultiCursorExecution,
-  type FlowScheduleEvent,
-  orchestrateFlowMultiCursor,
+import type {
+  FlowMultiCursorExecution,
+  FlowScheduleEvent,
 } from '@kontourai/flow-agents';
 import { canonicalJson } from '@kontourai/relay';
 import type {
@@ -905,6 +904,11 @@ ${content}`;
     );
     const lifetime = AbortSignal.any([signal, controller.signal, deadline]);
     try {
+      const { orchestrateFlowMultiCursor } = await import(
+        '@kontourai/flow-agents'
+      );
+      host.assertCurrent();
+      lifetime.throwIfAborted();
       await orchestrateFlowMultiCursor({
         runId: groupId,
         cwd: join(this.root, groupId),
