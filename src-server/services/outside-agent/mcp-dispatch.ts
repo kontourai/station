@@ -173,6 +173,7 @@ export function createOutsideMcpDispatch(input: {
           if (approved().kind !== 'project')
             throw new Error('Project layouts unavailable');
           const revision = layoutStorage.projectRevision(slug);
+          check(revision.value);
           if (!revision.withCurrentRead)
             throw new Error('Project layouts unavailable');
           const layouts = await revision.withCurrentRead(async (current) => {

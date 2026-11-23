@@ -29,8 +29,10 @@ const resource = `${issuer}/mcp`;
 
 test('outside layout listing reads only the approved Project and drops plugin metadata', async () => {
   const listLayouts = vi.fn<FileStorageAdapter['listLayouts']>();
+  const lockAttempts = vi.fn();
+  let storage!: FileStorageAdapter;
   const f = await fixture(undefined, async ({ home, projects }) => {
-    const storage = new FileStorageAdapter(home);
+    storage = new FileStorageAdapter(home);
     for (const project of projects) await storage.createProject(project);
     await storage.createLayout('alpha', {
       id: 'layout-primary',
@@ -43,11 +45,22 @@ test('outside layout listing reads only the approved Project and drops plugin me
       createdAt: projects[0]!.createdAt,
       updatedAt: projects[0]!.updatedAt,
     });
-    writeFileSync(join(home, 'projects', 'foreign', 'project.json'), '{');
-    expect(() => storage.listProjects()).toThrow();
     listLayouts.mockImplementation((slug) => storage.listLayouts(slug));
     return {
-      projectRevision: (slug) => storage.projectRevision(slug),
+      projectRevision(slug) {
+        const revision = storage.projectRevision(slug);
+        return {
+          ...revision,
+          async withCurrentRead(read) {
+            lockAttempts(slug);
+            if (!revision.withCurrentRead)
+              throw new Error(
+                'fixture Project revision did not provide a read lock',
+              );
+            return revision.withCurrentRead(read);
+          },
+        };
+      },
       listLayouts,
     };
   });
@@ -94,6 +107,10 @@ test('outside layout listing reads only the approved Project and drops plugin me
       .isError,
   ).toBe(true);
   expect(listLayouts).not.toHaveBeenCalled();
+  expect(lockAttempts).not.toHaveBeenCalled();
+
+  writeFileSync(join(f.home, 'projects', 'foreign', 'project.json'), '{');
+  expect(() => storage.listProjects()).toThrow();
 
   const admitted = await list(
     projectGrant.accessToken,
@@ -102,6 +119,7 @@ test('outside layout listing reads only the approved Project and drops plugin me
   );
   expect(f.source.listProjects).not.toHaveBeenCalled();
   expect(listLayouts).toHaveBeenCalledExactlyOnceWith('alpha');
+  expect(lockAttempts).toHaveBeenCalledExactlyOnceWith('alpha');
   expect(JSON.parse(admitted.result.content[0].text)).toEqual({
     success: true,
     data: [
