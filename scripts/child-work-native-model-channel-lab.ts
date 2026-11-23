@@ -24,11 +24,16 @@ if (!process.argv.includes('--run-real-local-lab'))
   throw new Error(
     'Pass --run-real-local-lab to build an isolated model-channel image and start its owned container.',
   );
+const includeEngines = process.argv.includes('--with-native-engines');
+const nativeBrokeredRpc = process.argv.includes('--with-native-brokered-rpc');
+assert.ok(
+  !nativeBrokeredRpc || includeEngines,
+  '--with-native-brokered-rpc requires --with-native-engines',
+);
 const slot = await acquireHeavyCheckSlot({ label: 'lab:native-model-channel' });
 process.once('exit', slot.release);
 const base =
   'node@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54';
-const includeEngines = process.argv.includes('--with-native-engines');
 const fixtureModel = 'station-channel-fixture';
 const fixtureCatalog = JSON.stringify({
   models: [
@@ -528,6 +533,18 @@ try {
       assert.equal(closed.nativeText.settled, true);
       observation.closed = closed;
     }
+  }
+  if (nativeBrokeredRpc) {
+    const { runNativeBrokeredRpcLab } = await import(
+      './lib/native-brokered-rpc-lab.js'
+    );
+    receipt.nativeBrokeredRpcResult = await runNativeBrokeredRpcLab({
+      artifacts,
+      imageId,
+      dockerExecutable: docker,
+      endpoint,
+      producers: engines,
+    });
   }
   receipt.deliveries = deliveries;
   await container.close();

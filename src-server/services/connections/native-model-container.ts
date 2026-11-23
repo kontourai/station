@@ -554,6 +554,7 @@ export class NativeModelContainer {
     if (this.#retiring || !this.#engaged || this.#textSubmitted || !this.#id)
       throw new Error('native_text_admission_closed');
     const connection = this.connection();
+    const namespaceId = this.options.namespaceId;
     const brokerArgs = [
       '/station/native-model-worker.mjs',
       '--delegation-rpc-client',
@@ -714,6 +715,27 @@ export class NativeModelContainer {
           void stop().catch(() => {});
         }
       });
+    const retainedOutput = brokered
+      ? completed.then((terminal) =>
+          writeJsonFile(
+            join(this.#directory, 'native-text-output.json'),
+            {
+              version: 1,
+              namespaceId,
+              containerId: connection.containerId,
+              engine: input.engine,
+              brokered,
+              terminal,
+              bytesReceived: bytes,
+              truncated: bytes > 1024 * 1024,
+              stdoutBase64: Buffer.concat(stdout).toString('base64'),
+              stderrBase64: Buffer.concat(stderr).toString('base64'),
+            },
+            { maxBytes: 2 * 1024 * 1024 },
+          ),
+        )
+      : Promise.resolve();
+    void retainedOutput.catch(() => {});
     child.proc.stdin?.on('error', (error) => {
       failure ??= error;
     });
@@ -737,9 +759,19 @@ export class NativeModelContainer {
         input.signal.throwIfAborted();
         stdin.end();
         const terminal = await completed;
-        if (failure) throw failure;
         if (terminal.code !== 0 || terminal.signal)
-          throw new Error('native_text_failed');
+          failure ??= new Error('native_text_failed');
+        try {
+          await retainedOutput;
+        } catch (retention) {
+          if (failure)
+            throw new AggregateError(
+              [failure, retention],
+              'native_text_failure_and_retention_failed',
+            );
+          throw retention;
+        }
+        if (failure) throw failure;
         const decode = (chunks: Buffer[]) =>
           new TextDecoder('utf-8', { fatal: true }).decode(
             Buffer.concat(chunks),
@@ -754,7 +786,7 @@ export class NativeModelContainer {
         input.signal.removeEventListener('abort', abort);
       }
     });
-    const settled = result.then(stop, stop);
+    const settled = result.then(stop, stop).then(() => retainedOutput);
     void settled.catch(() => {});
     this.#textRun = Object.freeze({
       result,

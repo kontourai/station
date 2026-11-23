@@ -128,6 +128,17 @@ request. Brokered launches cannot issue that fixed-text receipt. The two
 receipts describe observations. Provider qualification, funding, and namespace
 cleanup keep their own independent checks.
 
+Add `--with-native-brokered-rpc` to the opt-in lab invocation with
+`--with-native-engines` to exercise the pinned Claude and Codex clients in
+separate owned namespaces. The loopback broker offers one synthetic tool.
+The probe checks the selected catalog, one actual tool invocation, the exact
+tool result in the follow-up model request, final CLI completion, executable
+identity, and cleanup. It saves the original and prepared bytes separately.
+The container retains bounded private output for brokered terminal exits,
+including a failure before the first model request. The probe makes zero
+external provider calls. Parent grants, provider qualification, and funding
+authority keep their own checks.
+
 ### Create-only lifecycle controls
 
 Use the captured executable and Unix endpoint above, and select an existing
