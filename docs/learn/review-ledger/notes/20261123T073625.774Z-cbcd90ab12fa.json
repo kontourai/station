@@ -1,0 +1,7 @@
+{
+  "revision": "118885a904428b83efc585ce693754dfca2bd104",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Delivery outcome renamed to stopped; checked against AUTOMATION_DELIVERY_OUTCOMES.","inputs":["docs/reference/api.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}

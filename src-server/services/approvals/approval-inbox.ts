@@ -15,6 +15,7 @@ import {
   inputRequestUrlFromRequestEvent,
   isCardAnsweredRequestEvent,
 } from '@kontourai/station-shared/input-request';
+import { redactSecrets } from '@kontourai/station-shared/redaction';
 import {
   STATION_BROWSER_SERVER_GRANT_LABEL,
   toolRequestFromPayload,
@@ -27,12 +28,19 @@ import {
 import type { INotificationProvider } from '../../providers/provider-interfaces.js';
 import { approvalInboxOps } from '../../telemetry/metrics.js';
 import { errorMessage } from '../../utils/error-message.js';
+import { boundedText } from '../automation/automation-operator.js';
 import { ON_ACTIVITY_CARD_METADATA_KEY } from '../notifications/delivery/card-alerted-categories.js';
 import type { NotificationService } from '../notifications/notification-service.js';
 import type { EventBus } from '../orchestration/event-bus.js';
+import type { EventStore } from '../orchestration/event-store.js';
 import type { RequestReplayOutcome } from '../orchestration/open-requests.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
 import { RequestEventGuardError } from '../orchestration/request-inspection.js';
+import {
+  SESSION_OWNER_ATTRIBUTION_METADATA_KEY,
+  UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
+} from '../orchestration/session-owner-attribution.js';
+import type { TaskGraphService } from '../projects/task-graph-service.js';
 
 type RequestOpenedEvent = Extract<
   CanonicalRuntimeEvent,
@@ -81,7 +89,52 @@ interface ApprovalInboxDependencies {
    * start, so the Project's notification level applies to its requests.
    */
   resolveSessionProjectId?: (threadId: string) => string | undefined;
+  /**
+   * The title of a Session that acts for no person (an automation's, whose
+   * title is its Task's), else undefined; see
+   * {@link unattendedSessionTitleResolver}.
+   */
+  unattendedSessionTitle?: (threadId: string) => string | undefined;
 }
+
+/**
+ * Names a Session that acts for no person (its start was marked
+ * `unattributed-agent`, as an automation's is) by the title of the Task it
+ * runs, bounded and with formatting controls and secrets removed. The
+ * Session's own title is not used: for an automation it is derived from the
+ * framed prompt, which quotes untrusted source data. Every other Session,
+ * and an unattended one bound to no Task or to a Task no automation rule
+ * created, gets undefined, so its approval
+ * card is unchanged.
+ */
+export function unattendedSessionTitleResolver(deps: {
+  orchestration: Pick<OrchestrationService, 'firstStartedMetadataOfThread'>;
+  store: Pick<EventStore, 'readProjectTaskRoomExecutionBinding'> | undefined;
+  tasks: Pick<TaskGraphService, 'readTaskView'>;
+}): (threadId: string) => string | undefined {
+  return (threadId) => {
+    if (
+      deps.orchestration.firstStartedMetadataOfThread(threadId)?.[
+        SESSION_OWNER_ATTRIBUTION_METADATA_KEY
+      ] !== UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION
+    )
+      return undefined;
+    const taskId =
+      deps.store?.readProjectTaskRoomExecutionBinding(threadId)?.taskId;
+    const task = taskId ? deps.tasks.readTaskView(taskId) : undefined;
+    // The marker is also set for external-monitor dispatches and internal
+    // principals, whose Task title an Agent may have written.
+    const title =
+      task?.createdBy === 'automation-rule' ? task.title : undefined;
+    const bounded = title
+      ? boundedText(redactSecrets(title), UNATTENDED_TITLE_MAX).trim()
+      : '';
+    return bounded || undefined;
+  };
+}
+
+/** Leaves room on a 140-character line for the request that follows. */
+const UNATTENDED_TITLE_MAX = 80;
 
 const APPROVAL_INBOX_SOURCE = 'approval-inbox';
 const APPROVAL_NOTIFICATION_CATEGORY =
@@ -437,6 +490,15 @@ export class ApprovalInboxNotificationProvider
     }
   }
 
+  /** The unattended Session's title; fail-soft like the slug. */
+  unattendedSessionTitle(threadId: string): string | undefined {
+    try {
+      return this.deps.unattendedSessionTitle?.(threadId) || undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
   /** #5072: the session's recorded Project id; fail-soft like the slug. */
   resolveProjectId(threadId: string): string | undefined {
     try {
@@ -561,14 +623,18 @@ export function wireApprovalInboxNotifications(
             toolRequestFromPayload(event.payload).toolName,
             grant,
           );
+    const body =
+      runtimeEventContentDisplayText(event.description) ||
+      formatOrchestrationBody(event);
+    // A Session that acts for no person (an automation's) says which Task
+    // is waiting; an ordinary chat's card is unchanged.
+    const waitingTask = provider.unattendedSessionTitle(event.threadId);
     const notification = await notificationService.schedule(
       APPROVAL_INBOX_SOURCE,
       {
         category: APPROVAL_NOTIFICATION_CATEGORY,
         title: event.title || 'Provider approval needed',
-        body:
-          runtimeEventContentDisplayText(event.description) ||
-          formatOrchestrationBody(event),
+        body: waitingTask ? `${waitingTask}: ${body}` : body,
         priority: 'high',
         // #3390: a form is answered with content on its own card, against
         // the exact event the person saw; this card's decisions carry

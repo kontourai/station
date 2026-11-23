@@ -304,6 +304,12 @@ export interface AutomationActionIntent {
     | 'running'
     | 'completed'
     | 'failed'
+    /**
+     * A person stopped the Agent's turn (their Stop, not the budget, an
+     * engine failure, a restart or a revocation). The Agent ran, so the
+     * attempt is used, as for `failed`.
+     */
+    | 'stopped'
     | 'indeterminate'
     | 'refused';
   createdAt: number;
@@ -417,6 +423,8 @@ export const AUTOMATION_DELIVERY_OUTCOMES = [
   'suppressed',
   'started',
   'failed',
+  /** A person stopped the turn the delivery started; see the intent state. */
+  'stopped',
   'indeterminate',
 ] as const;
 
@@ -436,6 +444,7 @@ export const AUTOMATION_SEMANTIC_DEDUPE_OUTCOMES = [
   'suppressed',
   'started',
   'failed',
+  'stopped',
   'indeterminate',
 ] as const satisfies readonly AutomationDeliveryOutcome[];
 

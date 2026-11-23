@@ -1,15 +1,24 @@
 import { statSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { join } from 'node:path';
-import { AUTOMATION_EXECUTION_LIMITS } from '@kontourai/station-contracts/automation';
+import {
+  AUTOMATION_EXECUTION_LIMITS,
+  type AutomationSource,
+} from '@kontourai/station-contracts/automation';
 import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { recordAutomationEvent } from '../automation-intake.js';
 import {
   type AutomationLedger,
   automationDeliveryKey,
   createAutomationLedger,
 } from '../automation-ledger.js';
 import { AutomationPolicyUnavailableError } from '../automation-store.js';
+import { normalizeGitHubWorkflowRun } from '../github-workflow-run.js';
+import {
+  QUALIFICATION_RULE,
+  workflowRun,
+} from './fixtures/workflow-run-fixture.js';
 
 const makeTempDir = trackTempDirs();
 
@@ -250,6 +259,50 @@ describe('AutomationLedger', () => {
       claim.receipt.beginInvocation(T0);
       claim.receipt.settle({ state: 'completed', now: T0 + 1 });
       expect(store.episode(key)).toBeUndefined();
+      expect(store.listEpisodes()[0]).toMatchObject({ state: 'closed' });
+    });
+
+    test('an intent settled stopped leaves the active list and closes its per-delivery episode', () => {
+      const store = ledger();
+      const source: AutomationSource = {
+        id: 'source-1',
+        kind: 'github-poll',
+        name: 'station',
+        repository: 'kontourai/station',
+        enabled: true,
+        grants: [
+          {
+            projectId: 'station',
+            agentId: 'repairer',
+            actions: ['dispatch-task'],
+          },
+        ],
+      };
+      // A rule without an `episode` block opens a per-delivery episode,
+      // which closes when its action settles.
+      const { episode: _episode, ...withoutEpisode } = QUALIFICATION_RULE;
+      const normalized = normalizeGitHubWorkflowRun(
+        workflowRun({
+          conclusion: 'failure',
+          updatedAt: new Date(Date.now() - 1000).toISOString(),
+        }),
+        { source, receivedAt: Date.now() },
+      );
+      if (normalized.kind !== 'event') throw new Error(normalized.reason);
+      recordAutomationEvent({
+        ledger: store,
+        rules: [{ ...withoutEpisode, sourceId: source.id, mode: 'live' }],
+        source,
+        event: normalized.event,
+        transportId: normalized.event.semanticKey,
+        now: Date.now(),
+      });
+      const [intent] = store.listActionIntents();
+      expect(intent).toBeDefined();
+      expect(store.listEpisodes()[0]).toMatchObject({ state: 'open' });
+      store.updateIntent(intent!.intentId, { state: 'stopped' }, Date.now());
+      expect(store.readIntent(intent!.intentId)?.state).toBe('stopped');
+      expect(store.listActionIntents()).toEqual([]);
       expect(store.listEpisodes()[0]).toMatchObject({ state: 'closed' });
     });
 

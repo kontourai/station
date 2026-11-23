@@ -1,0 +1,11 @@
+{
+  "revision": "f03efa36287f4492ff31d1211b568ba9de6b2509",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked: this change adds ways the opened-row hold ends; no claim on this page covers the hold","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked: this change adds ways the opened-row hold ends; no claim on this page covers the hold","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked: this change adds ways the opened-row hold ends; no claim on this page covers the hold","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

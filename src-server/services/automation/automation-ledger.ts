@@ -569,7 +569,7 @@ CREATE INDEX IF NOT EXISTS automation_action_intents_task
  * `policy_unavailable`, and a suppression reason makes the row `suppressed`.
  */
 function deliveryEffect(
-  state: 'refused' | 'failed' | 'indeterminate',
+  state: 'refused' | 'failed' | 'stopped' | 'indeterminate',
   reason: string | undefined,
 ): {
   outcome: AutomationDeliveryOutcome;
@@ -1153,7 +1153,7 @@ class SqliteAutomationLedger implements AutomationLedger {
       this.reconcileDeadClaims(Date.now());
       const rows = this.db
         .prepare(
-          "SELECT intent_id, state, body FROM automation_action_intents WHERE state NOT IN ('completed', 'failed', 'refused') ORDER BY CASE WHEN state='pending' THEN 1 ELSE 0 END, created_ms, intent_id LIMIT 200",
+          "SELECT intent_id, state, body FROM automation_action_intents WHERE state NOT IN ('completed', 'failed', 'stopped', 'refused') ORDER BY CASE WHEN state='pending' THEN 1 ELSE 0 END, created_ms, intent_id LIMIT 200",
         )
         .all() as { intent_id: string; state: string; body: string }[];
       return rows.map((row) => {
@@ -1212,6 +1212,7 @@ class SqliteAutomationLedger implements AutomationLedger {
       if (
         update.state === 'refused' ||
         update.state === 'failed' ||
+        update.state === 'stopped' ||
         update.state === 'indeterminate'
       ) {
         const effect = deliveryEffect(update.state, next.reason);
@@ -1233,7 +1234,7 @@ class SqliteAutomationLedger implements AutomationLedger {
           JSON.stringify(next),
           intentId,
         );
-      if (['completed', 'failed', 'refused'].includes(next.state))
+      if (['completed', 'failed', 'stopped', 'refused'].includes(next.state))
         this.db
           .prepare(`UPDATE automation_episodes SET state='closed', updated_ms=?
           WHERE rule_id=? AND episode_id=? AND closes_on_settle=1`)

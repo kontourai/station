@@ -1,0 +1,7 @@
+{
+  "revision": "d0eb57104f6cd4c4582cc71b1de13288f6fcae56",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Status row floats over the transcript end only when nothing takes room between transcript and composer and the transcript is at least 240px tall; otherwise it stays in the composer.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatInputArea.tsx","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/chat/chat.css"]}
+  ]
+}

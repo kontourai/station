@@ -1,0 +1,7 @@
+{
+  "revision": "8fe5ade61c6a162f43f51cc2d5087f85e4678381",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the held-row Scroll to bottom rule now says it shows once the opened row reaches past the view's end","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

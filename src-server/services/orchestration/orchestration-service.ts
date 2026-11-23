@@ -200,6 +200,7 @@ import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-
 import {
   TURN_COMPLETED_AFTER_INTERRUPTION_CODE,
   TURN_ENGINE_ENDED_MESSAGE,
+  withoutCompletedTurnRecovery,
 } from '@kontourai/station-shared/runtime-event-projection';
 import { toolRequestSessionGrantFromPayload } from '@kontourai/station-shared/tool-request-preview';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
@@ -6566,28 +6567,52 @@ export class OrchestrationService {
     );
   }
 
-  async readSession(
+  readSession(
     threadId: string,
     authority: SessionReadScope,
     options?: { eventMethods: readonly string[]; includeLatestEvent?: boolean },
   ): Promise<OrchestrationSessionDetail | null> {
+    return this.readAuthorizedSession(
+      threadId,
+      authority,
+      !options,
+      (_base, loaded, persisted) =>
+        this.readSessionDetail(threadId, loaded, persisted, options),
+    );
+  }
+
+  private async readAuthorizedSession<T>(
+    threadId: string,
+    authority: SessionReadScope,
+    refreshDiscovery: boolean,
+    project: (
+      base: ProviderSession,
+      loaded?: ProviderSession,
+      persisted?: ProviderSession,
+    ) => Promise<T>,
+  ): Promise<T | null> {
     this.initialize();
     let persisted = this.options.eventStore?.readSessionByThread(threadId);
     let loaded = this.sessionReadModel.get(threadId);
-    if (!options || (!persisted && !loaded)) {
+    if (refreshDiscovery || (!persisted && !loaded)) {
       await this.listSessions(INTERNAL_SESSION_READ_SCOPE);
       persisted = this.options.eventStore?.readSessionByThread(threadId);
       loaded = this.sessionReadModel.get(threadId);
     }
     if (persisted)
       this.sessionAuthz.hydratePersistedTenantContexts([persisted]);
-    if (!persisted && !loaded) {
+    const base = loaded ?? persisted;
+    if (!base || !this.sessionAuthz.canReadSession(threadId, authority))
       return null;
-    }
-    if (!this.sessionAuthz.canReadSession(threadId, authority)) {
-      return null;
-    }
+    return project(base, loaded, persisted);
+  }
 
+  private async readSessionDetail(
+    threadId: string,
+    loaded: ProviderSession | undefined,
+    persisted: ProviderSession | undefined,
+    options?: { eventMethods: readonly string[]; includeLatestEvent?: boolean },
+  ): Promise<OrchestrationSessionDetail> {
     // Legacy detail callers keep full replay; fact readers name their methods.
     const events = options
       ? (this.options.eventStore?.listEventPayloads(
@@ -6649,6 +6674,56 @@ export class OrchestrationService {
       events,
       ...(recovery ? { recovery } : {}),
     };
+  }
+
+  private readTurnInstructionContext(threadId: string) {
+    return this.readAuthorizedSession(
+      threadId,
+      INTERNAL_SESSION_READ_SCOPE,
+      true,
+      async (session) => {
+        const events =
+          this.options.eventStore?.listTurnInstructionInputs(threadId) ?? [];
+        const recoveryAndActivity = this.readTurnRecoveryAndActivity(threadId);
+        if (recoveryAndActivity) await recoveryAndActivity;
+        this.readChildWork(threadId, session.provider);
+        return { provider: session.provider, events };
+      },
+    );
+  }
+
+  private readTurnRecoveryAndActivity(threadId: string): void | Promise<void> {
+    const recovery = this.recoveryCoordinator?.latestProjection(threadId);
+    if (recovery) {
+      return this.projectRecovery(recovery, threadId).then(() => {
+        this.conversationActivity?.readForThread(threadId);
+      });
+    }
+    this.conversationActivity?.readForThread(threadId);
+  }
+
+  private readTurnStartLifecycle(
+    threadId: string,
+  ): Promise<SessionLifecycleState | null> {
+    return this.readAuthorizedSession(
+      threadId,
+      INTERNAL_SESSION_READ_SCOPE,
+      true,
+      async (session) => {
+        const events =
+          this.options.eventStore?.listSessionLifecycleInputs(threadId) ?? [];
+        const recoveryAndActivity = this.readTurnRecoveryAndActivity(threadId);
+        if (recoveryAndActivity) await recoveryAndActivity;
+        // Owned work can make the summary report running. Its ownLifecycleState
+        // still comes from this same fold of the thread's log.
+        const { lifecycleState } = projectSessionLifecycle({
+          session,
+          events: withoutCompletedTurnRecovery(events),
+        });
+        this.readChildWork(threadId, session.provider);
+        return lifecycleState;
+      },
+    );
   }
 
   private async projectRecovery(
@@ -10176,6 +10251,12 @@ export class OrchestrationService {
        * untrusted-content permission asks about at a Station seam.
        */
       personAnswer?: true;
+      /**
+       * Set by the orchestration command route on an `interruptTurn` that
+       * passes Station's person check (`personCredentialRequest`). Recorded
+       * as `byPerson` on the turn's `session.stop-settled`.
+       */
+      personStop?: true;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -10384,15 +10465,14 @@ export class OrchestrationService {
             ),
           );
           await this.authorizedConversationWorkspace(submittedInput.threadId);
-          const current = await this.readSession(
+          const current = await this.readTurnInstructionContext(
             submittedInput.threadId,
-            INTERNAL_SESSION_READ_SCOPE,
           );
           // #4520: a thread on an engine the managed policy does not allow
           // is kept but runs no turn, before any engine is started for it.
           const turnEngine =
             this.threadProviders.get(submittedInput.threadId) ??
-            current?.session.provider;
+            current?.provider;
           if (turnEngine !== undefined)
             assertEngineAllowedByManagedPolicy(turnEngine);
           // #4568: a cold Session's respawn waits for the start lease only
@@ -10462,10 +10542,7 @@ export class OrchestrationService {
           const readEngineEvents =
             current && engineMaterialized
               ? ((
-                  await this.readSession(
-                    submittedInput.threadId,
-                    INTERNAL_SESSION_READ_SCOPE,
-                  )
+                  await this.readTurnInstructionContext(submittedInput.threadId)
                 )?.events ?? current.events)
               : current?.events;
           // The engine this dispatch just started began a new context: its
@@ -10933,9 +11010,8 @@ export class OrchestrationService {
                 return this.sessionExecutionCoordinator.runTurnStart(
                   turnInput.threadId,
                   async (boundary) => {
-                    const current = await this.readSession(
+                    const ownLifecycle = await this.readTurnStartLifecycle(
                       turnInput.threadId,
-                      INTERNAL_SESSION_READ_SCOPE,
                     );
                     // #2312 verifier H1: this send resolved its adapter before a
                     // discard took the lifecycle lock, and queued behind it.
@@ -10943,13 +11019,7 @@ export class OrchestrationService {
                     // any invocation is recorded.
                     if (this.discardedDraftThreads.has(turnInput.threadId))
                       throw new DraftDiscardedError();
-                    if (
-                      current &&
-                      foldedSessionLifecycleState(
-                        current.session.ownedWork?.ownLifecycleState ??
-                          current.session.lifecycleState,
-                      ) === 'completed'
-                    ) {
+                    if (ownLifecycle === 'completed') {
                       throw new SessionEndedError();
                     }
                     // #2540: likewise an idle-engine park that took the
@@ -11893,6 +11963,10 @@ export class OrchestrationService {
           }
         }
         case 'interruptTurn': {
+          // A person's Stop (the route's person check) is recorded as such on
+          // `session.stop-settled`, so an automation can tell it from its own
+          // budget interrupt, which never reaches this command.
+          const byPerson = context?.personStop === true;
           const pendingStart = this.engineStartCancels.get(command.threadId);
           if (
             pendingStart &&
@@ -11982,6 +12056,7 @@ export class OrchestrationService {
                 ? { clientTurnId: command.clientTurnId }
                 : {}),
               ...(command.turnId ? { turnId: command.turnId } : {}),
+              ...(byPerson ? { byPerson: true as const } : {}),
             });
             this.persistReceipt(receipt);
             const pending: InterruptTurnResult = {
@@ -12002,6 +12077,8 @@ export class OrchestrationService {
               adapter,
               command.threadId,
               command.turnId,
+              'user',
+              byPerson,
             );
           if (
             interrupted.outcome === 'cooperative' ||

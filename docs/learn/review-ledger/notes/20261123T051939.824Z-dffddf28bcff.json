@@ -1,0 +1,7 @@
+{
+  "revision": "436b4ca4dbab9500c5051b403e99a9d236715639",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Added the person-stop outcome (interrupted, byPerson on session.stop-settled), the wall-budget pause while a blocking request is open, the 24-hour waiting ceiling with reason person_wait_ceiling, and the notification behaviour; checked against automation-actions-runtime.ts, monitor-task-supervisor.ts and person-wait.ts.","inputs":["docs/design/automations.md"]}
+  ]
+}

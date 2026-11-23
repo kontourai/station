@@ -1,48 +1,5 @@
 {
   "$comment": "Main qualification failures that already have an OPEN owner issue, one exact test identity each (file, full title path, and project for Playwright). Nothing here is skipped: every listed test still runs and still fails its run, the run stays red, and release qualification stays blocked. An entry only stops the failure signal from calling that exact test's failure new, and stops counting the moment its issue closes. Anything a runner's failure manifest does not explicitly explain alerts. See docs/guides/testing.md#known-qualification-failures.",
   "schemaVersion": 1,
-  "entries": [
-    {
-      "issue": 4917,
-      "file": "src-server/services/__tests__/html-reply-preview.process.test.ts",
-      "titlePath": [
-        "Chromium preview returns PNG, measured height and console stacks inside the opaque page"
-      ]
-    },
-    {
-      "issue": 4917,
-      "file": "src-server/services/__tests__/html-reply-preview.process.test.ts",
-      "titlePath": [
-        "preview delivers script delimiters, Unicode separators and template syntax byte-exact to the frame"
-      ]
-    },
-    {
-      "issue": 4917,
-      "file": "src-server/services/__tests__/html-reply-preview.process.test.ts",
-      "titlePath": [
-        "preview rejects oversized layout, overflowing console and invalid viewport instead of returning partial output"
-      ]
-    },
-    {
-      "issue": 4917,
-      "file": "src-server/services/__tests__/html-reply-preview.process.test.ts",
-      "titlePath": [
-        "preview navigation and fetch cannot reach a loopback listener"
-      ]
-    },
-    {
-      "issue": 4917,
-      "file": "src-server/services/__tests__/html-reply-preview.process.test.ts",
-      "titlePath": [
-        "preview blocks ICE UDP in nested srcdoc and declarative closed shadow frames on loopback and LAN"
-      ]
-    },
-    {
-      "issue": 4901,
-      "file": "scripts/__tests__/learning-media.test.ts",
-      "titlePath": [
-        "checks the actual capture manifest and recorded source bytes in the required documentation lane"
-      ]
-    }
-  ]
+  "entries": []
 }

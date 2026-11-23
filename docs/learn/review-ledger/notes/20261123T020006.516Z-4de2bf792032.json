@@ -1,0 +1,7 @@
+{
+  "revision": "1fdcbed3781e61a1cffd449bd95ec5b31f31efa9",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Re-recorded after formatting: the status row paragraph matches chat.css and ChatInputArea's placeStatusRow.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

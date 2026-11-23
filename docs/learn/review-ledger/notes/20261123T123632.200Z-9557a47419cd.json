@@ -1,0 +1,17 @@
+{
+  "revision": "ca4d79c39a384dcefc8dcad7020e4e428a396563",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Moved the floating status row's phone clip rule into chat.css's existing phone media block with the same condition; selector, condition and declarations unchanged, so no rendered behaviour these pages describe changes. Checked the citing pages for any claim about that rule or its placement: only docs/design/chat-composer.md describes the floating status, and it does not state where the rule lives.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Moved the floating status row's phone clip rule into chat.css's existing phone media block with the same condition; selector, condition and declarations unchanged, so no rendered behaviour these pages describe changes. Checked the citing pages for any claim about that rule or its placement: only docs/design/chat-composer.md describes the floating status, and it does not state where the rule lives.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Moved the floating status row's phone clip rule into chat.css's existing phone media block with the same condition; selector, condition and declarations unchanged, so no rendered behaviour these pages describe changes. Checked the citing pages for any claim about that rule or its placement: only docs/design/chat-composer.md describes the floating status, and it does not state where the rule lives.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Moved the floating status row's phone clip rule into chat.css's existing phone media block with the same condition; selector, condition and declarations unchanged, so no rendered behaviour these pages describe changes. Checked the citing pages for any claim about that rule or its placement: only docs/design/chat-composer.md describes the floating status, and it does not state where the rule lives.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Moved the floating status row's phone clip rule into chat.css's existing phone media block with the same condition; selector, condition and declarations unchanged, so no rendered behaviour these pages describe changes. Checked the citing pages for any claim about that rule or its placement: only docs/design/chat-composer.md describes the floating status, and it does not state where the rule lives.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Moved the floating status row's phone clip rule into chat.css's existing phone media block with the same condition; selector, condition and declarations unchanged, so no rendered behaviour these pages describe changes. Checked the citing pages for any claim about that rule or its placement: only docs/design/chat-composer.md describes the floating status, and it does not state where the rule lives.","inputs":["src-ui/src/components/chat/chat.css"]}
+  ]
+}
