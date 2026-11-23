@@ -901,6 +901,8 @@ interface SchedulerJob {
   createdBy?: { userId: string };      // read-only
   consecutiveFailures?: number;        // read-only, derived from runs
   lastSuccessAt?: string;              // read-only
+  recentOutcomes?: { outcomes: SchedulerRunOutcome[]; more: boolean }; // read-only, last 12 runs
+  pausedItself?: { failures: number; at: string }; // read-only, set by repeated failures
   enabled: boolean;
   retryCount?: number;
   retryDelaySecs?: number;

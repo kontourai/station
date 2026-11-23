@@ -1,4 +1,4 @@
-// UNWIRED(#4115): R4a has exactly two reads; release composition remains refused until R6.
+// UNWIRED(#4115): release composition remains refused until R6.
 import {
   type CallToolResult,
   isCallToolResult,
@@ -8,12 +8,18 @@ import {
   type Tool,
 } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import type { StationControlToolRegistry } from '../../tools/station-control-mcp-server.js';
 import { registerOperationsTools } from '../../tools/station-control-operations-tools.js';
 import {
   stationControlToolListable,
   stationControlToolPolicy,
 } from '../../tools/station-control-policy.js';
+import { registerActiveWorkTool } from '../../tools/station-control-work-discovery-tools.js';
 import type { ProjectService } from '../projects/project-service.js';
+import {
+  type createOutsideActiveWorkReader,
+  MAX_OUTSIDE_ACTIVE_WORK_CURSOR,
+} from './active-work.js';
 import type { Records } from './oauth-records.js';
 
 export interface OutsideAgentCaller {
@@ -39,18 +45,6 @@ function outsideAgentCaller(grant: Records['grant']): OutsideAgentCaller {
     projectScope: Object.freeze({ ...grant.selection.projectScope }),
   });
 }
-const catalog = new Set(['list_projects', 'get_project']);
-function admitted(name: string, grant: Records['grant']): boolean {
-  const policy = stationControlToolPolicy(name);
-  return (
-    catalog.has(name) &&
-    grant.selection.accessLevel === 'read-only' &&
-    grant.selection.scopes.includes('station-control:read') &&
-    !!policy &&
-    policy.toolClass === 'read-only' &&
-    stationControlToolListable(policy, 'bearer-exposed')
-  );
-}
 function unknown(): never {
   throw new ProtocolError(-32602, 'Unknown tool');
 }
@@ -59,8 +53,23 @@ function unknown(): never {
 export function createOutsideMcpDispatch(input: {
   current(): Records['grant'];
   projects: Pick<ProjectService, 'listProjects' | 'getProject'>;
+  listActiveWork?: ReturnType<typeof createOutsideActiveWorkReader>;
   reserveCall(): () => void;
 }) {
+  const catalog = new Set(['list_projects', 'get_project']);
+  const { listActiveWork } = input;
+  if (listActiveWork) catalog.add('list_active_work');
+  const admitted = (name: string, grant: Records['grant']): boolean => {
+    const policy = stationControlToolPolicy(name);
+    return (
+      catalog.has(name) &&
+      grant.selection.accessLevel === 'read-only' &&
+      grant.selection.scopes.includes('station-control:read') &&
+      !!policy &&
+      policy.toolClass === 'read-only' &&
+      stationControlToolListable(policy, 'bearer-exposed')
+    );
+  };
   const tools = new Map<
     string,
     {
@@ -68,12 +77,12 @@ export function createOutsideMcpDispatch(input: {
       call(args: unknown, ctx: ServerContext): Promise<CallToolResult>;
     }
   >();
-  const scope = (name: string) => {
+  const caller = (name: string) => {
     const grant = input.current();
     if (!admitted(name, grant)) unknown();
-    return outsideAgentCaller(grant).projectScope;
+    return outsideAgentCaller(grant);
   };
-  registerOperationsTools(
+  const registry: Pick<StationControlToolRegistry, 'tool' | 'toolWithSchema'> =
     {
       tool(name, description, shape, callback) {
         const schema = z.object(shape).strict();
@@ -99,7 +108,19 @@ export function createOutsideMcpDispatch(input: {
       },
       toolWithSchema(name, description, schema, callback) {
         tools.set(name, {
-          definition: { name, description, inputSchema: { type: 'object' } },
+          definition: {
+            name,
+            description,
+            inputSchema: catalog.has(name)
+              ? {
+                  ...schema['~standard'].jsonSchema.input({
+                    target: 'draft-2020-12',
+                  }),
+                  type: 'object',
+                }
+              : { type: 'object' },
+            annotations: { readOnlyHint: true },
+          },
           call: async (args, ctx) => {
             const parsed = await schema['~standard'].validate(args ?? {});
             if (parsed.issues)
@@ -111,31 +132,40 @@ export function createOutsideMcpDispatch(input: {
           },
         });
       },
+    };
+  registerOperationsTools(registry, {
+    async list() {
+      const approved = caller('list_projects').projectScope;
+      if (approved.kind === 'global') return [];
+      return input.projects
+        .listProjects()
+        .filter((p) => p.id === approved.projectId);
     },
-    {
-      async list() {
-        const approved = scope('list_projects');
-        if (approved.kind === 'global') return [];
-        return input.projects
-          .listProjects()
-          .filter((p) => p.id === approved.projectId);
-      },
-      async get(slug) {
-        const approved = scope('get_project');
-        // Resolve stable identity before opening the requested Project's configuration.
-        const metadata =
-          approved.kind === 'project'
-            ? input.projects
-                .listProjects()
-                .find((p) => p.id === approved.projectId && p.slug === slug)
-            : undefined;
-        if (!metadata) throw new Error('Project not found');
-        const project = input.projects.getProject(slug);
-        if (project.id !== metadata.id) throw new Error('Project not found');
-        return project;
-      },
+    async get(slug) {
+      const approved = caller('get_project').projectScope;
+      // Resolve stable identity before opening the requested Project's configuration.
+      const metadata =
+        approved.kind === 'project'
+          ? input.projects
+              .listProjects()
+              .find((p) => p.id === approved.projectId && p.slug === slug)
+          : undefined;
+      if (!metadata) throw new Error('Project not found');
+      const project = input.projects.getProject(slug);
+      if (project.id !== metadata.id) throw new Error('Project not found');
+      return project;
     },
-  );
+  });
+  if (listActiveWork) {
+    registerActiveWorkTool(
+      registry,
+      (args) =>
+        listActiveWork(caller('list_active_work'), args, () => {
+          caller('list_active_work');
+        }),
+      MAX_OUTSIDE_ACTIVE_WORK_CURSOR,
+    );
+  }
   const server = new Server(
     { name: 'station-outside-agent', version: '0.1.0' },
     {

@@ -1,0 +1,9 @@
+{
+  "revision": "576020c3b0a4e162fc6b4dbef408159aa3fd5607",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Read the polling and mounted-inbox-test claims in mobile-release and native-shell-verification: the change only adds invalidation tests with a second reader mounted; polling intervals and the cited coverage are unchanged.","inputs":["src-ui/src/__tests__/useConversationInbox.test.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Read the polling and mounted-inbox-test claims in mobile-release and native-shell-verification: the change only adds invalidation tests with a second reader mounted; polling intervals and the cited coverage are unchanged.","inputs":["src-ui/src/__tests__/useConversationInbox.test.tsx"]}
+  ]
+}

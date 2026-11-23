@@ -101,31 +101,6 @@ export function localTime(iso: string | null) {
   });
 }
 
-function rateColor(rate: number) {
-  if (rate >= 90) return 'high';
-  if (rate >= 50) return 'mid';
-  return 'low';
-}
-
-export function RateCell({ rate }: { rate: number | undefined }) {
-  if (rate == null || rate < 0)
-    return <span className="schedule__td--muted">—</span>;
-  const tier = rateColor(rate);
-  return (
-    <span className="schedule__rate">
-      <span className={`schedule__rate-value schedule__rate-value--${tier}`}>
-        {rate}%
-      </span>
-      <span className="schedule__rate-bar">
-        <span
-          className={`schedule__rate-fill schedule__rate-fill--${tier}`}
-          style={{ width: `${rate}%` }}
-        />
-      </span>
-    </span>
-  );
-}
-
 export function JobDetail({
   name,
   autoOpenRun,

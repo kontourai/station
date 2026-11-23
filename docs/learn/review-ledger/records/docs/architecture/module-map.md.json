@@ -1798,6 +1798,10 @@
 
     "src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts",
 
+    "src-server/services/orchestration/session-tool-restriction.ts",
+
+    "src-server/services/orchestration/__tests__/retained-session-sync.test.ts",
+
     "src-server/services/orchestration/cli-session-group.ts"
   ],
 

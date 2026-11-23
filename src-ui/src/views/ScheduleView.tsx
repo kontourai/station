@@ -1,11 +1,15 @@
+import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Button } from '../components/Button';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
+import { PageSection } from '../components/PageSection';
 import { PageFrameActions } from '../components/page-frame';
-import { JobDetail } from '../components/scheduler';
+import { JobDetail, relTime } from '../components/scheduler';
 import { jobLabel } from '../components/scheduler/jobName';
-import { ErrorState, SkeletonBlock } from '../components/state';
-import { Tabs, tabElementId, tabPanelElementId } from '../components/Tabs';
+import { ErrorState, FilteredEmpty, SkeletonBlock } from '../components/state';
+import { useAgents } from '../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
+import { useProjects } from '../contexts/ProjectsContext';
 import { schedulerJobDialogStore } from '../contexts/scheduler-job-dialog-store';
 import { useToast } from '../contexts/ToastContext';
 import {
@@ -14,24 +18,26 @@ import {
   useRunsQuery,
   useSchedulerEvents,
   useSchedulerJobs,
-  useSchedulerStats,
   useSchedulerStatus,
   useToggleJob,
 } from '../hooks/useScheduler';
 import { errorText } from '../utils/errorText';
-import { useSortableTable } from './SortableTable';
-import { ScheduleEmptyState } from './schedule/ScheduleEmptyState';
-import { ScheduleExecutions } from './schedule/ScheduleExecutions';
-import { ScheduleJobsTable } from './schedule/ScheduleJobsTable';
-import { ScheduleStats } from './schedule/ScheduleStats';
-import { ScheduleWeek } from './schedule/ScheduleWeek';
+import { TableFilter } from './SortableTable';
+import { statusRank } from './schedule/automationRow';
 import {
-  buildEnrichedSchedulerJobs,
-  selectSchedulerFailure,
-} from './schedule/utils';
+  automationRowId,
+  OutcomeLegend,
+  type PendingRowAction,
+  ScheduleAutomationList,
+} from './schedule/ScheduleAutomationList';
+import { ScheduleEmptyState } from './schedule/ScheduleEmptyState';
+import { NextDaysTitle, ScheduleNextDays } from './schedule/ScheduleNextDays';
+import { selectSchedulerFailure } from './schedule/utils';
 import './ScheduleView.css';
 import './page-layout.css';
-import { Button } from '../components/Button';
+
+/** Above this many automations the list offers a filter. */
+const FILTER_ABOVE = 15;
 
 function parseQualifiedScheduleRun(runId: string | null) {
   if (!runId?.startsWith('schedule:')) return null;
@@ -58,7 +64,6 @@ export function ScheduleView() {
     refetch: refetchJobs,
     isFetching: fetchingJobs,
   } = useSchedulerJobs();
-  const { data: stats, isLoading: loadingStats } = useSchedulerStats();
   const {
     data: status,
     isLoading: loadingStatus,
@@ -67,13 +72,9 @@ export function ScheduleView() {
     refetch: refetchStatus,
     isFetching: fetchingStatus,
   } = useSchedulerStatus();
-  const {
-    data: runs = [],
-    isLoading: runsLoading,
-    isError: runsError,
-  } = useRunsQuery();
-  const [pane, setPane] = useState('list');
-  const [selectedReceipt, setSelectedReceipt] = useState<string | null>(null);
+  const { data: runs = [], isLoading: runsLoading } = useRunsQuery();
+  const agents = useAgents();
+  const { projects } = useProjects();
   const schedulerAvailable = !jobsError && !statusError;
   const { isRunning, markErrorShown, getMissedCount } =
     useSchedulerEvents(schedulerAvailable);
@@ -82,13 +83,27 @@ export function ScheduleView() {
   const deleteJob = useDeleteJob();
   const { showToast } = useToast();
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [filterText, setFilterText] = useState('');
   const [confirmAction, setConfirmAction] = useState<{
     title: string;
     message: string;
     variant: 'danger' | 'warning';
-    confirmLabel?: string;
+    confirmLabel: string;
+    /** Whose ⋯ gets focus back when the person cancels. */
+    returnTo?: SchedulerJob;
     onConfirm: () => void;
   } | null>(null);
+  // The menu item that opened a confirmation is gone once the menu closes,
+  // so a cancelled confirmation returns focus to the row's ⋯ itself.
+  const [focusMenuOf, setFocusMenuOf] = useState<SchedulerJob | null>(null);
+  useEffect(() => {
+    if (!focusMenuOf) return;
+    document
+      .getElementById(automationRowId(focusMenuOf))
+      ?.querySelector<HTMLButtonElement>('.action-overflow__trigger')
+      ?.focus();
+    setFocusMenuOf(null);
+  }, [focusMenuOf]);
   const [runError, setRunError] = useState<string | null>(null);
   const [retryFailure, setRetryFailure] = useState<ReturnType<
     typeof selectSchedulerFailure
@@ -111,16 +126,31 @@ export function ScheduleView() {
     return () => window.removeEventListener('popstate', sync);
   }, []);
 
-  const enrichedJobs = buildEnrichedSchedulerJobs({ jobs, stats });
+  // Active first, then paused, then finished one-time automations; each
+  // group by the name people read, never the slug.
+  const orderedJobs = useMemo(() => {
+    const now = Date.now();
+    return [...jobs].sort(
+      (left, right) =>
+        statusRank(left, now) - statusRank(right, now) ||
+        jobLabel(left).localeCompare(jobLabel(right)),
+    );
+  }, [jobs]);
+  const filtering = jobs.length > FILTER_ABOVE;
+  const visibleJobs = useMemo(() => {
+    const query = filtering ? filterText.trim().toLowerCase() : '';
+    if (!query) return orderedJobs;
+    return orderedJobs.filter((job) =>
+      [jobLabel(job), job.name].some((text) =>
+        text.toLowerCase().includes(query),
+      ),
+    );
+  }, [filterText, filtering, orderedJobs]);
+  const projectName = useCallback(
+    (id: string) => projects.find((project) => project.id === id)?.name,
+    [projects],
+  );
 
-  const {
-    sorted: sortedJobs,
-    sortKey,
-    sortDir,
-    toggle,
-    filterText,
-    setFilterText,
-  } = useSortableTable(enrichedJobs, 'lastRun', 'desc', ['label', 'name']);
   const qualifiedRun = parseQualifiedScheduleRun(runTarget);
   const exactRun = useMemo(
     () => (runTarget ? runs.find((run) => run.runId === runTarget) : undefined),
@@ -139,31 +169,66 @@ export function ScheduleView() {
     setExpanded(
       `${matchedDeepLinkedJob.provider}:${matchedDeepLinkedJob.name}`,
     );
-  }, [matchedDeepLinkedJob, runTarget, setFilterText]);
+  }, [matchedDeepLinkedJob, runTarget]);
 
-  // T5 / SHELL-16: failure was already acknowledged, success was not — so
-  // pressing Run now on a healthy job produced no feedback at all, and the
-  // only evidence the run happened was a row that eventually changed. Both
-  // outcomes get a toast; a primary action the user pressed always answers.
+  // T5 / SHELL-16: a primary action the user pressed always answers, on
+  // success as well as failure.
   const startRun = useCallback(
-    (name: string) => {
+    (job: SchedulerJob) => {
+      const label = jobLabel(job);
       setRunError(null);
-      runJob.mutate(name, {
+      runJob.mutate(job.name, {
         onSuccess: () => {
-          showToast(`Started a run of '${name}'.`);
+          showToast(`Started a run of '${label}'.`);
         },
         onError: (e: Error) => {
-          markErrorShown(name);
+          markErrorShown(job.name);
           const message = errorText(e);
-          setRunError(`Failed to run '${name}': ${message}`);
-          showToast(`Failed to run '${name}': ${message}`);
+          setRunError(`Failed to run '${label}': ${message}`);
+          showToast(`Failed to run '${label}': ${message}`);
         },
       });
     },
     [runJob, showToast, markErrorShown],
   );
 
-  const handleRun = startRun;
+  // Pause, Resume and Delete answer the same way Run now does: a failure is
+  // said on the page and in a toast, never left to a silent refetch.
+  const changeJob = useCallback(
+    (job: SchedulerJob, action: PendingRowAction['action']) => {
+      const label = jobLabel(job);
+      setRunError(null);
+      const onError = (e: Error) => {
+        const message = `Couldn't ${action} '${label}': ${errorText(e)}`;
+        setRunError(message);
+        showToast(message);
+      };
+      if (action === 'delete') deleteJob.mutate(job.name, { onError });
+      else
+        toggleJob.mutate(
+          { target: job.name, enabled: action === 'resume' },
+          { onError },
+        );
+    },
+    [deleteJob, toggleJob, showToast],
+  );
+  const pendingAction: PendingRowAction | undefined = deleteJob.isPending
+    ? { name: String(deleteJob.variables), action: 'delete' }
+    : toggleJob.isPending && toggleJob.variables
+      ? {
+          name: toggleJob.variables.target,
+          action: toggleJob.variables.enabled ? 'resume' : 'pause',
+        }
+      : undefined;
+  // A day chip or Next up row opens its automation's row and moves there.
+  const [revealJob, setRevealJob] = useState<SchedulerJob | null>(null);
+  useEffect(() => {
+    if (!revealJob) return;
+    const row = document.getElementById(automationRowId(revealJob));
+    row?.scrollIntoView?.({ block: 'center' });
+    row?.querySelector<HTMLButtonElement>('.automations-row__name')?.focus();
+    setRevealJob(null);
+  }, [revealJob]);
 
   // Both scheduler reads failed. What we may say about that is derived from
   // the errors themselves, not assumed — see `selectSchedulerFailure`.
@@ -194,27 +259,14 @@ export function ScheduleView() {
     );
   }
 
-  const daemonOk =
-    !statusError &&
-    Object.values(status?.providers || {}).some(
-      (p) => (p as { running?: boolean }).running,
-    );
-  const schedulerHealthy =
-    !statusError &&
-    Object.values(status?.providers || {}).every(
-      (p) => (p as { healthy?: boolean }).healthy !== false,
-    );
-  const lastTickAt = Object.values(status?.providers || {}).find(
-    (p) => (p as { lastTickAt?: string }).lastTickAt,
-  ) as { lastTickAt?: string } | undefined;
-  const totalRuns = stats?.summary?.totalRuns ?? 0;
-  const successRate = totalRuns > 0 ? (stats?.summary?.successRate ?? -1) : -1;
+  const providers = Object.values(status?.providers ?? {});
   // Scoped to the job actually being run: React Query reports the in-flight
   // mutation's own variables, so one job's request cannot disable every other
-  // job's Run button.
+  // job's Run now.
   const runPendingJob = runJob.isPending
     ? (runJob.variables as string | undefined)
     : undefined;
+  const rowIssues = status?.providers['built-in']?.rowIssues ?? [];
 
   return (
     <div className="schedule">
@@ -234,25 +286,21 @@ export function ScheduleView() {
         </Button>
       </PageFrameActions>
 
-      {isLoading || loadingStats || loadingStatus ? (
+      {isLoading || loadingStatus ? (
         <SkeletonBlock count={4} label="Loading automations" />
       ) : (
         <>
-          <ScheduleStats
-            daemonOk={daemonOk}
-            jobsCount={jobs.length}
-            lastTickAt={lastTickAt?.lastTickAt}
-            schedulerHealthy={schedulerHealthy}
+          <SchedulerNotice
             statusError={statusError}
-            successRate={successRate}
-            totalRuns={totalRuns}
+            providers={providers}
+            onRetry={() => void refetchStatus()}
           />
 
-          {!!status?.providers['built-in']?.rowIssues?.length && (
+          {rowIssues.length > 0 && (
             <section aria-labelledby="schedule-row-issues">
               <h2 id="schedule-row-issues">Schedules that need repair</h2>
               <ul>
-                {status.providers['built-in'].rowIssues.map((issue) => (
+                {rowIssues.map((issue) => (
                   <li key={issue.jobId}>
                     <strong>{issue.name}</strong>{' '}
                     {issue.reason === 'invalid-json'
@@ -283,119 +331,119 @@ export function ScheduleView() {
             </section>
           )}
 
-          <Tabs
-            id="schedule-views"
-            aria-label="Schedule view"
-            activeKey={pane}
-            activation="manual"
-            onSelect={setPane}
-            items={[
-              { key: 'list', label: 'List' },
-              { key: 'week', label: 'Calendar' },
-              { key: 'executions', label: 'Executions' },
-            ]}
-          />
-          <div
-            role="tabpanel"
-            id={tabPanelElementId('schedule-views', pane)}
-            aria-labelledby={tabElementId('schedule-views', pane)}
-          >
-            {pane === 'week' ? (
-              <ScheduleWeek />
-            ) : pane === 'executions' ? (
-              <ScheduleExecutions
-                runs={runs}
-                jobs={jobs}
-                loading={runsLoading}
-                unavailable={runsError}
-                selectedId={selectedReceipt}
-                onSelect={setSelectedReceipt}
+          {jobs.length === 0 ? (
+            !exactRun && (
+              <ScheduleEmptyState
+                onSelectTemplate={(template) => {
+                  if (authority)
+                    schedulerJobDialogStore.open({
+                      authority,
+                      prefill: template,
+                    });
+                }}
               />
-            ) : (
-              <>
-                {sortedJobs.length === 0 && !exactRun ? (
-                  <ScheduleEmptyState
-                    filterText={filterText}
-                    onClearFilter={() => setFilterText('')}
-                    onSelectTemplate={(template) => {
-                      if (authority)
-                        schedulerJobDialogStore.open({
-                          authority,
-                          prefill: template,
-                        });
-                    }}
+            )
+          ) : (
+            <>
+              <PageSection
+                title={<NextDaysTitle />}
+                className="automations-section"
+              >
+                <ScheduleNextDays
+                  onOpen={(job) => {
+                    setFilterText('');
+                    setExpanded(`${job.provider}:${job.name}`);
+                    setRevealJob(job);
+                  }}
+                />
+              </PageSection>
+              <PageSection
+                title="All automations"
+                className="automations-section"
+                actions={<OutcomeLegend jobs={jobs} />}
+              >
+                {filtering && (
+                  <div className="schedule__filter">
+                    <TableFilter
+                      value={filterText}
+                      onChange={setFilterText}
+                      placeholder="Filter automations…"
+                    />
+                  </div>
+                )}
+                {visibleJobs.length === 0 ? (
+                  <FilteredEmpty
+                    query={filterText}
+                    noun="automations"
+                    onClear={() => setFilterText('')}
                   />
-                ) : sortedJobs.length > 0 ? (
-                  <ScheduleJobsTable
-                    autoOpenRun={runTarget}
-                    daemonOk={daemonOk}
+                ) : (
+                  <ScheduleAutomationList
+                    jobs={visibleJobs}
+                    agents={agents}
+                    projectName={projectName}
                     expanded={expanded}
-                    filterText={filterText}
-                    getMissedCount={getMissedCount}
-                    handleRun={handleRun}
-                    isRunning={isRunning}
-                    runPendingJob={runPendingJob}
-                    onDelete={(job) => {
-                      setConfirmAction({
-                        title: 'Delete job',
-                        message: `Delete job "${jobLabel(job)}"? This cannot be undone.`,
-                        variant: 'danger',
-                        onConfirm: () => {
-                          deleteJob.mutate(job.name);
-                          setConfirmAction(null);
-                        },
-                      });
-                    }}
-                    onDuplicate={(job) => {
-                      if (!authority) return;
-                      schedulerJobDialogStore.open({
-                        authority,
-                        prefill: {
-                          name: `${jobLabel(job)} copy`,
-                          cron: job.cron,
-                          schedule: job.schedule,
-                          prompt: job.prompt,
-                          agent: job.agent,
-                        },
-                      });
-                    }}
-                    onEdit={(job) => {
-                      if (authority)
-                        schedulerJobDialogStore.open({ authority, job });
-                    }}
                     onExpand={setExpanded}
-                    onFilterChange={setFilterText}
-                    onToggle={(job, running) => {
-                      if (running) {
+                    autoOpenRun={runTarget}
+                    isRunning={isRunning}
+                    getMissedCount={getMissedCount}
+                    runPendingJob={runPendingJob}
+                    pendingAction={pendingAction}
+                    actions={{
+                      onRun: startRun,
+                      onPause: (job, running) => {
+                        if (!running) {
+                          changeJob(job, 'pause');
+                          return;
+                        }
                         setConfirmAction({
-                          title: 'Cancel Running Job',
-                          message: `Disabling '${jobLabel(job)}' will cancel the currently running job. Continue?`,
+                          title: 'Pause automation',
+                          message: `Pausing '${jobLabel(job)}' stops the run in progress.`,
                           variant: 'warning',
+                          confirmLabel: 'Pause',
                           onConfirm: () => {
-                            toggleJob.mutate({
-                              target: job.name,
-                              enabled: false,
-                            });
+                            changeJob(job, 'pause');
                             setConfirmAction(null);
                           },
                         });
-                        return;
-                      }
-
-                      toggleJob.mutate({
-                        target: job.name,
-                        enabled: !job.enabled,
-                      });
+                      },
+                      onResume: (job) => changeJob(job, 'resume'),
+                      onEdit: (job) => {
+                        if (authority)
+                          schedulerJobDialogStore.open({ authority, job });
+                      },
+                      onDuplicate: (job) => {
+                        if (!authority) return;
+                        schedulerJobDialogStore.open({
+                          authority,
+                          prefill: {
+                            name: `${jobLabel(job)} copy`,
+                            cron: job.cron,
+                            schedule: job.schedule,
+                            prompt: job.prompt,
+                            agent: job.agent,
+                          },
+                        });
+                      },
+                      onDelete: (job) => {
+                        setConfirmAction({
+                          title: 'Delete automation',
+                          message: `Delete '${jobLabel(job)}'? This cannot be undone.`,
+                          variant: 'danger',
+                          confirmLabel: 'Delete',
+                          returnTo: job,
+                          onConfirm: () => {
+                            changeJob(job, 'delete');
+                            setConfirmAction(null);
+                          },
+                        });
+                      },
                     }}
-                    sortDir={sortDir}
-                    sortKey={sortKey}
-                    sortedJobs={sortedJobs}
-                    toggleSort={toggle}
                   />
-                ) : null}
-              </>
-            )}
-          </div>
+                )}
+              </PageSection>
+            </>
+          )}
         </>
       )}
       {confirmAction && (
@@ -404,14 +452,61 @@ export function ScheduleView() {
           title={confirmAction.title}
           message={confirmAction.message}
           variant={confirmAction.variant}
-          confirmLabel={
-            confirmAction.confirmLabel ??
-            (confirmAction.variant === 'danger' ? 'Delete' : 'Disable')
-          }
+          confirmLabel={confirmAction.confirmLabel}
           onConfirm={confirmAction.onConfirm}
-          onCancel={() => setConfirmAction(null)}
+          onCancel={() => {
+            if (confirmAction.returnTo) setFocusMenuOf(confirmAction.returnTo);
+            setConfirmAction(null);
+          }}
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Scheduler health, said only when it is broken: stopped, or running but
+ * no longer checking for due runs on time (the stale heartbeat). A status
+ * read that failed is said as that, with a retry; the list still shows.
+ */
+function SchedulerNotice({
+  statusError,
+  providers,
+  onRetry,
+}: {
+  statusError: boolean;
+  providers: ReadonlyArray<{
+    running?: boolean;
+    healthy?: boolean;
+    lastTickAt?: string | null;
+  }>;
+  onRetry: () => void;
+}) {
+  if (statusError)
+    return (
+      <ErrorState
+        variant="compact"
+        title="Station couldn't check whether automations are running"
+        action={
+          <Button size="sm" onClick={onRetry}>
+            Retry
+          </Button>
+        }
+      />
+    );
+  if (providers.length === 0) return null;
+  if (!providers.some((provider) => provider.running))
+    return (
+      <p className="automations-notice" role="status">
+        Automations aren't running: the scheduler is stopped.
+      </p>
+    );
+  const stale = providers.find((provider) => provider.healthy === false);
+  if (!stale) return null;
+  return (
+    <p className="automations-notice" role="status">
+      Automations aren't running on time: the scheduler last checked for due
+      runs {relTime(stale.lastTickAt ?? null)}.
+    </p>
   );
 }

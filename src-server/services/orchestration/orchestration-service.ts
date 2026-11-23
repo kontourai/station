@@ -629,6 +629,11 @@ import {
   SessionRecoveryCoordinator,
   type UsageLimitRecoveryActionResult,
 } from './session-recovery-coordinator.js';
+import {
+  type SessionToolRestriction,
+  sessionToolRestriction,
+  withSessionToolRestriction,
+} from './session-tool-restriction.js';
 import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
@@ -2457,6 +2462,306 @@ const announcedStartObservers = new WeakMap<
 >();
 
 export class OrchestrationService {
+  private readonly toolRestrictions = new Map<
+    string,
+    { restriction: SessionToolRestriction; adapter: ProviderAdapterShape }
+  >();
+
+  private assertActivationAccess(
+    threadId: string,
+    clientTurnId?: string,
+  ): void {
+    const restriction = sessionToolRestriction(threadId);
+    if (
+      this.toolRestrictions.get(threadId)?.restriction !== restriction ||
+      (restriction &&
+        clientTurnId !== undefined &&
+        restriction.clientTurnId !== clientTurnId)
+    )
+      throw new Error('group_sync_activation_changed');
+  }
+
+  private isRetainedSyncOwner(
+    threadId: string,
+    context: Parameters<OrchestrationService['dispatchWithReceipt']>[1],
+  ): boolean {
+    return (
+      !!context?.userId &&
+      !context.tenantExecutionContext &&
+      this.sessionAuthz.sessionOwnerUserId(threadId) === context.userId &&
+      this.canUserMutateSession(threadId, context.userId, undefined)
+    );
+  }
+
+  // UNWIRED(#91): a group host must own the durable attempt and authorize its Session.
+  async assertRetainedSessionSyncAvailable(
+    threadId: string,
+    context: Parameters<OrchestrationService['dispatchWithReceipt']>[1],
+  ): Promise<void> {
+    await this.qualifyRetainedSync(
+      threadId,
+      context ? { ...context } : undefined,
+    );
+  }
+
+  private async qualifyRetainedSync(
+    threadId: string,
+    context: Parameters<OrchestrationService['dispatchWithReceipt']>[1],
+  ) {
+    this.initialize();
+    const session = this.sessionReadModel.get(threadId);
+    const adapter =
+      session && this.options.adapterRegistry.get(session.provider);
+    const inspectRuntime = adapter?.assertContextSyncRuntime;
+    const readNativeIdentity = adapter?.nativeSessionIdentity;
+    const observeExit = adapter?.engineEnded;
+    if (
+      !this.options.eventStore ||
+      !session ||
+      session.persistSession === false ||
+      !adapter ||
+      adapter.provider !== session.provider ||
+      !inspectRuntime ||
+      !readNativeIdentity ||
+      !observeExit ||
+      !this.isRetainedSyncOwner(threadId, context) ||
+      this.persistedPortableConsentOfThread(threadId)
+    )
+      throw new Error('group_sync_unavailable');
+
+    const provider = session.provider;
+    const nativeSessionId = readNativeIdentity.call(
+      adapter,
+      session.resumeCursor,
+    )?.sessionId;
+    const nativeBindingKey =
+      this.preparedTurnBinding(threadId).nativeBindingKey;
+    if (!nativeSessionId || typeof nativeBindingKey !== 'string')
+      throw new Error('group_sync_unavailable');
+
+    const isCurrent = () =>
+      this.sessionReadModel.get(threadId)?.provider === provider &&
+      this.isAdapterCurrent(adapter) &&
+      adapter.assertContextSyncRuntime === inspectRuntime &&
+      adapter.nativeSessionIdentity === readNativeIdentity &&
+      adapter.engineEnded === observeExit;
+
+    await inspectRuntime.call(adapter);
+
+    const retained = this.sessionReadModel.get(threadId);
+    if (
+      !retained ||
+      retained.persistSession === false ||
+      !isCurrent() ||
+      readNativeIdentity.call(adapter, retained.resumeCursor)?.sessionId !==
+        nativeSessionId ||
+      this.preparedTurnBinding(threadId).nativeBindingKey !==
+        nativeBindingKey ||
+      !this.isRetainedSyncOwner(threadId, context) ||
+      this.persistedPortableConsentOfThread(threadId)
+    )
+      throw new Error('group_sync_unavailable');
+    return { adapter, nativeSessionId, nativeBindingKey, isCurrent };
+  }
+
+  /** One reserved attempt in the existing conversation; the caller owns its durable receipt. */
+  async syncRetainedSession(input: {
+    threadId: string;
+    prompt: string;
+    clientTurnId: string;
+    signal: AbortSignal;
+    assertCurrent(): void;
+    context: Parameters<OrchestrationService['dispatchWithReceipt']>[1];
+  }): Promise<{
+    sessionId: string;
+    nativeSessionId: string;
+    nativeIdentityHash: string;
+    turnId: string;
+    terminalEventId: string;
+    output: string;
+    toolCalls: number;
+  }> {
+    const { threadId, prompt, clientTurnId, signal } = input;
+    const assertCurrent = input.assertCurrent.bind(input);
+    const context = input.context ? { ...input.context } : undefined;
+    this.initialize();
+    assertCurrent();
+    signal.throwIfAborted();
+    const { adapter, nativeSessionId, nativeBindingKey, isCurrent } =
+      await this.qualifyRetainedSync(threadId, context);
+    assertCurrent();
+    signal.throwIfAborted();
+    if (
+      !isCurrent() ||
+      !this.isRetainedSyncOwner(threadId, context) ||
+      this.persistedPortableConsentOfThread(threadId) ||
+      this.toolRestrictions.has(threadId) ||
+      this.startsUnderway.has(threadId) ||
+      this.materializingSessions.has(threadId) ||
+      this.sendTurnsInDispatch.has(threadId)
+    )
+      throw new Error('group_sync_unavailable');
+    const restriction: SessionToolRestriction = {
+      threadId,
+      nativeSessionId,
+      nativeBindingKey,
+      generation: crypto.randomUUID(),
+      clientTurnId,
+      assertCurrent: () => {
+        assertCurrent();
+        if (
+          signal.aborted ||
+          this.toolRestrictions.get(threadId)?.restriction !== restriction ||
+          !isCurrent() ||
+          !this.isRetainedSyncOwner(threadId, context)
+        )
+          throw new Error('group_sync_activation_changed');
+      },
+    };
+    this.toolRestrictions.set(threadId, { restriction, adapter });
+    return withSessionToolRestriction(restriction, async () => {
+      let released = true;
+      let startedTurnId: string | undefined;
+      const park = (live: ProviderAdapterShape) =>
+        this.parkIdleSession(threadId, live, Date.now(), 0, undefined, {
+          requireObservedExit: true,
+          beforeStop: () => {
+            restriction.assertCurrent();
+            released = false;
+          },
+        });
+      try {
+        const live = this.sessionAdapters.get(threadId);
+        if (live) {
+          if (live !== adapter || !(await park(live)))
+            throw new Error('group_sync_session_busy');
+          released = true;
+        }
+        restriction.assertCurrent();
+        released = false;
+        const recovered = await this.materializeRecoveredSession(threadId);
+        restriction.assertCurrent();
+        if (
+          recovered !== adapter ||
+          adapter.nativeSessionIdentity?.(
+            this.sessionReadModel.get(threadId)?.resumeCursor,
+          )?.sessionId !== nativeSessionId ||
+          this.preparedTurnBinding(threadId).nativeBindingKey !==
+            nativeBindingKey
+        )
+          throw new Error('group_sync_identity_changed');
+        const startSequence =
+          this.options.eventStore?.latestEventByMethods(threadId, [
+            'session.started',
+            'session.configured',
+            'turn.completed',
+            'session.exited',
+            'runtime.error',
+          ])?.sequence ?? 0;
+        const sent = await this.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: {
+              threadId,
+              input: prompt,
+              clientTurnId,
+              signal,
+            },
+          },
+          context,
+        );
+        const result = sent.result;
+        if (
+          !result ||
+          !('turnId' in result) ||
+          typeof result.turnId !== 'string'
+        )
+          throw new Error('group_sync_turn_unknown');
+        const turnId = result.turnId;
+        startedTurnId = turnId;
+        let afterSequence = startSequence;
+        let toolCalls = 0;
+        for (;;) {
+          restriction.assertCurrent();
+          const page = await this.readSessionEventPage(threadId, {
+            afterSequence,
+            limit: 200,
+            authority: INTERNAL_SESSION_READ_SCOPE,
+          });
+          restriction.assertCurrent();
+          if (!page) throw new Error('group_sync_turn_unknown');
+          for (const entry of page.events) {
+            if (entry.sequence !== afterSequence + 1)
+              throw new Error('group_sync_evidence_gap');
+            afterSequence = entry.sequence;
+            const event = entry.event;
+            if (
+              event.method === 'runtime.error' ||
+              event.method === 'session.exited'
+            )
+              throw new Error('group_sync_turn_failed');
+            if (event.turnId !== turnId) continue;
+            if (event.method === 'tool.started') toolCalls++;
+            if (event.method === 'turn.aborted')
+              throw new Error('group_sync_turn_failed');
+            if (event.method === 'turn.completed') {
+              if (event.finishReason !== 'stop')
+                throw new Error('group_sync_turn_failed');
+              const terminal =
+                this.options.eventStore?.resolveCanonicalEventContent(event) ??
+                event;
+              if (typeof terminal.outputText !== 'string')
+                throw new Error('group_sync_output_unavailable');
+              const observedNative = adapter.nativeSessionIdentity?.(
+                this.sessionReadModel.get(threadId)?.resumeCursor,
+              );
+              if (
+                observedNative?.sessionId !== nativeSessionId ||
+                this.preparedTurnBinding(threadId).nativeBindingKey !==
+                  nativeBindingKey
+              )
+                throw new Error('group_sync_identity_changed');
+              if (!(await park(adapter)))
+                throw new Error('group_sync_release_unknown');
+              released = true;
+              restriction.assertCurrent();
+              return {
+                sessionId: threadId,
+                nativeSessionId,
+                nativeIdentityHash: `sha256:${crypto
+                  .createHash('sha256')
+                  .update(JSON.stringify([nativeBindingKey, nativeSessionId]))
+                  .digest('hex')}`,
+                turnId,
+                terminalEventId: event.eventId,
+                output: terminal.outputText,
+                toolCalls,
+              };
+            }
+          }
+          if (!page.hasMore) await scheduler.wait(50, { signal });
+        }
+      } finally {
+        if (!released && startedTurnId) {
+          try {
+            await adapter.interruptTurn(threadId, startedTurnId);
+          } catch {
+            this.options.logger.warn(
+              'Context sync interruption was not confirmed',
+              { threadId },
+            );
+          }
+        }
+        // A failed/ambiguous activation stays fenced until explicit teardown.
+        if (
+          released &&
+          this.toolRestrictions.get(threadId)?.restriction === restriction
+        )
+          this.toolRestrictions.delete(threadId);
+      }
+    });
+  }
+
   private taskSourceVerifier?: (sessionId: string) => Promise<void>;
   bindTaskSourceVerifier(verifier: (sessionId: string) => Promise<void>): void {
     this.taskSourceVerifier = verifier;
@@ -5791,7 +6096,7 @@ export class OrchestrationService {
       const endedAt = performance.now();
       this.readModelMeasurement.record({
         purpose: options.purpose,
-        scope: options.threadIds ? 'threads' : 'all',
+        scope: options.threadIds || options.selectThreadIds ? 'threads' : 'all',
         totalMs: endedAt - startedAt,
         buildMs: endedAt - buildStartedAt,
         ...sample,
@@ -5817,7 +6122,6 @@ export class OrchestrationService {
       threadsConsidered: number;
     },
   ): OrchestrationSessionSummary[] {
-    const only = options.threadIds ? new Set(options.threadIds) : undefined;
     const persistedSessions =
       this.evictCollidingAttachedAliases() ??
       this.options.eventStore?.readSessions() ??
@@ -5834,11 +6138,16 @@ export class OrchestrationService {
     // ONE timestamp for the whole read: this list is a single observation of
     // this process's state, not one observation per row.
     const observedAt = new Date().toISOString();
+    const canList = (threadId: string): boolean =>
+      !this.isEphemeralSession(threadId) &&
+      this.sessionAuthz.canReadSession(threadId, authority);
+    const selected =
+      options.selectThreadIds?.(
+        (threadId) => threadIds.has(threadId) && canList(threadId),
+      ) ?? options.threadIds;
+    const only = selected ? new Set(selected) : undefined;
     const readableThreadIds = [...threadIds].filter(
-      (threadId) =>
-        (!only || only.has(threadId)) &&
-        !this.isEphemeralSession(threadId) &&
-        this.sessionAuthz.canReadSession(threadId, authority),
+      (threadId) => (!only || only.has(threadId)) && canList(threadId),
     );
     const readableThreadSet = new Set(readableThreadIds);
     sample.threadsConsidered = readableThreadIds.length;
@@ -10273,6 +10582,24 @@ export class OrchestrationService {
       | undefined
     >
   > {
+    if (command.type !== 'stopSession' && command.type !== 'interruptTurn') {
+      const threadId =
+        'input' in command &&
+        command.input &&
+        typeof command.input === 'object' &&
+        'threadId' in command.input
+          ? command.input.threadId
+          : 'threadId' in command
+            ? command.threadId
+            : undefined;
+      if (typeof threadId === 'string')
+        this.assertActivationAccess(
+          threadId,
+          command.type === 'sendTurn'
+            ? (command.input.clientTurnId ?? '')
+            : undefined,
+        );
+    }
     if (command.type === 'startSession') {
       const outcome =
         this.refusedDiscardedSuccessorStart(
@@ -11329,6 +11656,10 @@ export class OrchestrationService {
                             );
                             assertInputRequestCurrent();
                             this.assertAdapterCurrent(adapter);
+                            this.assertActivationAccess(
+                              turnInput.threadId,
+                              turnInput.clientTurnId ?? '',
+                            );
                             this.assertTurnAdmitted(
                               turnInput.threadId,
                               dispatchOrigin,
@@ -14128,6 +14459,7 @@ export class OrchestrationService {
     beforeProviderStart?: () => Promise<void>,
     preparationSignal?: AbortSignal,
   ): Promise<T> {
+    this.assertActivationAccess(threadId);
     if (ownershipInput)
       this.options.eventStore?.reserveOwnershipStart(
         threadId,
@@ -14139,6 +14471,7 @@ export class OrchestrationService {
       if (beforeProviderStart)
         await raceWithSignal(beforeProviderStart(), preparationSignal);
       throwIfAborted(preparationSignal);
+      this.assertActivationAccess(threadId);
       return runSessionStartWithBoundary(
         this.sessionStartBoundaries,
         threadId,
@@ -14472,6 +14805,18 @@ export class OrchestrationService {
     // `stopUserSessionImmediately`'s observable effect is its two local
     // steps — persist the row as resumable, forget the live binding —
     // which is what this does.
+    const activation = this.toolRestrictions.get(threadId);
+    if (activation) {
+      const { adapter } = activation;
+      if (!this.isAdapterCurrent(adapter))
+        throw new Error('group_sync_release_unknown');
+      await this.cooperativeStop.stopUserSessionImmediately(adapter, threadId);
+      if (adapter.engineEnded?.(threadId) !== true)
+        throw new Error('group_sync_release_unknown');
+      if (this.toolRestrictions.get(threadId) === activation)
+        this.toolRestrictions.delete(threadId);
+      return;
+    }
     if (this.isDormantSessionThread(threadId)) {
       this.cooperativeStop.stopDormantSessionImmediately(threadId);
       return;
@@ -18091,7 +18436,12 @@ export class OrchestrationService {
      * `resumable: false` retires an engine whose Session a successor
      * replaced: no resume cursor is needed, since nothing restarts it.
      */
-    retire?: { resumable?: false; freshAtRest?: true },
+    retire?: {
+      resumable?: false;
+      freshAtRest?: true;
+      requireObservedExit?: true;
+      beforeStop?(): void;
+    },
   ): Promise<boolean> {
     // Serialized with turn starts: a send that arrives first wins, and the
     // park re-checks everything under the lock before touching the engine.
@@ -18110,8 +18460,9 @@ export class OrchestrationService {
           refusedEarly?.()
         )
           return false;
-        const exited = new Promise<void>((resolve) =>
-          this.parkedExitWaiters.set(threadId, resolve),
+        retire?.beforeStop?.();
+        const exited = new Promise<true>((resolve) =>
+          this.parkedExitWaiters.set(threadId, () => resolve(true)),
         );
         this.parkingThreads.add(threadId);
         try {
@@ -18120,16 +18471,21 @@ export class OrchestrationService {
           // own exit has been absorbed, so that exit can never be mistaken
           // for (or land on) the engine that replaces it.
           let timer: ReturnType<typeof setTimeout> | undefined;
-          await Promise.race([
+          const observedExit = await Promise.race([
             exited,
-            new Promise<void>((resolve) => {
+            new Promise<false>((resolve) => {
               timer = setTimeout(
-                resolve,
+                () => resolve(false),
                 this.options.idleSessionParkExitWaitMs ?? PARKED_EXIT_WAIT_MS,
               );
             }),
           ]);
           if (timer) clearTimeout(timer);
+          if (
+            retire?.requireObservedExit &&
+            (!observedExit || adapter.engineEnded?.(threadId) !== true)
+          )
+            throw new Error('group_sync_release_unknown');
         } finally {
           this.parkingThreads.delete(threadId);
           this.parkedExitWaiters.delete(threadId);
@@ -18608,6 +18964,7 @@ export class OrchestrationService {
     intent: RuntimeEngineStartIntent = 'recovery',
     target: EngineStartTarget = {},
   ): Promise<ProviderAdapterShape | undefined> {
+    this.assertActivationAccess(threadId);
     const inFlight = this.materializingSessions.get(threadId);
     if (inFlight) {
       // #4568: a person joining a background respawn must not inherit its
@@ -18817,7 +19174,11 @@ export class OrchestrationService {
       ?.preparedTurnBinding?.(threadId);
     const nativeIdentityKey =
       this.options.eventStore?.nativeSessionBindingIdentity(threadId);
+    const restriction = this.toolRestrictions.get(threadId)?.restriction;
     return {
+      ...(restriction
+        ? { toolRestrictionGeneration: restriction.generation }
+        : {}),
       ...(nativeIdentityKey !== undefined ? { nativeIdentityKey } : {}),
       provider: session.provider,
       resumeCursor: session.resumeCursor ?? null,
@@ -18850,6 +19211,8 @@ export class OrchestrationService {
     );
     if (
       stored?.state !== 'prepared' ||
+      typeof stored.capture.resumeGuard.binding.toolRestrictionGeneration ===
+        'string' ||
       stored.capture.resumeGuard.requiresFreshCompanions ||
       stored.capture.adapterInput.confinement === 'host' ||
       stored.capture.adapterInput.reviewIsolation ||
@@ -18935,6 +19298,10 @@ export class OrchestrationService {
         if (!current()) throw unavailable();
         await this.assertMandatoryTaskContextAtProviderTurn(threadId);
         if (!current()) throw unavailable();
+        this.assertActivationAccess(
+          threadId,
+          stored.capture.adapterInput.clientTurnId ?? '',
+        );
         this.assertForkContextAtProviderTurn(stored.capture.adapterInput);
         const owned = this.sessionStartBoundaries.resumePrepared?.(
           stored.capture,
