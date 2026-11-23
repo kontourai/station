@@ -236,10 +236,14 @@
     ],
     "home": ["src-ui/src/views/HomeView.tsx"],
     "agents": ["src-ui/src/views/AgentsView.tsx"],
-    "skills": ["src-ui/src/views/GuidanceView.tsx"],
+    "skills": [
+      "src-ui/src/views/GuidanceView.tsx",
+      "src-ui/src/views/SkillsView.tsx"
+    ],
     "registry": [
       "src-ui/src/views/apps/AppsView.tsx",
-      "src-ui/src/views/apps/DiscoverView.tsx"
+      "src-ui/src/views/apps/DiscoverView.tsx",
+      "src-ui/src/views/apps/AppsLoadFailure.tsx"
     ],
     "connections": [
       "src-ui/src/views/customize/CustomizeLanding.tsx",
@@ -263,7 +267,8 @@
     ],
     "plugins": [
       "src-ui/src/views/apps/AppsView.tsx",
-      "src-ui/src/views/PluginManagementView.tsx"
+      "src-ui/src/views/PluginManagementView.tsx",
+      "src-ui/src/views/apps/AppsLoadFailure.tsx"
     ],
     "schedule": ["src-ui/src/views/ScheduleView.tsx"],
     "developer-telemetry": ["src-ui/src/views/DeveloperView.tsx"],

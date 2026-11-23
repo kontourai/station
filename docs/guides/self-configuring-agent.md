@@ -1199,7 +1199,7 @@ to Sessions started afterwards.
 ## Example agent
 
 Use this as an attended Station-engine Agent after configuring a usable Model
-connection and default model in [Connections](connections.md). No engine binding
+connection and default model in [Customize › Providers](connections.md). No engine binding
 is declared, so it uses Station's engine. The example declares delegation in
 `tools.available`. Whether a Session can delegate depends on the caller's
 authority, recorded depth, and inherited tool policy. Only the four listed

@@ -1259,7 +1259,7 @@ A saved `kiro` connection keeps its own arguments.
    **Not connected yet** card say "Kiro (KAS, no CLI) isn't installed yet".
    Installing needs permission to operate Station on a paired device.
    Until you sign in, a chat on this engine is held with **Sign in to Kiro
-   (KAS, no CLI) from its sign-in panel in Connections**, and the engines
+   (KAS, no CLI) from its sign-in panel in Customize › Engines**, and the engines
    list shows it as **Sign in required** even though the engine answers its
    handshake. If Station cannot read that readiness, the row says it could
    not verify the engine; other engines still list. Station's readiness reads the installed
@@ -2229,7 +2229,7 @@ on overflow); remote protocol-negotiation error bodies are limited to 64 KiB.
 Both limits refuse oversized bodies rather than truncating them.
 Remote HTTP 4xx/5xx errors retain their status with sanitized JSON-RPC error
 text, except upstream 401: Station refreshes once, then returns HTTP 403 with
-“Open Connections → Tools” needs-sign-in guidance if authorization is missing
+“Open Customize › Tools” needs-sign-in guidance if authorization is missing
 or rejected again. That response has no `WWW-Authenticate` and does not invite
 the engine to discover OAuth on Station. Transient refresh unavailability
 returns HTTP 503. Invalid, expired or revoked proxy credentials return HTTP 401.

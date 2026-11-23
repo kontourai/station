@@ -432,6 +432,39 @@ describe('Apps › Discover', () => {
     expect(cardNames()).toEqual(['Knowledge Docs Starter']);
   });
 
+  test('pressing a chosen facet value again clears it, even when the search leaves it at zero', () => {
+    render(<DiscoverView />);
+    const pane = () =>
+      within(facetGroup('Opens as')).getByRole('button', { name: /A pane/ });
+    fireEvent.click(pane());
+    expect(pane().getAttribute('aria-pressed')).toBe('true');
+    fireEvent.change(screen.getByLabelText('Search apps'), {
+      target: { value: 'knowledge docs' },
+    });
+    expect(pane().textContent).toContain('0');
+    fireEvent.click(pane());
+    expect(
+      within(facetGroup('Opens as'))
+        .getByRole('button', { name: 'Anywhere' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(cardNames()).toEqual(['Knowledge Docs Starter']);
+  });
+
+  test('search matches the source and version the card shows', () => {
+    state.rows = catalogRows().map((row) =>
+      row.id === 'fieldwork-review'
+        ? { ...row, catalogSourceName: 'Field team catalog' }
+        : row,
+    );
+    render(<DiscoverView />);
+    const search = screen.getByLabelText('Search apps');
+    fireEvent.change(search, { target: { value: 'field team' } });
+    expect(cardNames()).toEqual(['Fieldwork Review']);
+    fireEvent.change(search, { target: { value: 'v0.1.0' } });
+    expect(cardNames()).toEqual(['Fieldwork Review']);
+  });
+
   test('claims no trust line when the server does not say where screen code runs', () => {
     state.rows = catalogRows().map((row) => {
       if (!row.app || row.app.kind !== 'app') return row;

@@ -1239,7 +1239,7 @@ test.each([
     });
     try {
       await expect(client.connect(transport)).rejects.toThrow(
-        'Open Connections → Tools',
+        'Open Customize › Tools',
       );
       expect(requests).toEqual([new URL(fixture.url).pathname]);
       expect(redirect).not.toHaveBeenCalled();

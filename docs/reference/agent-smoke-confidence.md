@@ -1,7 +1,7 @@
 # Agent smoke confidence
 
 Station reports agent readiness as evidence, not as one ambiguous `Ready` flag.
-Opening New Chat or Connections never sends a prompt.
+Opening New Chat or Customize never sends a prompt.
 
 ## Evidence levels
 

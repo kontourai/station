@@ -12,7 +12,7 @@ On a personal Station, enable **Guided engine setup** in Settings → Advanced �
 Feature previews. An Agent with Station Control can call `list_engine_setup`,
 then `open_engine_setup` with the chosen entry's id. The same read is available
 as `station acp setup`. On an older host without these tools, use
-Connections → Engines or update the host.
+Customize › Engines or update the host.
 
 The tool opens the existing engine-specific pane. Complete the steps there:
 

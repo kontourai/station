@@ -405,7 +405,11 @@ function FacetGroup<T extends string>({
               type="button"
               className="discover__facet"
               aria-pressed={selected === entry.value}
-              onClick={() => onSelect(entry.value)}
+              // Pressing the chosen value again clears it, so a value left at
+              // zero by the search can always be let go.
+              onClick={() =>
+                onSelect(selected === entry.value ? null : entry.value)
+              }
             >
               {/* Spaced so the name reads "Knowledge 2 apps", not "Knowledge2". */}
               <span>{entry.label}</span>{' '}

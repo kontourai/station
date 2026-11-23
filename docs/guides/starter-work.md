@@ -117,7 +117,7 @@ no external writes happened. Task-bound chat delivery and tracker status
 producers are still pending; external `gh` commands and existing unbound PR
 actions do not populate this history.
 
-If the workspace is not ready, Station keeps the relevant Connections action
+If the workspace is not ready, Station keeps the relevant Customize action
 visible. Run `station doctor` for a local diagnosis.
 
 

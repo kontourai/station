@@ -940,7 +940,7 @@ export function registerOperationsTools(
         .string()
         .min(1)
         .describe(
-          "SshEnvironmentProfile.id, from create_ssh_environment's response or the Connections hub",
+          "SshEnvironmentProfile.id, from create_ssh_environment's response or the Computers page",
         ),
     },
     async ({ id }) =>
