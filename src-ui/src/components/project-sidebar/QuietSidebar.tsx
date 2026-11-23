@@ -33,6 +33,8 @@ interface QuietSidebarPartProps {
   navigate: (path: string) => void;
   activePath: string;
   onAfterNavigate?: () => void;
+  /** Closes the phone drawer without handing focus back to its trigger. */
+  onCloseForChat?: () => void;
 }
 
 function QuietRow({
@@ -167,7 +169,7 @@ function QuietFooter({
 function QuietNewChat({
   collapsed,
   isMobile,
-  onAfterNavigate,
+  onCloseForChat,
 }: Omit<QuietSidebarPartProps, 'part'>) {
   const { setDockState } = useNavigationActions();
   const shortcut = useShortcutDisplay('dock.newChat');
@@ -189,7 +191,7 @@ function QuietNewChat({
       onSelect={() => {
         // The drawer closes first, so the chat opens over the page and not
         // under a drawer that is still leaving.
-        if (isMobile) flushSync(() => onAfterNavigate?.());
+        if (isMobile) flushSync(() => onCloseForChat?.());
         if (!dispatchNewChatIntent({}))
           showChatPageOrDock(() => setDockState(true));
       }}

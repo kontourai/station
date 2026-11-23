@@ -218,7 +218,7 @@ function ProjectSidebarImpl() {
   // the conversation inventory here inline; see that module for what changed
   // and why.
   const projectOverviewOn = useProjectOverviewPreview();
-  const quiet = useQuietSidebarPreview();
+  const quiet = useQuietSidebarPreview(durableAuthorityNamespace);
   const waitingOnYouBySlug = useWaitingOnYouCounts();
   const liveLanesByProject = useMemo(
     () =>
@@ -245,7 +245,14 @@ function ProjectSidebarImpl() {
     navigate,
     activePath: pathname,
     onAfterNavigate: () => setMobileOpen(false),
+    // The quiet New chat closes the drawer for the chat dock, which takes
+    // focus itself, so the drawer does not hand it back to its trigger.
+    onCloseForChat: () => {
+      keepFocusForChat.current = true;
+      setMobileOpen(false);
+    },
   } as const;
+  const keepFocusForChat = useRef(false);
   const navigationRef = useRef<HTMLElement>(null);
   const wasMobileOpen = useRef(false);
   const returnFocusRef = useRef<HTMLElement[]>([]);
@@ -267,6 +274,12 @@ function ProjectSidebarImpl() {
         ),
       );
       const main = document.querySelector<HTMLElement>('main');
+      if (keepFocusForChat.current) {
+        // Out of the closing drawer, and nowhere else: the dock focuses.
+        (document.activeElement as HTMLElement | null)?.blur();
+        setNavigationHidden(closed);
+        return;
+      }
       const chain = wasMobileOpen.current
         ? returnFocusRef.current
         : [
@@ -310,6 +323,10 @@ function ProjectSidebarImpl() {
     wasMobileOpen.current = false;
     const chain = returnFocusRef.current;
     returnFocusRef.current = [];
+    if (keepFocusForChat.current) {
+      keepFocusForChat.current = false;
+      return;
+    }
     const frame = restoreReturnFocus(chain, navigationRef.current);
     return () => cancelAnimationFrame(frame);
   }, [isMobile, mobileOpen, mobileTriggerRef]);
