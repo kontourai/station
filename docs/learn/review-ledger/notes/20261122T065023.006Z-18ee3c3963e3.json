@@ -1,0 +1,7 @@
+{
+  "revision": "aaf81bad85dd049927dd4924c66fc4799ea6b3a3",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Test-only change (the no-camera-API test also watches removed nodes); the guide's scan-or-enter claims are unchanged.","inputs":["docs/guides/connections.md","packages/connect/src/__tests__/DevicePairingPanel.test.tsx"]}
+  ]
+}

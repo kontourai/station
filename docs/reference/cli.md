@@ -2384,11 +2384,16 @@ station schedule disable <job> [--api-base=<url>]
 station schedule delete <job> [--api-base=<url>]
 ```
 
-`create` and `update` accept either the compatible `cron` field or a canonical
+`create` needs a `prompt` and a slug `name`, a `displayName`, or both; with
+only `displayName` the host picks an unused slug, and the host judges what a
+display name may contain. The Station Control `add_job` tool takes the same
+fields. `create` and `update` accept either the compatible `cron` field or a canonical
 schedule object: `{kind:"cron",expr,timezone?}`,
 `{kind:"every",everyMs}`, or `{kind:"at",timeMs,deleteAfterRun?}`, and an
 optional `target` that runs each time in a conversation (see
-[Automations](../user/automations.md)). There is no `station automations`
+[Automations](../user/automations.md)). `create` prints the create answer,
+`output` and `name` (the slug the job was stored under), and the Station
+Control `add_job` tool returns the same `data`. There is no `station automations`
 alias for these verbs: that name's `enable`, `disable` and `delete` are
 reserved for automation rules (`AUTOMATION_OPERATOR_SURFACE`). The same
 operator lifecycle is exposed by the HTTP API, React-free SDK client, and

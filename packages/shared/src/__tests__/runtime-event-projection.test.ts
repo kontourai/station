@@ -3749,6 +3749,39 @@ describe("Station's continuation after a memory kill", () => {
   });
 });
 
+describe('a reply cut off at the output limit', () => {
+  const turn = (finishReason?: string) =>
+    projectRuntimeEventsToMessages(
+      [
+        ev({ method: 'turn.started', turnId: 'long', prompt: 'Write a lot.' }),
+        ev({
+          method: 'content.text-delta',
+          turnId: 'long',
+          delta: 'This reply runs out of room before it can',
+        }),
+        ev({
+          method: 'turn.completed',
+          turnId: 'long',
+          ...(finishReason ? { finishReason } : {}),
+        } as Partial<CanonicalRuntimeEvent> & { method: string }),
+      ],
+      { markEndedTurns: true },
+    ).find((message) => message.role === 'assistant');
+
+  it('marks the turn’s last row when the engine stopped at max-tokens', () => {
+    const row = turn('max-tokens');
+    expect(row?.metadata?.turnEnded).toBe('completed');
+    expect(row?.metadata?.turnCutOff).toBe('max-tokens');
+  });
+
+  it.each(['stop', 'tool-calls', 'other', undefined])(
+    'leaves a %s finish unmarked',
+    (finishReason) => {
+      expect(turn(finishReason)?.metadata).not.toHaveProperty('turnCutOff');
+    },
+  );
+});
+
 describe('a turn that completed after it was recorded as interrupted', () => {
   it('keeps the notice, then the reply, then says the turn finished after all', () => {
     const base = { provider: 'claude', threadId: 't' } as const;

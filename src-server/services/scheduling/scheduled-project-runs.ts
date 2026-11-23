@@ -141,7 +141,7 @@ export class ScheduledProjectRuns implements ScheduledProjectRunner {
       task = await this.ports.createTask(
         {
           projectId: input.projectId,
-          title: scheduledProjectTaskTitle(input.jobName),
+          title: scheduledProjectTaskTitle(input.jobLabel),
           description: input.prompt,
           agentId: input.agentSlug,
         },
@@ -205,7 +205,7 @@ export class ScheduledProjectRuns implements ScheduledProjectRunner {
         taskCreatedAt: task.createdAt,
         sessionId,
         text: scheduledProjectRunSummary({
-          jobName: input.jobName,
+          jobName: input.jobLabel,
           outcome,
           at: this.now(),
         }),

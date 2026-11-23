@@ -206,6 +206,52 @@ function storedMemoryKillMarkers(
   ];
 }
 
+/**
+ * The failed-turn card for the newest turn, rebuilt from its stored
+ * `runtime.error` when no marker for it survived (a reload, another device,
+ * an engine whose conversation store keeps none). It is the marker the live
+ * path appends, so the card keeps its Send again and Troubleshoot this.
+ * Only the newest turn: a failure the person has moved past is not offered
+ * for resending. A memory kill keeps its own server-authorized path above.
+ */
+function storedNewestFailureMarker(
+  turns: readonly ProjectedTurnFailure[],
+  markers: readonly ChatMessage[],
+): ChatMessage[] {
+  const turn = turns.at(-1);
+  if (
+    !turn?.failure ||
+    isEngineMemoryExhaustedFailure(turn.failure) ||
+    markers.some(
+      (marker) =>
+        isLiveFailureMarker(marker) &&
+        (marker.turnId === turn.turnId ||
+          // A marker no turn adopted still owns this failure when it says
+          // the same thing (the text fallback the arbitration below keeps).
+          (marker.turnId === undefined &&
+            failureMarkerReason(marker) === turn.failure?.message.trim())),
+    )
+  )
+    return [];
+  const { code, message } = turn.failure;
+  return [
+    {
+      id: `stored-failure:${turn.turnId}`,
+      role: 'user',
+      turnId: turn.turnId,
+      timestamp: turn.endedAt,
+      content: `${CHAT_ERROR_MARKER_PREFIX}${code ? `:${code}` : ''}] ${message}`,
+    },
+  ];
+}
+
+/** The failure a `[CHAT_ERROR…]` marker reports, without its tag. */
+function failureMarkerReason(message: ChatMessage): string {
+  return transcriptMessageText(message)
+    .replace(/^\s*\[SYSTEM_EVENT\]\s*\[CHAT_ERROR(?::[\w-]+)?\]\s*/, '')
+    .trim();
+}
+
 function isLiveSupplementalMessage(message: ChatMessage): boolean {
   return Boolean(
     message.ephemeral ||
@@ -1016,17 +1062,25 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       session.messages,
       projectedFailures,
     );
+    const adoptedMarkerTurnIds = new Set(
+      adoptedMarkers
+        .filter((message) => isLiveFailureMarker(message))
+        .map((message) => message.turnId)
+        .filter((turnId): turnId is string => typeof turnId === 'string'),
+    );
     const markerMessages = [
       ...adoptedMarkers,
       ...storedMemoryKillMarkers(
         rawFailures,
-        new Set(
-          adoptedMarkers
-            .filter((message) => isLiveFailureMarker(message))
-            .map((message) => message.turnId)
-            .filter((turnId): turnId is string => typeof turnId === 'string'),
-        ),
+        adoptedMarkerTurnIds,
         serverWindow.memoryContinuation,
+      ),
+      ...storedNewestFailureMarker(
+        // The stored event's own words, else the projected part's.
+        rawFailures.map((turn, index) =>
+          turn.failure ? turn : (projectedFailures[index] ?? turn),
+        ),
+        adoptedMarkers,
       ),
     ];
     const markerFailureTurnIds = new Set(
@@ -1069,9 +1123,7 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
       // A turn-identified marker owns its failure's one visible element —
       // the projected copy for that turn was stripped above.
       if (message.turnId !== undefined) return true;
-      const reason = transcriptMessageText(message)
-        .replace(/^\s*\[SYSTEM_EVENT\]\s*\[CHAT_ERROR(?::[\w-]+)?\]\s*/, '')
-        .trim();
+      const reason = failureMarkerReason(message);
       return reason.length === 0 || !projectedFailureText.includes(reason);
     });
     const handoffBoundaries: ChatMessage[] = window.handoffs.map((handoff) => ({

@@ -21,6 +21,7 @@ import {
 import { clockTime } from '../../utils/relativeTime';
 import { Button } from '../Button';
 import { CalendarGlyph, EditGlyph, PlayGlyph, TimeGlyph } from '../icons/Glyph';
+import { jobLabel } from '../scheduler/jobName';
 import { Toggle } from '../Toggle';
 import { everyText } from './agentScheduleText';
 import './SessionScheduledSection.css';
@@ -282,7 +283,7 @@ function JobRow({
   return (
     <Row
       glyph={<CalendarGlyph className="session-scheduled__glyph" />}
-      name={job.name}
+      name={jobLabel(job)}
       when={jobWhen(job, now)}
       live={job.enabled}
       actions={
@@ -290,7 +291,7 @@ function JobRow({
           <Button
             size="sm"
             variant="ghost"
-            aria-label={`Run ${job.name} now`}
+            aria-label={`Run ${jobLabel(job)} now`}
             title="Run now"
             disabled={runJob.isPending}
             onClick={() => runJob.mutate(job.name)}
@@ -300,7 +301,7 @@ function JobRow({
           <Button
             size="sm"
             variant="ghost"
-            aria-label={`Edit ${job.name}`}
+            aria-label={`Edit ${jobLabel(job)}`}
             title="Edit"
             onClick={onEdit}
           >
@@ -314,7 +315,7 @@ function JobRow({
               size="sm"
               checked={job.enabled}
               disabled={toggleJob.isPending}
-              label={`${job.name} on`}
+              label={`${jobLabel(job)} on`}
               onChange={(enabled) =>
                 toggleJob.mutate({ target: job.name, enabled })
               }

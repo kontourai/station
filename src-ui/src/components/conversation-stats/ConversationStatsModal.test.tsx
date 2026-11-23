@@ -1,5 +1,6 @@
 /** @vitest-environment jsdom */
 
+import { buildThreadUsageTree } from '@kontourai/station-shared/thread-usage-tree';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ConversationStatsModal } from './ConversationStatsModal';
@@ -96,10 +97,10 @@ describe('ConversationStatsModal — measured figures', () => {
 
     expect(screen.getByText('missing-model')).toBeTruthy();
     expect(screen.getByText('zero-model')).toBeTruthy();
-    expect(screen.getByText('In: —')).toBeTruthy();
-    expect(screen.getByText('Out: —')).toBeTruthy();
-    expect(screen.getByText('Total: —')).toBeTruthy();
-    expect(screen.getByText('Cost: —')).toBeTruthy();
+    expect(screen.getByText('In: Not reported')).toBeTruthy();
+    expect(screen.getByText('Out: Not reported')).toBeTruthy();
+    expect(screen.getByText('Total: Not reported')).toBeTruthy();
+    expect(screen.getByText('Cost: Not reported')).toBeTruthy();
     expect(screen.getByText('In: 0')).toBeTruthy();
     expect(screen.getByText('Out: 0')).toBeTruthy();
     expect(screen.getByText('Total: 0')).toBeTruthy();
@@ -131,7 +132,7 @@ describe('ConversationStatsModal — unmeasured figures', () => {
     expect(screen.queryByText('Total LLM Consumption')).toBeNull();
     expect(screen.queryByText('Per Turn Averages')).toBeNull();
     expect(screen.queryByText('Cost')).toBeNull();
-    expect(screen.queryByText('In: —')).toBeNull();
+    expect(screen.queryByText('In: Not reported')).toBeNull();
     // Activity is Station's own count of the session, not the engine's
     // report, so it stays.
     expect(screen.getByText('Activity')).toBeTruthy();
@@ -261,8 +262,8 @@ describe('ConversationStatsModal — partially measured figures', () => {
 
     // `userMessageTokens` is a Station-engine context measurement; an
     // external engine never reports it, and `|| 0` used to average it to 0.
-    expect(rowValue('User')).toBe('—');
-    expect(rowValue('Assistant')).toBe('—');
+    expect(rowValue('User')).toBe('Not reported');
+    expect(rowValue('Assistant')).toBe('Not reported');
     expect(screen.getByText(/Total In \(uncached\)\s*:\s*450/)).toBeTruthy();
   });
 
@@ -454,5 +455,255 @@ describe('ConversationStatsModal — engine-reported usage and MCP servers', () 
     expect(
       screen.getByRole('button', { name: 'Sign in: remote' }),
     ).toBeTruthy();
+  });
+});
+
+describe('ConversationStatsModal — "Not reported", never a false 0 (#5390)', () => {
+  /**
+   * What the stats route returns for a Station-agent chat whose model
+   * reported no usage, after one turn: Station counted the turn, nothing
+   * reported tokens or cost, and the agent's prompt is unknown. The same
+   * response is rendered by `/stats` in `slash-stats-cache-honesty.test.ts`.
+   */
+  const NO_USAGE: ConversationStatsSnapshot = {
+    turns: 1,
+    toolCalls: 0,
+    conversationId: 'station:1',
+    modelId: '',
+    modelStats: {},
+    mcpServerTokens: 26_238,
+    userMessageTokens: 3,
+    contextFilesTokens: 0,
+    measurement: { source: 'station-memory' },
+  };
+
+  /** The route's response after Claude Code reported a turn of zeros. */
+  const REPORTED_ZERO: ConversationStatsSnapshot = {
+    inputTokens: 0,
+    outputTokens: 0,
+    totalTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    contextTokens: 0,
+    turns: 1,
+    toolCalls: 0,
+    estimatedCost: 0,
+    engines: [
+      {
+        provider: 'claude',
+        turns: 1,
+        toolCalls: 0,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        cacheReadTokens: 0,
+        cacheWriteTokens: 0,
+        estimatedCost: 0,
+      },
+    ],
+    conversationId: 'conv',
+    modelId: 'configured-model',
+    modelStats: {},
+    assistantMessageTokens: 0,
+    measurement: { source: 'engine-events', provider: 'claude' },
+  };
+
+  test('says once that the model reported no token counts, and shows no invented 0', () => {
+    renderModal(NO_USAGE);
+
+    expect(
+      screen.getByText('The model did not report token counts for this chat.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Total LLM Consumption')).toBeNull();
+    expect(screen.getByText('Turns: 1')).toBeTruthy();
+    expect(screen.getByText('Total: Not reported')).toBeTruthy();
+    expect(screen.getByText('Per Turn: Not reported')).toBeTruthy();
+    expect(screen.queryByText(/\$0\.0000/)).toBeNull();
+    expect(screen.queryByText(/^(In|Out|Total): 0$/)).toBeNull();
+  });
+
+  test('a reported zero stays zero', () => {
+    renderModal(REPORTED_ZERO);
+
+    expect(rowValue('In (uncached)')).toBe('0');
+    expect(rowValue('Out')).toBe('0');
+    expect(screen.getByText('Total: 0')).toBeTruthy();
+    expect(screen.getByText('Total: $0.0000')).toBeTruthy();
+    expect(screen.getByText('Per Turn: $0.0000')).toBeTruthy();
+    expect(screen.queryByText(/did not report/)).toBeNull();
+  });
+
+  test('the cost card shows both the figures its heading names', () => {
+    renderModal({ ...NO_USAGE, turns: 0 });
+
+    expect(screen.getByText('Total and per-turn cost')).toBeTruthy();
+    expect(screen.getByText('Total: Not reported')).toBeTruthy();
+    expect(screen.getByText('Per Turn: Not reported')).toBeTruthy();
+  });
+
+  test("lists only Station's own estimates that exist, as /stats does", () => {
+    renderModal({ ...NO_USAGE, contextWindowPercentage: 13 });
+
+    // The same labels `slash-stats-cache-honesty.test.ts` expects.
+    expect(screen.getByText('MCP Tools:')).toBeTruthy();
+    expect(screen.getByText('User Messages:')).toBeTruthy();
+    expect(screen.queryByText('System Prompt:')).toBeNull();
+    expect(screen.queryByText('Assistant Messages:')).toBeNull();
+  });
+});
+
+describe('ConversationStatsModal — several engines reported tokens (#5389)', () => {
+  /**
+   * The stats route's response after Claude Code then Codex both counted
+   * tokens (`conversation-stats-engine-change.routes.test.ts`): no chat-wide
+   * token fields, one row per engine.
+   */
+  const MIXED: ConversationStatsSnapshot = {
+    conversationId: 'conv',
+    modelId: 'codex-model',
+    turns: 4,
+    toolCalls: 0,
+    estimatedCost: 0.25,
+    modelStats: {},
+    measurement: { source: 'engine-events', provider: 'codex' },
+    engines: [
+      {
+        provider: 'claude',
+        turns: 2,
+        toolCalls: 0,
+        inputTokens: 14,
+        outputTokens: 11,
+        totalTokens: 25,
+        cacheReadTokens: 220,
+        cacheWriteTokens: 20,
+        estimatedCost: 0.25,
+      },
+      {
+        provider: 'codex',
+        turns: 2,
+        toolCalls: 0,
+        inputTokens: 700,
+        outputTokens: 90,
+        totalTokens: 790,
+        cacheReadTokens: 500,
+        modelId: 'codex-model',
+      },
+    ],
+  };
+
+  const engineBlock = (name: string) => {
+    const heading = screen.getByText(name);
+    return heading.parentElement?.textContent ?? '';
+  };
+
+  test("shows each engine's own token figures, and no total across engines", () => {
+    renderModal(MIXED);
+
+    expect(screen.getByText('Total LLM Consumption')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Each engine counts tokens its own way, so there is no total across engines',
+      ),
+    ).toBeTruthy();
+    const claude = engineBlock('Claude Code');
+    expect(claude).toContain('Out: 11');
+    expect(claude).toContain('Cache read: 220');
+    expect(claude).toContain('Cache write: 20');
+    // Claude Code's declared cache accounting backs its own sums.
+    expect(claude).toContain('In (uncached): 14');
+    expect(claude).toContain('Prompt total: 254');
+    expect(claude).toContain('Total: 265');
+    const codex = engineBlock('Codex');
+    expect(codex).toContain('Out: 90');
+    expect(codex).toContain('Cache read: 500');
+    expect(codex).toContain('Total: 790');
+    // Nothing says "Not reported" for figures the engines did report, and no
+    // row adds the two engines' scales together.
+    expect(screen.queryByText(/Not reported/)).toBeNull();
+    expect(screen.queryByText(/815/)).toBeNull();
+    expect(screen.queryByText(/did not report token counts/)).toBeNull();
+  });
+
+  test('one engine with tokens keeps the single chat-wide rows', () => {
+    renderModal({
+      ...MIXED,
+      inputTokens: 14,
+      outputTokens: 11,
+      totalTokens: 25,
+      engines: [
+        MIXED.engines![0]!,
+        { provider: 'acp', turns: 1, toolCalls: 0 },
+      ],
+    });
+
+    expect(screen.queryByText('Claude Code')).toBeNull();
+    expect(rowValue('Out')).toBe('11');
+    expect(
+      screen.getByText('Tokens sent/received across all API calls'),
+    ).toBeTruthy();
+  });
+});
+
+describe('ConversationStatsModal — usage tree for a Station chat (#5390)', () => {
+  /** The tree the usage-tree route builds for a Station chat: no receipts. */
+  const childless = buildThreadUsageTree({
+    conversationId: 'station:1',
+    provider: 'station-agent',
+    receipts: [],
+    subagents: [],
+    delegates: [],
+  });
+  const STATION_CHAT: ConversationStatsSnapshot = {
+    modelId: 'scripted-echo',
+    conversationId: 'station:1',
+    turns: 3,
+    toolCalls: 0,
+    inputTokens: 3,
+    outputTokens: 19,
+    totalTokens: 22,
+    measurement: { source: 'station-memory' },
+  };
+
+  test('a Station chat with no children shows no tree contradicting its own figures', () => {
+    render(
+      <ConversationStatsModal
+        {...baseProps}
+        stats={STATION_CHAT}
+        usageTree={childless}
+      />,
+    );
+
+    expect(screen.getByText('Total: 22')).toBeTruthy();
+    expect(screen.queryByText('Usage with children')).toBeNull();
+    expect(screen.queryByText(/tokens not reported/)).toBeNull();
+  });
+
+  test('a Station chat shows nothing while its tree is still loading', () => {
+    render(
+      <ConversationStatsModal
+        {...baseProps}
+        stats={STATION_CHAT}
+        usageTreeLoading
+      />,
+    );
+
+    expect(screen.getByText('Total: 22')).toBeTruthy();
+    expect(screen.queryByText('Usage with children')).toBeNull();
+    expect(screen.queryByText(/Reading usage/)).toBeNull();
+  });
+
+  test('an engine chat keeps its tree', () => {
+    render(
+      <ConversationStatsModal
+        {...baseProps}
+        stats={{
+          ...STATION_CHAT,
+          measurement: { source: 'engine-events', provider: 'claude' },
+        }}
+        usageTree={childless}
+      />,
+    );
+
+    expect(screen.getByText('Usage with children')).toBeTruthy();
   });
 });

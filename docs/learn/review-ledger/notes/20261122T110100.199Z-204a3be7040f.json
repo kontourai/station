@@ -1,0 +1,7 @@
+{
+  "revision": "297d94bd66b3a4df8d9c48acc81269ee89123e28",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Now says plain HTTP pages lack the camera API instead of naming HTTPS or localhost as the only cause; other scan-or-enter claims unchanged.","inputs":["docs/guides/connections.md","packages/connect/src/__tests__/DevicePairingPanel.test.tsx","packages/connect/src/react/connection-manager-modal/ConnectionListPanel.tsx"]}
+  ]
+}

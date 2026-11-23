@@ -1062,7 +1062,8 @@
 .message-delivery__action:hover:not(:disabled) {
   background: var(--bg-tertiary);
 }
-.message-delivery__action:disabled {
+.message-delivery__action:disabled,
+.message-delivery__action[aria-disabled="true"] {
   opacity: 0.6;
   cursor: default;
 }
@@ -1128,6 +1129,14 @@
 
 .message__turn-outcome .turn-footer__bar {
   margin-inline-start: auto;
+}
+
+/* A reply the engine stopped at its output limit says so under its text. */
+.message__cut-off-note {
+  margin: var(--k-space-2) 0 0;
+  padding-inline-end: 32px;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 
 /* A steer that stopped the running step says so inside its own bubble, on

@@ -1,0 +1,7 @@
+{
+  "revision": "4f101ab0f8de657ae1782cf97535fc02e19c1715",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"afterInvocation sentence checked against agent-hooks.ts (a usage object with every figure absent is nothing reported), strands-agent-hooks.ts and voltagent-adapter.ts (finishReason error passed on as a failure; Stop arrives as an abort with no output and counts); the edited text says that.","inputs":["docs/guides/agent-configuration.md","src-server/runtime/agents/agent-hooks.ts","src-server/runtime/agents/runtime-default-agent.ts","src-server/runtime/frameworks/voltagent-adapter.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "ac3c0bc3e815b6d8fcfd3997caa9bd94e434f527",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Rechecked (#5398 round 4): the inbox paragraph holds; opening a flagged or Queued to send row now opens the chat holding that message, and Check's line counts several messages (Nothing new to check right now when nothing answered).","inputs":["docs/user/getting-started.md","src-ui/src/components/chat/chat.css","src-ui/src/components/chat/message-bubble/MessageDeliveryNote.tsx","src-ui/src/views/home/home-view-model.ts"]}
+  ]
+}

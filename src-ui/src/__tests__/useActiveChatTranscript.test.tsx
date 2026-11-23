@@ -6115,12 +6115,16 @@ describe('useActiveChatTranscript stored memory kill', () => {
     },
   );
 
-  test('another failure in the newest turn gets no recreated card', async () => {
+  // Another failure in the newest turn gets its ordinary card back (Send
+  // again, Troubleshoot this), never the memory card and its Continue.
+  test('another failure in the newest turn gets its ordinary card, not the memory card', async () => {
     const found = await read(
       killed('turn-1', 'codex-turn-orphaned', 'The Codex turn was orphaned.'),
     );
-    expect(found).toHaveLength(1);
-    expect(found[0]?.content ?? '').not.toContain('[CHAT_ERROR');
+    expect(found.map((message) => message.content)).toEqual([
+      '[SYSTEM_EVENT] [CHAT_ERROR:codex-turn-orphaned] The Codex turn was orphaned.',
+    ]);
+    expect(found[0]?.turnId).toBe('turn-1');
   });
 
   test('a later retriable Codex error prevents the memory Continue card', async () => {

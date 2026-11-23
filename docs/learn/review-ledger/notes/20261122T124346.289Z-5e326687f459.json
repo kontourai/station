@@ -1,0 +1,7 @@
+{
+  "revision": "67bc53f6e0384566a0842a955240ff3d0ace0b25",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Amended (#5398 fix round): the chat's queued status and the inbox's Queued to send are stated as two meanings in one place; the flag reads Last message may not have arrived. Checked against chatQueuedToSend and unconfirmedOutboundTurns.","inputs":["docs/design/offline-outbound-queue.md"]}
+  ]
+}

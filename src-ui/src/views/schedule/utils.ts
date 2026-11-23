@@ -3,6 +3,7 @@ import type {
   SchedulerSchedule,
 } from '@kontourai/station-contracts/scheduler';
 import { SchedulerResponseError } from '@kontourai/station-sdk';
+import { jobLabel } from '../../components/scheduler/jobName';
 import {
   localCronSchedule,
   weekdayMorningSchedule,
@@ -118,7 +119,7 @@ export function buildEnrichedSchedulerJobs({
       { jobs?: { name: string; total: number; success_rate: number }[] }
     >;
   };
-}): Array<SchedulerJob & { successRate: number }> {
+}): Array<SchedulerJob & { label: string; successRate: number }> {
   const statsMap = new Map<
     string,
     { name: string; total: number; success_rate: number }
@@ -136,6 +137,8 @@ export function buildEnrichedSchedulerJobs({
     const jobStats = statsMap.get(job.name);
     return {
       ...job,
+      // What the Name column shows, sorts and filters by.
+      label: jobLabel(job),
       successRate: jobStats
         ? jobStats.total > 0
           ? jobStats.success_rate

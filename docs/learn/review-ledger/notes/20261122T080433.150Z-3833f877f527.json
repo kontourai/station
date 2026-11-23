@@ -1,0 +1,7 @@
+{
+  "revision": "6fcf24b0e0fa8c4a8ff52a232d93c7c6619a4967",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked inbox dismissal text: Undo still restores on this device and search Restore remains; only the shortcut owner changed","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/inbox-dismissals.tsx"]}
+  ]
+}

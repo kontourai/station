@@ -1,0 +1,7 @@
+{
+  "revision": "0d8a3ff687e275de864403f16747a82d41fe7a33",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Connections route change only adds a validate() refusal option; the module map's connection-route ownership claims (ACP, engine setup actions) are unaffected.","inputs":["docs/architecture/module-map.md","src-server/routes/connections/connections.ts"]}
+  ]
+}

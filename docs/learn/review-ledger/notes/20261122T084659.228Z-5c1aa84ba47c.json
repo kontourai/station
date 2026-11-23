@@ -1,0 +1,7 @@
+{
+  "revision": "faed86953d1729e2b258bd9575746bc7c40dd95b",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Added the refused-source 400 body for repository acquisition; checked against the route's failure mapping and the service, which validates before recording.","inputs":["docs/reference/api.md"]}
+  ]
+}

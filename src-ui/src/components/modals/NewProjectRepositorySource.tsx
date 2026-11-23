@@ -7,9 +7,10 @@ import {
   mutateJson,
   readEnvelopeOrThrow,
 } from '@kontourai/station-sdk';
+import { StationHttpError } from '@kontourai/station-sdk/client';
 import { randomCorrelationId } from '@kontourai/station-shared/random-id';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useId, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useActiveStationName } from '../../hooks/useActiveStationName';
 import { userFacingErrorMessage } from '../../utils/errorText';
@@ -45,6 +46,23 @@ function retainedId(key: string) {
   }
 }
 
+/**
+ * A refusal the server answers before recording anything leaves no operation
+ * to read or poll, so its reason belongs beside the URL instead. A 400 names
+ * the rule the source broke. A 403 is the route's operator check only when it
+ * carries the route's code; the runtime also answers 403 for origin, device
+ * scope and sign-in, so any other 403 gets copy that is true for all of them.
+ * A 503 can follow a started attempt, so it keeps the operation to inspect.
+ */
+function refusalBeforeRecording(error: unknown) {
+  if (!(error instanceof StationHttpError)) return '';
+  if (error.status === 400) return userFacingErrorMessage(error);
+  if (error.status !== 403) return '';
+  return error.code === 'repository_operator_required'
+    ? "Cloning uses this Station's Git credentials, so only its operator can do it."
+    : "Station refused this request from this device. Sign in again or check this device's access.";
+}
+
 function RepositorySourceControls({
   scope,
   onUseCheckout,
@@ -65,9 +83,13 @@ function RepositorySourceControls({
   const [sourceRef, setSourceRef] = useState('');
   const [subdirectory, setSubdirectory] = useState('');
   const [storageError, setStorageError] = useState(false);
+  const [sourceFailure, setSourceFailure] = useState('');
   const sourceId = useId();
+  const sourceFailureId = useId();
   const refId = useId();
   const subdirectoryId = useId();
+  const acquireRef = useRef<HTMLButtonElement>(null);
+  const sourceFieldRef = useRef<HTMLDivElement>(null);
   const client = useQueryClient();
   const key = [
     'repository-acquisition',
@@ -104,6 +126,12 @@ function RepositorySourceControls({
         ],
         data,
       ),
+    onError: (error) => {
+      const refusal = refusalBeforeRecording(error);
+      if (!refusal) return;
+      setSourceFailure(refusal);
+      forgetOperation();
+    },
   });
   const cancel = useMutation({
     retry: false,
@@ -157,6 +185,9 @@ function RepositorySourceControls({
     },
     onSuccess: (data) => {
       if (!scope.isCurrent()) return;
+      // A reused checkout answers the earlier failure; it must not return when
+      // the person later chooses another source.
+      setSourceFailure('');
       try {
         sessionStorage.setItem(storageKey, data.request.requestId);
       } catch {
@@ -198,9 +229,43 @@ function RepositorySourceControls({
     );
     return () => onBusyChange(false);
   }, [acquire.isPending, cancel.data?.phase, reuse.isPending, onBusyChange]);
+  const record = operation.data;
+  const forgetOperation = useCallback(() => {
+    try {
+      sessionStorage.removeItem(storageKey);
+    } catch {
+      setStorageError(true);
+    }
+    setRequestId('');
+  }, [storageKey]);
+  // A recorded failed clone returns to the form with the same source filled
+  // in, so the person can correct it; a new attempt is a new operation.
+  useEffect(() => {
+    if (record?.phase !== 'failed' || acquire.isPending) return;
+    setSourceUrl(record.request.sourceUrl);
+    setSourceRef(record.request.sourceRef ?? '');
+    setSubdirectory(record.request.subdirectory ?? '');
+    setSourceFailure(
+      record.error ??
+        'The repository could not be cloned. Check the URL and access.',
+    );
+    forgetOperation();
+  }, [record, acquire.isPending, forgetOperation]);
+
+  // The reason is beside the URL, but the next step is Acquire, which can sit
+  // below the dialog's fold. Bringing the URL field (label, input and reason)
+  // and then the button into view with `nearest` shows both when they fit,
+  // keeps the button in view with the reason just above it when they do not,
+  // and leaves an already visible form alone. Scrolling never moves focus.
+  useEffect(() => {
+    if (!sourceFailure || requestId) return;
+    sourceFieldRef.current?.scrollIntoView?.({ block: 'nearest' });
+    acquireRef.current?.scrollIntoView?.({ block: 'nearest' });
+  }, [sourceFailure, requestId]);
 
   function begin() {
     cancel.reset();
+    setSourceFailure('');
     const id = randomCorrelationId();
     // Retain identity before dispatch so a lost response can be inspected.
     try {
@@ -221,18 +286,12 @@ function RepositorySourceControls({
     });
   }
   function clear() {
-    try {
-      sessionStorage.removeItem(storageKey);
-    } catch {
-      setStorageError(true);
-    }
-    setRequestId('');
+    forgetOperation();
     acquire.reset();
     cancel.reset();
     reuse.reset();
     setReuseSearch(null);
   }
-  const record = operation.data;
   const controls = (
     <>
       <p className="editor-hint">
@@ -248,37 +307,59 @@ function RepositorySourceControls({
               setSourceRef(branch ?? '');
             }}
           />
-          <label className="editor-label" htmlFor={sourceId}>
-            Repository URL
-          </label>
-          <input
-            className="editor-input"
-            id={sourceId}
-            value={sourceUrl}
-            onChange={(event) => setSourceUrl(event.target.value)}
-            placeholder="https://github.com/owner/repository.git"
-            autoComplete="off"
-          />
-          <label className="editor-label" htmlFor={refId}>
-            Branch or tag (optional)
-          </label>
-          <input
-            className="editor-input"
-            id={refId}
-            value={sourceRef}
-            onChange={(event) => setSourceRef(event.target.value)}
-            placeholder="Remote default branch"
-          />
-          <label className="editor-label" htmlFor={subdirectoryId}>
-            Repository subdirectory (optional)
-          </label>
-          <input
-            className="editor-input"
-            id={subdirectoryId}
-            value={subdirectory}
-            onChange={(event) => setSubdirectory(event.target.value)}
-            placeholder="packages/my-app"
-          />
+          <div className="editor-field" ref={sourceFieldRef}>
+            <label className="editor-label" htmlFor={sourceId}>
+              Repository URL
+            </label>
+            <input
+              className="editor-input"
+              id={sourceId}
+              value={sourceUrl}
+              onChange={(event) => {
+                setSourceUrl(event.target.value);
+                setSourceFailure('');
+              }}
+              placeholder="https://github.com/owner/repository.git"
+              autoComplete="off"
+              aria-invalid={sourceFailure ? true : undefined}
+              aria-describedby={sourceFailure ? sourceFailureId : undefined}
+            />
+            {sourceFailure && (
+              <p className="editor-error" id={sourceFailureId} role="alert">
+                {sourceFailure}
+              </p>
+            )}
+          </div>
+          <div className="editor-field">
+            <label className="editor-label" htmlFor={refId}>
+              Branch or tag (optional)
+            </label>
+            <input
+              className="editor-input"
+              id={refId}
+              value={sourceRef}
+              onChange={(event) => {
+                setSourceRef(event.target.value);
+                setSourceFailure('');
+              }}
+              placeholder="Remote default branch"
+            />
+          </div>
+          <div className="editor-field">
+            <label className="editor-label" htmlFor={subdirectoryId}>
+              Repository subdirectory (optional)
+            </label>
+            <input
+              className="editor-input"
+              id={subdirectoryId}
+              value={subdirectory}
+              onChange={(event) => {
+                setSubdirectory(event.target.value);
+                setSourceFailure('');
+              }}
+              placeholder="packages/my-app"
+            />
+          </div>
           <p className="editor-hint">
             Use HTTPS or SSH without credentials in the URL. An absolute path to
             a local Git mirror is also supported. This step requires the Station
@@ -341,6 +422,7 @@ function RepositorySourceControls({
             </p>
           )}
           <Button
+            ref={acquireRef}
             type="button"
             disabled={!sourceUrl.trim() || acquire.isPending || reuse.isPending}
             onClick={begin}
@@ -386,7 +468,6 @@ function RepositorySourceControls({
               </Button>
             </>
           )}
-          {record?.phase === 'failed' && <p role="alert">{record.error}</p>}
           {record?.phase === 'cancelled' && (
             <p role="status">
               Acquisition cancelled. Existing files are preserved. An in-flight
@@ -429,9 +510,7 @@ function RepositorySourceControls({
                     },
                   ]
                 : []),
-              ...(acquire.isPending ||
-              record?.phase === 'acquiring' ||
-              record?.phase === 'failed'
+              ...(acquire.isPending || record?.phase === 'acquiring'
                 ? [
                     {
                       key: 'cancel',
@@ -460,11 +539,13 @@ function RepositorySourceControls({
           result after closing this form.
         </p>
       )}
-      {record?.phase !== 'ready' && (acquire.error || operation.error) && (
-        <p role="alert">
-          {userFacingErrorMessage(acquire.error ?? operation.error)}
-        </p>
-      )}
+      {requestId &&
+        record?.phase !== 'ready' &&
+        (acquire.error || operation.error) && (
+          <p role="alert">
+            {userFacingErrorMessage(acquire.error ?? operation.error)}
+          </p>
+        )}
     </>
   );
   return expanded ? (

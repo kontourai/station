@@ -1,4 +1,8 @@
 import { validateSchedule } from '@kontourai/ephemeris';
+import {
+  isSchedulerJobDisplayName,
+  SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS,
+} from '@kontourai/station-contracts/scheduler';
 import { z } from 'zod/v3';
 import { CHAT_INPUT_MAX_CHARS } from '../../../../src-shared/chat-input-limits.js';
 
@@ -9,6 +13,27 @@ import { CHAT_INPUT_MAX_CHARS } from '../../../../src-shared/chat-input-limits.j
 // carry the same concept (the job's prompt), so both derive from the same
 // declared authored-text maximum the composer and chat routes use.
 const jobPrompt = z.string().min(1).max(CHAT_INPUT_MAX_CHARS);
+
+// What a person calls an automation. The slug `name` stays its identity, so
+// this is bounded text a person can read: trimmed, with at least one visible
+// character and no control, bidi or separator characters
+// (`isSchedulerJobDisplayName`).
+const jobDisplayName = z
+  .string()
+  .trim()
+  .max(SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS, {
+    message: `A name can be at most ${SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS} characters.`,
+  })
+  // Length has its own sentence above, so this one is about characters only.
+  .refine(
+    (value) =>
+      value.length > SCHEDULER_JOB_DISPLAY_NAME_MAX_CHARS ||
+      isSchedulerJobDisplayName(value),
+    {
+      message:
+        'A name needs a visible character and cannot contain line breaks or invisible formatting characters',
+    },
+  );
 
 const optionalCron = z
   .string()
@@ -128,10 +153,14 @@ function rejectAmbiguousSchedule(
 
 export const addJobSchema = z
   .object({
+    // Optional when `displayName` is given: the scheduler then derives an
+    // unused slug from it. A slug given here that another job has is a 409.
     name: z
       .string()
       .min(1)
-      .regex(/^[a-z0-9-]+$/, 'lowercase alphanumeric + hyphens only'),
+      .regex(/^[a-z0-9-]+$/, 'lowercase alphanumeric + hyphens only')
+      .optional(),
+    displayName: jobDisplayName.optional(),
     cron: optionalCron,
     schedule: scheduleSchema.optional(),
     prompt: jobPrompt,
@@ -157,6 +186,14 @@ export const addJobSchema = z
   })
   .superRefine(rejectAmbiguousSchedule)
   .superRefine(rejectTargetConflicts)
+  .superRefine((value, context) => {
+    if (value.name === undefined && value.displayName === undefined)
+      context.addIssue({
+        code: 'custom',
+        path: ['name'],
+        message: 'A job needs a name or a display name',
+      });
+  })
   .superRefine((value, context) => {
     if (!value.monitor) return;
     if (value.provider && value.provider !== 'built-in') {
@@ -197,6 +234,9 @@ export const addJobSchema = z
 
 export const editJobSchema = z
   .object({
+    // A rename: the slug and everything keyed by it stay. `null` removes the
+    // display name so the slug shows again.
+    displayName: jobDisplayName.nullable().optional(),
     cron: optionalCron,
     schedule: scheduleSchema.optional(),
     // Same concept as addJobSchema.prompt — the job's prompt, edited — so

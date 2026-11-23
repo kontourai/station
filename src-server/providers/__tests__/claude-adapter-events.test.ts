@@ -318,6 +318,46 @@ describe('claude-adapter-events', () => {
     });
   });
 
+  // A Claude reply that stopped at the output limit is incomplete: its turn
+  // completes as max-tokens, so the chat can say it was cut off.
+  test.each([
+    ['max_tokens', 'max-tokens'],
+    ['end_turn', 'stop'],
+    ['tool_use', 'tool-calls'],
+  ])('a %s result completes the turn as %s', (stopReason, finishReason) => {
+    const publish = vi.fn();
+    const record = {
+      session: {
+        provider: 'claude' as const,
+        threadId: 'thread-limit',
+        status: 'running' as const,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+      lastSessionState: 'running' as const,
+    } as ClaudeMessageState;
+    withClaudeTurns(record, { dispatched: ['turn-1'] });
+    mapClaudeSdkMessage({
+      provider: 'claude',
+      record,
+      publish,
+      message: {
+        type: 'result',
+        is_error: false,
+        result: 'This reply runs out of room',
+        stop_reason: stopReason,
+        usage: { input_tokens: 10, output_tokens: 5 },
+        uuid: 'msg-limit',
+        session_id: 'thread-limit',
+      } as any,
+    });
+    expect(
+      publish.mock.calls
+        .map(([event]) => event)
+        .find((event) => event.method === 'turn.completed'),
+    ).toMatchObject({ finishReason });
+  });
+
   test('drops a resume-style result with no local turn while retaining usage and a tripwire', () => {
     const publish = vi.fn();
     const logInfo = vi.fn();

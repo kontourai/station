@@ -1,4 +1,5 @@
 import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
+import { hasCameraApi } from '../core/cameraSupport';
 import { connectionFailureCopy } from '../core/environmentProfiles';
 import type { ConnectionFailureReason, SavedConnection } from '../core/types';
 
@@ -33,7 +34,8 @@ export function getConnectionManagerTitle(
     case 'request-access':
       return 'Request Access';
     case 'pair-device':
-      return 'Scan a pairing code';
+      // Without a camera API this panel opens on code entry, so name that.
+      return hasCameraApi() ? 'Scan a pairing code' : 'Enter a pairing code';
     case 'pair-code':
       return 'Enter a pairing code';
     case 'pair-host':

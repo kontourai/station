@@ -22,6 +22,15 @@ prompts, then built-in handlers. Unrecognized commands pass through for Claude a
 providers; other providers get an unknown-command notice. A command appearing
 in a catalog is not proof that a remote engine will accept it.
 
+The built-in `/new` opens New chat, the same action as the chat panel's New
+chat button; where a surface has none, it says so. `/new` takes no text: a line
+with text after it stays in the composer as typed. There is no built-in
+`/clear`: it only emptied the message list on screen, while the agent's memory
+and the stored transcript stayed. Typing `/clear` answers "/clear isn’t a
+Station command. Use /new for a new chat." and is not passed through, even for
+Claude and Codex. An ACP connection still receives every slash command,
+`/clear` included, as described above.
+
 This guide describes Station's chat-client path. Sending a slash-prefixed
 string directly through the Session API does not invoke these UI handlers.
 See [the ACP guide](acp.md) for engine discovery and its autocomplete limits.

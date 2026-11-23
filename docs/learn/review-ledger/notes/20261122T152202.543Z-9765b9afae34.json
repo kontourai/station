@@ -1,0 +1,7 @@
+{
+  "revision": "ac3c0bc3e815b6d8fcfd3997caa9bd94e434f527",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rechecked (#5398 round 4): the message note's Check keeps focus (aria-disabled, presses ignored while it runs) and still never resends; the inbox row now opens the chat that holds its waiting or unconfirmed message. Retry Send and Check status wording unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/chat.css","src-ui/src/views/home/home-view-model.ts"]}
+  ]
+}

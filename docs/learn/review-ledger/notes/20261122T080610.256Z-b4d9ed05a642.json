@@ -1,0 +1,7 @@
+{
+  "revision": "6fcf24b0e0fa8c4a8ff52a232d93c7c6619a4967",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Checked: dismissal and Undo wording unchanged for users","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/inbox-dismissal.test.tsx","src-ui/src/components/chat-dock/inbox-dismissals.tsx"]}
+  ]
+}

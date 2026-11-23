@@ -27,6 +27,8 @@ const outbox = vi.hoisted(() => ({
   discard: vi.fn(async (_key: string) => undefined),
   dismissUnconfirmed: vi.fn(async (_key: string) => undefined),
   enqueue: vi.fn(),
+  flush: vi.fn(),
+  sendHeld: vi.fn(),
   rowStatus: vi.fn(
     async (_key: string): Promise<string | undefined> => undefined,
   ),
@@ -340,6 +342,9 @@ describe('MessageBubble delivery state', () => {
   });
 
   it('unconfirmed: "May have reached the agent", Check asks again and never resends', async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockRejectedValue(new Error('no request expected'));
     setChat({ deliveryChecks: { [KEY]: 'indeterminate' } });
     const { bubble } = renderBubble();
     expectOutlined(bubble, 'unconfirmed');
@@ -355,6 +360,37 @@ describe('MessageBubble delivery state', () => {
     expect(within(bubble).queryByRole('alert')).toBeNull();
     expect(outbox.retry).not.toHaveBeenCalled();
     expect(outbox.enqueue).not.toHaveBeenCalled();
+    expect(outbox.flush).not.toHaveBeenCalled();
+    expect(outbox.sendHeld).not.toHaveBeenCalled();
+    expect(fetchSpy).not.toHaveBeenCalled();
+    fetchSpy.mockRestore();
+  });
+
+  it('unconfirmed: presses while Check runs are ignored, and Check keeps keyboard focus', async () => {
+    const pending: ((outcome: 'indeterminate') => void)[] = [];
+    recheckOutboundTurn.mockImplementation(
+      () => new Promise((resolve) => pending.push(resolve)),
+    );
+    setChat({ deliveryChecks: { [KEY]: 'indeterminate' } });
+    const { bubble } = renderBubble();
+    const check = within(bubble).getByRole<HTMLButtonElement>('button', {
+      name: 'Check',
+    });
+    check.focus();
+    // Three presses before React renders again, as fast key repeats land.
+    act(() => {
+      check.click();
+      check.click();
+      check.click();
+    });
+    await waitFor(() => expect(recheckOutboundTurn).toHaveBeenCalled());
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(recheckOutboundTurn).toHaveBeenCalledTimes(1);
+    expect(check.getAttribute('aria-disabled')).toBe('true');
+    expect(check.hasAttribute('disabled')).toBe(false);
+    for (const resolve of pending) resolve('indeterminate');
+    await within(bubble).findByText('Station still can’t confirm it.');
+    expect(document.activeElement).toBe(check);
   });
 
   it('unconfirmed: discarding states the risk first, and only the explicit confirmation dismisses it (#3596)', async () => {

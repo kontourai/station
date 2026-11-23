@@ -1,0 +1,7 @@
+{
+  "revision": "b78420825342ac366cf00977a2a36b2fc40ec1a9",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Only cites api.md's terminal socket transport anchor, untouched by the stats and default-Agent sentences.","inputs":["docs/design/terminal.md","docs/reference/api.md"]}
+  ]
+}

@@ -77,6 +77,8 @@ const { DatabaseSync } = require('node:sqlite') as {
 
 export interface StoredSchedulerJob {
   name: string;
+  /** What a person calls it; `name` stays the identity. */
+  displayName?: string;
   cron?: string;
   schedule?: Schedule;
   prompt: string;
@@ -1354,6 +1356,8 @@ class SqliteSchedulerLedger implements SchedulerLedger {
         const job = freezeJob(parseStoredJob(row.data));
         if (
           job.name !== row.name ||
+          (job.displayName !== undefined &&
+            typeof job.displayName !== 'string') ||
           typeof job.createdAt !== 'string' ||
           typeof job.enabled !== 'boolean' ||
           (job.cron !== undefined && typeof job.cron !== 'string') ||
