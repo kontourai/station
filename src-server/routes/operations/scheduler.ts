@@ -229,6 +229,8 @@ export function createSchedulerReadProjection(
         lastRunMs,
         lastSuccessAt,
         consecutiveFailures,
+        recentOutcomes,
+        pausedItself,
         ...redacted
       } = job;
       return redacted;

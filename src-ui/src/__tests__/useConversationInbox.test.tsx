@@ -15,13 +15,16 @@ import {
   waitFor,
 } from '@testing-library/react';
 
+import { useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ConversationInboxMessages } from '../components/chat/ConversationInboxMessages';
 import type { PendingMessageMetadata } from '../contexts/active-chats-state';
 import {
   INBOX_ACTIVE_POLL_MS,
   INBOX_IDLE_POLL_MS,
+  useConversationInbox,
 } from '../hooks/useConversationInbox';
+import { useConversationInboxSnapshot } from '../hooks/useConversationInboxSnapshot';
 import { shouldPersistQuery } from '../lib/queryPersistence';
 
 function expand() {
@@ -834,5 +837,166 @@ test('a held message lists the files it carries by name, never their bytes', asy
   expect(screen.getByText('notes.txt')).toBeTruthy();
   expect(screen.getByText('2 files').getAttribute('title')).toBe(
     'a.txt, b.txt',
+  );
+});
+
+const SCOPE_PREFIX = ['conversation-inbox', 'http://station.test', 'device-a'];
+
+// The reader's own re-render registers its options last: the query keeps the
+// options of whichever observer set them most recently.
+const readerRerender = { run: () => {} };
+
+function SnapshotProbe() {
+  const [, setTick] = useState(0);
+  readerRerender.run = () => setTick((tick) => tick + 1);
+  const entries = useConversationInboxSnapshot('conversation');
+  return (
+    <output data-testid="snapshot">
+      {entries.map((e) => e.message).join('|')}
+    </output>
+  );
+}
+
+function Owner() {
+  const query = useConversationInbox('conversation');
+  return <output data-testid="owner">{query.availability}</output>;
+}
+
+function mountPair(readerFirst: boolean) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  setClientCredentialResolver(() => ({
+    origin: authority.current.apiBase,
+    requestAuthority: authority.current,
+  }));
+  render(
+    <QueryClientProvider client={client}>
+      {readerFirst && <SnapshotProbe />}
+      <ConversationInboxMessages
+        conversationId="conversation"
+        sessionId="session"
+        messages={[]}
+      />
+      <Owner />
+      {!readerFirst && <SnapshotProbe />}
+    </QueryClientProvider>,
+  );
+  return client;
+}
+
+for (const readerFirst of [false, true]) {
+  test(`an event-stream invalidation refetches through the list's own read with a snapshot reader mounted ${readerFirst ? 'before' : 'after'} it`, async () => {
+    let calls = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response([entry('queued', `call-${++calls}`)])),
+    );
+    // The library reports a missing or skipped query function through
+    // console.error, and the browser journeys fail on any console error.
+    const consoleError = vi.spyOn(console, 'error');
+    const client = mountPair(readerFirst);
+    await waitFor(() =>
+      expect(screen.getByTestId('snapshot').textContent).toBe('call-1'),
+    );
+    const before = calls;
+    act(() => readerRerender.run());
+    // The list's query must never pass through an error state: the notice
+    // above the composer renders from the first one.
+    const errors: unknown[] = [];
+    const unsubscribe = client.getQueryCache().subscribe((event) => {
+      if (event.query.state.error) errors.push(event.query.state.error);
+    });
+    await act(async () => {
+      await client.invalidateQueries({ queryKey: SCOPE_PREFIX });
+    });
+    unsubscribe();
+    expect(errors).toEqual([]);
+    expect(calls).toBe(before + 1);
+    expect(screen.queryByText(/load inbox entries/)).toBeNull();
+    const query = client
+      .getQueryCache()
+      .find({ queryKey: [...SCOPE_PREFIX, 'conversation'], exact: true });
+    expect(query?.state.error).toBeNull();
+    expect(query?.state.status).toBe('success');
+    await waitFor(() =>
+      expect(screen.getByTestId('snapshot').textContent).toBe(`call-${calls}`),
+    );
+    expect(screen.queryByText(/load inbox entries/)).toBeNull();
+    expect(screen.getByTestId('owner').textContent).toBe('available');
+    expect(
+      consoleError.mock.calls.filter((call) =>
+        /queryFn/i.test(String(call[0])),
+      ),
+    ).toEqual([]);
+    consoleError.mockRestore();
+  });
+}
+
+test('a snapshot reader mounted alone neither fetches nor errors on invalidation', async () => {
+  const fetchMock = vi.fn(async () => response([entry('queued', 'x')]));
+  vi.stubGlobal('fetch', fetchMock);
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  const consoleError = vi.spyOn(console, 'error');
+  render(
+    <QueryClientProvider client={client}>
+      <SnapshotProbe />
+    </QueryClientProvider>,
+  );
+  await act(async () => {
+    await client.invalidateQueries({ queryKey: SCOPE_PREFIX });
+  });
+  expect(fetchMock).not.toHaveBeenCalled();
+  // The reader registers nothing: with no list mounted there is no query.
+  expect(
+    client
+      .getQueryCache()
+      .find({ queryKey: [...SCOPE_PREFIX, 'conversation'], exact: true }),
+  ).toBeUndefined();
+  expect(screen.getByTestId('snapshot').textContent).toBe('');
+  expect(
+    consoleError.mock.calls.filter((call) => /queryFn/i.test(String(call[0]))),
+  ).toEqual([]);
+  consoleError.mockRestore();
+});
+
+test("a snapshot reader shows the list's entries only while the list is mounted", async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => response([entry('queued', 'held')])),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  setClientCredentialResolver(() => ({
+    origin: authority.current.apiBase,
+    requestAuthority: authority.current,
+  }));
+  function Pair({ list }: { list: boolean }) {
+    return (
+      <QueryClientProvider client={client}>
+        <SnapshotProbe />
+        {list && <Owner />}
+      </QueryClientProvider>
+    );
+  }
+  const view = render(<Pair list />);
+  await waitFor(() =>
+    expect(screen.getByTestId('snapshot').textContent).toBe('held'),
+  );
+  // The list's read is the only one keeping these entries current, so the
+  // reader does not go on showing them once it is gone.
+  view.rerender(<Pair list={false} />);
+  await waitFor(() =>
+    expect(screen.getByTestId('snapshot').textContent).toBe(''),
+  );
+  view.rerender(<Pair list />);
+  await waitFor(() =>
+    expect(screen.getByTestId('snapshot').textContent).toBe('held'),
   );
 });

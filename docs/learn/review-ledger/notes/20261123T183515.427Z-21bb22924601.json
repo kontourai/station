@@ -1,0 +1,13 @@
+{
+  "revision": "e1e84f6dce092e461e2edff8d5a497257f1bc20c",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the Project overview and start-work descriptions against both mobile Gallery themes. The header keeps its actions above the dock and leaves the Live Work row clear. Existing navigation and work descriptions remain accurate.","inputs":["src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Reviewed the Project overview and start-work descriptions against both mobile Gallery themes. The header keeps its actions above the dock and leaves the Live Work row clear. Existing navigation and work descriptions remain accurate.","inputs":["src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the Project overview and start-work descriptions against both mobile Gallery themes. The header keeps its actions above the dock and leaves the Live Work row clear. Existing navigation and work descriptions remain accurate.","inputs":["src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the Project overview and start-work descriptions against both mobile Gallery themes. The header keeps its actions above the dock and leaves the Live Work row clear. Existing navigation and work descriptions remain accurate.","inputs":["src-ui/src/views/ProjectPage.css"]}
+  ]
+}

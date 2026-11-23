@@ -1,9 +1,5 @@
-import type {
-  SchedulerJob,
-  SchedulerSchedule,
-} from '@kontourai/station-contracts/scheduler';
+import type { SchedulerSchedule } from '@kontourai/station-contracts/scheduler';
 import { SchedulerResponseError } from '@kontourai/station-sdk';
-import { jobLabel } from '../../components/scheduler/jobName';
 import {
   localCronSchedule,
   weekdayMorningSchedule,
@@ -11,64 +7,21 @@ import {
 import { errorText } from '../../utils/errorText';
 import { isStationTransportFailure } from '../../utils/stationTransportFailure';
 
-type ScheduleTone = 'success' | 'warning' | 'error';
-
-export function getScheduleStatusTone({
-  statusError,
-  daemonOk,
-  schedulerHealthy,
-}: {
-  statusError: boolean;
-  daemonOk: boolean;
-  schedulerHealthy: boolean;
-}): ScheduleTone {
-  if (statusError) {
-    return 'warning';
-  }
-  if (daemonOk && schedulerHealthy) {
-    return 'success';
-  }
-  if (daemonOk) {
-    return 'warning';
-  }
-  return 'error';
-}
-
-export function getScheduleStatusLabel({
-  statusError,
-  daemonOk,
-  schedulerHealthy,
-}: {
-  statusError: boolean;
-  daemonOk: boolean;
-  schedulerHealthy: boolean;
-}): string {
-  if (statusError) {
-    return 'Unreachable';
-  }
-  if (daemonOk && schedulerHealthy) {
-    return '● Healthy';
-  }
-  if (daemonOk) {
-    return 'Degraded';
-  }
-  return '○ Stopped';
-}
-
 /**
  * #1536 L1: each starter carries a SCHEDULE (a local cron plus the reader's IANA
  * zone), not a UTC-shifted cron string. Shifting only the hour was wrong for
  * every zone where the shift crosses midnight — at UTC+10 the three weekday
  * presets fired Tuesday through Saturday, and "Mondays" fired on Tuesday — and
  * it could not survive DST either, since the offset was read once at render.
- * The `meta` line beside each is the claim this now actually keeps.
+ * The empty state reads each one's schedule back from that schedule.
  */
 export function getScheduleStarterTemplates(): Array<{
   name: string;
   label: string;
   schedule: SchedulerSchedule;
   prompt: string;
-  meta: string;
+  /** What it does, in the words of its own prompt. */
+  description: string;
 }> {
   // Only work an agent can do with a workspace and its tools. No template
   // assumes an email, calendar or other connector Station does not back.
@@ -79,7 +32,8 @@ export function getScheduleStarterTemplates(): Array<{
       schedule: weekdayMorningSchedule(),
       prompt:
         'Summarize what changed in this repository since the last run: merged commits, open pull requests and failing checks. Keep it short.',
-      meta: 'Weekdays · 8:00 AM',
+      description:
+        'Merged commits, open pull requests and failing checks since the last run.',
     },
     {
       name: 'open-work-check-back',
@@ -87,7 +41,8 @@ export function getScheduleStarterTemplates(): Array<{
       schedule: localCronSchedule('0 16 * * 1-5'),
       prompt:
         'Look back over the open work in this conversation. What is still unfinished, and what should happen next?',
-      meta: 'Weekdays · 4:00 PM',
+      description:
+        'Goes back over open work in a chat: what is unfinished and what should happen next.',
     },
     {
       name: 'weekly-dependency-check',
@@ -95,7 +50,8 @@ export function getScheduleStarterTemplates(): Array<{
       schedule: localCronSchedule('0 9 * * 1'),
       prompt:
         "Check this project's dependencies for available updates and known security advisories. List what needs action, most urgent first.",
-      meta: 'Mondays · 9:00 AM',
+      description:
+        "Updates and security advisories for a project's dependencies, most urgent first.",
     },
     {
       name: 'stale-pull-requests',
@@ -103,49 +59,10 @@ export function getScheduleStarterTemplates(): Array<{
       schedule: localCronSchedule('0 14 * * 5'),
       prompt:
         'List open pull requests in this repository with no activity for a week, with a suggested next step for each.',
-      meta: 'Fridays · 2:00 PM',
+      description:
+        'Pull requests with no activity for a week, with a next step for each.',
     },
   ];
-}
-
-export function buildEnrichedSchedulerJobs({
-  jobs,
-  stats,
-}: {
-  jobs: SchedulerJob[];
-  stats?: {
-    providers?: Record<
-      string,
-      { jobs?: { name: string; total: number; success_rate: number }[] }
-    >;
-  };
-}): Array<SchedulerJob & { label: string; successRate: number }> {
-  const statsMap = new Map<
-    string,
-    { name: string; total: number; success_rate: number }
-  >();
-
-  if (stats?.providers) {
-    for (const providerStats of Object.values(stats.providers)) {
-      for (const jobStats of providerStats.jobs || []) {
-        statsMap.set(jobStats.name, jobStats);
-      }
-    }
-  }
-
-  return jobs.map((job) => {
-    const jobStats = statsMap.get(job.name);
-    return {
-      ...job,
-      // What the Name column shows, sorts and filters by.
-      label: jobLabel(job),
-      successRate: jobStats
-        ? jobStats.total > 0
-          ? jobStats.success_rate
-          : -1
-        : -1,
-    };
-  });
 }
 
 /**
