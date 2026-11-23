@@ -155,12 +155,12 @@ export function useInboxDismissActions(
       : null;
   const restore = (item: HomeWorkItem) => {
     if (currentNamespace.current !== namespace) return;
+    // Unhide on the host whenever the row has a host target, not only when
+    // this device's read already shows it hidden: a local dismissal moved to
+    // the host just now is hidden there before the next read says so.
     const target = hostTarget(item);
-    if (target && Object.hasOwn(workStateRef.current.hidden, target)) {
+    if (target)
       workStateRef.current.hide.mutate({ sessionId: target, hidden: false });
-      if (lastDismissToast) toastStore.dismiss(lastDismissToast);
-      lastDismissToast = null;
-    }
     try {
       const current =
         currentItems.current.find(
@@ -173,8 +173,7 @@ export function useInboxDismissActions(
               )),
         ) ?? item;
       restoreInboxItems([current], namespace);
-      if (lastDismissToast) toastStore.dismiss(lastDismissToast);
-      lastDismissToast = null;
+      dropInboxUndo();
       setError(null);
     } catch {
       setError('Could not restore this conversation. Try again.');
@@ -195,9 +194,7 @@ export function useInboxDismissActions(
       if (target) {
         workState.hide.mutate({ sessionId: target, hidden: true });
         setError(null);
-        if (lastDismissToast) toastStore.dismiss(lastDismissToast);
-        lastDismissToast = null;
-        lastDismissToast = offerInboxUndo('Marked done', () => restore(item));
+        offerInboxUndo('Marked done', () => restore(item));
         return;
       }
       try {
@@ -209,9 +206,9 @@ export function useInboxDismissActions(
       // The dismissal is saved; a toast failure must not report otherwise,
       // and ⌘Z and Restore still reach it.
       setError(null);
-      if (lastDismissToast) toastStore.dismiss(lastDismissToast);
-      lastDismissToast = null;
-      lastDismissToast = offerInboxUndo('Marked done', () => restore(item));
+      offerInboxUndo(localDoneNotice(item, workState.supported), () =>
+        restore(item),
+      );
     },
     /**
      * Mark done where the person's settlement exists: synced across their
@@ -219,16 +216,23 @@ export function useInboxDismissActions(
      */
     settle: (conversationId: string, settled: boolean) => {
       const change = workStateRef.current.change;
-      change.mutate({ conversationId, settled });
-      if (lastDismissToast) toastStore.dismiss(lastDismissToast);
-      lastDismissToast = settled
-        ? offerInboxUndo('Marked done', () =>
+      dropInboxUndo();
+      // The notice follows the server's answer: a settle that failed shows
+      // only its error, never an Undo for something that did not happen.
+      if (!settled || !change.mutateAsync) {
+        change.mutate({ conversationId, settled });
+        return;
+      }
+      void change.mutateAsync({ conversationId, settled: true }).then(
+        () =>
+          offerInboxUndo('Marked done', () =>
             workStateRef.current.change.mutate({
               conversationId,
               settled: false,
             }),
-          )
-        : null;
+          ),
+        () => undefined,
+      );
     },
     restore,
     notice: error ? (
@@ -242,17 +246,40 @@ export function useInboxDismissActions(
 let lastDismissToast: string | null = null;
 let dismissToastSequence = 0;
 
+/** Closes the latest inbox notice, so its Undo is no longer offered. */
+function dropInboxUndo() {
+  if (lastDismissToast) toastStore.dismiss(lastDismissToast);
+  lastDismissToast = null;
+}
+
+/**
+ * What Mark done says when it could only put the row away on this device
+ * while the person's settlement is on: the work is not done, so the notice
+ * says where it went and what it is still doing. It comes back when it
+ * next changes.
+ */
+function localDoneNotice(item: HomeWorkItem, settlementOn: boolean): string {
+  if (!settlementOn) return 'Marked done';
+  if (item.lifecycleLabel === 'Running')
+    return 'Hidden on this device. It is still running.';
+  if (item.lifecycleLabel === 'Needs attention')
+    return 'Hidden on this device. It still needs you.';
+  return 'Hidden on this device.';
+}
+
 /**
  * Shows the Undo notice for an inbox action (Mark done, a bulk Mark done,
  * Discard draft) and enters it in the app's undo stack, so Mod+Z reaches it
  * through the one registered Undo command, in order with every other
- * undoable action. Null when the notice could not be shown; the action itself
- * is already saved, and Reopen still reaches it.
+ * undoable action. It becomes the one latest inbox notice: the one before it
+ * closes, and changing Station closes it. Null when the notice could not be
+ * shown; the action itself is already saved, and Reopen still reaches it.
  */
 export function offerInboxUndo(
   message: string,
   onUndo: () => void,
 ): string | null {
+  dropInboxUndo();
   dismissToastSequence += 1;
   const id = `inbox-dismiss-${dismissToastSequence}`;
   try {
@@ -268,6 +295,7 @@ export function offerInboxUndo(
     return null;
   }
   trackPendingUndo(id);
+  lastDismissToast = id;
   return id;
 }
 
@@ -281,8 +309,7 @@ export function InboxDismissUndo({ children }: { children: ReactNode }) {
   useEffect(() => {
     void apiBase;
     void namespace;
-    if (lastDismissToast) toastStore.dismiss(lastDismissToast);
-    lastDismissToast = null;
+    dropInboxUndo();
   }, [apiBase, namespace]);
   return children;
 }
