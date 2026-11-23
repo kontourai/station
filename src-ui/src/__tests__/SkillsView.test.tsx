@@ -68,6 +68,16 @@ vi.mock('@kontourai/station-sdk', () => ({
   useUpdateSkillMutation: () => ({ isPending: false, mutate: vi.fn() }),
 }));
 
+// The page asks which setup imports this host offers. The data is the
+// `GET /api/setup-imports/sources` shape for a host with no readable Codex
+// prompts folder, so the Import from Codex entry stays hidden here; the
+// launch suite covers it through the real hook.
+vi.mock('@kontourai/station-sdk/setup-imports-query', () => ({
+  useSetupImportSourcesQuery: () => ({
+    data: [{ id: 'codex-prompts', available: false }],
+  }),
+}));
+
 const navigateMock = vi.fn();
 const showToastMock = vi.fn();
 
