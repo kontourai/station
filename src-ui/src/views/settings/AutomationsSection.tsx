@@ -297,7 +297,9 @@ export function AutomationsSection() {
                     status={
                       delivery.reason
                         ? `${delivery.outcome} · ${delivery.reason}`
-                        : delivery.outcome
+                        : delivery.outcome === 'stopped'
+                          ? 'stopped by a person'
+                          : delivery.outcome
                     }
                     tone={
                       delivery.outcome === 'started'

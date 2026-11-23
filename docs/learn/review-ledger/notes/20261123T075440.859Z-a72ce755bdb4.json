@@ -1,0 +1,9 @@
+{
+  "revision": "118885a904428b83efc585ce693754dfca2bd104",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"The cited page renamed the automation person-stop outcome to stopped (and automations.md described the 12-hour ceiling and card prefix); the citing page's claims about it are unaffected.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The cited page renamed the automation person-stop outcome to stopped (and automations.md described the 12-hour ceiling and card prefix); the citing page's claims about it are unaffected.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

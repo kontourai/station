@@ -18,6 +18,7 @@ import { runAsStationServer } from '../../security/station-server-scope.js';
 import { runtimeAgentKey } from '../../services/agents/runtime-agent-identity.js';
 import {
   ApprovalInboxNotificationProvider,
+  unattendedSessionTitleResolver,
   wireApprovalInboxNotifications,
 } from '../../services/approvals/approval-inbox.js';
 import {
@@ -623,6 +624,11 @@ export function configureRuntimeSupportServices(
     approvalRegistry: context.approvalRegistry,
     orchestrationService: context.orchestrationService,
     resolveSessionProjectId,
+    unattendedSessionTitle: unattendedSessionTitleResolver({
+      orchestration: context.orchestrationService,
+      store: context.orchestrationEventStore,
+      tasks: context.taskGraphService,
+    }),
   });
   notificationService.addProvider(approvalInboxProvider);
   // An inbound pairing request used to surface only inside the Connections

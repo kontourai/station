@@ -1,0 +1,15 @@
+{
+  "revision": "436b4ca4dbab9500c5051b403e99a9d236715639",
+
+  "notes": [
+    {"path":"README.md","note":"The cited reference page only added interrupted to the automation delivery outcomes; the citing page's claims about it are unaffected.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The cited reference page only added interrupted to the automation delivery outcomes; the citing page's claims about it are unaffected.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"The cited reference page only added interrupted to the automation delivery outcomes; the citing page's claims about it are unaffected.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The cited reference page only added interrupted to the automation delivery outcomes; the citing page's claims about it are unaffected.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"The cited reference page only added interrupted to the automation delivery outcomes; the citing page's claims about it are unaffected.","inputs":["docs/reference/cli.md"]}
+  ]
+}

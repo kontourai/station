@@ -7760,6 +7760,16 @@ export function createOrchestrationRoutes(
             isPersonRequest(c.req.raw)
               ? { personAnswer: true as const }
               : {}),
+            // A person's Stop, by Station's person check: never a delegation-
+            // kind device or a request an Agent may have made. An automation
+            // records the turn as stopped by a person only on this.
+            ...(command.type === 'interruptTurn' &&
+            personCredentialRequest(
+              c.req.raw,
+              deps.resolveInboundDeviceKind?.(c),
+            )
+              ? { personStop: true as const }
+              : {}),
             ...(command.type === 'respondToRequest' &&
             command.expectedRequestEventId !== undefined
               ? {

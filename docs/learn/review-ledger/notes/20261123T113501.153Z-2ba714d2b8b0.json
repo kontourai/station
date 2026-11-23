@@ -1,0 +1,7 @@
+{
+  "revision": "217ec0c2b8769d0d2c9ac98629bf7514aeb2c454",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"The approval-card paragraph now says the Task-title prefix applies to a Session that acts for no person and runs a Task an automation rule created; the resolver checks the Task's createdBy, so external-monitor and internal-principal Task starts keep the plain card. The rest of the page is unaffected.","inputs":["docs/design/automations.md"]}
+  ]
+}
