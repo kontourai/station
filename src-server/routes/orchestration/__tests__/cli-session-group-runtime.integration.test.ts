@@ -21,6 +21,7 @@ import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { createSessionAgentResolver } from '../../../services/orchestration/session-agent-resolution.js';
+import { sessionToolRestriction } from '../../../services/orchestration/session-tool-restriction.js';
 import { createRemoteStationForwarder } from '../../../services/remote-stations/remote-station-forwarder.js';
 import {
   delegateTask,
@@ -38,7 +39,7 @@ afterEach(async () => {
 
 class MemberAdapter extends GateTestAdapter {
   readonly starts: ProviderSessionStartInput[] = [];
-  private readonly sessions = new Map<
+  protected readonly sessions = new Map<
     string,
     Awaited<ReturnType<GateTestAdapter['startSession']>>
   >();
@@ -66,6 +67,10 @@ class MemberAdapter extends GateTestAdapter {
   override async listSessions() {
     return [...this.sessions.values()];
   }
+  protected completionText(_input: ProviderSendTurnInput): string {
+    return 'Returned member result';
+  }
+
   override async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
     const turnId = randomUUID();
@@ -86,7 +91,7 @@ class MemberAdapter extends GateTestAdapter {
       turnId,
       method: 'turn.completed',
       createdAt: new Date().toISOString(),
-      outputText: 'Returned member result',
+      outputText: this.completionText(input),
       finishReason: 'stop',
       invocationId: input.invocationId,
     });
@@ -109,10 +114,60 @@ class MemberAdapter extends GateTestAdapter {
   }
 }
 
-async function fixture() {
+class RetainedMemberAdapter extends MemberAdapter {
+  readonly restrictedClientTurnIds: string[] = [];
+
+  async assertContextSyncRuntime() {}
+
+  nativeSessionIdentity(cursor: unknown) {
+    return typeof cursor === 'string' ? { sessionId: cursor } : undefined;
+  }
+
+  engineEnded(threadId: string) {
+    return !this.sessions.has(threadId);
+  }
+
+  override async startSession(input: ProviderSessionStartInput) {
+    const retained = {
+      ...(await super.startSession({
+        ...input,
+        metadata: {
+          ...input.metadata,
+          nativeResumeBindingKey: 'fixture-retained-binding',
+        },
+      })),
+      resumeCursor: 'fixture-native-session',
+      persistSession: input.persistSession,
+      cwd: input.cwd,
+    };
+    this.sessions.set(input.threadId, retained);
+    return retained;
+  }
+
+  override async stopSession(threadId: string) {
+    this.sessions.delete(threadId);
+    this.events.push({
+      eventId: randomUUID(),
+      provider: this.provider,
+      threadId,
+      sessionId: threadId,
+      method: 'session.exited',
+      createdAt: new Date().toISOString(),
+      reason: 'stopped',
+    });
+  }
+
+  protected override completionText(input: ProviderSendTurnInput) {
+    const restriction = sessionToolRestriction(input.threadId);
+    if (!restriction) return super.completionText(input);
+    this.restrictedClientTurnIds.push(restriction.clientTurnId);
+    return 'ACK SYNC fold-one';
+  }
+}
+
+async function fixture(adapter = new MemberAdapter()) {
   const root = realpathSync(temporary('station-real-cli-group-'));
   const actor = humanPrincipal('test', 'group-owner', 'Group owner');
-  const adapter = new MemberAdapter();
   const store = new EventStore(join(root, 'events.sqlite'));
   cleanup.push(async () => {
     store.close();
@@ -500,3 +555,84 @@ test('sync resolves the exact completed member and refuses before journaling on 
   );
   expect(f.adapter.turns).toHaveLength(1);
 });
+
+test('retained sync reactivates the exact Session once and exposes the receipt through explicit inspection', async () => {
+  const adapter = new RetainedMemberAdapter();
+  const f = await fixture(adapter);
+  const group = await create(f, 1);
+  const path = `/api/orchestration/session-groups/${group.groupId}`;
+  const ran = await f.app.request(`${path}/run`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(5000),
+  });
+  expect(ran.status, await ran.clone().text()).toBe(200);
+  const initial = ((await ran.json()) as { data: CliSessionGroupView }).data
+    .members[0];
+  expect(initial?.outcome).toBe('completed');
+
+  const syncOptions = {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      operationId: 'retained-context-one',
+      runId: 'fold-one',
+      content: 'Folded member result',
+      deadlineAt: Date.now() + 30_000,
+    }),
+  };
+  const synced = await f.app.request(`${path}/sync`, syncOptions);
+  expect(synced.status, await synced.clone().text()).toBe(200);
+  const result = ((await synced.json()) as { data: CliSessionGroupView }).data;
+  expect(result.contextSync).toMatchObject({
+    operationId: 'retained-context-one',
+    runId: 'fold-one',
+    status: 'acknowledged',
+    members: [
+      {
+        seatId: initial?.seatId,
+        status: 'acknowledged',
+        attempts: 1,
+        toolCalls: 0,
+      },
+    ],
+  });
+  const memberReceipt = result.contextSync?.members[0];
+  expect(memberReceipt?.turnId).not.toBe(initial?.handle?.initialTurnId);
+  expect(adapter.starts).toHaveLength(2);
+  expect(adapter.starts[1]).toMatchObject({
+    threadId: initial?.handle?.sessionId,
+    resumeCursor: 'fixture-native-session',
+  });
+  expect(adapter.turns).toHaveLength(2);
+  expect(adapter.restrictedClientTurnIds).toEqual([
+    adapter.turns[1]?.clientTurnId,
+  ]);
+  const sessionId = initial?.handle?.sessionId;
+  expect(sessionId).toBeDefined();
+  expect(
+    f.store
+      .listEvents(sessionId!)
+      .some(
+        ({ payload }) =>
+          payload.method === 'turn.completed' &&
+          payload.eventId === memberReceipt?.terminalEventId &&
+          payload.turnId === memberReceipt?.turnId,
+      ),
+  ).toBe(true);
+
+  const legacy = await f.app.request(path);
+  expect(legacy.status).toBe(200);
+  expect((await legacy.json()).data).not.toHaveProperty('contextSync');
+  const inspected = await f.app.request(`${path}?includeContextSync=1`);
+  expect(inspected.status).toBe(200);
+  expect((await inspected.json()).data.contextSync).toEqual(result.contextSync);
+
+  const replay = await f.app.request(`${path}/sync`, syncOptions);
+  expect(replay.status).toBe(200);
+  expect((await replay.json()).data).toMatchObject({
+    revision: result.revision,
+    contextSync: result.contextSync,
+  });
+  expect(adapter.starts).toHaveLength(2);
+  expect(adapter.turns).toHaveLength(2);
+}, 30_000);
