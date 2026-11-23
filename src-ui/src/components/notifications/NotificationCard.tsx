@@ -90,7 +90,6 @@ export function NotificationCard({
              */}
             <RowMenu
               items={[
-                ...menuItems,
                 ...(dismissible
                   ? [
                       {
@@ -100,6 +99,7 @@ export function NotificationCard({
                       },
                     ]
                   : []),
+                ...menuItems,
               ]}
             />
           </span>

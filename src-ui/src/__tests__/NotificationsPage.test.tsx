@@ -1324,6 +1324,19 @@ describe('NotificationsPage', () => {
       expect(dismiss).not.toHaveBeenCalledWith('other');
     });
 
+    test('the heading stops counting a row hidden behind its Undo, and counts it again on Undo', () => {
+      renderPage();
+      const heading = () =>
+        screen.getByRole('heading', { name: /^Needs attention/ }).textContent;
+      expect(heading()).toContain('(1)');
+      chooseRowAction('Mark done');
+      expect(heading()).not.toContain('(1)');
+      act(() => {
+        expect(undoLatestAction()).toBe(true);
+      });
+      expect(heading()).toContain('(1)');
+    });
+
     test('Undo (and ⌘Z) takes Mark done back before anything is written', async () => {
       renderPage();
       chooseRowAction('Mark done');
@@ -1914,6 +1927,24 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
 
     fireEvent.click(within(snoozed).getByRole('button', { name: 'Wake now' }));
     expect(unsnoozeAttention.mock.calls.at(-1)?.[0]).toBe('session-failed:b');
+    snoozePreviews = [];
+  });
+
+  test('every page row menu leads with Mark done, then the snooze list, as the dock does', () => {
+    snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
+    renderPage();
+    const triggers = screen.getAllByRole('button', { name: 'More actions' });
+    expect(triggers.length).toBeGreaterThan(1);
+    for (const trigger of triggers) {
+      fireEvent.click(trigger);
+      const names = screen
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent ?? '');
+      expect(names[0]).toBe('Mark done');
+      expect(names[1]).toMatch(/^In 1 hour/);
+      fireEvent.click(trigger);
+      expect(screen.queryByRole('menu')).toBeNull();
+    }
     snoozePreviews = [];
   });
 

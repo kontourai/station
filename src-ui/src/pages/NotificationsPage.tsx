@@ -147,6 +147,18 @@ export function NotificationsPage() {
       (item) => !markingDone.has(attentionDoneKey(item.id)),
     );
   }, [exactApproval, exactPairing, filtered.items, markingDone]);
+  // The heading's count leaves out rows hidden behind a pending Undo, so it
+  // never counts a row the list no longer shows. The bell keeps the server's
+  // number until the write lands (slice 4.15 owns the bell).
+  const markingDoneCount = useMemo(
+    () =>
+      countPendingAttention(
+        pendingAttentionItems(inbox.items).filter((item) =>
+          markingDone.has(attentionDoneKey(item.id)),
+        ),
+      ),
+    [inbox.items, markingDone],
+  );
   const dismissibleItems = attentionItems.filter(
     isAcknowledgeableAttentionItem,
   );
@@ -419,7 +431,7 @@ export function NotificationsPage() {
             />
             <AttentionSection
               items={attentionItems}
-              pendingTotal={inbox.pendingCount}
+              pendingTotal={Math.max(0, inbox.pendingCount - markingDoneCount)}
               pendingVisible={countPendingAttention(attentionItems)}
               filtered={filtersActive}
               focusedApprovalId={approvalTarget || undefined}

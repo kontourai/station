@@ -172,6 +172,7 @@ On a phone: The same sheet.
 2. **"Mark done" replaces Settle, Dismiss from inbox, Hide from inbox and notification Dismiss. Reopen undoes it.** Today there are seven verbs for "I'm done with this". The word does not change what is recorded: Mark done settles where the person's settlement reaches the row (synced across their devices), hides a third-party Session on the host, and otherwise dismisses on this device, which is what happens while the Open and Settled preview is off and for work still running or waiting on the person, since settlement refuses those. _(copy; slice 4.13)_
 3. **One snooze list for every surface: In 1 hour, This evening, Tomorrow morning, Next week, each showing its real time.** Today there are two different snooze preset lists. _(copy; slice 4.13)_
 4. **Discard draft stays a danger item. "Discard unsent draft" and "Discard draft" become one label.** _(copy; slice 4.13)_
+5. **On the inbox page, Mark done leads the row menu (the page has no Open chat), then the snooze list, as in the dock.** Amended while building: Mark done there waits behind its Undo notice, and the "Needs attention" heading stops counting a row while it waits. The bell badge keeps the server's count until the write lands; the badge is slice 4.15's. _(layout, copy; slice 4.13)_
 
 ## Feature calls
 

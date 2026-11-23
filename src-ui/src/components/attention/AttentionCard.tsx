@@ -187,7 +187,7 @@ export function AttentionCard({
                 {formatNotificationTime(item.updatedAt)}
               </time>
               {menuMode ? (
-                <RowMenu items={[...(menuItems ?? []), ...dismissItems]} />
+                <RowMenu items={[...dismissItems, ...(menuItems ?? [])]} />
               ) : null}
             </span>
           </div>
