@@ -85,7 +85,6 @@ writeFileSync(join(dockerConfig, 'config.json'), '{}\n', {
 const controllerCanary = `host-only-${randomUUID()}`;
 const requests: unknown[] = [];
 let deliveries = 0;
-let currentEngine: string | undefined;
 const receipt: Record<string, unknown> = {
   sourceHead: process.env.CHILD_WORK_NATIVE_LAB_SOURCE_HEAD,
   driverSha256: createHash('sha256')
@@ -109,7 +108,8 @@ try {
     /^[a-f0-9]{40}$/,
   );
   const docker = process.env.CHILD_WORK_DOCKER_EXECUTABLE;
-  assert.ok(docker && docker.startsWith('/'));
+  assert.ok(docker);
+  assert.ok(docker.startsWith('/'));
   const endpoint = process.env.CHILD_WORK_DOCKER_ENDPOINT;
   assert.ok(endpoint);
   assert.ok(endpoint.startsWith('unix:///'));
@@ -228,177 +228,179 @@ try {
   const imageId = readFileSync(iidFile, 'utf8').trim();
   assert.match(imageId, /^sha256:[a-f0-9]{64}$/);
   receipt.imageId = imageId;
-  container = NativeModelContainer.prepare({
-    namespaceId: `model-probe-${randomUUID()}`,
-    imageId,
-    dockerExecutable: docker,
-    endpoint,
-    controllerRoot: artifacts,
-    request: (input, signal) => {
-      signal.throwIfAborted();
-      if (currentEngine) {
-        assert.ok(requests.length < 9, 'native lab request limit');
+  const prepareContainer = (currentEngine?: (typeof engines)[number]['name']) =>
+    NativeModelContainer.prepare({
+      namespaceId: `model-probe-${randomUUID()}`,
+      imageId,
+      dockerExecutable: docker,
+      endpoint,
+      controllerRoot: artifacts,
+      request: (input, signal) => {
+        signal.throwIfAborted();
+        if (currentEngine) {
+          assert.ok(requests.length < 9, 'native lab request limit');
+          assert.equal(input.method, 'POST');
+          assert.equal(
+            input.path.split('?')[0],
+            currentEngine === 'claude' ? '/v1/messages' : '/v1/responses',
+          );
+          const body = JSON.parse(input.body.toString('utf8'));
+          assert.equal(
+            body.model,
+            currentEngine === 'codex' ? fixtureModel : 'claude-sonnet-4-5',
+          );
+          requests.push({
+            engine: currentEngine,
+            path: input.path,
+            bodySha256: createHash('sha256').update(input.body).digest('hex'),
+          });
+          const text = `CONFINED_${currentEngine.toUpperCase()}_REPLY`;
+          const message = {
+            id: `msg_${randomUUID()}`,
+            type: 'message',
+            role: 'assistant',
+            model: body.model,
+            content: [{ type: 'text', text }],
+            stop_reason: 'end_turn',
+            stop_sequence: null,
+            usage: { input_tokens: 12, output_tokens: 8 },
+          };
+          const output = {
+            id: `item_${randomUUID()}`,
+            type: 'message',
+            status: 'completed',
+            role: 'assistant',
+            content: [{ type: 'output_text', text, annotations: [] }],
+          };
+          const response = {
+            id: `resp_${randomUUID()}`,
+            object: 'response',
+            created_at: 1,
+            status: 'completed',
+            model: body.model,
+            output: [output],
+            usage: { input_tokens: 12, output_tokens: 8, total_tokens: 20 },
+          };
+          const event = (name: string, data: unknown) =>
+            `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
+          const content =
+            currentEngine === 'claude'
+              ? event('message_start', {
+                  type: 'message_start',
+                  message: { ...message, content: [], stop_reason: null },
+                }) +
+                event('content_block_start', {
+                  type: 'content_block_start',
+                  index: 0,
+                  content_block: { type: 'text', text: '' },
+                }) +
+                event('content_block_delta', {
+                  type: 'content_block_delta',
+                  index: 0,
+                  delta: { type: 'text_delta', text },
+                }) +
+                event('content_block_stop', {
+                  type: 'content_block_stop',
+                  index: 0,
+                }) +
+                event('message_delta', {
+                  type: 'message_delta',
+                  delta: { stop_reason: 'end_turn', stop_sequence: null },
+                  usage: { output_tokens: 8 },
+                }) +
+                event('message_stop', { type: 'message_stop' })
+              : event('response.created', {
+                  type: 'response.created',
+                  response: { ...response, status: 'in_progress', output: [] },
+                }) +
+                event('response.output_item.added', {
+                  type: 'response.output_item.added',
+                  output_index: 0,
+                  item: { ...output, status: 'in_progress', content: [] },
+                }) +
+                event('response.content_part.added', {
+                  type: 'response.content_part.added',
+                  item_id: output.id,
+                  output_index: 0,
+                  content_index: 0,
+                  part: { type: 'output_text', text: '', annotations: [] },
+                }) +
+                event('response.output_text.delta', {
+                  type: 'response.output_text.delta',
+                  item_id: output.id,
+                  output_index: 0,
+                  content_index: 0,
+                  delta: text,
+                }) +
+                event('response.output_text.done', {
+                  type: 'response.output_text.done',
+                  item_id: output.id,
+                  output_index: 0,
+                  content_index: 0,
+                  text,
+                }) +
+                event('response.output_item.done', {
+                  type: 'response.output_item.done',
+                  output_index: 0,
+                  item: output,
+                }) +
+                event('response.completed', {
+                  type: 'response.completed',
+                  response,
+                });
+          return {
+            response: Promise.resolve(
+              new Response(
+                body.stream === false
+                  ? JSON.stringify(
+                      currentEngine === 'claude' ? message : response,
+                    )
+                  : content,
+                {
+                  headers: {
+                    'content-type':
+                      body.stream === false
+                        ? 'application/json'
+                        : 'text/event-stream',
+                  },
+                },
+              ),
+            ),
+            settled: Promise.resolve(),
+            invokeDelivery: async (write) => {
+              signal.throwIfAborted();
+              deliveries++;
+              write();
+            },
+          };
+        }
         assert.equal(input.method, 'POST');
-        assert.equal(
-          input.path.split('?')[0],
-          currentEngine === 'claude' ? '/v1/messages' : '/v1/responses',
-        );
-        const body = JSON.parse(input.body.toString('utf8'));
-        assert.equal(
-          body.model,
-          currentEngine === 'codex' ? fixtureModel : 'claude-sonnet-4-5',
-        );
+        assert.equal(input.path, '/v1/messages');
+        assert.deepEqual(JSON.parse(input.body.toString('utf8')), {
+          model: 'fixture',
+          input: 'model channel probe',
+        });
+        assert.ok(!JSON.stringify(input).includes(controllerCanary));
         requests.push({
-          engine: currentEngine,
           path: input.path,
+          headers: input.headers,
           bodySha256: createHash('sha256').update(input.body).digest('hex'),
         });
-        const text = `CONFINED_${currentEngine.toUpperCase()}_REPLY`;
-        const message = {
-          id: `msg_${randomUUID()}`,
-          type: 'message',
-          role: 'assistant',
-          model: body.model,
-          content: [{ type: 'text', text }],
-          stop_reason: 'end_turn',
-          stop_sequence: null,
-          usage: { input_tokens: 12, output_tokens: 8 },
-        };
-        const output = {
-          id: `item_${randomUUID()}`,
-          type: 'message',
-          status: 'completed',
-          role: 'assistant',
-          content: [{ type: 'output_text', text, annotations: [] }],
-        };
-        const response = {
-          id: `resp_${randomUUID()}`,
-          object: 'response',
-          created_at: 1,
-          status: 'completed',
-          model: body.model,
-          output: [output],
-          usage: { input_tokens: 12, output_tokens: 8, total_tokens: 20 },
-        };
-        const event = (name: string, data: unknown) =>
-          `event: ${name}\ndata: ${JSON.stringify(data)}\n\n`;
-        const content =
-          currentEngine === 'claude'
-            ? event('message_start', {
-                type: 'message_start',
-                message: { ...message, content: [], stop_reason: null },
-              }) +
-              event('content_block_start', {
-                type: 'content_block_start',
-                index: 0,
-                content_block: { type: 'text', text: '' },
-              }) +
-              event('content_block_delta', {
-                type: 'content_block_delta',
-                index: 0,
-                delta: { type: 'text_delta', text },
-              }) +
-              event('content_block_stop', {
-                type: 'content_block_stop',
-                index: 0,
-              }) +
-              event('message_delta', {
-                type: 'message_delta',
-                delta: { stop_reason: 'end_turn', stop_sequence: null },
-                usage: { output_tokens: 8 },
-              }) +
-              event('message_stop', { type: 'message_stop' })
-            : event('response.created', {
-                type: 'response.created',
-                response: { ...response, status: 'in_progress', output: [] },
-              }) +
-              event('response.output_item.added', {
-                type: 'response.output_item.added',
-                output_index: 0,
-                item: { ...output, status: 'in_progress', content: [] },
-              }) +
-              event('response.content_part.added', {
-                type: 'response.content_part.added',
-                item_id: output.id,
-                output_index: 0,
-                content_index: 0,
-                part: { type: 'output_text', text: '', annotations: [] },
-              }) +
-              event('response.output_text.delta', {
-                type: 'response.output_text.delta',
-                item_id: output.id,
-                output_index: 0,
-                content_index: 0,
-                delta: text,
-              }) +
-              event('response.output_text.done', {
-                type: 'response.output_text.done',
-                item_id: output.id,
-                output_index: 0,
-                content_index: 0,
-                text,
-              }) +
-              event('response.output_item.done', {
-                type: 'response.output_item.done',
-                output_index: 0,
-                item: output,
-              }) +
-              event('response.completed', {
-                type: 'response.completed',
-                response,
-              });
         return {
           response: Promise.resolve(
-            new Response(
-              body.stream === false
-                ? JSON.stringify(
-                    currentEngine === 'claude' ? message : response,
-                  )
-                : content,
-              {
-                headers: {
-                  'content-type':
-                    body.stream === false
-                      ? 'application/json'
-                      : 'text/event-stream',
-                },
-              },
-            ),
+            new Response('MODEL_CHANNEL_REPLY', {
+              headers: { 'content-type': 'text/plain' },
+            }),
           ),
           settled: Promise.resolve(),
           invokeDelivery: async (write) => {
-            signal.throwIfAborted();
             deliveries++;
             write();
           },
         };
-      }
-      assert.equal(input.method, 'POST');
-      assert.equal(input.path, '/v1/messages');
-      assert.deepEqual(JSON.parse(input.body.toString('utf8')), {
-        model: 'fixture',
-        input: 'model channel probe',
-      });
-      assert.ok(!JSON.stringify(input).includes(controllerCanary));
-      requests.push({
-        path: input.path,
-        headers: input.headers,
-        bodySha256: createHash('sha256').update(input.body).digest('hex'),
-      });
-      return {
-        response: Promise.resolve(
-          new Response('MODEL_CHANNEL_REPLY', {
-            headers: { 'content-type': 'text/plain' },
-          }),
-        ),
-        settled: Promise.resolve(),
-        invokeDelivery: async (write) => {
-          deliveries++;
-          write();
-        },
-      };
-    },
-  });
+      },
+    });
+  container = prepareContainer();
   await container.start();
   const connection = container.connection();
   const probe = `
@@ -439,80 +441,37 @@ try {
   assert.equal(requests.length, 1);
   assert.ok(deliveries >= 3);
   if (includeEngines) {
+    await container.close();
+    receipt.probeClosed = container.inspect();
     const observations = [];
     for (const engine of engines) {
-      currentEngine = engine.name;
-      const env =
-        engine.name === 'claude'
-          ? {
-              ANTHROPIC_BASE_URL: connection.baseUrl,
-              ANTHROPIC_AUTH_TOKEN: connection.token,
-              ANTHROPIC_API_KEY: '',
-              CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
-              CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
-              DISABLE_TELEMETRY: '1',
-              DISABLE_ERROR_REPORTING: '1',
-            }
-          : {
-              STATION_ENGINE_PROXY_KEY: connection.token,
-              CODEX_HOME: '/home/native',
-            };
-      const args =
-        engine.name === 'claude'
-          ? [
-              '--print',
-              '--output-format',
-              'json',
-              '--model',
-              'claude-sonnet-4-5',
-              '--tools',
-              '',
-              '--setting-sources',
-              '',
-              '--max-turns',
-              '1',
-              'Return the fixed fixture response.',
-            ]
-          : [
-              'exec',
-              '--skip-git-repo-check',
-              '--ephemeral',
-              '--json',
-              '--sandbox',
-              'danger-full-access',
-              '-m',
-              fixtureModel,
-              '-c',
-              'model_catalog_json="/station/fixture-models.json"',
-              '-c',
-              'model_provider="station-probe"',
-              '-c',
-              `model_providers.station-probe={name="Isolated fixture",base_url=${JSON.stringify(`${connection.baseUrl}/v1`)},wire_api="responses",env_key="STATION_ENGINE_PROXY_KEY"}`,
-              'Return the fixed fixture response.',
-            ];
-      const engineRunner = join(artifacts, `${engine.name}-runner.mjs`);
-      writeFileSync(
-        engineRunner,
-        `import {spawn} from 'node:child_process';
-import {executeOwnedCommand,captureOwnedProcessOutput,terminateSuiteExecution,waitForSuiteSettlement} from ${JSON.stringify(new URL('./lib/owned-process.mjs', import.meta.url).href)};
-const execution=executeOwnedCommand(${JSON.stringify(docker)},${JSON.stringify([...prefix, 'exec', '--user', '10001:10001', ...Object.keys(env).flatMap((name) => ['--env', name]), connection.containerId, `/station/${engine.name}`, ...args])},spawn,'confined native engine',{env:{PATH:process.env.PATH,HOME:${JSON.stringify(artifacts)},...${JSON.stringify(env)}},stdio:['ignore','pipe','pipe']});
-const capture=captureOwnedProcessOutput(execution,{maxBytes:1048576});let timer;let terminal;
-try{terminal=await Promise.race([execution.completion,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error('native engine deadline')),60000);})]);}
-finally{clearTimeout(timer);const stopped=await terminateSuiteExecution(execution,{waitForSuiteSettlement,terminationGraceMs:2000,terminationForceMs:2000,processLabel:'confined native engine'});if(!stopped.settled||stopped.errors.length)throw Error('native engine unsettled');}
-const result=capture.finish();if(result.truncated||result.invalidUtf8)throw Error('native engine output invalid');process.stdout.write(JSON.stringify({terminal,stdout:result.stdout.text,stderr:result.stderr.text}));`,
-      );
-      const before: number = requests.length;
-      const observed = JSON.parse(
-        (await runLabCommand(process.execPath, [engineRunner], root, 65_000))
-          .stdout,
-      );
-      observations.push({ engine: engine.name, ...observed });
+      container = prepareContainer(engine.name);
+      await container.start();
+      const signal = AbortSignal.timeout(60_000);
+      const requestsBeforeLaunch: number = requests.length;
+      const run = await container.startText({
+        engine: engine.name,
+        modelId: engine.name === 'claude' ? 'claude-sonnet-4-5' : fixtureModel,
+        ...(engine.name === 'codex'
+          ? { modelCatalogPath: '/station/fixture-models.json' }
+          : {}),
+        signal,
+        writePrompt: (stdin) =>
+          new Promise<void>((resolve, reject) => {
+            signal.throwIfAborted();
+            stdin.write('Return the fixed fixture response.', (error) => {
+              if (error) reject(error);
+              else resolve();
+            });
+          }),
+      });
+      const observed = await run.result;
+      const observation: typeof observed & {
+        engine: (typeof engines)[number]['name'];
+        closed?: ReturnType<NativeModelContainer['inspect']>;
+      } = { engine: engine.name, ...observed };
+      observations.push(observation);
       receipt.nativeEngineObservations = observations;
-      assert.equal(
-        observed.terminal.status,
-        0,
-        `${engine.name} terminal failure`,
-      );
       const expected = `CONFINED_${engine.name.toUpperCase()}_REPLY`;
       if (engine.name === 'claude') {
         z.object({
@@ -558,11 +517,17 @@ const result=capture.finish();if(result.truncated||result.invalidUtf8)throw Erro
         );
       }
       assert.ok(
-        requests.length > before,
+        requests.length > requestsBeforeLaunch,
         `${engine.name} made no channel request`,
       );
+      await run.settled;
+      await container.close();
+      const closed = container.inspect();
+      assert.equal(closed.removed, true);
+      assert.equal(closed.modelChannel?.pending, 0);
+      assert.equal(closed.nativeText.settled, true);
+      observation.closed = closed;
     }
-    currentEngine = undefined;
   }
   receipt.deliveries = deliveries;
   await container.close();
