@@ -7,7 +7,11 @@ import { useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
 import { PageRow } from '../../components/PageRow';
-import { ErrorState, SkeletonBlock } from '../../components/state';
+import {
+  describeReadFailure,
+  ErrorState,
+  SkeletonBlock,
+} from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 
 export function IntegrationEventsSection({
@@ -75,7 +79,7 @@ function EventCatalog({
             <ErrorState
               variant="compact"
               title="Event catalog unavailable"
-              description={discovery.error.message}
+              description={describeReadFailure(discovery.error)}
               action={<Button onClick={check}>Retry</Button>}
             />
           ) : discovery.data?.supported ? (
