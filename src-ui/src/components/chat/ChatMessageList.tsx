@@ -549,14 +549,17 @@ function ChatMessageListComponent({
   // stops being followed until the reader returns to the end, and Scroll to
   // bottom shows from the moment the hold starts. Only growth of the row whose
   // disclosure they activated starts it; an incidental tap on text or a link
-  // does not. The state mirrors the ref for render: showing the button at the
-  // start puts the composer's layout change there, not under a later scroll.
+  // does not. `readerHeld` shows the button while held with the end out of
+  // view: showing it at the start puts the composer's layout change there, not
+  // under a later scroll, and a transcript that still fits shows none.
   const readerHoldRef = useRef(false);
   const [readerHeld, setReaderHeld] = useState(false);
   const activatedRowRef = useRef<{ row: Element; height: number } | null>(null);
-  const startReaderHold = useCallback(() => {
-    readerHoldRef.current = true;
-    setReaderHeld(true);
+  const showHeldControl = useCallback((el: HTMLElement) => {
+    setReaderHeld(
+      readerHoldRef.current &&
+        el.scrollHeight - el.scrollTop - el.clientHeight > 1,
+    );
   }, []);
   const releaseReaderHold = useCallback(() => {
     readerHoldRef.current = false;
@@ -1108,15 +1111,15 @@ function ChatMessageListComponent({
           !externalScrollContainerRef &&
           interacting &&
           activated?.row.isConnected &&
-          activated.row.getBoundingClientRect().height !== activated.height &&
-          !readerHoldRef.current
+          activated.row.getBoundingClientRect().height !== activated.height
         )
-          startReaderHold();
+          readerHoldRef.current = true;
         if (
           !externalScrollContainerRef &&
           (readerHoldRef.current || interacting)
         ) {
           visibleAnchorRef.current = captureChatScrollAnchor(el);
+          showHeldControl(el);
           return;
         }
         if (el.scrollHeight - el.scrollTop - el.clientHeight > 0) {
@@ -1176,7 +1179,7 @@ function ChatMessageListComponent({
     externalScrollContainerRef,
     measureGrowth,
     messagesContainerRef,
-    startReaderHold,
+    showHeldControl,
   ]);
 
   // Ends the scroll-load suppression a press's restoration holds. Genuine

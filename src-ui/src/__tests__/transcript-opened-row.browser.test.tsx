@@ -307,3 +307,22 @@ test('(desktop) with a row held, Scroll to bottom reaches the end', async () => 
     await browser.close();
   }
 });
+
+test('(desktop) a row opened in a transcript that still fits shows no Scroll to bottom', async () => {
+  const { browser, page, errors } = await tailFixture(DESKTOP, 1);
+  try {
+    await lastToolRow(page).waitFor();
+    await frames(page);
+    const row = lastToolRow(page);
+    await row.click();
+    await expect.poll(() => row.getAttribute('aria-expanded')).toBe('true');
+    await page.waitForTimeout(1_500);
+    await frames(page);
+    // The opened row still fits: there is nothing below to scroll to.
+    expect(await distanceFromEnd(page)).toBeLessThanOrEqual(1);
+    expect(await scrollToBottom(page).count()).toBe(0);
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});
