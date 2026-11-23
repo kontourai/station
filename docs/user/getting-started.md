@@ -725,6 +725,7 @@ chat dock is open to take it, Home keeps the message and says so.
 
 In the chat dock, the **New chat** button (the conversation-plus icon on the collapsed Inbox bar),
 **⌘T**, and the floating button in the phone Inbox open the same composer.
+Text you leave there without starting comes back the next time you open New chat.
 **Explore agents** remains available for deliberate customization.
 
 Setup from Home continues in the chat dock. When you choose **Connect**,
@@ -885,6 +886,7 @@ the Draft; leaving that control or switching Station or account also cancels
 the pending deletion. After the window, Station asks the server to discard it
 and shows any refusal. On a touch row, the message appears below the row’s
 actions. Discarding an **unsent draft** clears the text you typed on this device.
+A slash command Station answers, such as `/help` or `/new`, is not kept as a draft.
 
 With **Open and Settled inbox** enabled in Feature previews, unfinished
 conversations stay **Open** after an Agent finishes a turn. Choose **Settle**

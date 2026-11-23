@@ -228,7 +228,9 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
 - **Persistence.** Collapsing the dock keeps the draft mounted but hidden, so
   text, files, chips and setup return survive and it never restarts itself.
   A plain New chat while a draft is open focuses it; a request carrying a
-  prompt, files, choices, a hand-off or a Task replaces it. Idle auto-hide
+  prompt, files, choices, a hand-off or a Task replaces it. Text a plain
+  draft held when it closed without starting opens the next plain New chat; a
+  draft a sender opened hands its text back to that sender instead. Idle auto-hide
   waits while a draft is open.
 - **Covered chat.** It stays mounted, hidden and inert, takes no dropped files
   (the whole draft takes them), and does not count as on screen for turn
