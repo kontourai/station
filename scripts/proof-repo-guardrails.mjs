@@ -1720,10 +1720,9 @@ const pluginManagementView = readRequiredSource(
 if (hasRawFetchCall(pluginManagementView)) {
   errors.push('PluginManagementView must not issue raw fetch() calls.');
 }
-for (const requiredHook of [
-  'usePluginManagementViewModel',
-  "onNavigate({ type: 'registry', tab: 'plugins' })",
-]) {
+// Library no longer links to the catalogue itself: Apps' own Discover tab
+// sits beside it, so only the view-model hook is pinned here.
+for (const requiredHook of ['usePluginManagementViewModel']) {
   if (!pluginManagementView.includes(requiredHook)) {
     errors.push(
       `PluginManagementView must use shared SDK helper ${requiredHook}.`,
