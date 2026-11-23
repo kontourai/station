@@ -245,6 +245,7 @@ import { submitCommandLauncherIntent } from './command-launcher-model';
 import { claimComposerDraftRequest } from './composerDraftRequest';
 import type { ConversationOpenRecovery } from './conversationOpenController';
 import { conversationRefusalMessage } from './conversationRefusalCopy';
+import { publishDockNewChatDraftOpen } from './dockNewChatDraftPresence';
 import { commitForkOpenBoundary } from './forkOpenBoundary';
 
 import { NewChatUnavailableError } from './newChatErrors';
@@ -1474,6 +1475,13 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   useEffect(() => {
     if (!showNewChatModal) dockBeforeDraft.current = null;
   }, [showNewChatModal]);
+  // Home's start composer steps aside for the ambient dock's draft, as it
+  // does for a chat the dock shows; a full-screen pane's draft is its own.
+  useEffect(() => {
+    if (isFullscreenPlacement) return;
+    publishDockNewChatDraftOpen(showNewChatModal);
+    return () => publishDockNewChatDraftOpen(false);
+  }, [isFullscreenPlacement, showNewChatModal]);
   // The draft covers the chat on screen, so going to a chat (a tab, an inbox
   // row, a shortcut, an opened conversation) leaves it as 'dismissed', with
   // its text.

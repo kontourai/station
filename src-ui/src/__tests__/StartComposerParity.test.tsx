@@ -31,6 +31,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { publishDockNewChatDraftOpen } from '../components/chat-dock/dockNewChatDraftPresence';
 import { StartComposer } from '../components/chat-start/StartComposer';
 import { displayableProjectIcon } from '../components/icons/ProjectIcon';
 import { projectAccents } from '../components/project-sidebar/projectAccent';
@@ -290,6 +291,7 @@ beforeAll(() => {
 beforeEach(() => {
   state.dockOpen = false;
   state.activeChat = null;
+  publishDockNewChatDraftOpen(false);
   resetStartChoicesForTests();
   localStorage.clear();
   sessionStorage.clear();
@@ -475,6 +477,18 @@ test('Home keeps its start surface beside an open dock with no chat in it', () =
     name: 'What would you like done?',
   });
   expect(box.closest('[hidden]')).toBeNull();
+  expect(screen.getByRole('form', { name: 'Start work' })).toBeTruthy();
+});
+
+// …and steps aside again for the dock's own New chat draft opened from that
+// empty dock, so the page never shows two start composers.
+test('Home yields to a New chat draft opened in an empty dock, and returns when it closes', () => {
+  render(<HomeWithDockToggle />);
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle dock' }));
+  expect(screen.getByRole('form', { name: 'Start work' })).toBeTruthy();
+  act(() => publishDockNewChatDraftOpen(true));
+  expect(screen.queryByRole('form', { name: 'Start work' })).toBeNull();
+  act(() => publishDockNewChatDraftOpen(false));
   expect(screen.getByRole('form', { name: 'Start work' })).toBeTruthy();
 });
 

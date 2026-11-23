@@ -1189,6 +1189,57 @@ test('kept New chat text is offered only to a New chat for the same Project, bot
   expect((await openPlain()).initialPrompt).toBe('Notes for Pulse');
 });
 
+// Home's start composer reads this to step aside for the dock's draft; a
+// full-screen pane's draft is not the ambient dock's and says nothing.
+test('the ambient dock publishes its open New chat draft, and a full-screen pane does not', async () => {
+  const { useDockNewChatDraftOpen } = await import(
+    '../dockNewChatDraftPresence'
+  );
+  const seen: boolean[] = [];
+  function Probe() {
+    seen.push(useDockNewChatDraftOpen());
+    return null;
+  }
+  renderInProviders(
+    <>
+      <Probe />
+      <DockShell>
+        {(shellChrome) => (
+          <ChatWorkspacePane placement="dock" shellChrome={shellChrome} />
+        )}
+      </DockShell>
+    </>,
+  );
+  await act(async () => {});
+  expect(seen.at(-1)).toBe(false);
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  await waitFor(() => expect(seen.at(-1)).toBe(true));
+  act(() => pickerProps.at(-1)!.onClose());
+  await waitFor(() => expect(seen.at(-1)).toBe(false));
+  cleanup();
+
+  seen.length = 0;
+  renderInProviders(
+    <>
+      <Probe />
+      <ChatWorkspacePane
+        placement="fullscreen"
+        projectSlug="pulse"
+        layoutSlug="coding"
+      />
+    </>,
+  );
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  await act(async () => {});
+  expect(seen.every((open) => open === false)).toBe(true);
+});
+
 test('a Personal Board draft opens one projectless chat picker and stays unsent after Agent selection', async () => {
   renderDockedPane();
   let claimed = false;
