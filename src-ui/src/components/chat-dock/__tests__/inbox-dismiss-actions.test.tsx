@@ -6,6 +6,7 @@
  */
 import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { chatDraftsStore } from '../../../contexts/chat-drafts-store';
 import { toastStore } from '../../../contexts/ToastContext';
 import type { HomeWorkItem } from '../../../views/home/home-view-model';
 import {
@@ -138,6 +139,53 @@ describe('Mark done notices', () => {
       conversationId: 'owned',
       settled: false,
     });
+  });
+});
+
+// Mark done puts the conversation away; it is not Discard draft. The person's
+// unsent text and quotes for that chat stay where they were, on every path:
+// the local dismissal, the host hide and the synced settle.
+describe('Mark done and the chat’s unsent draft', () => {
+  const QUOTE = {
+    version: 1 as const,
+    origin: 'http://localhost',
+    sessionId: 'owned',
+    turnId: 'turn-1',
+    messageId: 'message-1',
+    revision: 'a'.repeat(64),
+    excerpt: 'a line worth keeping',
+  };
+  const withTab: HomeWorkItem = { ...owned, chatSessionId: 'owned-tab' };
+  const seed = () => {
+    for (const key of ['owned', 'owned-tab']) {
+      chatDraftsStore.clear(key);
+      chatDraftsStore.set(key, 'Unsent words');
+      chatDraftsStore.addQuote(key, { ...QUOTE, sessionId: key });
+    }
+  };
+  const expectKept = () => {
+    for (const key of ['owned', 'owned-tab']) {
+      expect(chatDraftsStore.get(key)).toBe('Unsent words');
+      expect(chatDraftsStore.getQuotes(key)).toHaveLength(1);
+    }
+  };
+
+  it('leaves the text and quotes alone on every Mark done path', async () => {
+    work.change.mutateAsync.mockResolvedValue(undefined);
+    mount([withTab]);
+    for (const hideSupported of [false, true]) {
+      work.hideSupported = hideSupported;
+      seed();
+      act(() => actions.dismiss(withTab));
+      expectKept();
+    }
+    seed();
+    await act(async () => {
+      actions.settle('owned', true);
+      await Promise.resolve();
+    });
+    expectKept();
+    for (const key of ['owned', 'owned-tab']) chatDraftsStore.clear(key);
   });
 });
 

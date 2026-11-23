@@ -1058,6 +1058,61 @@ test("a dismissed hand-off returns the dock's edited draft", async () => {
 
 // #5491: text typed in a plain New chat draft survives leaving it, as a
 // chat's own draft does, through every plain way back in.
+// Leaving New chat by opening a chat from the Chats list is the commonest
+// way out; the text comes back on the next New chat like any other leave. It
+// stays filed under the Project the draft was for, so opening a chat of
+// another Project does not move it.
+test('New chat text comes back after leaving it by opening a chat row, in its own Project or another', async () => {
+  dockProbe.sessions = [
+    { ...chatSession('chat-b'), projectSlug: undefined, title: 'Loose chat' },
+    chatSession('chat-a'),
+  ];
+  activeChatsStore.initChat('chat-b', {
+    agentSlug: 'assistant',
+    agentName: 'Assistant',
+    title: 'Loose chat',
+  } as Parameters<typeof activeChatsStore.initChat>[1]);
+  activeChatsStore.initChat('chat-a', {
+    agentSlug: 'assistant',
+    agentName: 'Assistant',
+    title: 'Pulse chat',
+    projectSlug: 'pulse',
+  } as Parameters<typeof activeChatsStore.initChat>[1]);
+  navigationStore.navigate('/', { dock: 'open' });
+  renderDockedPane();
+  await act(async () => {});
+
+  for (const [row, text] of [
+    [/^Loose chat\b/, 'Outline the errands'],
+    [/^Pulse chat\b/, 'Outline the errands, then the trip'],
+  ] as const) {
+    act(() => {
+      dispatchNewChatIntent({});
+    });
+    await screen.findByRole('region', { name: 'New chat picker' });
+    expect(pickerProps.at(-1)!.activeProjectSlug ?? null).toBeNull();
+    act(() => pickerProps.at(-1)!.onDraftChange(text));
+    fireEvent.click(screen.getAllByRole('button', { name: row })[0]);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('region', { name: 'New chat picker' }),
+      ).toBeNull(),
+    );
+    act(() => {
+      dispatchNewChatIntent({});
+    });
+    await screen.findByRole('region', { name: 'New chat picker' });
+    expect(pickerProps.at(-1)!.initialPrompt).toBe(text);
+    act(() => pickerProps.at(-1)!.onClose());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('region', { name: 'New chat picker' }),
+      ).toBeNull(),
+    );
+  }
+  activeChatsStore.removeChat('chat-b');
+});
+
 test('a plain New chat draft keeps its text when left and opened again', async () => {
   openChatA();
   navigationStore.navigate('/', { dock: 'open' });
