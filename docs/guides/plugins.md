@@ -2200,7 +2200,7 @@ with Reload Station; it does not displace unrelated work with a global banner.
 Core shell and connection recovery retain their own failure surfaces.
 
 Owners: [registry bootstrap](../../src-ui/src/components/registry/PluginRegistryGate.tsx),
-[Extensions view](../../src-ui/src/views/RegistryView.tsx),
+[Apps › Library and Discover](../../src-ui/src/views/apps/AppsView.tsx),
 [shared access review](../../src-ui/src/components/registry/StationExtensionsAccess.tsx), and
 [deferred capability boundary](../../src-ui/src/components/DeferredCapabilityBoundary.tsx).
 Loading rules, consent storage and origin binding stay unchanged. These
