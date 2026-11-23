@@ -1,0 +1,7 @@
+{
+  "revision": "16b0f11302a42ce9de681a67c08e8478ce5e9ca1",
+
+  "notes": [
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Reviewed against the coverage matrix's Automations row, which now names the row menu, list order and next-run text instead of keyboard sorting; nothing this plan states depends on that row.","inputs":["docs/plans/whole-app-ux-campaign.md","docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}
