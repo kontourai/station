@@ -48,8 +48,8 @@ const owned: HomeWorkItem = {
   kindLabel: 'Conversation',
   title: 'Owned chat',
   projectLabel: 'Station',
-  agentLabel: 'Codex',
-  modelLabel: 'GPT',
+  agentLabel: 'Agent A',
+  modelLabel: 'Model A',
   lifecycleLabel: 'Running',
   updatedAt: 1000,
 };
