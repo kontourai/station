@@ -1,0 +1,7 @@
+{
+  "revision": "a620dc138b2632103300578d80442f367aec8b67",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the dormant Session-group sync settlement delta. The operation owner holds the reservation and accepts its exact terminal receipt through caller expiry. The live response waits only through its lifetime. Create, run and cancel statements in this section still trace to their own entry points.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/cli-session-group.ts"]}
+  ]
+}
