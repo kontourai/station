@@ -1,3 +1,22 @@
+/** A retained observation of one member-context sync operation. */
+export type CliSessionGroupSync = {
+  operationId: string;
+  runId: string;
+  contentHash: string;
+  timestamp: string;
+  status: 'syncing' | 'acknowledged' | 'incomplete';
+  members: {
+    seatId: string;
+    status: 'pending' | 'acknowledged' | 'failed' | 'unknown';
+    attempts: number;
+    timestamp?: string;
+    turnId?: string;
+    terminalEventId?: string;
+    nativeIdentityHash?: string;
+    toolCalls?: number;
+  }[];
+};
+
 /** Session groups use Station authority; they do not claim portable envelope enforcement. */
 export type CliSessionGroupView = {
   version: 'station.cli-session-group/v1';
@@ -11,6 +30,7 @@ export type CliSessionGroupView = {
   maxDispatches: number;
   dispatchCount: number;
   admissionClosed?: 'dispatch-limit-exhausted';
+  contextSync?: CliSessionGroupSync;
   guarantees: {
     authority: 'station-session';
     portableFlowLineage: 'unbound';
