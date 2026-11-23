@@ -1,0 +1,7 @@
+{
+  "revision": "74ed7fc59de962d2f038d76b78282a7ff3028e15",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Updated the Automations row to what the schedule and schedule-runs specs now cover: the row menu, list order and next-run text, run history, output and deep links.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/schedule-runs.spec.ts","tests/schedule.spec.ts"]}
+  ]
+}
