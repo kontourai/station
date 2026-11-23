@@ -34,6 +34,10 @@
     color var(--motion-fast) var(--ease-standard);
 }
 
+.info-tip__trigger:hover {
+  background: transparent;
+}
+
 .info-tip__trigger:hover > span,
 .info-tip__trigger[aria-expanded="true"] > span {
   border-color: var(--accent-primary);
