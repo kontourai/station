@@ -1,0 +1,45 @@
+{
+  "revision": "e631bb7c0bfda0bd48365c6ca2358531d9d7b96a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Verified the Flow scheduler loads on the first admitted group run, then rechecks the caller and cancellation before scheduling. Ownership, exact-turn completion, and durable cancellation are unchanged. The isolated server build passed the static import guard.","inputs":["src-server/services/orchestration/cli-session-group.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/remote-execution-preparation.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/station-peer-pairing.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Verified that ordinary local interrupts keep the established two-argument dispatch call. The optional exact-turn guard remains attached when a Session-group caller supplies it. Remote execution, pairing, delegation claims, and continuation contracts are unchanged.","inputs":["src-server/tools/station-control-delegation.ts"]}
+  ]
+}
