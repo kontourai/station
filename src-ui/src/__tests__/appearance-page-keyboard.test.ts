@@ -3,7 +3,11 @@ import { resolve } from 'node:path';
 import { type Browser, chromium, type Page } from '@playwright/test';
 import { build } from 'esbuild';
 import { afterAll, beforeAll, describe, expect, test } from 'vitest';
-import { chromiumIsInstalled } from '../../../tests/helpers/css-cascade-fixture';
+import {
+  assertNoImportsSurvive,
+  chromiumIsInstalled,
+  resolveCssImports,
+} from '../../../tests/helpers/css-cascade-fixture';
 
 /**
  * The Appearance page's keyboard contract in Chromium, which jsdom cannot
@@ -19,31 +23,9 @@ const REPO_ROOT = resolve(import.meta.dirname, '../../..');
 const ORIGIN = 'http://station.test';
 const chromiumAvailable = chromiumIsInstalled(REPO_ROOT);
 const PUBLIC_DIR = resolve(REPO_ROOT, 'src-ui/public');
-/**
- * The product-level :focus-visible rules from the real index.css (the plain
- * one and its channel/brand override), so the page is measured against the
- * outline every build actually draws, not an absent one.
- */
-const PRODUCT_FOCUS_RULES = (() => {
-  const css = readFileSync(resolve(REPO_ROOT, 'src-ui/src/index.css'), 'utf8');
-  const rules = css.match(
-    /(?:^|\n)(?::where\(|:is\(\n\s+:root\[data-brand-focus\])[^{]*\):focus-visible\s*\{[^}]*\}/g,
-  );
-  if (!rules || rules.length < 2)
-    throw new Error('index.css focus-visible rules not found');
-  return rules.join('\n');
-})();
-/**
- * The global `button:hover` rule from the real index.css. Its `background`
- * shorthand resets `background-clip`, so a page control that clips its paint
- * must survive it.
- */
-const PRODUCT_BUTTON_HOVER_RULE = (() => {
-  const css = readFileSync(resolve(REPO_ROOT, 'src-ui/src/index.css'), 'utf8');
-  const rule = css.match(/(?:^|\n)button:hover\s*\{[^}]*\}/);
-  if (!rule) throw new Error('index.css button:hover rule not found');
-  return rule[0];
-})();
+const PRODUCT_STYLES = resolveCssImports(
+  resolve(REPO_ROOT, 'src-ui/src/index.css'),
+);
 const NORD_DARK_BACKGROUND = (
   JSON.parse(
     readFileSync(
@@ -127,12 +109,22 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     script = bundled.outputFiles.find((file) =>
       file.path.endsWith('.js'),
     )!.text;
-    styles =
+    const pageStyles =
       bundled.outputFiles.find((file) => file.path.endsWith('.css'))?.text ??
       '';
     // The page's own rules must be in the sheet, or the focus assertion below
     // would be measuring nothing.
-    expect(styles).toContain('.appearance-theme');
+    expect(pageStyles).toContain('.appearance-theme');
+    styles = `${PRODUCT_STYLES}
+      :root {
+        --accent-primary: #ff0000;
+        --k-text: #00ff00;
+        --k-focus: #ff0000;
+        --text-primary: #0000ff;
+        --text-secondary: #888888;
+      }
+      ${pageStyles}`;
+    assertNoImportsSurvive(styles);
   }, 60_000);
 
   afterAll(async () => {
@@ -177,9 +169,7 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
       }
       return route.fulfill({
         contentType: 'text/html',
-        // `--accent-primary` is defined so the focus ring has a colour to
-        // resolve; without it the declaration is invalid and draws nothing.
-        body: `<!doctype html><html data-theme="dark"><head><style>:root{--accent-primary:#ff0000;--k-text:#00ff00;--k-focus:#ff0000;--text-primary:#0000ff;--text-secondary:#888888}${PRODUCT_FOCUS_RULES}${PRODUCT_BUTTON_HOVER_RULE}${styles}</style></head><body><div id="root"></div><script src="/harness.js"></script></body></html>`,
+        body: `<!doctype html><html data-theme="dark"><head><style>${styles}</style></head><body><div id="root"></div><script src="/harness.js"></script></body></html>`,
       });
     });
     await page.goto(`${ORIGIN}/`);
