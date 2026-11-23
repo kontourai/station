@@ -50,6 +50,8 @@ export interface StationControlCallerRecord {
   readonly coordinatorCurrent?: () => boolean;
   readonly principal?: SessionActingPrincipal;
   readonly appearanceOwnerId?: string;
+  /** See `StationControlCaller.ownTaskId`. */
+  readonly ownTaskId?: string;
   readonly localProjectId?: string;
   readonly projectIdSource?: 'session-record' | 'slug-lookup';
   readonly projectSlug?: string;
@@ -97,6 +99,8 @@ export interface StationControlCallerRecordSources {
   /** Ownership-record principal (`OrchestrationService.resolveSessionActingPrincipal`). */
   actingPrincipal(sessionId: string): SessionActingPrincipal | undefined;
   delegatedAppearanceOwner?(sessionId: string): string | undefined;
+  /** `OrchestrationService.stationControlOwnTaskGrant`. */
+  ownTaskGrant?(sessionId: string): string | undefined;
   /**
    * The metadata the session STARTED with (its first `session.started`).
    * Never the latest `session.configured`: engines publish sparse later
@@ -137,6 +141,8 @@ export function createStationControlCallerRecordResolver(
       };
     const principal = sources.actingPrincipal(sessionId);
     const appearanceOwnerId = sources.delegatedAppearanceOwner?.(sessionId);
+    // Only for a Session that acts for no one: a principal needs no grant.
+    const ownTaskId = principal ? undefined : sources.ownTaskGrant?.(sessionId);
     const metadata = sources.startedMetadata(sessionId);
     const delegation = metadata?.delegation as
       | { projectSlug?: unknown }
@@ -163,6 +169,7 @@ export function createStationControlCallerRecordResolver(
     return {
       ...(principal ? { principal } : {}),
       ...(appearanceOwnerId ? { appearanceOwnerId } : {}),
+      ...(ownTaskId ? { ownTaskId } : {}),
       ...(localProjectId
         ? {
             localProjectId,
@@ -195,7 +202,12 @@ export function stationControlCallerRecordSources(runtime: {
     OrchestrationService,
     'resolveSessionActingPrincipal' | 'firstStartedMetadataOfThread'
   > &
-    Partial<Pick<OrchestrationService, 'delegatedAppearanceOwner'>>;
+    Partial<
+      Pick<
+        OrchestrationService,
+        'delegatedAppearanceOwner' | 'stationControlOwnTaskGrant'
+      >
+    >;
   eventStore?: {
     conversationForSession(
       sessionId: string,
@@ -213,6 +225,8 @@ export function stationControlCallerRecordSources(runtime: {
   return {
     actingPrincipal: (sessionId) =>
       runtime.orchestrationService.resolveSessionActingPrincipal(sessionId),
+    ownTaskGrant: (sessionId) =>
+      runtime.orchestrationService.stationControlOwnTaskGrant?.(sessionId),
     delegatedAppearanceOwner: (sessionId) =>
       runtime.orchestrationService.delegatedAppearanceOwner?.(sessionId),
     startedMetadata: (sessionId) =>
@@ -291,6 +305,9 @@ function resolveVerifiedStationControlCaller(
     assurance !== 'bearer-exposed' &&
     !verified.callerRecordBinding
       ? { appearanceOwnerId: record.appearanceOwnerId }
+      : {}),
+    ...(record?.ownTaskId && !record.principal
+      ? { ownTaskId: record.ownTaskId }
       : {}),
     ...(record?.principal
       ? {

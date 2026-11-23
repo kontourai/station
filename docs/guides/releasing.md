@@ -262,11 +262,12 @@ qualification's source and age rather than treating the clock as evidence.
 See [GitHub's schedule behavior](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule).
 
 [Main qualification health](../../.github/workflows/qualification-health.yml)
-checks hourly and after a qualification run completes, without launching tests
-or retries. It maintains one P1 issue owned by repository release maintainers
-when no qualification job started within eight hours, no source qualification
-passed within fourteen hours, or the latest unqualified run has remained queued
-or running for more than three hours. The eight-hour start and fourteen-hour success bounds allow schedule and
+checks hourly, on manual dispatch, and when `Main: Qualification` or `Nightly`
+completes on `main`. It reads existing run evidence and maintains one P1 issue
+owned by repository release maintainers when no qualification job started within
+eight hours, no source qualification passed within fourteen hours, or the latest
+unqualified run has remained queued or running for more than three hours.
+The eight-hour start and fourteen-hour success bounds allow schedule and
 execution delay. It first selects the newest executed red run, downloads
 its failure manifests and classifies it; the body then says whether main is
 red only on known failures, owned by which open issues, with a line

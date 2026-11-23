@@ -2778,6 +2778,8 @@ export function configureRuntimeRoutes(
             ),
           delegatedAppearanceOwner: (threadId) =>
             context.orchestrationService.delegatedAppearanceOwner?.(threadId),
+          stationControlOwnTaskGrant: (threadId) =>
+            context.orchestrationService.stationControlOwnTaskGrant(threadId),
           firstStartedMetadataOfThread: (threadId) =>
             context.orchestrationService.firstStartedMetadataOfThread(threadId),
         },

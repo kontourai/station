@@ -1,0 +1,7 @@
+{
+  "revision": "f11da6fe582790470a383c1ce93d89abba4b9f91",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Replaces the full-owner wording with the narrow own-Task grant for a person's typed turn in a taken-over automation Session, listing the granted tools and what stays refused.","inputs":["docs/design/automations.md"]}
+  ]
+}

@@ -82,6 +82,7 @@ interface AutomationActionsOptions {
     | 'interruptTurn'
     | 'recordSessionBlocked'
     | 'recordAskWhereUndecided'
+    | 'recordPersonTakeover'
   >;
   eventStore: Pick<
     EventStore,
@@ -494,6 +495,13 @@ class AutomationActionsRuntime implements AutomationActions {
           Date.now(),
         );
       this.supervisor.abandon(sessionId);
+      // The person's own typed turn may then write this Task (and nothing
+      // else) through Station Control.
+      if (intent.taskId)
+        this.options.orchestration.recordPersonTakeover(
+          sessionId,
+          intent.taskId,
+        );
       if (
         intent.action.approvalMode === 'auto' ||
         intent.action.approvalMode === 'connection-default'

@@ -195,6 +195,14 @@ export interface StationControlToolPolicy {
    * naming a tool the agent CAN use instead.
    */
   readonly refusalHint?: string;
+  /**
+   * #4511: the tool's only effect is reading or writing the caller Session's
+   * own Task, which its routes derive from the Session's room execution
+   * binding (no argument names a Task). Only such a tool is admitted for a
+   * caller holding the turn-scoped own-Task grant (`ownTaskId`), and only on
+   * a route every tool of which is marked so.
+   */
+  readonly ownTask?: true;
 }
 
 const get = (path: string): StationControlRoute => ({ method: 'GET', path });
@@ -1198,6 +1206,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
   // immutable room execution binding; the tool takes no arguments.
   get_task_brief: {
     ...SELF_READ,
+    ownTask: true,
     routes: [get('/api/orchestration/station-control/task-brief')],
   },
   // #5067: the caller's OWN Project Library. The route reads the Project
@@ -1219,6 +1228,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
   task_summary_update: {
     assurance: 'any',
     role: 'self',
+    ownTask: true,
     toolClass: 'bounded-write',
     personOnly: 'never',
     routes: [post('/api/orchestration/station-control/task-summary')],
@@ -1226,6 +1236,7 @@ export const STATION_CONTROL_TOOL_POLICY = {
   task_record: {
     assurance: 'any',
     role: 'self',
+    ownTask: true,
     toolClass: 'bounded-write',
     personOnly: 'never',
     routes: [post('/api/orchestration/station-control/task-record')],
@@ -1263,11 +1274,13 @@ export const STATION_CONTROL_TOOL_POLICY = {
 
   task_thread_list: {
     ...SELF_READ,
+    ownTask: true,
     routes: [get('/api/orchestration/station-control/task-threads')],
   },
   task_thread_reply: {
     assurance: 'any',
     role: 'self',
+    ownTask: true,
     toolClass: 'bounded-write',
     personOnly: 'never',
     routes: [post('/api/orchestration/station-control/task-thread-reply')],
@@ -1494,6 +1507,8 @@ export interface StationControlPolicyCaller {
   readonly sessionId?: string;
   readonly conversationId?: string;
   readonly appearanceOwnerId?: string;
+  /** The turn-scoped own-Task grant; see `StationControlToolPolicy.ownTask`. */
+  readonly ownTaskId?: string;
   readonly principal?: {
     readonly id: string;
     readonly elevationEligible: boolean;
@@ -1766,8 +1781,12 @@ function evaluatePolicyRequirements(
     return stationControlRefusal('station_control_assurance_insufficient');
   // Decision 2: a principal-scoped action reads or writes as the principal
   // the session acts for; a session with no recorded owner acts for no one.
+  // #4511: a Session that acts for no one, in the running turn a person
+  // typed after taking it over, may use the tools that only read or write
+  // its own Task, and nothing else on that account.
   if (
     !caller.principal &&
+    !(policy.role === 'self' && policy.ownTask && caller.ownTaskId) &&
     (policy.role === 'self' ||
       policy.role === 'project' ||
       (policy.role === 'appearance' && !caller.appearanceOwnerId))
@@ -1886,6 +1905,22 @@ export interface StationControlRouteMatch {
  * is not `GET /api/connections/:id`), the way the router resolves it.
  * `HEAD` is a `GET`.
  */
+/**
+ * #4511: whether every tool that reaches this route only reads or writes the
+ * caller's own Task, so the own-Task grant may pass the scope rule there.
+ */
+export function stationControlOwnTaskRoute(
+  method: string,
+  path: string,
+): boolean {
+  const match = matchStationControlRoute(method, path);
+  return (
+    !!match &&
+    match.policies.length > 0 &&
+    match.policies.every((policy) => policy.ownTask === true)
+  );
+}
+
 export function matchStationControlRoute(
   method: string,
   path: string,
