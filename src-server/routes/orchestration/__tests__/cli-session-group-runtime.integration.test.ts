@@ -622,14 +622,19 @@ test('retained sync reactivates the exact Session once and exposes the receipt t
 
   const legacy = await f.app.request(path);
   expect(legacy.status).toBe(200);
-  expect((await legacy.json()).data).not.toHaveProperty('contextSync');
+  const legacyView = (await legacy.json()) as { data: CliSessionGroupView };
+  expect(legacyView.data).not.toHaveProperty('contextSync');
   const inspected = await f.app.request(`${path}?includeContextSync=1`);
   expect(inspected.status).toBe(200);
-  expect((await inspected.json()).data.contextSync).toEqual(result.contextSync);
+  const inspectedView = (await inspected.json()) as {
+    data: CliSessionGroupView;
+  };
+  expect(inspectedView.data.contextSync).toEqual(result.contextSync);
 
   const replay = await f.app.request(`${path}/sync`, syncOptions);
   expect(replay.status).toBe(200);
-  expect((await replay.json()).data).toMatchObject({
+  const replayView = (await replay.json()) as { data: CliSessionGroupView };
+  expect(replayView.data).toMatchObject({
     revision: result.revision,
     contextSync: result.contextSync,
   });
