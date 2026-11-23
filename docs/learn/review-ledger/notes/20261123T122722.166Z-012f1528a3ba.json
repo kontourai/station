@@ -1,0 +1,7 @@
+{
+  "revision": "68dfeeb53f562761ec78c9ac0a82e947ef858cd7",
+
+  "notes": [
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"Reviewed against the coverage matrix's Automations row, which now also names the disclosure's Enter and Space keys; nothing this plan states depends on that row.","inputs":["docs/plans/whole-app-ux-campaign.md","docs/guides/e2e-coverage-matrix.md"]}
+  ]
+}
