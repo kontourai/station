@@ -1,0 +1,84 @@
+/* chat-24: a change between two stretches of a chat. Three kinds that must
+   not read alike: a model change is a dashed pill on a plain rule, a fresh
+   context is a solid pill on a dashed rule, and an engine switch is an
+   accent pill on an accent rule. None of them asks the reader to act. */
+.transcript-change {
+  display: grid;
+  gap: var(--k-space-1);
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: var(--k-space-3) 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-align: center;
+}
+
+.transcript-change__line {
+  display: flex;
+  align-items: center;
+  gap: var(--k-space-2);
+  min-width: 0;
+}
+
+.transcript-change__rule {
+  flex: 1;
+  min-width: var(--k-space-4);
+  border-top: var(--k-border-thin, 1px) solid var(--k-line);
+}
+
+.transcript-change__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--k-space-1) var(--k-space-3);
+  border: var(--k-border-thin, 1px) solid var(--k-line);
+  border-radius: 999px;
+  background: var(--k-panel);
+  color: var(--k-text);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.transcript-change__note {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.transcript-change--model .transcript-change__pill {
+  border-style: dashed;
+}
+
+.transcript-change--context .transcript-change__rule {
+  border-top-style: dashed;
+}
+
+.transcript-change--engine .transcript-change__rule {
+  border-top-color: var(--k-action);
+}
+
+.transcript-change--engine .transcript-change__pill {
+  border-color: var(--k-action);
+  background: color-mix(in srgb, var(--k-action) 10%, var(--k-panel));
+}
+
+/* The two engine tiles on the switch pill. */
+.transcript-change__tiles {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--k-space-1);
+}
+
+.transcript-change details {
+  justify-self: center;
+  max-width: 100%;
+  text-align: left;
+}
+
+.transcript-change summary {
+  color: var(--k-text-muted);
+  cursor: pointer;
+  text-align: center;
+}

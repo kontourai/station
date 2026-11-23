@@ -2,32 +2,46 @@ import {
   type ConversationContextBoundaryTranscriptMarker,
   isSummaryContextBoundary,
 } from '@kontourai/station-contracts/conversation-context-boundary';
-import './ConversationHandoff.css';
+import {
+  type TurnProvenanceEngine,
+  turnProvenanceEngineLabel,
+} from '@kontourai/station-contracts/turn-provenance';
+import {
+  FreshContextGlyph,
+  TranscriptChangeMarker,
+} from './TranscriptChangeMarker';
 
-/** A durable transcript fact. Pending intent is intentionally never rendered. */
+/**
+ * A durable transcript fact (chat-24 "fresh context"): the engine stays, its
+ * memory does not. Pending intent is intentionally never rendered. The engine
+ * is the one the last recorded turn before the boundary ran on; without that
+ * record the line names "The agent" instead of guessing.
+ */
 export function ConversationContextBoundary({
   boundary,
+  previousEngine,
 }: {
   boundary: ConversationContextBoundaryTranscriptMarker;
+  previousEngine?: TurnProvenanceEngine;
 }) {
-  const empty = !boundary.priorTranscriptInjected;
-  const summarized = isSummaryContextBoundary(boundary.policy);
+  const engine = previousEngine
+    ? turnProvenanceEngineLabel(previousEngine)
+    : 'The agent';
+  const note = isSummaryContextBoundary(boundary.policy)
+    ? `${engine} kept only a summary of everything above. You still see it.`
+    : boundary.priorTranscriptInjected
+      ? `${engine} rebuilt its memory from this chat.`
+      : `${engine} forgot everything above. You still see it.`;
   return (
-    <section className="conversation-handoff-boundary">
-      <strong>
-        {summarized
-          ? 'Context reset: continued from a summary'
-          : empty
-            ? 'Context reset: started fresh'
-            : 'Context reset: continued from history'}
-      </strong>
-      <span>
-        {summarized
-          ? 'The agent sees a summary, without its tool state, approvals, attachments or earlier tool results. Messages above stay readable.'
-          : empty
-            ? 'The agent no longer sees messages above this line.'
-            : 'The agent rebuilt its context from this chat.'}
-      </span>
-    </section>
+    <TranscriptChangeMarker
+      kind="context"
+      pill={
+        <>
+          <FreshContextGlyph />
+          Fresh context
+        </>
+      }
+      note={note}
+    />
   );
 }

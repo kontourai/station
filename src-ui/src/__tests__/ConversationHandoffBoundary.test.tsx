@@ -30,6 +30,24 @@ const handoff = {
 };
 
 describe('ConversationHandoffBoundary', () => {
+  test('a return to an earlier engine says it picked up its own conversation, and lists only what was reset', () => {
+    render(
+      <ConversationHandoffBoundary
+        handoff={{
+          ...handoff,
+          carried: ['nativeSession', 'ownerTenantWorkspace'],
+          reset: ['sessionApprovals'],
+        }}
+        agents={[]}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'deleted Agent “codex” picked up its earlier conversation and read what it missed. Approvals start fresh. Usage is counted separately.',
+      ),
+    ).toBeTruthy();
+  });
+
   test('uses canonical Agent and Engine display names and renders the server disclosure', () => {
     render(
       <ConversationHandoffBoundary
@@ -47,7 +65,14 @@ describe('ConversationHandoffBoundary', () => {
     );
 
     expect(
-      screen.getByText('Continued with Code reviewer (Codex)'),
+      screen.getByRole('region', {
+        name: 'Switched to Code reviewer (Codex) · GPT 5',
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Code reviewer read up to about 8K tokens of recent messages. Approvals, tool servers and queued messages start fresh. Usage is counted separately.',
+      ),
     ).toBeTruthy();
     expect(screen.queryByText(/codex-private-id/)).toBeNull();
     expect(screen.getByText('What carried and reset')).toBeTruthy();
@@ -57,9 +82,9 @@ describe('ConversationHandoffBoundary', () => {
     render(<ConversationHandoffBoundary handoff={handoff} agents={[]} />);
 
     expect(
-      screen.getByText(
-        'Continued with deleted Agent “codex” (engine unavailable)',
-      ),
+      screen.getByRole('region', {
+        name: 'Switched to deleted Agent “codex” (engine unavailable) · GPT 5',
+      }),
     ).toBeTruthy();
     expect(
       screen.getByText('Recorded engine connection: codex-private-id'),

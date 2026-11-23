@@ -805,7 +805,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     expect(handoffRequests[0]?.idempotencyKey).toEqual(expect.any(String));
 
     const boundary = page.getByRole('region', {
-      name: /Continued with Codex Runtime/,
+      name: /Switched to Codex Runtime/,
     });
     await expect(boundary).toBeVisible({ timeout: 10_000 });
     // The accepted target becomes current before focus restoration, so the

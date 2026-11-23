@@ -1,5 +1,8 @@
 import { readTaskProposal } from '@kontourai/station-contracts/task-graph';
-import { isSupportedTurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
+import {
+  isSupportedTurnProvenanceEnvelope,
+  type TurnProvenanceEngine,
+} from '@kontourai/station-contracts/turn-provenance';
 import { Badge } from '@kontourai/ui/react';
 import {
   Fragment,
@@ -241,6 +244,11 @@ interface MessageBubbleProps {
   owner?: OwnerAttribution | null;
   /** Display-only human accountability, shown in the expanded provenance. */
   accountableHuman?: string | null;
+  /**
+   * chat-24: on an engine-switch or fresh-context row, the engine the last
+   * recorded turn before it ran on (`transcriptChangeFacts`).
+   */
+  previousEngine?: TurnProvenanceEngine;
 }
 
 function MessageBubbleComponent({
@@ -262,6 +270,7 @@ function MessageBubbleComponent({
   anchorKey,
   owner,
   accountableHuman,
+  previousEngine,
 }: MessageBubbleProps) {
   const isLastMessage = idx === activeSession.messageCount - 1;
   const rowIsLiveTurn =
@@ -427,13 +436,24 @@ function MessageBubbleComponent({
     (part) => part.type === 'conversation-handoff',
   )?.conversationHandoff;
   if (handoff) {
-    return <ConversationHandoffBoundary handoff={handoff} agents={agents} />;
+    return (
+      <ConversationHandoffBoundary
+        handoff={handoff}
+        agents={agents}
+        previousEngine={previousEngine}
+      />
+    );
   }
   const contextBoundary = msg.contentParts?.find(
     (part) => part.type === 'conversation-context-boundary',
   )?.conversationContextBoundary;
   if (contextBoundary) {
-    return <ConversationContextBoundary boundary={contextBoundary} />;
+    return (
+      <ConversationContextBoundary
+        boundary={contextBoundary}
+        previousEngine={previousEngine}
+      />
+    );
   }
   const transcriptMarker = transcriptMarkerLabel(msg.contentParts);
   if (transcriptMarker) {

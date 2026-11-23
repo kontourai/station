@@ -88,6 +88,7 @@ import { SmoothStreamingMessage } from './SmoothStreamingMessage';
 import { StreamingMessage } from './StreamingMessage';
 import { SubagentTranscriptCard } from './SubagentTranscriptCard';
 import { ToolCallDisplay } from './ToolCallDisplay';
+import { ModelChangeMarker } from './TranscriptChangeMarker';
 import { transcriptMarkerLabel } from './TranscriptMarker';
 import {
   TranscriptTurnRail,
@@ -104,6 +105,7 @@ import {
   TranscriptTurnContext,
 } from './transcript-child-work';
 import { BROWSE_TURNS_EVENT } from './transcript-turn-browser-events';
+import { transcriptChangeFacts } from './transcriptChangeMarkers';
 import {
   markTranscriptPhase,
   noteTranscriptProgrammaticScroll,
@@ -1907,6 +1909,13 @@ function ChatMessageListComponent({
     activeSession.id,
   ]);
 
+  // chat-24: model changes, fresh contexts and engine switches, derived from
+  // what each turn recorded, so every reader of the chat derives the same rows.
+  const changeFacts = useMemo(
+    () => transcriptChangeFacts(messages),
+    [messages],
+  );
+
   const renderDefaultMessage = (
     msg: ChatMessage,
     idx: number,
@@ -1940,6 +1949,7 @@ function ChatMessageListComponent({
       anchorKey={messageAnchorKey(msg)}
       owner={owner}
       accountableHuman={accountableHuman}
+      previousEngine={changeFacts.get(idx)?.previousEngine}
     />
   );
 
@@ -1972,6 +1982,7 @@ function ChatMessageListComponent({
         </div>
       );
     const messageId = (row.message as ChatMessage & { id?: string }).id;
+    const modelChange = changeFacts.get(row.index)?.modelChange;
     return (
       <article
         className="chat-message-anchor"
@@ -1997,6 +2008,7 @@ function ChatMessageListComponent({
           ? { id: `transcript-message-${encodeURIComponent(messageId)}` }
           : {})}
       >
+        {modelChange ? <ModelChangeMarker change={modelChange} /> : null}
         <TranscriptTurnContext.Provider
           value={rowPresentation.get(row.id)?.turn}
         >
