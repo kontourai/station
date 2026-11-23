@@ -11,12 +11,12 @@ import {
 } from '@kontourai/station-contracts/provider';
 import { describe, expect, it } from 'vitest';
 import {
-  describeProviderDefaultFailure,
   formatChatErrorDisplay,
   SESSION_START_INDETERMINATE_CODE,
   translateChatError,
   translateProjectedRuntimeError,
 } from '../chatErrorTranslation';
+import { describeProviderDefaultFailure } from '../providerDefaultFailure';
 
 // Fixture-based per the plan's Stop-short risks: the real AWS Bedrock
 // "model not enabled" exception text could not be captured live in

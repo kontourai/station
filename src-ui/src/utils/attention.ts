@@ -10,8 +10,8 @@ import type {
   ReviewPendingAttentionItem,
   SessionFailedAttentionItem,
 } from '@kontourai/station-sdk';
-import { describeProviderDefaultFailure } from './chatErrorTranslation';
 import { notificationCategoryLabel } from './notificationLabels';
+import { describeProviderDefaultFailure } from './providerDefaultFailure';
 import { NO_FAILURE_DETAIL_RECORDED } from './sessionFailure';
 
 /**

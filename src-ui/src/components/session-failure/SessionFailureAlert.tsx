@@ -1,8 +1,6 @@
 import type { ReactNode } from 'react';
-import {
-  describeInternalStreamFailure,
-  describeProviderDefaultFailure,
-} from '../../utils/chatErrorTranslation';
+import { describeInternalStreamFailure } from '../../utils/chatErrorTranslation';
+import { describeProviderDefaultFailure } from '../../utils/providerDefaultFailure';
 import './SessionFailureAlert.css';
 
 /**
