@@ -32,7 +32,10 @@ export async function outsideMcpFixture(
     projects: ProjectConfig[];
     cleanup: (close: () => void | Promise<void>) => void;
   }) => OutsideActiveWorkDeps,
-  layoutStorage?: Pick<IStorageAdapter, 'listLayouts'>,
+  setupLayouts?: (fixture: {
+    home: string;
+    projects: ProjectConfig[];
+  }) => Promise<Pick<IStorageAdapter, 'listLayouts' | 'projectRevision'>>,
 ) {
   const home = temp('outside-r4a-');
   const clock = { now: 1_800_000_000_000 };
@@ -80,7 +83,7 @@ export async function outsideMcpFixture(
     store,
     validateGrant: (g) => service.validateGrant(g),
     projects: source,
-    layoutStorage,
+    layoutStorage: await setupLayouts?.({ home, projects }),
     activeWork: work?.({
       home,
       clock,

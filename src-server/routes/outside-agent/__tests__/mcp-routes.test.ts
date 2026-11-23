@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import {
@@ -12,6 +13,7 @@ import {
   outsideMcpPayload as payload,
   protocols,
 } from '../../../__test-utils__/outside-agent-mcp-fixture.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { createStationControlCallerRecordResolver } from '../../../runtime/mcp/station-control-caller.js';
 import { createStationControlDispatchScope } from '../../../runtime/mcp/station-control-dispatch-scope.js';
 import { mintStationControlMcpToken } from '../../../runtime/mcp/station-control-mcp-token.js';
@@ -26,24 +28,37 @@ import { OutsideAgentGrantStore } from '../../../services/outside-agent/oauth-st
 const resource = `${issuer}/mcp`;
 
 test('outside layout listing reads only the approved Project and drops plugin metadata', async () => {
-  const listLayouts = vi.fn((projectSlug: string) => [
-    {
+  const listLayouts = vi.fn<FileStorageAdapter['listLayouts']>();
+  const f = await fixture(undefined, async ({ home, projects }) => {
+    const storage = new FileStorageAdapter(home);
+    for (const project of projects) await storage.createProject(project);
+    await storage.createLayout('alpha', {
       id: 'layout-primary',
-      projectSlug,
+      projectSlug: 'alpha',
       slug: 'coding',
+      type: 'coding',
       name: 'Coding',
-      type: 'workspace',
-      tabCount: 2,
-      plugin: 'private-plugin-binding',
       description: 'Private layout description',
-    },
-  ]);
-  const f = await fixture(undefined, { listLayouts });
+      config: { plugin: 'private-plugin-binding' },
+      createdAt: projects[0]!.createdAt,
+      updatedAt: projects[0]!.updatedAt,
+    });
+    writeFileSync(join(home, 'projects', 'foreign', 'project.json'), '{');
+    expect(() => storage.listProjects()).toThrow();
+    listLayouts.mockImplementation((slug) => storage.listLayouts(slug));
+    return {
+      projectRevision: (slug) => storage.projectRevision(slug),
+      listLayouts,
+    };
+  });
   const projectGrant = f.grant();
   const globalGrant = f.grant(true);
   const projectSession = await f.initialize(projectGrant.accessToken);
   const globalSession = await f.initialize(globalGrant.accessToken);
 
+  f.source.listProjects.mockImplementation(() => {
+    throw new Error('A foreign Project layout directory is corrupt');
+  });
   const catalog = await payload(
     await f.rpc(
       projectGrant.accessToken,
@@ -85,6 +100,7 @@ test('outside layout listing reads only the approved Project and drops plugin me
     projectSession.session,
     'alpha',
   );
+  expect(f.source.listProjects).not.toHaveBeenCalled();
   expect(listLayouts).toHaveBeenCalledExactlyOnceWith('alpha');
   expect(JSON.parse(admitted.result.content[0].text)).toEqual({
     success: true,
@@ -94,32 +110,49 @@ test('outside layout listing reads only the approved Project and drops plugin me
         projectSlug: 'alpha',
         slug: 'coding',
         name: 'Coding',
-        type: 'workspace',
-        tabCount: 2,
+        type: 'coding',
       },
     ],
   });
+  listLayouts.mockImplementationOnce(() => {
+    throw new Error('Private directory /var/station/projects/alpha/layouts');
+  });
+  const failed = await list(
+    projectGrant.accessToken,
+    projectSession.session,
+    'alpha',
+  );
+  expect(failed.result.isError).toBe(true);
+  expect(JSON.stringify(failed)).toContain('Project layouts unavailable');
+  expect(JSON.stringify(failed)).not.toContain('Private directory');
 });
 
-test('outside layout listing discards records if the approved Project loses the slug during the read', async () => {
-  const listLayouts = vi.fn();
-  const f = await fixture(undefined, { listLayouts });
+test('outside layout listing does not open replacement records after a slug is reused before the read lock', async () => {
+  const listLayouts = vi.fn<FileStorageAdapter['listLayouts']>();
+  const replacement = vi.fn();
+  const f = await fixture(undefined, async ({ home, projects }) => {
+    const storage = new FileStorageAdapter(home);
+    const project = projects.find((row) => row.slug === 'alpha')!;
+    await storage.createProject(project);
+    listLayouts.mockImplementation((slug) => storage.listLayouts(slug));
+    return {
+      projectRevision(slug) {
+        const revision = storage.projectRevision(slug);
+        return {
+          ...revision,
+          async withCurrentRead(read) {
+            await storage.deleteProject(slug);
+            await storage.createProject({ ...project, id: 'id-replacement' });
+            replacement(storage.getProject(slug).id);
+            return revision.withCurrentRead(read);
+          },
+        };
+      },
+      listLayouts,
+    };
+  });
   const tokens = f.grant();
   const { session } = await f.initialize(tokens.accessToken);
-  listLayouts.mockImplementationOnce((slug: string) => {
-    f.projects.find((project) => project.id === 'id-alpha')!.slug =
-      'renamed-alpha';
-    f.projects.find((project) => project.id === 'id-foreign')!.slug = slug;
-    return [
-      {
-        id: 'replacement-layout',
-        projectSlug: slug,
-        slug: 'coding',
-        name: 'Replacement Project layout',
-        type: 'workspace',
-      },
-    ];
-  });
   const response = await f.rpc(
     tokens.accessToken,
     'tools/call',
@@ -127,9 +160,10 @@ test('outside layout listing discards records if the approved Project loses the 
     session,
   );
   const result = await payload(response);
-  expect(listLayouts).toHaveBeenCalledExactlyOnceWith('alpha');
+  expect(replacement).toHaveBeenCalledExactlyOnceWith('id-replacement');
+  expect(listLayouts).not.toHaveBeenCalled();
   expect(result.result.isError).toBe(true);
-  expect(JSON.stringify(result)).not.toContain('replacement-layout');
+  expect(JSON.stringify(result)).not.toContain('id-replacement');
 });
 
 describe('outside-agent MCP transport and live authority', () => {

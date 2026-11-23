@@ -53,9 +53,9 @@ bounded replay queues are local to this single transport owner. See the
 faults, real-client checks and topology/release limits.
 
 The isolated layout composition can also offer `list_project_layouts`.
-It admits the requested slug against the grant's stable Project identity
-before reading layout records and checks the identity again before
-publication. Its result contains layout IDs, slugs, names, types and tab
+It opens the requested Project revision and uses the Project read lock to
+check the grant's stable identity before opening any layout records. A second
+identity check guards publication. Its result contains layout IDs, slugs, names, types and tab
 counts for the approved Project.
 
 The isolated active-work composition also offers `list_active_work`. It

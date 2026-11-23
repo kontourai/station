@@ -95,7 +95,7 @@ export async function createOutsideAgentMcpServer(input: {
   store: OutsideAgentGrantStore;
   validateGrant(grant: Grant): boolean;
   projects: Pick<ProjectService, 'listProjects' | 'getProject'>;
-  layoutStorage?: Pick<IStorageAdapter, 'listLayouts'>;
+  layoutStorage?: Pick<IStorageAdapter, 'projectRevision' | 'listLayouts'>;
   activeWork?: OutsideActiveWorkDeps;
   exposure: OutsideOAuthExposure;
   checkServe?: () => Promise<'clear' | 'mapped' | 'unverifiable'>;

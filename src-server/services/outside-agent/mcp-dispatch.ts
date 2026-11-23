@@ -54,7 +54,7 @@ function unknown(): never {
 export function createOutsideMcpDispatch(input: {
   current(): Records['grant'];
   projects: Pick<ProjectService, 'listProjects' | 'getProject'>;
-  layoutStorage?: Pick<IStorageAdapter, 'listLayouts'>;
+  layoutStorage?: Pick<IStorageAdapter, 'projectRevision' | 'listLayouts'>;
   listActiveWork?: ReturnType<typeof createOutsideActiveWorkReader>;
   reserveCall(): () => void;
 }) {
@@ -136,20 +136,6 @@ export function createOutsideMcpDispatch(input: {
         });
       },
     };
-  const approvedProjectId = (tool: string, slug: string) => {
-    const approved = caller(tool).projectScope;
-    const metadata =
-      approved.kind === 'project'
-        ? input.projects
-            .listProjects()
-            .find(
-              (project) =>
-                project.id === approved.projectId && project.slug === slug,
-            )
-        : undefined;
-    if (!metadata) throw new Error('Project not found');
-    return metadata.id;
-  };
   registerProjectReadTools(registry, {
     async list() {
       const approved = caller('list_projects').projectScope;
@@ -159,27 +145,52 @@ export function createOutsideMcpDispatch(input: {
         .filter((p) => p.id === approved.projectId);
     },
     async get(slug) {
-      const projectId = approvedProjectId('get_project', slug);
+      const approved = caller('get_project').projectScope;
+      const metadata =
+        approved.kind === 'project'
+          ? input.projects
+              .listProjects()
+              .find((p) => p.id === approved.projectId && p.slug === slug)
+          : undefined;
+      if (!metadata) throw new Error('Project not found');
       const project = input.projects.getProject(slug);
-      if (project.id !== projectId) throw new Error('Project not found');
+      if (project.id !== metadata.id) throw new Error('Project not found');
       return project;
     },
     ...(layoutStorage && {
       async layouts(slug: string) {
-        const projectId = approvedProjectId('list_project_layouts', slug);
-        const layouts = layoutStorage.listLayouts(slug);
-        if (approvedProjectId('list_project_layouts', slug) !== projectId)
-          throw new Error('Project not found');
-        return layouts
-          .filter((layout) => layout.projectSlug === slug)
-          .map(({ id, slug, projectSlug, name, type, tabCount }) => ({
-            id,
-            slug,
-            projectSlug,
-            name,
-            type,
-            tabCount,
-          }));
+        const approved = () => caller('list_project_layouts').projectScope;
+        const check = (project: { id: string; slug: string }) => {
+          const scope = approved();
+          if (
+            scope.kind !== 'project' ||
+            project.id !== scope.projectId ||
+            project.slug !== slug
+          )
+            throw new Error('Project layouts unavailable');
+        };
+        try {
+          if (approved().kind !== 'project')
+            throw new Error('Project layouts unavailable');
+          const revision = layoutStorage.projectRevision(slug);
+          const layouts = await revision.withCurrentRead(async (current) => {
+            check(current);
+            return layoutStorage.listLayouts(slug);
+          });
+          check(layoutStorage.projectRevision(slug).value);
+          return layouts
+            .filter((layout) => layout.projectSlug === slug)
+            .map(({ id, slug, projectSlug, name, type, tabCount }) => ({
+              id,
+              slug,
+              projectSlug,
+              name,
+              type,
+              tabCount,
+            }));
+        } catch {
+          throw new Error('Project layouts unavailable');
+        }
       },
     }),
   });
