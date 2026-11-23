@@ -1,0 +1,23 @@
+{
+  "revision": "875849d1fd185cc33012d9f26c6e05c3f641c035",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Reviewed the Fork, Regenerate and Edit and resend delta through turn actions, the mounted chat store, timeline return, the authority scope and destination open. The local source view now governs pending and visible Fork. Existing placement, pane relations, settings, integration, API and other chat contracts retain their documented owners and behavior.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"Reviewed the Fork, Regenerate and Edit and resend delta through turn actions, the mounted chat store, timeline return, the authority scope and destination open. The local source view now governs pending and visible Fork. Existing placement, pane relations, settings, integration, API and other chat contracts retain their documented owners and behavior.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the Fork, Regenerate and Edit and resend delta through turn actions, the mounted chat store, timeline return, the authority scope and destination open. The local source view now governs pending and visible Fork. Existing placement, pane relations, settings, integration, API and other chat contracts retain their documented owners and behavior.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the Fork, Regenerate and Edit and resend delta through turn actions, the mounted chat store, timeline return, the authority scope and destination open. The local source view now governs pending and visible Fork. Existing placement, pane relations, settings, integration, API and other chat contracts retain their documented owners and behavior.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the Fork, Regenerate and Edit and resend delta through turn actions, the mounted chat store, timeline return, the authority scope and destination open. The local source view now governs pending and visible Fork. Existing placement, pane relations, settings, integration, API and other chat contracts retain their documented owners and behavior.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the Fork, Regenerate and Edit and resend delta through turn actions, the mounted chat store, timeline return, the authority scope and destination open. The local source view now governs pending and visible Fork. Existing placement, pane relations, settings, integration, API and other chat contracts retain their documented owners and behavior.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the Fork, Regenerate and Edit and resend delta through turn actions, the mounted chat store, timeline return, the authority scope and destination open. The local source view now governs pending and visible Fork. Existing placement, pane relations, settings, integration, API and other chat contracts retain their documented owners and behavior.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the Fork, Regenerate and Edit and resend delta through turn actions, the mounted chat store, timeline return, the authority scope and destination open. The local source view now governs pending and visible Fork. Existing placement, pane relations, settings, integration, API and other chat contracts retain their documented owners and behavior.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"Reviewed the Fork, Regenerate and Edit and resend delta through turn actions, the mounted chat store, timeline return, the authority scope and destination open. The local source view now governs pending and visible Fork. Existing placement, pane relations, settings, integration, API and other chat contracts retain their documented owners and behavior.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

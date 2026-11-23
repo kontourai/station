@@ -1,0 +1,7 @@
+{
+  "revision": "613e2415901cf108df011861da8b591414f7348f",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed: the change only moves a dispatched automation Task from in_progress to review when its turn ends; pages citing this source are unaffected.","inputs":["src-server/runtime/automation-actions-runtime.ts"]}
+  ]
+}
