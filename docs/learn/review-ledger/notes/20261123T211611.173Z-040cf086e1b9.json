@@ -1,0 +1,179 @@
+{
+  "revision": "0f0fa2af6d94a9e224dba166bc14d51fdbb2116e",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Checked required pairing scope, credential binding, byte limits, new-operation deadline, exact completed member checks, replay behavior and legacy response projection against the HTTP handler and journal.","inputs":["docs/reference/api.md","src-server/routes/orchestration/orchestration.ts","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the optional contextSync receipt type and projection against the group and sync response owners. The receipt is observational and carries no dispatch grant or portable envelope.","inputs":["docs/reference/contracts.md","src-server/routes/orchestration/orchestration.ts","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Traced the SDK sync call through capability check, bounded input and receipt decoding with group, operation and run identity checks. Inspection requests the optional contextSync field, leaving existing reads on the original group view.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/cli-session-groups.test.ts","packages/sdk/src/client/cli-session-groups.ts","src-server/routes/orchestration/orchestration.ts","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced the preview route to the group journal and qualified retained activation. The adapter gates the exact runtime, and the activation owner requires confirmed process exit before releasing a fence or returning the exact terminal receipt.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/orchestration.ts","src-server/security/pairing-route-scopes.ts","src-server/services/orchestration/cli-session-group.ts","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Traced Session-group sync from the personal preview gate and retained credential through the local delegated Task snapshot and exact Session binding to the journal and retained activation. The group response keeps the original shape unless sync receipts are requested. Existing chat, event stream, task read and continuation handlers are outside the changed route block.","inputs":["src-server/routes/orchestration/orchestration.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"The sole source delta updates the preflight comment to name the composed group host. The retained activation logic and the regular request inspection flow shown in the PNG and video are byte-identical to the reviewed base.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified the journal ownership comment now names the credential-bound route and retained Session adapter. The journal implementation and its reservation, replay and settlement behaviors are unchanged from the reviewed integration base.","inputs":["src-server/services/orchestration/cli-session-group.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Verified the new POST Session-group sync path belongs to the orchestration route family and requires orchestration:operate. Other pairing, native relay, broker and connection scope entries are unchanged.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the added Session-group sync scope case. It verifies that an empty scope is refused and orchestration:operate admits the exact path. The existing pairing and MCP UI assertions are unchanged.","inputs":["src-server/security/__tests__/pairing-route-scopes.test.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Compared the regenerated Station docs topic with the SessionCommandModule explanation. Only the description of how the personal preview reaches the retained activation changed. Topic dispatch and reader authority are unchanged.","inputs":["src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"The added paragraph is limited to the personal Session-group sync route, operation replay, request bounds and explicit receipt projection. Other API anchors such as the terminal contract are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The added paragraph is limited to the personal Session-group sync route, operation replay, request bounds and explicit receipt projection. Other API anchors such as the terminal contract are unchanged.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/glossary.md","note":"Checked that the optional contextSync receipt describes a retained observation exposed by the group sync path and explicit inspection. Shared contract guidance and other type definitions are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked that the optional contextSync receipt describes a retained observation exposed by the group sync path and explicit inspection. Shared contract guidance and other type definitions are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Checked that the optional contextSync receipt describes a retained observation exposed by the group sync path and explicit inspection. Shared contract guidance and other type definitions are unchanged.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The additive Session-group SDK paragraph documents sync and the receipt inspection option. The public client discovery and ownership guidance used by dependent guides is unchanged.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The additive Session-group SDK paragraph documents sync and the receipt inspection option. The public client discovery and ownership guidance used by dependent guides is unchanged.","inputs":["docs/reference/sdk.md"]}
+  ]
+}
