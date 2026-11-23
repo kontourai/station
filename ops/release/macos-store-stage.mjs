@@ -1,6 +1,12 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { copyFileSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  mkdirSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
 import { join, resolve } from 'node:path';
 import { taggedStoreIdentity } from '../../scripts/lib/native-release-config.mjs';
 import { embeddedMacosMachOPaths } from '../nightly/macos-embedded-signing.mjs';
