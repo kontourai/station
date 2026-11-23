@@ -235,15 +235,6 @@ export function IntegrationEditorPanel({
         )}
       </div>
 
-      {!isNew &&
-        !isRuntimeManaged &&
-        !secretBindingRequireSave &&
-        editForm.enabled !== false &&
-        editForm.transport === 'streamable-http' &&
-        !editForm.credentialOwnership && (
-          <IntegrationEventsSection integrationId={editForm.id} />
-        )}
-
       <div className="agent-editor__section">
         <div className="agent-editor__section-header">
           <h3 className="agent-editor__section-title">Editor mode</h3>
@@ -291,6 +282,14 @@ export function IntegrationEditorPanel({
             requireSave={secretBindingRequireSave}
             defaultScopes={editForm.oauthClient?.scopes}
           />
+        )}
+      {!isNew &&
+        !isRuntimeManaged &&
+        !secretBindingRequireSave &&
+        editForm.enabled !== false &&
+        editForm.transport === 'streamable-http' &&
+        !editForm.credentialOwnership && (
+          <IntegrationEventsSection integrationId={editForm.id} />
         )}
       {/* A legacy setting waiting for a person is shown even without the
           trust settings preview: until it is decided the server stays off. */}

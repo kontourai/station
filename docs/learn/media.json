@@ -171,12 +171,12 @@
     {
       "path": "docs/learn/media/oauth-mcp-sign-in-comparison.png",
       "kind": "image",
-      "digest": "3f77dece872bd1664c97b800b23f456ff913dfb5dcfbfcc7087f5cd76e8afd69",
+      "digest": "a3ac9eae47a4bee11e2573381d587087ab7349243e13ac71fef15b31a6a308f8",
       "alt": "The Workspace MCP sign-in panel identifies the shared Station account and offers editable scopes.",
       "caption": "The Workspace MCP sign-in panel identifies the shared Station account and offers editable scopes.",
       "scenario": "OAuth MCP engine setup",
-      "evidence": "EXECUTED: captured with Playwright Chromium at 1800x1009, dark theme, from an isolated source Station instance (temp home, non-default ports) at the captured revision, with a neutral Workspace MCP integration and a local fake authorization server that answers discovery only. Shows the shared-account panel, the Scopes field prefilled from the integration default and Sign in. Replaces the earlier side-by-side comparison of mounted components: this is a single current capture, with no pre-feature baseline. No sign-in was completed; no live OAuth provider, model turn, native or hosted acceptance.",
-      "capturedRevision": "f83cf85e288326e846f8901bc220a28b6580d87b",
+      "evidence": "EXECUTED: captured in Chrome at 1800 × 1009 in dark mode from an isolated source Station with a neutral Workspace MCP integration and a local OAuth fixture. Entered workspace.read and checked the Sign in button after scrolling it into view. Cropped to the tool editor. This capture ends before sign-in.",
+      "capturedRevision": "e740af7c1e1bee1dde0f90522ee27bf49d8647ec",
       "documents": [
         "docs/guides/connections.md"
       ]
