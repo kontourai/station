@@ -1,10 +1,17 @@
 import type { ReactNode } from 'react';
+import { flushSync } from 'react-dom';
+import { showChatPageOrDock } from '../../app-shell/chat-placement';
 import {
   APP_DESTINATION_REGISTRY,
   customizeItemForView,
 } from '../../app-shell/destination-registry';
 import { resolveViewFromPath } from '../../app-shell/routing';
+import { withShortcutHint } from '../../contexts/KeyboardShortcutsContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
+import { useShortcutDisplay } from '../../hooks/useKeyboardShortcut';
+import { dispatchNewChatIntent } from '../../lib/newChatIntent';
 import { useCustomizeGroups } from '../../views/customize/useCustomizeGroups';
+import { NewChatGlyph } from '../icons/Glyph';
 import { UpdatesControl } from '../updates/UpdatesControl';
 import { destinationIcon } from './nav-items';
 import { ProjectSidebarBoards } from './ProjectSidebarBoards';
@@ -20,7 +27,7 @@ import './QuietSidebar.css';
  * on, so the sidebar's first paint carries none of it with the preview off.
  */
 interface QuietSidebarPartProps {
-  part: 'places' | 'apps' | 'footer';
+  part: 'new-chat' | 'places' | 'apps' | 'footer';
   collapsed: boolean;
   isMobile: boolean;
   navigate: (path: string) => void;
@@ -31,19 +38,27 @@ interface QuietSidebarPartProps {
 function QuietRow({
   label,
   accessibleLabel = label,
+  title,
   icon,
   current,
   collapsed,
   trailing,
+  anchor,
+  className = '',
   onSelect,
 }: {
   label: string;
   /** The row's name when it says more than its visible label. */
   accessibleLabel?: string;
+  /** The rail's tooltip, when it says more than the row's name. */
+  title?: string;
   icon: ReactNode;
   current: boolean;
   collapsed: boolean;
   trailing?: ReactNode;
+  /** The first-run tour's anchor for this row. */
+  anchor?: string;
+  className?: string;
   onSelect: () => void;
 }) {
   return (
@@ -51,10 +66,11 @@ function QuietRow({
       type="button"
       className={`sidebar__project-btn${
         current ? ' sidebar__project-btn--active' : ''
-      }`}
+      }${className}`}
       aria-current={current ? 'page' : undefined}
       aria-label={accessibleLabel}
-      title={collapsed ? accessibleLabel : undefined}
+      title={collapsed ? (title ?? accessibleLabel) : undefined}
+      data-first-run-anchor={anchor}
       onClick={onSelect}
     >
       <span className="sidebar__nav-icon" aria-hidden="true">
@@ -105,6 +121,7 @@ function QuietFooter({
               : customize.label()
           }
           icon={destinationIcon('customize')}
+          anchor="customize"
           current={customizeItemForView(view) !== null}
           collapsed={collapsed}
           trailing={
@@ -141,10 +158,50 @@ function QuietFooter({
   );
 }
 
+/**
+ * New chat: the same request the dock's own New chat makes. With no dock
+ * listening, it shows Chat the way the palette's "Open chat dock" does. It is
+ * an action, so it is never the current row. Its hint is the dock's shortcut
+ * as bound now, and the drawer leaves the hint out.
+ */
+function QuietNewChat({
+  collapsed,
+  isMobile,
+  onAfterNavigate,
+}: Omit<QuietSidebarPartProps, 'part'>) {
+  const { setDockState } = useNavigationActions();
+  const shortcut = useShortcutDisplay('dock.newChat');
+  const label = 'New chat';
+  const hint = isMobile || shortcut === 'Not set' ? '' : shortcut;
+  return (
+    <QuietRow
+      label={label}
+      title={withShortcutHint(label, 'dock.newChat', () => hint)}
+      icon={<NewChatGlyph />}
+      current={false}
+      collapsed={collapsed}
+      className=" sidebar__quiet-new-chat"
+      trailing={
+        hint && !collapsed ? (
+          <kbd className="sidebar__quiet-hint">{hint}</kbd>
+        ) : null
+      }
+      onSelect={() => {
+        // The drawer closes first, so the chat opens over the page and not
+        // under a drawer that is still leaving.
+        if (isMobile) flushSync(() => onAfterNavigate?.());
+        if (!dispatchNewChatIntent({}))
+          showChatPageOrDock(() => setDockState(true));
+      }}
+    />
+  );
+}
+
 export default function QuietSidebarPart({
   part,
   ...props
 }: QuietSidebarPartProps) {
+  if (part === 'new-chat') return <QuietNewChat {...props} />;
   if (part === 'apps') return <ProjectSidebarBoards {...props} quiet />;
   if (part === 'footer') return <QuietFooter {...props} />;
   const automations = APP_DESTINATION_REGISTRY.get('schedule');

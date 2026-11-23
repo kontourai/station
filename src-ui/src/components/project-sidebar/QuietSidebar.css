@@ -53,3 +53,27 @@
   > * {
   display: none;
 }
+
+/* New chat leads the sidebar as an outlined action, so it does not read as a
+   place someone can be on. */
+.sidebar__quiet-new-chat {
+  margin-bottom: var(--k-space-2);
+  border: 1px solid var(--k-line);
+}
+
+.sidebar__quiet-hint {
+  margin-left: auto;
+  padding: 0 var(--k-space-1);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  color: var(--k-text-muted);
+  font-family: inherit;
+  font-size: var(--k-text-xs);
+}
+
+/* On the rail a rule parts the place rows from the projects, as the Apps
+   rule parts the projects from the apps. */
+.sidebar--collapsed:has(.sidebar__footer--quiet)
+  .sidebar__section-label--projects {
+  border-top: 1px solid var(--k-line);
+}

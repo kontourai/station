@@ -34,7 +34,6 @@ import { useRegionModelOptional } from '../../contexts/RegionModelContext';
 import { useShowSurface } from '../../contexts/useShowSurface';
 import { useBranding } from '../../hooks/useBranding';
 import { useProjectAccents } from '../../hooks/useProjectAccents';
-import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import { FOCUSABLE_SELECTOR, wrapTabFocus } from '../../utils/focusable';
 import {
@@ -51,6 +50,7 @@ import { Skeleton } from '../state';
 import { ProjectSidebarHeader } from './ProjectSidebarHeader';
 import { ProjectSidebarNav } from './ProjectSidebarNav';
 import { ProjectSidebarRow } from './ProjectSidebarRow';
+import { useQuietSidebarPreview } from './quietSidebarPreview';
 import { useProjectListReorder } from './useProjectListReorder';
 import { useProjectSidebarState } from './useProjectSidebarState';
 import { buildSidebarClassName } from './utils';
@@ -218,7 +218,7 @@ function ProjectSidebarImpl() {
   // the conversation inventory here inline; see that module for what changed
   // and why.
   const projectOverviewOn = useProjectOverviewPreview();
-  const quiet = useSurfaceVisibilityFlags().has('quiet-sidebar');
+  const quiet = useQuietSidebarPreview();
   const waitingOnYouBySlug = useWaitingOnYouCounts();
   const liveLanesByProject = useMemo(
     () =>
@@ -374,6 +374,13 @@ function ProjectSidebarImpl() {
           />
 
           <div className="sidebar__body">
+            {quiet && (
+              <LazyBoundary
+                load={loadQuietSidebar}
+                pending={null}
+                componentProps={{ part: 'new-chat' as const, ...quietProps }}
+              />
+            )}
             <button
               type="button"
               className={`sidebar__project-btn${isHomeActive ? ' sidebar__project-btn--active' : ''}`}
@@ -396,7 +403,7 @@ function ProjectSidebarImpl() {
               <LazyBoundary
                 load={loadQuietSidebar}
                 pending={null}
-                componentProps={{ part: 'places', ...quietProps }}
+                componentProps={{ part: 'places' as const, ...quietProps }}
               />
             )}
             {/* #2059 (D3): Activity sits directly under Home as the panel's

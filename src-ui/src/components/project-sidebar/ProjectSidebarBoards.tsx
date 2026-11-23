@@ -5,7 +5,7 @@ import {
   usePromotePersonalLayoutMutation,
   useUpdatePersonalLayoutMutation,
 } from '@kontourai/station-sdk';
-import type { ReactNode, RefObject } from 'react';
+import type { PointerEvent, ReactNode, RefObject } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { boardPath } from '../../app-shell/board-route';
 import { boardSlugFromName, nextBoardSlug } from '../../app-shell/board-slug';
@@ -70,6 +70,14 @@ interface ProjectSidebarBoardsProps {
    */
   quiet?: boolean;
 }
+
+/** A tooltip only while the row's name is cut off. */
+const titleIfClipped =
+  (name: string) => (event: PointerEvent<HTMLButtonElement>) => {
+    const label = event.currentTarget.querySelector('.sidebar__project-name');
+    event.currentTarget.title =
+      label && label.scrollWidth > label.clientWidth ? name : '';
+  };
 
 /** Where the quiet section's Discover row goes: Apps › Discover. */
 const DISCOVER_PATH = '/apps/discover';
@@ -670,8 +678,8 @@ export function ProjectSidebarBoards({
           </button>
         )}
       </div>
-      {/* A labelled button does not fit the quiet rail's icon column. */}
-      {appsEnabled && !(quiet && collapsed) && (
+      {/* In the quiet sidebar Discover is how apps are added. */}
+      {appsEnabled && !quiet && (
         <Button
           className="apps-library-entry"
           onClick={() => {
@@ -760,6 +768,10 @@ export function ProjectSidebarBoards({
                   }`}
                   aria-current={isActive ? 'page' : undefined}
                   title={collapsed ? board.name : undefined}
+                  // The quiet rows name a clipped app in a tooltip.
+                  onPointerEnter={
+                    quiet && !collapsed ? titleIfClipped(board.name) : undefined
+                  }
                   onClick={() => {
                     closeNavigator();
                     navigate(path);

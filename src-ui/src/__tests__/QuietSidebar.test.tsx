@@ -37,7 +37,8 @@ vi.mock('../contexts/RegionModelContext', () => ({
 }));
 
 const state = vi.hoisted(() => ({
-  previews: [] as Array<{ id: string; enabled: boolean }>,
+  /** `undefined` is a read that is pending or failed with nothing cached. */
+  previews: [] as Array<{ id: string; enabled: boolean }> | undefined,
   pathname: '/',
   selectedProject: null as string | null,
   projects: [] as Array<{ id: string; slug: string; name: string }>,
@@ -49,6 +50,7 @@ const state = vi.hoisted(() => ({
 }));
 const navigate = vi.hoisted(() => vi.fn());
 const setProject = vi.hoisted(() => vi.fn());
+const setDockState = vi.hoisted(() => vi.fn());
 
 vi.mock('../contexts/ProjectsContext', () => ({
   useProjects: () => ({ projects: state.projects, isLoading: false }),
@@ -61,6 +63,7 @@ vi.mock('../contexts/NavigationContext', () => {
     navigate,
     setProject,
     setLayout: vi.fn(),
+    setDockState,
     pathname: state.pathname,
   });
   return {
@@ -137,10 +140,26 @@ vi.mock('@kontourai/station-sdk', () => ({
 }));
 
 import { ProjectSidebar } from '../components/project-sidebar/ProjectSidebar';
-import { KeyboardShortcutsProvider } from '../contexts/KeyboardShortcutsContext';
+import {
+  KeyboardShortcutsProvider,
+  useShortcutRegistry,
+} from '../contexts/KeyboardShortcutsContext';
+import { useKeyboardShortcut } from '../hooks/useKeyboardShortcut';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import { OPEN_NEW_CHAT_EVENT } from '../lib/newChatIntent';
 
 const QUIET_ON = [{ id: 'quiet-sidebar', enabled: true }];
+const LAST_KNOWN_KEY = 'station.quietSidebar.lastKnown';
+
+/** Registers the dock's New chat shortcut the way the dock does, and hands
+ *  the registry's rebinding to the test. */
+let rebind: ((key: string) => void) | undefined;
+function DockShortcut() {
+  useKeyboardShortcut('dock.newChat', 't', ['cmd'], 'New chat', () => {});
+  const { setBinding } = useShortcutRegistry();
+  rebind = (key) => setBinding('dock.newChat', { key, modifiers: ['cmd'] });
+  return null;
+}
 
 /** An engine row in the shape `/api/connections/agents` returns. */
 function engine(id: string, name: string, overrides = {}) {
@@ -192,6 +211,7 @@ beforeEach(() => {
   state.isMobile = false;
   navigate.mockClear();
   setProject.mockClear();
+  setDockState.mockClear();
   showSurfaceStub.mockClear();
   window.localStorage.clear();
   deviceSettingsStore.reloadFromStorage();
@@ -218,7 +238,7 @@ describe('the quiet sidebar preview', () => {
     expect(document.querySelector('.sidebar__footer--quiet')).toBeNull();
   });
 
-  test('puts only Home and Automations above Projects, then Apps, then Customize and Settings', async () => {
+  test('puts New chat first, then only Home and Automations above Projects, then Apps, then Customize and Settings', async () => {
     state.projects = [{ id: 'p1', slug: 'notes-api', name: 'Notes API' }];
     state.boards = [
       { id: 'b1', slug: 'daily-brief', name: 'Daily brief' },
@@ -239,6 +259,7 @@ describe('the quiet sidebar preview', () => {
       )
       .filter((name) =>
         [
+          'New chat',
           'Home',
           'Automations',
           'New Project',
@@ -251,6 +272,7 @@ describe('the quiet sidebar preview', () => {
         ].includes(name),
       );
     expect(order).toEqual([
+      'New chat',
       'Home',
       'Automations',
       'New Project',
@@ -418,7 +440,13 @@ describe('the quiet sidebar preview', () => {
     renderSidebar();
     const nav = screen.getByRole('navigation', { name: 'Primary navigation' });
     expect(nav.classList.contains('sidebar--collapsed')).toBe(true);
-    for (const name of ['Home', 'Automations', 'Discover', 'Settings']) {
+    for (const name of [
+      'New chat',
+      'Home',
+      'Automations',
+      'Discover',
+      'Settings',
+    ]) {
       const row = await screen.findByRole('button', { name });
       // A rail row is named by its tooltip, since its label is hidden.
       if (name !== 'Home') expect(row.getAttribute('title')).toBe(name);
@@ -463,6 +491,7 @@ describe('the quiet sidebar preview', () => {
       ),
     );
     for (const name of [
+      'New chat',
       'Home',
       'Automations',
       'Daily brief',
@@ -481,5 +510,190 @@ describe('the quiet sidebar preview', () => {
     expect(nav.classList.contains('sidebar--expanded')).toBe(false);
     await waitFor(() => expect(document.activeElement).toBe(trigger));
     trigger.remove();
+  });
+
+  test('the Customize row is the first-run tour anchor, as the old footer control was', async () => {
+    renderSidebar();
+    const customize = await screen.findByRole('button', { name: 'Customize' });
+    expect(customize.getAttribute('data-first-run-anchor')).toBe('customize');
+    expect(
+      document.querySelectorAll('[data-first-run-anchor="customize"]'),
+    ).toHaveLength(1);
+  });
+
+  test('with the Apps library preview also on, Discover is the only add path', async () => {
+    state.previews = [...QUIET_ON, { id: 'apps-library', enabled: true }];
+    renderSidebar();
+    await screen.findByRole('button', { name: 'Discover' });
+    expect(screen.queryByRole('button', { name: 'Browse apps' })).toBeNull();
+  });
+
+  test('an app row whose name is cut off carries it as a tooltip, and only then', async () => {
+    state.boards = [
+      { id: 'b1', slug: 'release-desk', name: 'Release desk for the quarter' },
+    ];
+    renderSidebar();
+    const row = (
+      await screen.findByText('Release desk for the quarter')
+    ).closest('button')!;
+    const name = row.querySelector('.sidebar__project-name')!;
+    Object.defineProperty(name, 'clientWidth', {
+      configurable: true,
+      value: 100,
+    });
+    Object.defineProperty(name, 'scrollWidth', {
+      configurable: true,
+      value: 180,
+    });
+    fireEvent.pointerEnter(row);
+    expect(row.getAttribute('title')).toBe('Release desk for the quarter');
+    Object.defineProperty(name, 'scrollWidth', {
+      configurable: true,
+      value: 100,
+    });
+    fireEvent.pointerEnter(row);
+    expect(row.getAttribute('title')).toBe('');
+  });
+});
+
+describe('the quiet sidebar before the previews read answers', () => {
+  async function quietMounted() {
+    await settingsRow();
+    await screen.findByRole('button', { name: 'Automations' });
+    // The old sidebar's Boards `+` and footer icon buttons never mounted.
+    expect(screen.queryByRole('button', { name: 'New Board' })).toBeNull();
+    expect(document.querySelector('.sidebar__footer-actions')).toBeNull();
+    expect(document.querySelector('.sidebar__footer--quiet')).not.toBeNull();
+  }
+
+  test('a pending read with the preview last known on draws the quiet sidebar at once', async () => {
+    window.localStorage.setItem(LAST_KNOWN_KEY, 'on');
+    state.previews = undefined;
+    renderSidebar();
+    await quietMounted();
+  });
+
+  test('a failed read with nothing cached does the same', async () => {
+    window.localStorage.setItem(LAST_KNOWN_KEY, 'on');
+    state.previews = undefined;
+    renderSidebar();
+    await quietMounted();
+    // Still quiet after the boundary settles: nothing swaps it back.
+    await waitFor(() =>
+      expect(document.querySelector('.sidebar__footer--quiet')).not.toBeNull(),
+    );
+  });
+
+  test('with no remembered answer a pending read draws the old sidebar', async () => {
+    state.previews = undefined;
+    renderSidebar();
+    expect(
+      await screen.findByRole('button', { name: 'New Board' }),
+    ).toBeTruthy();
+    expect(document.querySelector('.sidebar__footer--quiet')).toBeNull();
+  });
+
+  test('the remembered answer follows the read, on and off', async () => {
+    const view = renderSidebar();
+    await settingsRow();
+    expect(window.localStorage.getItem(LAST_KNOWN_KEY)).toBe('on');
+    view.unmount();
+    state.previews = [{ id: 'quiet-sidebar', enabled: false }];
+    renderSidebar();
+    await screen.findByRole('button', { name: 'New Board' });
+    expect(window.localStorage.getItem(LAST_KNOWN_KEY)).toBe('off');
+  });
+});
+
+describe('the quiet sidebar New chat row', () => {
+  test('asks the dock for a new chat and is never current', async () => {
+    const accept = vi.fn((event: Event) => event.preventDefault());
+    window.addEventListener(OPEN_NEW_CHAT_EVENT, accept);
+    try {
+      renderSidebar();
+      const row = await screen.findByRole('button', { name: 'New chat' });
+      expect(row.getAttribute('aria-current')).toBeNull();
+      fireEvent.click(row);
+      expect(accept).toHaveBeenCalledTimes(1);
+      expect(setDockState).not.toHaveBeenCalled();
+      expect(currentRows()).not.toContain('New chat');
+    } finally {
+      window.removeEventListener(OPEN_NEW_CHAT_EVENT, accept);
+    }
+  });
+
+  test('with no dock listening it shows the chat dock instead', async () => {
+    renderSidebar();
+    fireEvent.click(await screen.findByRole('button', { name: 'New chat' }));
+    expect(setDockState).toHaveBeenCalledWith(true);
+  });
+
+  test('its hint is the dock shortcut as bound now', async () => {
+    renderSidebar(
+      <>
+        <DockShortcut />
+        <ProjectSidebar />
+      </>,
+    );
+    const row = await screen.findByRole('button', { name: 'New chat' });
+    await waitFor(() =>
+      expect(row.querySelector('.sidebar__quiet-hint')?.textContent).toMatch(
+        /T$/,
+      ),
+    );
+    act(() => rebind?.('y'));
+    await waitFor(() =>
+      expect(row.querySelector('.sidebar__quiet-hint')?.textContent).toMatch(
+        /Y$/,
+      ),
+    );
+  });
+
+  test('on the rail it is an icon row whose tooltip carries the hint', async () => {
+    deviceSettingsStore.set('projectSidebarCollapsed', true);
+    renderSidebar(
+      <>
+        <DockShortcut />
+        <ProjectSidebar />
+      </>,
+    );
+    const row = await screen.findByRole('button', { name: 'New chat' });
+    await waitFor(() =>
+      expect(row.getAttribute('title')).toMatch(/^New chat \(.*T\)$/),
+    );
+    expect(row.querySelector('.sidebar__quiet-hint')).toBeNull();
+  });
+
+  test('in the phone drawer it closes the drawer, then asks for the chat, with no hint', async () => {
+    state.isMobile = true;
+    const order: string[] = [];
+    const accept = (event: Event) => {
+      order.push(
+        document
+          .querySelector('#mobile-navigation')!
+          .classList.contains('sidebar--expanded')
+          ? 'requested while open'
+          : 'requested after close',
+      );
+      event.preventDefault();
+    };
+    window.addEventListener(OPEN_NEW_CHAT_EVENT, accept);
+    try {
+      renderSidebar(
+        <>
+          <DockShortcut />
+          <ProjectSidebar />
+        </>,
+      );
+      act(() => {
+        window.dispatchEvent(new CustomEvent('toggle-sidebar'));
+      });
+      const row = await screen.findByRole('button', { name: 'New chat' });
+      expect(row.querySelector('.sidebar__quiet-hint')).toBeNull();
+      fireEvent.click(row);
+      expect(order).toEqual(['requested after close']);
+    } finally {
+      window.removeEventListener(OPEN_NEW_CHAT_EVENT, accept);
+    }
   });
 });
