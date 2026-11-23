@@ -29,6 +29,14 @@
 > templates), clone, and a per-project personal-layout policy, adds a personal
 > hide/disable layer on top of D2, and replaces the open question about Home
 > becoming a Board with Home as a required kernel slot.
+>
+> **Amended for the first release.** The
+> [first-release navigation design](first-release-navigation.md) replaces D3's
+> panel with a quiet sidebar, offered behind the `quiet-sidebar` Feature
+> Preview until it replaces this panel: Home and Automations above Projects,
+> an Apps section with one row per Layout you own and Discover last, and
+> labelled Customize and Settings rows pinned to the bottom. See
+> [the quiet sidebar](#quiet-sidebar-first-release) under D3.
 
 Status: **accepted direction, slices landed** (owner decisions
 2026-09-13, recorded from a design session). This record owns the reasoning
@@ -262,6 +270,33 @@ chooser for Agents, Skills, Connections, and Plugins, with Developer gated
 by the Developer setting. Schedule is a footer destination. Settings contains only
 settings-topic navigation; its gear remains available from management screens.
 
+#### Quiet sidebar (first release)
+
+With the `quiet-sidebar` Feature Preview on, the panel is the
+[first-release navigation design](first-release-navigation.md)'s quiet sidebar
+(`navigation-06`, `-07`, `-10`, `-11`):
+
+- **Home and Automations** sit above Projects, and nothing else does.
+  Automations moves out of the footer because it is daily work, not setup.
+- **Apps** follows Projects with one row per Layout you own, each with its own
+  icon (today's Boards are these Layouts), then **Discover**, which opens
+  Apps › Discover and is current anywhere on the Apps page. Empty, it reads
+  "Apps you add get their own screen here." The header has no `+`: Discover is
+  how apps are added, and the palette's New Board still creates a Board.
+- **Customize and Settings** are labelled rows pinned to the bottom, with the
+  account control beside Settings. Customize is current on its page and on
+  every item it lists, and carries a dot when any of those items does
+  (`useCustomizeGroups`), so the dot and the page that explains it share one
+  derivation.
+- The **collapsed rail** keeps every row as an icon: Home, Automations,
+  project initials, app icons, Discover, Customize with its dot, and Settings.
+  The **phone drawer** has the same structure.
+
+This revisits the rejected "global views band" below. That band put status
+views (Activity, Review, Schedule, pinned layouts) above the places. The quiet
+sidebar keeps two rows there, both places: Home and Automations. Customize and
+Settings stay out of the project list, in the footer.
+
 The destination registry owns `sidebar: { order }` for panel destinations and
 `customizeNav: { group, order }`, read by `getCustomizeNav`, for chooser entries.
 Composition refuses a destination claiming both. Routes and pages keep their
@@ -339,7 +374,9 @@ change.
 
 - **Global views band in the panel** (Home, Activity, Review, Schedule, and
   pinned layouts as rows): rejected as a transposition of another product's
-  panel; it reintroduces a status band above the places.
+  panel; it reintroduces a status band above the places. The first-release
+  [quiet sidebar](#quiet-sidebar-first-release) keeps only Home and
+  Automations above Projects, both places rather than status views.
 - **Home as a widget board instead of Boards**: kept as a *use* of Boards
   (Home may itself become a Board later) but rejected as the *answer* to
   global views, because a widget tile is not a full page.

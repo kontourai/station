@@ -48,7 +48,7 @@ A quiet sidebar with one labelled Customize page replaces the footer dialog, and
 On a phone: The menu button opens the drawer. The composer wraps so the engine picker and Start get their own row.
 
 1. **Only Home and Automations sit above Projects.** A sidebar listing every destination was considered and rejected as too noisy. _(layout; slice 1.5)_
-2. **An APPS section replaces Boards: one row per installed app, each with its own icon, then Discover.** Apps are the word people see. The app names shown are placeholders. _(layout, copy; slice 1.5)_
+2. **An APPS section replaces Boards: one row per installed app, each with its own icon, then Discover.** Apps are the word people see. An installed app's row is a Layout you own, so today's Boards are listed here too. The app names shown are placeholders. _(layout, copy; slice 1.5)_
 3. **Customize is labelled and pinned above Settings, with a dot when anything inside needs attention.** Today Customize is an unlabelled footer icon, and nothing inside it can raise attention. _(layout, new screen state; slice 1.5)_
 
 ### `navigation-07` Fresh Home
