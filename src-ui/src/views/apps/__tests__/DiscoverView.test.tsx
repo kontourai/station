@@ -594,6 +594,62 @@ describe('Apps › Discover', () => {
     ]);
   });
 
+  test('Manage sources lists every source, so one Discover does not browse can still be removed', () => {
+    state.sources = [
+      {
+        id: 'apps',
+        kind: 'plugins',
+        displayName: 'App catalog',
+        origin: 'user',
+        adapter: 'directory',
+        enabled: true,
+        status: 'ready',
+      },
+      {
+        id: 'agents-only',
+        kind: 'agents',
+        displayName: 'Agent catalog',
+        origin: 'user',
+        adapter: 'directory',
+        enabled: true,
+        status: 'ready',
+        detection: {
+          state: 'detected',
+          checkedAt: '2026-11-12T00:00:00.000Z',
+          kinds: [
+            {
+              kind: 'agents',
+              count: 2,
+              via: 'station-manifest',
+              installable: true,
+            },
+          ],
+        },
+      },
+    ];
+    render(<DiscoverView />);
+    // The picker offers only what Discover shows.
+    const picker = screen.getByLabelText('Show apps from') as HTMLSelectElement;
+    expect([...picker.options].map((option) => option.value)).toEqual([
+      'all',
+      'apps',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Manage sources (2)' }));
+    const dialog = screen.getByRole('dialog', { name: 'Manage sources' });
+    expect(within(dialog).getByText('Agent catalog')).toBeTruthy();
+    // Its card says what it provides.
+    expect(within(dialog).getByText('2 agents')).toBeTruthy();
+    fireEvent.click(
+      within(dialog).getByRole('button', {
+        name: 'More actions for Agent catalog',
+      }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove source' }));
+    expect(state.sourceActions).toContainEqual(
+      expect.objectContaining({ id: 'agents-only', action: 'remove' }),
+    );
+  });
+
   test('keeps the remote extension consent on the page', () => {
     render(<DiscoverView />);
     act(() => {

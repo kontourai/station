@@ -972,7 +972,7 @@ never queues it for automatic replay. A changed source requires a new review.
 Use **Remove unsent visual skill** to deliberately return to ordinary chat.
 **Prepare another stage in this conversation** binds a new unsent preparation
 to the current recorded stage; sending still requires the same source to be
-available. **Browse marketplaces** opens Apps › Discover while retaining the picker
+available. **Browse apps** opens Apps › Discover while retaining the picker
 inputs and choices. Return or browser Back refetches the inventory and setup;
 it never installs a plugin or starts the skill automatically.
 

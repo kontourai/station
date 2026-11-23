@@ -30,13 +30,14 @@ import './RegistryView.css';
 import './page-layout.css';
 
 /**
- * The source kind each catalogue page lists sources of. Only skills and agent
- * entries come from sources; tool servers, layouts and kits do not, so those
- * pages have no source picker.
+ * The source kind each catalogue page lists sources of. Of the pages that
+ * remain only skills come from sources; tool servers, layouts and kits do
+ * not, so those pages have no source picker. Every source, of any kind, is
+ * managed from Apps › Discover.
  */
 const PAGE_SOURCE_KINDS: Partial<
-  Record<RegistryCatalogTab, readonly ['skills'] | readonly ['agents']>
-> = { skills: ['skills'], agents: ['agents'] };
+  Record<RegistryCatalogTab, readonly ['skills']>
+> = { skills: ['skills'] };
 
 function registryInstallationKey(tab: RegistryCatalogTab, itemId: string) {
   return `${tab}:${itemId}`;
@@ -58,13 +59,13 @@ export function RegistryView({
   const showSurface = useShowSurface();
   const invalidateQuery = useInvalidateQuery();
   const [activeTab, setActiveTab] = useState<RegistryCatalogTab>(
-    initialTab ?? 'agents',
+    initialTab ?? 'skills',
   );
   // The URL is authoritative: Back/Forward (or any in-app navigation that
   // changes /registry/:tab while this view stays mounted) must re-sync the
   // rendered tab — initializer-only state desyncs on popstate (archive#2678).
   useEffect(() => {
-    setActiveTab(initialTab ?? 'agents');
+    setActiveTab(initialTab ?? 'skills');
   }, [initialTab]);
   // The agent editor's tool picker switches its own tabs in place.
   const selectTab = (tab: RegistryCatalogTab) => setActiveTab(tab);
@@ -86,7 +87,7 @@ export function RegistryView({
     dataUpdatedAt: availableUpdatedAt,
     refetch: refetchAvailable,
   } = useRegistryItemsQuery<RegistryItem>(
-    activeTab === 'kits' ? 'agents' : activeTab,
+    activeTab === 'kits' ? 'skills' : activeTab,
     { enabled: activeTab !== 'kits' },
   );
   const {
@@ -95,7 +96,7 @@ export function RegistryView({
     isLoading: loadingInstalled,
     refetch: refetchInstalled,
   } = useInstalledRegistryItemsQuery<RegistryItem>(
-    activeTab === 'kits' ? 'agents' : activeTab,
+    activeTab === 'kits' ? 'skills' : activeTab,
     { enabled: activeTab !== 'kits' },
   );
   useEffect(() => {
@@ -110,7 +111,6 @@ export function RegistryView({
   const {
     startInstall,
     previewMutation,
-    agentMutation,
     pluginMutation,
     modal: pluginInstallModal,
   } = usePluginCatalogInstall({
@@ -169,25 +169,21 @@ export function RegistryView({
     ? isInstalled(selectedItem, selectedItemId ?? '')
     : false;
   const pendingId =
-    activeTab === 'agents'
-      ? agentMutation.variables?.id
-      : activeTab === 'skills'
-        ? skillMutation.variables?.id
-        : activeTab === 'integrations'
-          ? integrationMutation.variables?.id
-          : activeTab === 'layouts'
-            ? layoutMutation.variables?.id
-            : pluginMutation.variables?.id;
+    activeTab === 'skills'
+      ? skillMutation.variables?.id
+      : activeTab === 'integrations'
+        ? integrationMutation.variables?.id
+        : activeTab === 'layouts'
+          ? layoutMutation.variables?.id
+          : pluginMutation.variables?.id;
   const mutationPending =
-    activeTab === 'agents'
-      ? agentMutation.isPending
-      : activeTab === 'skills'
-        ? skillMutation.isPending
-        : activeTab === 'integrations'
-          ? integrationMutation.isPending
-          : activeTab === 'layouts'
-            ? layoutMutation.isPending
-            : pluginMutation.isPending;
+    activeTab === 'skills'
+      ? skillMutation.isPending
+      : activeTab === 'integrations'
+        ? integrationMutation.isPending
+        : activeTab === 'layouts'
+          ? layoutMutation.isPending
+          : pluginMutation.isPending;
 
   const runLayoutAction = (
     item: RegistryItem,
@@ -260,23 +256,15 @@ export function RegistryView({
       setMessage(refusal);
       return;
     }
-    // Installing a registry entry the plugin registry resolves starts at the
-    // preview, exactly like the Plugins view: the decision the server needs
-    // is about the previewed bytes, so there is nothing honest to send until
-    // the preview has been shown. The server is the authority on which ids
-    // are plugins — an agent-face entry it cannot resolve answers
-    // `registry-plugin-not-found` and keeps the plain agent install path.
-    if (
-      action === 'install' &&
-      (activeTab === 'agents' || activeTab === 'plugins')
-    ) {
+    // Installing a plugin (the tool picker's Plugins tab) starts at the
+    // preview: the decision the server needs is about the previewed bytes,
+    // so there is nothing honest to send until the preview has been shown.
+    if (action === 'install' && activeTab === 'plugins') {
       startInstall(activeTab, item, itemId);
       return;
     }
     const callbacks = actionCallbacks(activeTab, item, itemId, isInstalled);
-    if (activeTab === 'agents') {
-      agentMutation.mutate({ id: itemId, action }, callbacks);
-    } else if (activeTab === 'skills') {
+    if (activeTab === 'skills') {
       skillMutation.mutate({ id: itemId, action }, callbacks);
     } else if (activeTab === 'integrations') {
       integrationMutation.mutate({ id: itemId, action }, callbacks);

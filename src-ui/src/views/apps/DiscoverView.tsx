@@ -229,6 +229,10 @@ export function DiscoverView() {
                   onSelect={(id) => setSource(id)}
                   kinds={['plugins']}
                   manage="dialog"
+                  // Discover is where sources are managed: every source is
+                  // listed there, including one that only supplies agents,
+                  // which no page browses.
+                  manageAll
                   label="Show apps from"
                   hideLabel
                 />

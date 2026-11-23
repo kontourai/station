@@ -471,7 +471,7 @@ test('keeps an inspected catalog selection after a catalog refresh changes the a
 });
 
 describe('RegistryView', () => {
-  test.each(['agents', 'plugins'] as const)(
+  test.each(['skills', 'plugins'] as const)(
     'recovers the %s catalog after a failed read and a failed retry',
     async (tab) => {
       catalogRecovery.useItems.mockImplementation(useRegistryItemsQuery);
@@ -686,7 +686,7 @@ describe('RegistryView', () => {
   test('a catalog card shows a short Details label and names the item for assistive tech', () => {
     render(<RegistryView />);
     const button = screen.getByRole('button', {
-      name: `View ${registryItems.agents[0]!.displayName} details`,
+      name: `View ${registryItems.skills[0]!.displayName} details`,
     });
     expect(button.textContent).toBe('Details');
   });
@@ -731,102 +731,6 @@ describe('RegistryView', () => {
     ).toBeNull();
   });
 
-  test('uses selected-card preview actions for agents without mutating on card click', () => {
-    const { rerender } = render(<RegistryView />);
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'View Agent Two details' }),
-    );
-
-    expect(mutationCalls).toEqual([]);
-    const detail = screen.getByTestId('registry-detail');
-    expect(within(detail).getByText('Selected agent')).toBeTruthy();
-    expect(
-      within(detail).getByRole('button', { name: 'Install' }),
-    ).toBeTruthy();
-
-    fireEvent.click(within(detail).getByRole('button', { name: 'Install' }));
-
-    expect(mutationCalls).toEqual([
-      { id: 'agent-two', action: 'install', tab: 'agents' },
-    ]);
-    expect(screen.getByText('Installed Agent Two')).toBeTruthy();
-
-    rerender(<RegistryView />);
-    const installedDetail = screen.getByTestId('registry-detail');
-    expect(
-      within(installedDetail).getByRole('button', { name: 'Remove' }),
-    ).toBeTruthy();
-
-    fireEvent.click(
-      within(installedDetail).getByRole('button', { name: 'Remove' }),
-    );
-
-    expect(mutationCalls).toEqual([
-      { id: 'agent-two', action: 'install', tab: 'agents' },
-      { id: 'agent-two', action: 'uninstall', tab: 'agents' },
-    ]);
-    expect(screen.getByText('Removed Agent Two')).toBeTruthy();
-  });
-
-  test.each([
-    ['Skills', 'skills', 'skill-one', 'Skill One', 'GitHub'],
-    [
-      'Integrations',
-      'integrations',
-      'integration-one',
-      'Integration One',
-      undefined,
-    ],
-  ] as const)(
-    'renders preview install/remove actions for %s',
-    (tabLabel, tabKey, itemId, itemLabel, sourceLabel) => {
-      const { rerender } = render(<RegistryView initialTab={tabKey} />);
-      expect(tabLabel).toBeTruthy();
-      const detail = screen.getByTestId('registry-detail');
-      expect(
-        within(detail).getByText(
-          tabKey === 'integrations'
-            ? 'Selected tool server'
-            : `Selected ${tabKey.slice(0, -1)}`,
-        ),
-      ).toBeTruthy();
-      if (sourceLabel) {
-        expect(within(detail).getAllByText(sourceLabel).length).toBeGreaterThan(
-          0,
-        );
-      }
-
-      fireEvent.click(
-        screen.getByRole('button', { name: `View ${itemLabel} details` }),
-      );
-      const selectedDetail = screen.getByTestId('registry-detail');
-      fireEvent.click(
-        within(selectedDetail).getByRole('button', { name: /Install/ }),
-      );
-
-      expect(mutationCalls).toContainEqual(
-        expect.objectContaining({
-          id: itemId,
-          action: 'install',
-          tab: tabKey,
-        }),
-      );
-      expect(screen.getByText(`Installed ${itemLabel}`)).toBeTruthy();
-      expect(showToastMock).not.toHaveBeenCalled();
-
-      rerender(<RegistryView initialTab={tabKey} />);
-      const installedDetail = screen.getByTestId('registry-detail');
-      expect(
-        within(installedDetail).getByRole('button', { name: /Remove/ }),
-      ).toBeTruthy();
-    },
-  );
-
-  // #765 F1's exact case: the audit found a layout's detail block labeled
-  // "Selected agent". The eyebrow derives from the active tab, so the
-  // Layouts tab — which the install-flow cases above cannot cover, its
-  // detail actions differ — is pinned on its own.
   test('derives the detail eyebrow from the Layouts tab', () => {
     render(<RegistryView initialTab="layouts" />);
 
@@ -879,10 +783,10 @@ describe('RegistryView', () => {
   });
 
   test('shows in-app empty-state guidance, not a terminal command', () => {
-    emptyTabs.add('agents');
+    emptyTabs.add('skills');
     render(<RegistryView />);
 
-    expect(screen.getByText('No agents in your sources yet.')).toBeTruthy();
+    expect(screen.getByText('No skills in your sources yet.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Manage plugins' })).toBeNull();
     expect(
       screen.getByText('Add a source, or ask the Station operator to add one.'),
@@ -913,30 +817,30 @@ describe('RegistryView', () => {
   test('filters registry items and explains and clears a no-match state', () => {
     render(<RegistryView />);
 
-    fireEvent.change(screen.getByLabelText('Search agents'), {
-      target: { value: 'backup' },
+    fireEvent.change(screen.getByLabelText('Search skills'), {
+      target: { value: 'prototype' },
     });
 
     expect(
-      screen.getByRole('button', { name: 'View Agent Two details' }),
+      screen.getByRole('button', { name: 'View Prototype details' }),
     ).toBeTruthy();
     expect(
-      screen.queryByRole('button', { name: 'View Agent One details' }),
+      screen.queryByRole('button', { name: 'View Skill One details' }),
     ).toBeNull();
 
-    fireEvent.change(screen.getByLabelText('Search agents'), {
+    fireEvent.change(screen.getByLabelText('Search skills'), {
       target: { value: 'missing entry' },
     });
 
     expect(
-      screen.getByText('Nothing in agents matches “missing entry”'),
+      screen.getByText('Nothing in skills matches “missing entry”'),
     ).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
     expect(
-      (screen.getByLabelText('Search agents') as HTMLInputElement).value,
+      (screen.getByLabelText('Search skills') as HTMLInputElement).value,
     ).toBe('');
     expect(
-      screen.getByRole('button', { name: 'View Agent One details' }),
+      screen.getByRole('button', { name: 'View Skill One details' }),
     ).toBeTruthy();
   });
 
@@ -1409,22 +1313,12 @@ describe('RegistryView', () => {
     expect(pluginRegistryReload).not.toHaveBeenCalled();
   });
 
-  test('an agents-tab entry the plugin registry does not resolve keeps the plain agent install path', () => {
+  // The agent catalogue is gone: the page opens on skills by default, and
+  // nothing installs an agent entry from here.
+  test('opens on Browse skills when no page is named', () => {
     render(<RegistryView />);
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'View Agent Two details' }),
-    );
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
-
-    expect(previewMutationCalls).toEqual(['agent-two']);
-    expect(mutationCalls).toEqual([
-      { id: 'agent-two', action: 'install', tab: 'agents' },
-    ]);
+    expect(screen.getByRole('textbox', { name: 'Search skills' })).toBeTruthy();
+    expect(screen.queryByRole('textbox', { name: 'Search agents' })).toBeNull();
   });
 
   test('renders a selected-card preview failure and keeps a repeat install click live', () => {

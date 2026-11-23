@@ -596,7 +596,8 @@ GitHub repository. Station detects what it provides from its content:
 marketplace index or MCP definitions, which are recognized but not yet
 installable ([decision](../decisions/registry-sources-detected-by-structure.md)). Each
 source under **Manage sources** (opened from Discover's source picker, so the
-catalog comes first) shows its trust tier
+catalog comes first; Discover's list holds every source, including one that
+supplies only skills or agents) shows its trust tier
 (Station, Default, Plugin, or Unverified for one a person added), what it was
 detected to provide with counts (a default catalog shows its last count, or
 that it has not been scanned yet), and when it was last read and last changed

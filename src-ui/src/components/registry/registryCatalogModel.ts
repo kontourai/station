@@ -86,6 +86,8 @@ export function getRegistryTabCopy(tab: RegistryCatalogTab): {
   owner?: RegistryPageOwner;
 } {
   switch (tab) {
+    // No page shows the agent catalogue any more; the SDK's tab type still
+    // names it, so the switch must too.
     case 'agents':
       return {
         title: 'Browse agents',
