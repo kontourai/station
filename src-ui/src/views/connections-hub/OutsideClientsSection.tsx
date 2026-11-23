@@ -2,10 +2,11 @@ import {
   type ApiRequestScope,
   type OutsideClientReviewAction,
   useOutsideClientReviewMutation,
+  useOutsideClientReviewStatusQuery,
   useOutsideClientsQuery,
 } from '@kontourai/station-sdk';
 import { Badge } from '@kontourai/ui/react';
-import { useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Dialog } from '../../components/Dialog';
@@ -17,6 +18,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { copyToClipboard } from '../../lib/clipboard';
 import { openExternalLink } from '../../platform/openExternalLink';
+import { usePlatformProfile } from '../../platform/PlatformProfileContext';
 import {
   OutsideClientScopeReview,
   type OutsideClientScopeTarget,
@@ -35,6 +37,15 @@ const reviewTitles = {
   revoke: 'Revoke access',
 };
 
+const decisionMessages = {
+  pending: 'Waiting for a passkey decision.',
+  approved: 'Decision approved.',
+  denied: 'Review canceled or declined.',
+  expired: 'Review expired. Go back to start a new one.',
+  target_changed: 'Access changed. Go back to review the current details.',
+  session_ended: 'The operator session ended.',
+};
+
 export function OutsideClientsSection() {
   const scope = useHostRequestAuthorityScope();
   if (!scope) return null;
@@ -47,8 +58,20 @@ export function OutsideClientsSection() {
 }
 
 function ScopedOutsideClients({ scope }: { scope: ApiRequestScope }) {
+  const { isTauri } = usePlatformProfile();
   const clients = useOutsideClientsQuery(scope);
   const review = useOutsideClientReviewMutation(scope);
+  const decision = useOutsideClientReviewStatusQuery(scope, review.data?.id);
+  const decisionStatus = decision.data?.status;
+  const settled = decisionStatus !== undefined && decisionStatus !== 'pending';
+  const refreshInventory = clients.refetch;
+  const decisionResult = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    if (settled) void refreshInventory();
+  }, [settled, refreshInventory]);
+  useLayoutEffect(() => {
+    if (settled) decisionResult.current?.focus();
+  }, [settled]);
   const [open, setOpen] = useState(false);
   const [selection, setSelection] = useState<{
     name: string;
@@ -86,7 +109,7 @@ function ScopedOutsideClients({ scope }: { scope: ApiRequestScope }) {
   }
   if (!observed || observed.state === 'unavailable') return null;
   if (observed.state === 'operator-required') {
-    const { signInUrl } = observed;
+    const signInUrl = isTauri ? undefined : observed.signInUrl;
     return (
       <section
         className="outside-clients page-frame__body-inset"
@@ -97,17 +120,29 @@ function ScopedOutsideClients({ scope }: { scope: ApiRequestScope }) {
           description={
             signInUrl
               ? 'Sign in as the Station operator to review access.'
-              : 'Review outside clients from the Station host.'
+              : isTauri
+                ? 'Open Tools in a paired browser to review outside clients.'
+                : 'Review outside clients from the Station host.'
           }
           control={
             signInUrl ? (
-              <Button
-                onClick={() =>
-                  scope.isCurrent() && void openExternalLink(signInUrl)
+              <ActionRow
+                overflowLabel="More operator actions"
+                secondary={
+                  <Button onClick={() => void clients.refetch()}>
+                    Check sign-in
+                  </Button>
                 }
-              >
-                Sign in as operator
-              </Button>
+                primary={
+                  <Button
+                    onClick={() =>
+                      scope.isCurrent() && void openExternalLink(signInUrl)
+                    }
+                  >
+                    Sign in as operator
+                  </Button>
+                }
+              />
             ) : undefined
           }
         />
@@ -115,7 +150,7 @@ function ScopedOutsideClients({ scope }: { scope: ApiRequestScope }) {
     );
   }
 
-  const { resource, pending, grants } = observed.data;
+  const { resource, pending, grants, olderGrantsOmitted } = observed.data;
   const close = () => {
     setOpen(false);
     setSelection(undefined);
@@ -146,7 +181,7 @@ function ScopedOutsideClients({ scope }: { scope: ApiRequestScope }) {
       description={describeReadFailure(review.error)}
     />
   );
-  const reviewButton = review.data && (
+  const reviewButton = review.data && !settled && (
     <Button
       variant="primary"
       onClick={() => {
@@ -166,6 +201,13 @@ function ScopedOutsideClients({ scope }: { scope: ApiRequestScope }) {
     target?.operation === 'deny' || target?.operation === 'revoke'
       ? target
       : undefined;
+
+  const decisionMessage =
+    decisionStatus === 'approved' && target?.operation === 'approve'
+      ? 'Approved. The client can finish signing in.'
+      : decisionStatus
+        ? decisionMessages[decisionStatus]
+        : 'Confirm this decision with your operator passkey.';
 
   return (
     <section
@@ -203,7 +245,7 @@ function ScopedOutsideClients({ scope }: { scope: ApiRequestScope }) {
                 <Button onClick={close}>Done</Button>
               )}
               {reviewButton ||
-                (selection && (
+                (!settled && selection && (
                   <Button
                     ref={continueReview}
                     variant="primary"
@@ -224,7 +266,40 @@ function ScopedOutsideClients({ scope }: { scope: ApiRequestScope }) {
         >
           {reviewFailure}
           {selection &&
-            (scopeTarget && !review.data ? (
+            (review.data ? (
+              <div className="content-stack">
+                {decision.isError && (
+                  <ErrorState
+                    variant="compact"
+                    title="Could not check the decision"
+                    description={describeReadFailure(decision.error)}
+                  />
+                )}
+                <PageRow
+                  title={
+                    <span
+                      ref={decisionResult}
+                      role="status"
+                      tabIndex={settled ? -1 : undefined}
+                    >
+                      {decisionMessage}
+                    </span>
+                  }
+                  control={
+                    !settled && (
+                      <Button
+                        aria-disabled={decision.isFetching}
+                        onClick={() => {
+                          if (!decision.isFetching) void decision.refetch();
+                        }}
+                      >
+                        Check decision
+                      </Button>
+                    )
+                  }
+                />
+              </div>
+            ) : scopeTarget ? (
               <OutsideClientScopeReview
                 formId={scopeFormId}
                 target={scopeTarget}
@@ -232,9 +307,7 @@ function ScopedOutsideClients({ scope }: { scope: ApiRequestScope }) {
                 onSubmit={requestReview}
               />
             ) : (
-              <p role="status">
-                Confirm this decision with your operator passkey.
-              </p>
+              <p>Confirm this decision with your operator passkey.</p>
             ))}
           <div hidden={Boolean(selection)}>
             <div className="content-stack content-stack--sections outside-clients__inventory">
@@ -294,7 +367,14 @@ function ScopedOutsideClients({ scope }: { scope: ApiRequestScope }) {
                   </div>
                 )}
               </PageSectionGroup>
-              <PageSectionGroup title="Client grants">
+              <PageSectionGroup
+                title="Client grants"
+                description={
+                  olderGrantsOmitted
+                    ? 'Showing the 50 most recent ended grants.'
+                    : undefined
+                }
+              >
                 {grants.length === 0 ? (
                   <Empty variant="compact" label="No client grants" />
                 ) : (

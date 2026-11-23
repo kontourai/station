@@ -265,10 +265,13 @@ export class OutsideAgentManagementService {
           };
         })
         .filter((row) => row !== null);
+      const inventory =
+        actor.kind === 'host' ? undefined : this.store.grantInventory();
       return {
         resource: `${this.store.options.issuer}/mcp`,
         pending,
-        grants: this.store.grants().map((g) => ({
+        ...(inventory && { olderGrantsOmitted: inventory.olderGrantsOmitted }),
+        grants: (inventory?.rows ?? this.store.grants()).map((g) => ({
           grantId: g.id,
           version: g.version,
           digest: this.store.grantDigest(g),

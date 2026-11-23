@@ -9,6 +9,7 @@ const redirectUri = z.string().max(2048);
 const timestamp = z.number().int().nonnegative();
 const inventory = z.object({
   resource: z.string().url(),
+  olderGrantsOmitted: z.boolean().optional(),
   pending: z
     .array(
       z.object({
@@ -42,7 +43,7 @@ const inventory = z.object({
         lastUsedAt: timestamp.nullable(),
       }),
     )
-    .max(100),
+    .max(150),
 });
 
 type OutsideClientsResult =
@@ -96,6 +97,7 @@ export function useOutsideClientsQuery(requestScope: ApiRequestScope) {
       staleTime: 0,
       gcTime: 0,
       refetchOnMount: 'always',
+      refetchOnWindowFocus: true,
       retry: false,
       keepPreviousData: false,
       cancelWhenInactive: true,
@@ -195,6 +197,59 @@ export function useOutsideClientReviewMutation(requestScope: ApiRequestScope) {
       review.hash
     )
       throw new Error('Passkey review URL is invalid.');
-    return { reviewUrl: review.href, expiresAt };
+    return { id, reviewUrl: review.href, expiresAt };
   });
+}
+
+const reviewStatus = z.object({
+  status: z.enum([
+    'pending',
+    'approved',
+    'denied',
+    'expired',
+    'target_changed',
+    'session_ended',
+  ]),
+});
+
+export function useOutsideClientReviewStatusQuery(
+  requestScope: ApiRequestScope,
+  transactionId: string | undefined,
+) {
+  return useApiQuery(
+    [
+      'outside-client-review-status',
+      requestScope.apiBase,
+      requestScope.authorityKey,
+      transactionId ?? null,
+    ],
+    async (signal) => {
+      const response = await getJson(
+        `${requestScope.apiBase}/api/outside-agent/transactions/${encodeURIComponent(transactionId ?? '')}`,
+        { requestScope, signal, maxResponseBytes: 64 * 1024 },
+      );
+      const body: unknown = await response
+        .json()
+        .catch(unlessDeadline(() => null));
+      if (!response.ok)
+        throw envelopeError(
+          response,
+          body,
+          'Could not check the passkey decision.',
+        );
+      const parsed = reviewStatus.safeParse(body);
+      if (!parsed.success)
+        throw new Error('Passkey decision response is invalid.');
+      return parsed.data;
+    },
+    {
+      enabled: transactionId !== undefined,
+      staleTime: 0,
+      gcTime: 0,
+      retry: false,
+      keepPreviousData: false,
+      cancelWhenInactive: true,
+      refetchOnWindowFocus: true,
+    },
+  );
 }

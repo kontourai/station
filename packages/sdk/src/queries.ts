@@ -468,6 +468,7 @@ export {
 export {
   type OutsideClientReviewAction,
   useOutsideClientReviewMutation,
+  useOutsideClientReviewStatusQuery,
   useOutsideClientsQuery,
 } from './query-domains/outsideClients';
 export {

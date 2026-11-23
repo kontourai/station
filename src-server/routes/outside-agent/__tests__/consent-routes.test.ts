@@ -811,6 +811,35 @@ test('a paired Device receives an operator sign-in route without outside client 
   });
 });
 
+test('operator inventory keeps current grants when retained history exceeds the page', async () => {
+  const h = await fixture();
+  const store = h.management.store;
+  const resource = `${OUTSIDE_TEST_APP}/mcp`;
+  const activate = () => {
+    const { tokens } = h.activate();
+    const grant = store.access(tokens.accessToken, resource);
+    if (!grant) throw new Error('fixture did not activate a grant');
+    return grant;
+  };
+  const active = activate();
+  const ended: string[] = [];
+  for (let index = 0; index < 51; index += 1) {
+    h.clock.now += 1;
+    const grant = activate();
+    store.revoke(grant.id, grant.version);
+    ended.push(grant.id);
+  }
+  const inventory = await h.api.request('/api/outside-agent/clients', {
+    headers: { cookie: h.cookie },
+  });
+  expect(inventory.status).toBe(200);
+  const data = await inventory.json();
+  expect(data.olderGrantsOmitted).toBe(true);
+  expect(
+    data.grants.map((grant: { grantId: string }) => grant.grantId),
+  ).toEqual([active.id, ...ended.slice(1).reverse()]);
+});
+
 async function expectSameResponse(actual: Response, expected: Response) {
   expect(actual.status).toBe(expected.status);
   expect(Buffer.from(await actual.arrayBuffer())).toEqual(
