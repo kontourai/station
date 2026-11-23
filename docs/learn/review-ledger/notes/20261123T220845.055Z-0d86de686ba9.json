@@ -1,0 +1,15 @@
+{
+  "revision": "5f73f6f0abb09917f027b80c883859b52affa053",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Checked the receipt descriptions against the container source and controlled fixtures. The producer observation requires a live owned namespace. The fixed-text receipt verifies one successful native turn and one observed channel request. The receipts leave execution authorization, provider qualification, funding, and cleanup with their existing owners.","inputs":["docs/guides/native-model-channel-lab.md","src-server/services/connections/__tests__/native-model-container.test.ts","src-server/services/connections/native-model-container.ts"]},
+
+    {"path":"docs/README.md","note":"Reviewed the owner-bound receipt paragraph against the namespace and qualification references. The lab source now distinguishes executable observation, fixed-text completion, and cleanup. The existing provider, hereditary authority, and funding limits still apply.","inputs":["docs/guides/native-model-channel-lab.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the owner-bound receipt paragraph against the namespace and qualification references. The lab source now distinguishes executable observation, fixed-text completion, and cleanup. The existing provider, hereditary authority, and funding limits still apply.","inputs":["docs/guides/native-model-channel-lab.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced the held namespace, image and selected executable through hash and version checks, and the successful fixed-text result through the single channel request and exact completion parser. Brokered runs cannot issue the fixed-text receipt. Receipt inspection is bound to the issuing owner.","inputs":["src-server/services/connections/native-model-container.ts"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Traced the held namespace, image and selected executable through hash and version checks, and the successful fixed-text result through the single channel request and exact completion parser. Brokered runs cannot issue the fixed-text receipt. Receipt inspection is bound to the issuing owner.","inputs":["src-server/services/connections/native-model-container.ts"]}
+  ]
+}
