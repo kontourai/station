@@ -1,0 +1,7 @@
+{
+  "revision": "ff50277a6d175697884db9f351a54eacf4bf0b96",
+
+  "notes": [
+    {"path":"docs/learn/media/project-start-before.png","note":"HomeStartComposer change only affects Home without a fixed Project; this capture shows Project start controls (projectSlug passed), unchanged. No recapture needed.","inputs":["docs/learn/media/project-start-before.png","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}
