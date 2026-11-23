@@ -10,8 +10,8 @@ Tasks, approvals or conversations into it.
 Enable **Apps library** in **Settings → Advanced → Feature previews**, then
 choose **Browse apps** in the **Apps** section. In the collapsed rail,
 choose **Apps** first. On a phone, open the navigation drawer. With the
-**Quiet sidebar** preview on, the collapsed rail shows each app instead, so
-expand the sidebar to reach **Browse apps**.
+**Quiet sidebar** preview on, **Browse apps** is not shown: **Discover**
+takes its place.
 
 The Apps launcher searches your personal layouts by name, description, address
 and plugin. **Your Boards** lists records without a plugin source; **Plugin

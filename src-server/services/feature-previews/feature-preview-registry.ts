@@ -153,7 +153,7 @@ export class FeaturePreviewRegistry {
       id: 'quiet-sidebar',
       label: 'Quiet sidebar',
       description:
-        'Show Home and Automations above Projects, your apps with Discover, and labelled Customize and Settings rows.',
+        'Show New chat, Home and Automations above Projects, your apps with Discover, and labelled Customize and Settings rows.',
     });
     this.state = new GrantsFileStore<FeaturePreviewState>({
       filePath: featurePreviewStatePath(homeDir),

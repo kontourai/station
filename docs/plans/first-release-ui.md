@@ -49,7 +49,7 @@ Done when: A new user lands on Home with what Station found, a stable default fo
 | 1.3 | #5403 | Add the Customize landing with what needs you | `navigation-08` 2, 3, 4; `customize-20` 1, 2, 3, 4 | M | 1.1, 1.2 |
 | 1.4a | #5479 | Add what an app is to plugin catalog entries, for Apps › Discover | no change of its own: the catalog facts that `apps-03` 1, 2 and 3 read (1.4 delivers them) | M |  |
 | 1.4 | #5404 | Turn Plugins and Registry into Apps › Discover | `apps-03` 1, 2, 3, 4, 5, 6 | M | 1.4a |
-| 1.5 | #5405 | Build the quiet sidebar behind one preview | `navigation-06` 1, 2, 3; `navigation-07` 1, 2; `navigation-10` 1; `navigation-11` 1; `apps-01` 1; `apps-02` 1, 4 | M | 1.2, 1.4 |
+| 1.5 | #5405 | Build the quiet sidebar behind one preview | `navigation-06` 1, 2, 3, 4; `navigation-07` 1, 2; `navigation-10` 1; `navigation-11` 1; `apps-01` 1; `apps-02` 1, 4 | M | 1.2, 1.4 |
 | 1.6 | #5406 | Let any Customize item be pinned to the sidebar | `navigation-08` 5; `navigation-09` 1, 2, 3 | M | 1.3, 1.5 |
 | 1.7 | #5407 | Replace the setup wizard and tour with what Station found | `first-run-01` 1, 4, 5; `first-run-02` 2, 3; `apps-01` 2 | M | 1.1 |
 | 1.8 | #5408 | Show one card under the Home composer: usage sharing, then the apps tip | `first-run-01` 6; `apps-01` 3 | S | 1.7, 1.4 |
