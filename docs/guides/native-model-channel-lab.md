@@ -106,6 +106,13 @@ key stays in the child environment. Fixed-text launch keeps its original
 configuration even when a broker callback is mounted. This launcher remains
 unwired to serving callers and supplies no parent grant or provider reservation.
 
+The container owner can observe the executable path, SHA-256, and CLI version
+in the live namespace and retain them in an owner-bound receipt. Its fixed-text
+completion receipt requires a successful single-turn result and one channel
+request. Brokered launches cannot issue that fixed-text receipt. The two
+receipts describe observations. Provider qualification, funding, and namespace
+cleanup keep their own independent checks.
+
 ### Create-only lifecycle controls
 
 Use the captured executable and Unix endpoint above, and select an existing
