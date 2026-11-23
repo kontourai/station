@@ -311,7 +311,9 @@ test('a hidden inbox’s toggle says how many need you, and a snooze takes the r
     expect(
       await screen.findByRole('button', { name: 'Show chat list' }),
     ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /^Show chat list, / })).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /^Show chat list, / }),
+    ).toBeNull();
   } finally {
     clearSnooze('conv-owed', Date.now());
     deviceSettingsStore.reset('inboxOpen');

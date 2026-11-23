@@ -125,19 +125,16 @@ export function MobileInboxSelection({
     // What was marked done stays undoable, with its notice and ⌘Z, even
     // when some of the selection failed.
     if (done.length)
-      offerInboxUndo(
-        bulkDoneNotice(done, work.supported),
-        () => {
-          for (const entry of done) {
-            if (entry.kind === 'settled')
-              work.change.mutate({
-                conversationId: entry.conversationId,
-                settled: false,
-              });
-            else restore(entry.item);
-          }
-        },
-      );
+      offerInboxUndo(bulkDoneNotice(done, work.supported), () => {
+        for (const entry of done) {
+          if (entry.kind === 'settled')
+            work.change.mutate({
+              conversationId: entry.conversationId,
+              settled: false,
+            });
+          else restore(entry.item);
+        }
+      });
     if (!mounted.current) return;
     busy.current = false;
     setPending(false);

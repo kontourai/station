@@ -280,7 +280,10 @@ test.describe('Coding bar and rail (#4401)', () => {
     }) => {
       await page.setViewportSize({ width, height: 900 });
       const crumbs = page.getByRole('list', { name: 'Breadcrumb' });
-      const inbox = crumbs.getByRole('button', { name: 'Chat list', exact: true });
+      const inbox = crumbs.getByRole('button', {
+        name: 'Chat list',
+        exact: true,
+      });
       await expect(inbox).toBeVisible();
       // How much of an element's text its box cuts off, in CSS px.
       const cutOff = (element: Element) => {

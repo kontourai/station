@@ -265,7 +265,10 @@ test.describe('Dock Mode Preference', () => {
     // The bar's inbox toggle is a pressed/unpressed button named for what
     // it does: "Hide chat list" while open, "Show chat list" (with what is waiting)
     // while hidden.
-    const hide = page.getByRole('button', { name: 'Hide chat list', exact: true });
+    const hide = page.getByRole('button', {
+      name: 'Hide chat list',
+      exact: true,
+    });
     const show = page.getByRole('button', { name: /^Show chat list/ });
     await expect(hide.or(show)).toBeVisible();
     if (await show.isVisible()) await show.click();

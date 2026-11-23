@@ -7,12 +7,12 @@ import {
   waitFor,
 } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
+import { toastStore } from '../../../contexts/ToastContext';
 import type { HomeWorkItem } from '../../../views/home/home-view-model';
 import {
   resetPendingUndoForTest,
   undoLatestAction,
 } from '../../undo/UndoableActionShortcut';
-import { toastStore } from '../../../contexts/ToastContext';
 import { MobileInboxSelection } from '../MobileInboxSelection';
 
 const mutate = vi.hoisted(() => vi.fn());

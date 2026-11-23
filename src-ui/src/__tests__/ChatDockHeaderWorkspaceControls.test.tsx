@@ -108,7 +108,9 @@ describe('header inbox toggle (from #1064 AC1/AC2)', () => {
 
   test('renders the chat-header custom-appearance hook', async () => {
     renderHeader({ workspaceControls: workspaceControls() });
-    const toggle = await screen.findByRole('button', { name: 'Hide chat list' });
+    const toggle = await screen.findByRole('button', {
+      name: 'Hide chat list',
+    });
     expect(
       document.querySelector(appearanceHook('chat-header'))?.contains(toggle),
     ).toBe(true);
