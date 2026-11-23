@@ -1,0 +1,17 @@
+{
+  "revision": "1fdcbed3781e61a1cffd449bd95ec5b31f31efa9",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the citing pages: none describes where the composer's status row sits or how the restart notice is ordered; the change floats the status row over the transcript end only with nothing between transcript and composer and 240px of transcript, holds an opened row at the end, and stamps the interrupted-turn notice with its own time.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the citing pages: none describes where the composer's status row sits or how the restart notice is ordered; the change floats the status row over the transcript end only with nothing between transcript and composer and 240px of transcript, holds an opened row at the end, and stamps the interrupted-turn notice with its own time.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the citing pages: none describes where the composer's status row sits or how the restart notice is ordered; the change floats the status row over the transcript end only with nothing between transcript and composer and 240px of transcript, holds an opened row at the end, and stamps the interrupted-turn notice with its own time.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/design/station-connection.md","note":"Checked the citing pages: none describes where the composer's status row sits or how the restart notice is ordered; the change floats the status row over the transcript end only with nothing between transcript and composer and 240px of transcript, holds an opened row at the end, and stamps the interrupted-turn notice with its own time.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the citing pages: none describes where the composer's status row sits or how the restart notice is ordered; the change floats the status row over the transcript end only with nothing between transcript and composer and 240px of transcript, holds an opened row at the end, and stamps the interrupted-turn notice with its own time.","inputs":["src-ui/src/components/chat/chat.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the citing pages: none describes where the composer's status row sits or how the restart notice is ordered; the change floats the status row over the transcript end only with nothing between transcript and composer and 240px of transcript, holds an opened row at the end, and stamps the interrupted-turn notice with its own time.","inputs":["src-ui/src/components/chat/chat.css"]}
+  ]
+}
