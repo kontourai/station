@@ -7,9 +7,9 @@
 .automations-notice {
   margin: 0 0 var(--k-space-4);
   padding: var(--k-space-3) var(--k-space-4);
-  border: 1px solid var(--warning-border);
+  border: 1px solid var(--k-caution);
   border-radius: var(--k-radius-md);
-  background: var(--warning-bg);
+  background: var(--k-caution-soft);
   color: var(--k-text);
 }
 
@@ -47,7 +47,7 @@
 }
 
 .automations-week__day--today .automations-week__day-head > :first-child {
-  color: var(--accent-primary);
+  color: var(--k-action);
 }
 
 .automations-week__date {
@@ -152,7 +152,7 @@
 
 .automations-strip {
   display: inline-flex;
-  gap: 3px;
+  gap: var(--k-space-1);
 }
 
 /* Shape carries the outcome as well as colour: filled, filled with a dot,
@@ -168,11 +168,11 @@
 }
 
 .automations-strip__cell--worked {
-  background: var(--health-success);
+  background: var(--k-positive);
 }
 
 .automations-strip__cell--failed {
-  background: var(--error-fill);
+  background: var(--k-negative);
 }
 
 .automations-strip__cell--failed::after {
@@ -261,7 +261,7 @@
   display: inline-flex;
   align-items: center;
   gap: var(--k-space-1);
-  color: var(--error-text);
+  color: var(--k-negative);
 }
 
 .automations-row__flag svg {
@@ -310,7 +310,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--health-success);
+  background: var(--k-positive);
 }
 
 .automations-row__status--paused .automations-row__status-dot {
@@ -319,8 +319,7 @@
 }
 
 .automations-row__status--running .automations-row__status-dot {
-  background: var(--accent-primary);
-  animation: sched-pulse var(--motion-status-spin) var(--ease-standard) infinite;
+  background: var(--k-active);
 }
 
 .automations-row__menu {
@@ -422,7 +421,7 @@
 }
 
 .automations-empty__template:hover {
-  border-color: var(--accent-primary);
+  border-color: var(--k-action);
 }
 
 .automations-empty__template-name {

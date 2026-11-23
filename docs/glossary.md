@@ -497,6 +497,7 @@ release delivery.
 | One agent working through a request from start to stop | **Agent run** (the Settings card is **Agent runs**) |
 | An authored instruction a user or agent can reuse (some are runnable as `/command`) | **Skill** — the page is **Skills** (`/guidance`, with a Commands tab) |
 | The live transcript's map of user turns, and stepping between them | **Conversation turns** (the desktop gutter's name; contributors call it the turn rail); **Previous turn** / **Next turn** on desktop, or **Browse turns** in the chat More menu on desktop and phones. History replay's separate view is **History** |
+| An automation's state | **Active**, **Paused** or **Running**, as a word beside the row, never a clickable "on"/"off". Station turning one off after repeated failures is **Paused** with the flag **Paused itself after N failed runs**; failures that have not paused it are the flag **Last N runs failed** |
 | `missing_prerequisites` | name what's missing (e.g. "AWS credentials required") |
 | What a person talks to an agent in | **chat** ("New chat", "this chat"); never "thread", and never "conversation" as a synonym. **Conversation turns** and the Task **Conversation** tab are established labels and stay |
 | What acts in a chat | **agent**, lowercase in running text; the reserved agent is **Station**. Never "the AI" or "your AI" |

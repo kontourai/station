@@ -40,7 +40,7 @@ export function ScheduleEmptyState({
           <h2 id="automations-intro-title">An agent, a task, a time</h2>
           <p>
             Pick what to do and when. Each run lands in a chat you can open,
-            with the same approvals as any other chat.
+            with the same approvals as your other chats.
           </p>
         </div>
         <ul className="automations-empty__parts" aria-label="For example">
