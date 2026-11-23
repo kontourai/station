@@ -66,6 +66,44 @@ async function openAndGrow(page: Page) {
   return row;
 }
 
+/** Wheels over the middle of the transcript. */
+async function wheelOver(page: Page, deltaY: number) {
+  const log = (await page
+    .getByRole('log', { name: 'Conversation transcript' })
+    .boundingBox())!;
+  await page.mouse.move(log.x + log.width / 2, log.y + log.height / 2);
+  await page.mouse.wheel(0, deltaY);
+}
+
+/** The row the reader is looking at: the first whose top is in view. */
+const lookingAt = (page: Page) =>
+  page.evaluate(() => {
+    const view = document
+      .querySelector('.chat-messages')!
+      .getBoundingClientRect();
+    const row = [...document.querySelectorAll('.chat-message-anchor')].find(
+      (candidate) => {
+        const top = candidate.getBoundingClientRect().top;
+        return top >= view.top && top < view.bottom - 40;
+      },
+    );
+    return row
+      ? {
+          key: row.getAttribute('data-chat-message-key')!,
+          top: row.getBoundingClientRect().top,
+        }
+      : null;
+  });
+
+const topOf = (page: Page, key: string) =>
+  page.evaluate(
+    (rowKey) =>
+      document
+        .querySelector(`[data-chat-message-key="${rowKey}"]`)!
+        .getBoundingClientRect().top,
+    key,
+  );
+
 const transcriptTop = (page: Page) =>
   page
     .getByRole('log', { name: 'Conversation transcript' })
@@ -593,6 +631,114 @@ for (const [name, viewport] of [
       for (let i = 0; i < 10; i += 1)
         await call(page, '__streamTail', ' words in the other chat');
       await frames(page);
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) a reader who wheeled a little way up from a held row stays put as the view gets shorter`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      const row = await openAndGrow(page);
+      await wheelOver(page, -500);
+      await page.waitForTimeout(400);
+      await frames(page);
+      // The held row is still in the page, below the view: the step that
+      // brings it back could reach it.
+      expect(
+        await row.evaluate((button) => button.isConnected),
+        'held row still in the page',
+      ).toBe(true);
+      const before = await lookingAt(page);
+      expect(before).not.toBeNull();
+      await page.setViewportSize({
+        width: viewport.width,
+        height: Math.round(viewport.height * 0.6),
+      });
+      await frames(page);
+      await page.waitForTimeout(300);
+      expect(
+        Math.abs((await topOf(page, before!.key)) - before!.top),
+        'the row being read',
+      ).toBeLessThanOrEqual(8);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) the held row drawn again closed ends the hold and the end is followed`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      await openAndGrow(page);
+      expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+      // The turn settles: its answer is drawn again and the row comes back
+      // closed. Nothing is open to protect any more.
+      await call(page, '__redrawLast');
+      await frames(page);
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      await expect.poll(() => scrollToBottom(page).count()).toBe(0);
+      await call(page, '__answer', 'The next answer arrives.');
+      for (let i = 0; i < 10; i += 1)
+        await call(page, '__streamTail', ' and more words of it');
+      await frames(page);
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) the held row drawn again closed leaves a reader who wheeled away where they are`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      await openAndGrow(page);
+      await wheelOver(page, -300);
+      await page.waitForTimeout(400);
+      await frames(page);
+      const before = await lookingAt(page);
+      expect(before).not.toBeNull();
+      await call(page, '__redrawLast');
+      await frames(page);
+      await page.waitForTimeout(300);
+      expect(
+        Math.abs((await topOf(page, before!.key)) - before!.top),
+        'the row being read',
+      ).toBeLessThanOrEqual(8);
+      expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) a chat switched to with a queued follow-up last is held as on a fresh mount`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      // A turn runs in this chat when the reader switches away.
+      await call(page, '__beginTurn');
+      await frames(page);
+      await call(page, '__switchToQueued', 'Also check the release notes.');
+      await frames(page);
+      await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
+      await openAndGrow(page);
+      expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+      // That chat's turn ends and an answer lands: the queued message was
+      // there from the start, so it is nothing new.
+      await call(page, '__setLive', false);
+      await call(page, '__answer', 'An answer lands in the other chat.');
+      await frames(page);
+      await page.waitForTimeout(300);
+      expect(await distanceFromEnd(page), 'still held').toBeGreaterThan(100);
+      expect(await scrollToBottom(page).count()).toBe(1);
+      // A message of theirs that is new ends the hold.
+      await call(page, '__sendUser', 'My own new question');
       await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
       expect(errors).toEqual([]);
     } finally {

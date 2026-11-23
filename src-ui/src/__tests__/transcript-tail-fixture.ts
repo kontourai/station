@@ -19,7 +19,10 @@
  * - `window.__sendUser(text)` appends the reader's own message;
  *   `window.__answer(text)` appends a new answer (no message of theirs).
  * - `window.__switchSession()` shows another chat (one turn fewer) in the
- *   same list.
+ *   same list; `window.__switchToQueued(text)` shows one with a turn running
+ *   and a follow-up queued at its end.
+ * - `window.__redrawLast()` draws the newest answer again under a new id, its
+ *   rows closed, as the settled copy replaces the streaming one.
  * - `window.__beginTurn()`, `__setLive(on)`, `__queueFollowUp(text)`,
  *   `__serverCopy(clientId)` and `__deliver(text)` play a running turn of the
  *   reader's, a follow-up queued during it, the server's copy replacing their
@@ -182,6 +185,18 @@ export async function tailFixture(
         window.__answer=text=>setSession(current=>({...current,messages:[...current.messages,
           {id:'a-sent-'+current.messages.length,role:'assistant',turnId:'turn-sent-'+current.messages.length,content:text,timestamp:9000+current.messages.length}]}));
         window.__switchSession=()=>setSession(()=>({...base,id:'tail-session-2',messages:makeMessages().slice(2)}));
+        // Another chat with a turn running and, last, a follow-up the reader
+        // queued there, as the send path shows it (its id is its client id).
+        window.__switchToQueued=text=>setSession(()=>({...base,id:'tail-session-3',orchestrationSessionStarted:true,orchestrationTurnOpen:true,messages:[...makeMessages().slice(2),
+          {id:'client-q',clientId:'client-q',role:'user',content:text,contentParts:[{type:'text',content:text}],timestamp:8500,optimistic:true}]}));
+        // The newest answer drawn again under a new id, as the settled copy
+        // replaces the streaming one: its rows come back closed.
+        window.__redrawLast=()=>setSession(current=>{
+          const messages=[...current.messages];
+          const index=messages.map(m=>m.role).lastIndexOf('assistant');
+          messages[index]={...messages[index],id:messages[index].id+'-settled'};
+          return {...current,messages};
+        });
         // The shapes the app's own writers produce for the reader's messages.
         // A turn of theirs that is running: their message as the composer's
         // bubble after its \`turn.started\` (client id, turn, event), and the

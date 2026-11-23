@@ -256,6 +256,33 @@ function userMessageNames(message: ChatMessage): string[] {
     names.push(`content:${message.timestamp ?? ''}:${message.content}`);
   return names;
 }
+/**
+ * The held disclosure as the page has it now, if it is still open: the one
+ * the reader activated or, when its row was drawn again, an open one in that
+ * row. Null when it was closed or went away.
+ */
+function openHeldToggle(
+  scroller: Element,
+  held: { row: Element; toggle: Element },
+): Element | null {
+  const { toggle } = held;
+  if (toggle.isConnected)
+    return toggle.getAttribute('aria-expanded') === 'false' ||
+      (toggle.matches('summary') &&
+        !(toggle.parentElement as HTMLDetailsElement | null)?.open)
+      ? null
+      : toggle;
+  const key = held.row.getAttribute('data-chat-message-key');
+  const row = held.row.isConnected
+    ? held.row
+    : Array.from(scroller.querySelectorAll('[data-chat-message-key]')).find(
+        (candidate) => candidate.getAttribute('data-chat-message-key') === key,
+      );
+  return (
+    row?.querySelector('[aria-expanded="true"], details[open] > summary') ??
+    null
+  );
+}
 // A programmatic scrollTop write dispatches its scroll event asynchronously,
 // so the handler recognizes the write's echo by position for this long. The
 // positional match alone is already safe (a write always targets the position
@@ -1041,11 +1068,26 @@ function ChatMessageListComponent({
       }
     });
   }, [writeProgrammaticScroll, messagesContainerRef]);
+  // Only a message of the reader's that is new ends the hold. Its id is not
+  // its identity: the composer's bubble (client id) gains its `turn.started`
+  // event and is then replaced by the server's copy (`<that event>:user`),
+  // so the newest message is the one seen before when any name matches.
+  const seenUserNamesRef = useRef<Set<string> | null>(null);
+  const firstMessageNamesRef = useRef<string[]>([]);
+  // Whether a turn was live before this render's messages arrived.
+  const turnWasLiveRef = useRef(turnLive);
+  const turnLiveRef = useRef(turnLive);
+  turnLiveRef.current = turnLive;
   // A hold belongs to the chat it started in. Declared before the pin below,
-  // so a switched-to chat is pinned in the same pass.
+  // so a switched-to chat is pinned in the same pass. What the last chat's
+  // messages were called is forgotten too: the new chat's first render is
+  // nothing new, as on a fresh mount.
   useLayoutEffect(() => {
     void activeSession.id;
     releaseReaderHold();
+    seenUserNamesRef.current = null;
+    firstMessageNamesRef.current = [];
+    turnWasLiveRef.current = turnLiveRef.current;
   }, [activeSession.id, releaseReaderHold]);
   // What needs the reader ends a hold and brings the end into view: their own
   // message (a send, a queued follow-up delivered) and a request opening. A
@@ -1059,14 +1101,6 @@ function ChatMessageListComponent({
     setIsUserScrolledUp(false);
     return true;
   }, [releaseReaderHold]);
-  // Only a message of the reader's that is new ends the hold. Its id is not
-  // its identity: the composer's bubble (client id) gains its `turn.started`
-  // event and is then replaced by the server's copy (`<that event>:user`),
-  // so the newest message is the one seen before when any name matches.
-  const seenUserNamesRef = useRef<Set<string> | null>(null);
-  const firstMessageNamesRef = useRef<string[]>([]);
-  // Whether a turn was live before this render's messages arrived.
-  const turnWasLiveRef = useRef(turnLive);
   // Before the pin below, which then follows the new message.
   useLayoutEffect(() => {
     const firstBefore = firstMessageNamesRef.current;
@@ -1250,29 +1284,36 @@ function ChatMessageListComponent({
       if (el.clientHeight === 0) return;
       // A running glide aims at the live end on every frame already.
       if (scrollAnimationRef.current) return;
-      const toggle = activatedRowRef.current?.toggle;
-      if (
-        readerHoldRef.current &&
-        toggle &&
-        (toggle.getAttribute('aria-expanded') === 'false' ||
-          (toggle.matches('summary') &&
-            !(toggle.parentElement as HTMLDetailsElement | null)?.open))
-      ) {
-        // The reader closed what they were holding. With the end in view
-        // (ignoring the line Scroll to bottom took) the tail is followed
-        // again; past it, they are a reader scrolled up like any other.
-        const shortBy =
-          el.scrollHeight -
-          el.scrollTop -
-          el.clientHeight -
-          Math.max(0, heldClientHeightRef.current - el.clientHeight);
+      const held = readerHoldRef.current ? activatedRowRef.current : null;
+      const toggle = held ? openHeldToggle(el, held) : null;
+      if (held && toggle && toggle !== held.toggle)
+        activatedRowRef.current = { ...held, toggle };
+      if (held && !toggle) {
         releaseReaderHold();
-        if (shortBy > PINNED_TOLERANCE_PX) {
-          isUserScrolledUpRef.current = true;
-          setIsUserScrolledUp(true);
-          visibleAnchorRef.current = captureChatScrollAnchor(el);
-          return;
+        const readerClosed =
+          held.toggle.isConnected &&
+          (readerActing() ||
+            performance.now() < readerInputRef.current.interactedUntil);
+        if (readerClosed) {
+          // The reader closed what they were holding. With the end in view
+          // (ignoring the line Scroll to bottom took) the tail is followed
+          // again; past it, they are a reader scrolled up like any other.
+          const shortBy =
+            el.scrollHeight -
+            el.scrollTop -
+            el.clientHeight -
+            Math.max(0, heldClientHeightRef.current - el.clientHeight);
+          if (shortBy > PINNED_TOLERANCE_PX) {
+            isUserScrolledUpRef.current = true;
+            setIsUserScrolledUp(true);
+            visibleAnchorRef.current = captureChatScrollAnchor(el);
+            return;
+          }
         }
+        // Otherwise the app closed or redrew it (a finished turn folds its
+        // tool rows): nothing is left to protect. A reader still at it
+        // follows the end below, as with no hold; one who scrolled away
+        // stays where they are.
       }
       if (!isUserScrolledUpRef.current) {
         // Growth the reader caused (opening a tool card near the end) or that

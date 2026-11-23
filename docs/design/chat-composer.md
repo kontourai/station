@@ -664,6 +664,9 @@ where it is, and
 streaming text and new answers are not followed until the reader returns to the
 end themselves (wheel, touch, a scroll key, End, a drag of the transcript's
 scrollbar, or Scroll to bottom), closes that row, or switches chats. It also
+ends when the row it protects is closed or goes away without the reader (a
+finished turn folding its tool rows, a row drawn again closed): a reader still
+at it then follows the end, and one who scrolled away stays where they are. It
 ends when a new message of the reader's appears in the transcript (a send, a
 steered message once Station's copy arrives, or a queued follow-up being
 delivered) and when a request opens, and those bring the end into view. Queueing
