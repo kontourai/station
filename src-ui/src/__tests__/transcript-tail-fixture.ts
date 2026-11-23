@@ -24,6 +24,9 @@
  *   `__serverCopy(clientId)` and `__deliver(text)` play a running turn of the
  *   reader's, a follow-up queued during it, the server's copy replacing their
  *   bubble, and the follow-up's delivery, in the shapes the app writes.
+ * - `window.__sendBubble(text)` and `__startBubbleTurn()` play a message
+ *   typed with no turn running, as the send path shows it, and its turn
+ *   starting.
  * - `window.__answersOnly()` drops the reader's messages from the window;
  *   `window.__loadOlder()` loads earlier history in front of it.
  *
@@ -189,14 +192,26 @@ export async function tailFixture(
             contentParts:[{type:'tool-invocation',toolCallId:'call-live',toolName:'shell_exec',args:{command:'ls'},result:output,state:'completed'},
               {type:'text',content:'Looking at the deploy script now.'}]}]}));
         window.__setLive=on=>setSession(current=>({...current,orchestrationSessionStarted:true,orchestrationTurnOpen:on}));
-        // A follow-up sent while a turn runs: the send path shows its bubble,
-        // Station answers that it is queued, and the bubble goes again.
+        // A follow-up sent while a turn runs: the send path shows its bubble
+        // (as the app builds it: its id is its client id), Station answers
+        // that it is queued, and the bubble goes again.
         window.__queueFollowUp=text=>{
           setSession(current=>({...current,messages:[...current.messages,
-            {role:'user',clientId:'client-b',content:text,timestamp:Date.now()}]}));
+            {id:'client-b',clientId:'client-b',role:'user',content:text,contentParts:[{type:'text',content:text}],timestamp:Date.now(),optimistic:true}]}));
           setTimeout(()=>setSession(current=>({...current,
             messages:current.messages.filter(m=>m.clientId!=='client-b')})),160);
         };
+        // A message the reader types with no turn running, as the send path
+        // shows it (its id is its client id), and its turn starting: the
+        // bubble gains the turn and its \`turn.started\` event, and the answer
+        // so far follows with its tool row.
+        window.__sendBubble=text=>setSession(current=>({...current,messages:[...current.messages,
+          {id:'client-c',clientId:'client-c',role:'user',content:text,contentParts:[{type:'text',content:text}],timestamp:6000,optimistic:true}]}));
+        window.__startBubbleTurn=()=>setSession(current=>({...current,orchestrationSessionStarted:true,orchestrationTurnOpen:true,messages:[
+          ...current.messages.map(m=>m.clientId==='client-c'?{...m,turnId:'turn-c',sourceEventId:'event-c'}:m),
+          {id:'a-live-c',role:'assistant',turnId:'turn-c',timestamp:6001,content:'Working on it.',
+            contentParts:[{type:'tool-invocation',toolCallId:'call-live-c',toolName:'shell_exec',args:{command:'ls'},result:output,state:'completed'},
+              {type:'text',content:'Working on it.'}]}]}));
         // The server's copy replaces the composer's bubble: same message, its
         // id now the server's (\`<turn.started event>:user\`).
         window.__serverCopy=clientId=>setSession(current=>({...current,messages:current.messages.map(m=>{

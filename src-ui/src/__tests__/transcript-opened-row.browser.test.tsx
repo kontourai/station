@@ -15,6 +15,7 @@ import {
   lastToolRow,
   PHONE,
   rowTop,
+  setNotice,
   settledAtTail,
   tailFixture,
 } from './transcript-tail-fixture';
@@ -81,6 +82,33 @@ async function growWithoutReader(page: Page) {
   await page
     .getByRole('log', { name: 'Conversation transcript' })
     .evaluate((element) => element.dispatchEvent(new Event('scroll')));
+  await frames(page);
+}
+
+/**
+ * A drag of the transcript's own scrollbar: a press on the scroller itself
+ * (not on a row inside it), the view moving by `by` px (or to the end)
+ * while the button is down, and the release. Headless Chromium hides scrollbars, so the press
+ * lands on the scroller's own gutter, which is the same element.
+ */
+async function dragScroller(page: Page, by: number | 'end') {
+  const log = page.getByRole('log', { name: 'Conversation transcript' });
+  const point = await log.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    for (let x = Math.floor(box.right) - 1; x > box.left; x -= 1)
+      for (const y of [box.top + box.height / 2, box.top + 12, box.bottom - 12])
+        if (document.elementFromPoint(x, y) === element) return { x, y };
+    return null;
+  });
+  expect(point, 'a point on the scroller itself').not.toBeNull();
+  await page.mouse.move(point!.x, point!.y);
+  await page.mouse.down();
+  await log.evaluate((element, delta) => {
+    element.scrollTop =
+      delta === 'end' ? element.scrollHeight : element.scrollTop + delta;
+  }, by);
+  await frames(page);
+  await page.mouse.up();
   await frames(page);
 }
 
@@ -387,6 +415,150 @@ for (const [name, viewport] of [
     }
   });
 
+  test(`(${name}) content shrinking above a held row, the browser clamping scrollTop, keeps the hold`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport, 16);
+    try {
+      await settledAtTail(page);
+      await openAndGrow(page);
+      const distance = await distanceFromEnd(page);
+      expect(distance).toBeGreaterThan(100);
+      const top = await transcriptTop(page);
+      // Earlier rows render smaller (collapsed by their own content) by more
+      // than the distance to the end: the browser clamps scrollTop to the
+      // new end, a scroll the reader did not make.
+      const removed = await page.evaluate((needed) => {
+        let total = 0;
+        for (const row of document.querySelectorAll<HTMLElement>(
+          '.chat-message-anchor',
+        )) {
+          if (total > needed + 200) break;
+          total += row.getBoundingClientRect().height;
+          row.style.display = 'none';
+        }
+        return total;
+      }, distance);
+      expect(removed).toBeGreaterThan(distance);
+      await frames(page);
+      expect(await transcriptTop(page), 'clamped').toBeLessThan(top - 50);
+      const held = await rowTop(page);
+      await call(page, '__answer', 'A new answer arrives at the tail.');
+      for (let i = 0; i < 6; i += 1)
+        await call(page, '__streamTail', ' and more words of the answer');
+      await frames(page);
+      await page.waitForTimeout(300);
+      expect(await rowTop(page), 'still held').toBeCloseTo(held, 0);
+      await expect.poll(() => scrollToBottom(page).count()).toBe(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) the reader's message keeps the hold through its server copy, under a queued bubble`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      // Typed with no turn running, then its turn starts: the bubble gains
+      // its turn and event.
+      await call(page, '__sendBubble', 'Check the deploy script once more.');
+      await frames(page);
+      await call(page, '__startBubbleTurn');
+      await settledAtTail(page);
+      await openAndGrow(page);
+      const held = await rowTop(page);
+      expect(await distanceFromEnd(page)).toBeGreaterThan(100);
+      // A follow-up's bubble covers it while the server's copy replaces it
+      // (a new id, no client id); then the bubble goes and it is last again.
+      await call(page, '__queueFollowUp', 'Also check the release notes.');
+      await frames(page);
+      await call(page, '__serverCopy', 'client-c');
+      await page.waitForTimeout(400);
+      await frames(page);
+      expect(await rowTop(page), 'not moved').toBeCloseTo(held, 0);
+      expect(await scrollToBottom(page).count()).toBe(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) a reader who drags the scrollbar away from a held row is not taken to their send`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport);
+    try {
+      await settledAtTail(page);
+      await openAndGrow(page);
+      const before = await distanceFromEnd(page);
+      await dragScroller(page, -300);
+      expect(await distanceFromEnd(page)).toBeGreaterThan(before + 250);
+      await call(page, '__sendUser', 'My own new question');
+      await frames(page);
+      await page.waitForTimeout(300);
+      expect(await distanceFromEnd(page), 'not followed').toBeGreaterThan(
+        before,
+      );
+      expect(await scrollToBottom(page).count()).toBe(1);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
+  test(`(${name}) a reader who wheeled up from a held row stays put as the pending list appears`, async () => {
+    const { browser, page, errors } = await tailFixture(viewport, 30);
+    try {
+      await settledAtTail(page);
+      await openAndGrow(page);
+      const log = (await page
+        .getByRole('log', { name: 'Conversation transcript' })
+        .boundingBox())!;
+      await page.mouse.move(log.x + log.width / 2, log.y + log.height / 2);
+      await page.mouse.wheel(0, -2000);
+      await expect.poll(() => distanceFromEnd(page)).toBeGreaterThan(2_000);
+      await page.waitForTimeout(400);
+      await frames(page);
+      // The row the reader is looking at: the first whose top is in view.
+      const looking = () =>
+        page.evaluate(() => {
+          const view = document
+            .querySelector('.chat-messages')!
+            .getBoundingClientRect();
+          const rows = [...document.querySelectorAll('.chat-message-anchor')];
+          const row = rows.find((candidate) => {
+            const top = candidate.getBoundingClientRect().top;
+            return top >= view.top && top < view.bottom - 40;
+          });
+          return row
+            ? {
+                key: row.getAttribute('data-chat-message-key'),
+                top: row.getBoundingClientRect().top,
+              }
+            : null;
+        });
+      const before = await looking();
+      expect(before).not.toBeNull();
+      // A follow-up is queued: the pending list takes room above the
+      // composer and the transcript gets shorter.
+      await call(page, '__queueFollowUp', 'Also check the release notes.');
+      await setNotice(page, 'queued');
+      await page.waitForTimeout(400);
+      await frames(page);
+      const after = await page.evaluate(
+        (key) =>
+          document
+            .querySelector(`[data-chat-message-key="${key}"]`)
+            ?.getBoundingClientRect().top ?? null,
+        before!.key,
+      );
+      // A few px of re-measurement, never the jump to the held row.
+      expect(
+        Math.abs(after! - before!.top),
+        'the row being read',
+      ).toBeLessThanOrEqual(8);
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  });
+
   test(`(${name}) loading earlier history keeps the hold`, async () => {
     const { browser, page, errors } = await tailFixture(viewport);
     try {
@@ -474,13 +646,9 @@ for (const [name, viewport] of [
       await grow();
       await frames(page);
       expect(await distanceFromEnd(page)).toBeGreaterThan(100);
-      // The reader jumps to the end in one step (a scrollbar drag to the
-      // bottom), never scrolling up on the way.
-      await page
-        .getByRole('log', { name: 'Conversation transcript' })
-        .evaluate((log) => {
-          log.scrollTop = log.scrollHeight;
-        });
+      // The reader drags the scrollbar to the end in one step, never
+      // scrolling up on the way.
+      await dragScroller(page, 'end');
       await expect.poll(() => distanceFromEnd(page)).toBeLessThanOrEqual(1);
       await page.waitForTimeout(1_500);
       // Back at the end the tail is followed again.

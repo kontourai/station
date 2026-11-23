@@ -283,6 +283,20 @@ const READER_SCROLL_EXTEND_MS = 200;
 // Growth this soon after a press or key inside the transcript is the reader's
 // own doing (a tool card or details they opened): it stays where it opened.
 const READER_INTERACTION_GRACE_MS = 1_000;
+// The names of the reader's messages a transcript remembers, so a message
+// that reappears (a withdrawn bubble uncovering it) is never new again. One
+// message carries up to four; older names leave first.
+const SEEN_USER_NAMES_MAX = 2_000;
+// Keys that move the transcript when it has focus.
+const SCROLL_KEYS = new Set([
+  'ArrowUp',
+  'ArrowDown',
+  'PageUp',
+  'PageDown',
+  'Home',
+  'End',
+  ' ',
+]);
 // How much of a held row must show to read as its header, and the gap left
 // above it when a shorter view brings it back.
 const HELD_ROW_HEADER_PX = 48;
@@ -562,6 +576,14 @@ function ChatMessageListComponent({
     until: 0,
     /** Content growth before this time follows the reader's own interaction. */
     interactedUntil: 0,
+    /** A mouse or pen button is down on the transcript's own scrollbar. */
+    draggingScrollbar: false,
+    /**
+     * Scrolls before this time are the reader's own movement: wheel, a scroll
+     * key, touch momentum, a scrollbar drag just released. Unlike `until`, a
+     * press on the content (opening a row) does not open it.
+     */
+    scrollUntil: 0,
   });
   // A pinned reader who opened something at the end (a tool row, reasoning)
   // keeps it where it is: the tail, streaming text and new turns included,
@@ -596,6 +618,17 @@ function ChatMessageListComponent({
   const readerActing = useCallback(() => {
     const input = readerInputRef.current;
     return input.touching || input.pressing || performance.now() < input.until;
+  }, []);
+  // Whether a scroll now is the reader moving the transcript: what the hold
+  // listens to. A scroll from layout (content growing or shrinking, the
+  // browser clamping scrollTop, a restore writing it) is not.
+  const readerScrolling = useCallback(() => {
+    const input = readerInputRef.current;
+    return (
+      input.touching ||
+      input.draggingScrollbar ||
+      performance.now() < input.scrollUntil
+    );
   }, []);
   useTranscriptLayoutTrace(messagesContainerRef, activeSession.id, () => ({
     isUserScrolledUp: isUserScrolledUpRef.current,
@@ -1044,23 +1077,29 @@ function ChatMessageListComponent({
     while (index >= 0 && messages[index]!.role !== 'user') index -= 1;
     const names = index >= 0 ? userMessageNames(messages[index]!) : [];
     const seen = seenUserNamesRef.current;
+    const remember = () => {
+      const next = seenUserNamesRef.current ?? new Set<string>();
+      for (const name of names) next.add(name);
+      for (const name of next) {
+        if (next.size <= SEEN_USER_NAMES_MAX) break;
+        next.delete(name);
+      }
+      seenUserNamesRef.current = next;
+    };
     if (!seen || names.some((name) => seen.has(name))) {
-      seenUserNamesRef.current = new Set([...(seen ?? []), ...names]);
+      remember();
       return;
     }
     if (names.length === 0) return;
     // A bubble sent while a turn runs is a follow-up Station queues: the
-    // send path shows it until Station answers, then withdraws it. It counts
-    // once its turn starts, or when Station delivers it.
+    // send path shows it (its id is its client id) until Station answers,
+    // then withdraws it. It counts once it belongs to a turn: its own turn
+    // starting, or Station delivering it. A steered message counts when the
+    // server's copy arrives.
     const message = messages[index]!;
-    if (
-      !message.id &&
-      !message.turnId &&
-      !message.sourceEventId &&
-      turnWasLiveRef.current
-    )
+    if (!message.turnId && !message.sourceEventId && turnWasLiveRef.current)
       return;
-    seenUserNamesRef.current = new Set(names);
+    remember();
     // Earlier history loaded in front of the window is not new.
     const formerFirst = messages.findIndex((candidate) =>
       userMessageNames(candidate).some((name) => firstBefore.includes(name)),
@@ -1163,19 +1202,27 @@ function ChatMessageListComponent({
           noteProgrammaticScroll(el);
         }
         // What the reader just opened stays visible: a shorter view (the
-        // keyboard opening) brings the held row's header back into it.
-        const held = readerHoldRef.current
-          ? activatedRowRef.current?.row
-          : undefined;
+        // keyboard opening, the pending list appearing) brings the held
+        // row's header back into it, moving it no further than that. A
+        // reader who scrolled away from it is left where they are.
+        const held =
+          readerHoldRef.current && !isUserScrolledUpRef.current
+            ? activatedRowRef.current?.row
+            : undefined;
         if (held?.isConnected) {
           const top =
             held.getBoundingClientRect().top - el.getBoundingClientRect().top;
-          if (top < 0 || top + HELD_ROW_HEADER_PX > el.clientHeight) {
+          const below = top + HELD_ROW_HEADER_PX - el.clientHeight;
+          if (top < 0)
             writeProgrammaticScroll(
               el,
               el.scrollTop + top - HELD_ROW_MARGIN_PX,
             );
-          }
+          else if (below > 0)
+            writeProgrammaticScroll(
+              el,
+              el.scrollTop + below + HELD_ROW_MARGIN_PX,
+            );
         }
       } else {
         writeProgrammaticScroll(el, el.scrollHeight);
@@ -1488,6 +1535,19 @@ function ChatMessageListComponent({
       );
     const shortBy =
       target.scrollHeight - target.scrollTop - target.clientHeight;
+    if (readerHoldRef.current) {
+      // Only the reader ends or leaves a hold. A scroll from layout (content
+      // growing or shrinking under the held row, the browser clamping
+      // scrollTop) neither marks them scrolled up nor counts as their return.
+      if (!readerScrolling()) {
+        showHeldControl(target);
+        return;
+      }
+      readerInputRef.current.scrollUntil = Math.max(
+        readerInputRef.current.scrollUntil,
+        performance.now() + READER_SCROLL_EXTEND_MS,
+      );
+    }
     // Back at the end: the tail is followed again.
     if (shortBy <= 1) releaseReaderHold();
     if (
@@ -1543,16 +1603,6 @@ function ChatMessageListComponent({
         reachedOldTail) &&
       !readerMovingUp;
     if (reachedOldTail) writeProgrammaticScroll(target, height);
-    // While a row is held, only the reader leaves the end: their input, or
-    // the view actually moving (a scrollbar drag has no other trace). A
-    // scroll event from content growing under the held row changes nothing.
-    if (
-      readerHoldRef.current &&
-      !acting &&
-      previousTop !== null &&
-      Math.abs(target.scrollTop - previousTop) <= 0.5
-    )
-      return;
     isUserScrolledUpRef.current = !isAtBottom;
     setIsUserScrolledUp(!isAtBottom);
     visibleAnchorRef.current = isAtBottom
@@ -1677,11 +1727,25 @@ function ChatMessageListComponent({
         const pointer = event;
         // A secondary press opens a context menu that often swallows the
         // release.
-        if (pointer.pointerType !== 'touch' && pointer.button === 0)
+        if (pointer.pointerType !== 'touch' && pointer.button === 0) {
           input.pressing = true;
+          // A press on the scroller itself, not on a row inside it, is on
+          // its scrollbar: the drag that follows is the reader moving.
+          if (element && event.target === element)
+            input.draggingScrollbar = true;
+        }
         input.interactedUntil = now + READER_INTERACTION_GRACE_MS;
       } else {
         input.until = now + READER_INPUT_GRACE_MS;
+        // Space on a disclosure inside the transcript opens it; on the
+        // scroller itself it pages.
+        if (
+          event.type === 'wheel' ||
+          (event.type === 'keydown' &&
+            SCROLL_KEYS.has(event.key ?? '') &&
+            (event.key !== ' ' || event.target === element))
+        )
+          input.scrollUntil = now + READER_INPUT_GRACE_MS;
         if (event.type === 'keydown')
           input.interactedUntil = now + READER_INTERACTION_GRACE_MS;
       }
@@ -1723,6 +1787,10 @@ function ChatMessageListComponent({
         input.until,
         performance.now() + TOUCH_MOMENTUM_GRACE_MS,
       );
+      input.scrollUntil = Math.max(
+        input.scrollUntil,
+        performance.now() + TOUCH_MOMENTUM_GRACE_MS,
+      );
     };
     const releasePress = (event: Event) => {
       const input = readerInputRef.current;
@@ -1733,12 +1801,19 @@ function ChatMessageListComponent({
         input.until,
         performance.now() + READER_INPUT_GRACE_MS,
       );
+      if (input.draggingScrollbar)
+        input.scrollUntil = Math.max(
+          input.scrollUntil,
+          performance.now() + READER_INPUT_GRACE_MS,
+        );
+      input.draggingScrollbar = false;
     };
     // Leaving the page or opening a context menu can swallow a release.
     const releaseAll = () => {
       const input = readerInputRef.current;
       input.touching = false;
       input.pressing = false;
+      input.draggingScrollbar = false;
     };
     releaseTouchRef.current = releaseTouch;
     const listeners: Array<[string, (event: Event) => void]> = [
@@ -1747,7 +1822,10 @@ function ChatMessageListComponent({
       ['pointerup', releasePress],
       ['pointercancel', releasePress],
       ['contextmenu', releaseAll],
-      ['blur', releaseAll],
+      // The window losing focus, not an element inside it: a press on the
+      // transcript focuses it, and the blur that follows inside the page
+      // reaches this capturing listener too.
+      ['blur', (event) => event.target === window && releaseAll()],
     ];
     for (const [type, listener] of listeners)
       window.addEventListener(type, listener, true);

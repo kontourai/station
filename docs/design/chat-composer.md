@@ -662,15 +662,22 @@ Scroll to bottom shows while the reader is scrolled up, and from the moment
 they open a row at the end that then grows past the view's end: that row stays
 where it is, and
 streaming text and new answers are not followed until the reader returns to the
-end by any means, closes that row, or switches chats. It also ends when the
-reader's message appears in the transcript (a send, or a queued follow-up being
-delivered) and when a request opens, and those bring the end into view; queueing
-a follow-up alone does not, and neither does an earlier message changing to the
-server's copy or earlier history loading. A reader who scrolled away from the
-held row stays where they are, as with no row held, and Scroll to bottom stays.
-Content growing under the held row never counts as scrolling away: only the
-reader's own input or the view moving does. Their rows stay where
-they are as it appears. Scroll-button hover changes its background
+end themselves (wheel, touch, a scroll key, End, a drag of the transcript's
+scrollbar, or Scroll to bottom), closes that row, or switches chats. It also
+ends when a new message of the reader's appears in the transcript (a send, a
+steered message once Station's copy arrives, or a queued follow-up being
+delivered) and when a request opens, and those bring the end into view. Queueing
+a follow-up does not: its bubble, shown while a turn runs and withdrawn when
+Station queues it, belongs to no turn yet. Neither does an earlier message
+changing to the server's copy, a withdrawn bubble uncovering it again, or
+earlier history loading. A reader who scrolled away from the held row stays
+where they are, as with no row held, and Scroll to bottom stays. A scroll the
+reader did not make (content growing or shrinking under the held row, the
+browser clamping the position, a restore) neither counts as leaving the end nor
+as returning to it. When the view gets shorter (the keyboard, the pending list)
+the held row's header is brought back into it, moved no further than that,
+unless the reader has scrolled away. Their rows stay where they are as it
+appears. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide inbox /
 Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
