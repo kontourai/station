@@ -8,6 +8,7 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import {
   agentId,
   engineConnectionId,
@@ -19,7 +20,10 @@ import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/works
 import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { execGitSync } from '../../../utils/git-exec.js';
-import { CreateRequestClaims } from '../../orchestration/create-request-claims.js';
+import {
+  CreateRequestClaims,
+  runForegroundCreateClaim,
+} from '../../orchestration/create-request-claims.js';
 import { WorktreeProvisioningService } from '../../projects/worktree-provisioning-service.js';
 import {
   createConversationHandoffIntent,
@@ -263,6 +267,88 @@ describe('executeForegroundMessage', () => {
       expect(deps.startSession).not.toHaveBeenCalled();
       expect(deps.sendTurn).not.toHaveBeenCalled();
       await executeForegroundMessage({ ...input, delegation: undefined }, deps);
+      expect(deps.startSession).toHaveBeenCalledTimes(1);
+      expect(deps.sendTurn).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  test.each(
+    [
+      { blockedTools: ['repo_write'] },
+      { denyApprovals: true },
+      { allowedTools: ['repo_read'] },
+    ].flatMap((policy) => [
+      { policy, legacy: false },
+      { policy, legacy: true },
+    ]),
+  )(
+    'a durable create key retains policy %j across ledger reopen',
+    async ({ policy, legacy }) => {
+      const home = makeCreateHome('foreground-policy-identity-');
+      const deps = dependencies();
+      const request = {
+        userId: 'test-user',
+        clientTurnId: 'policy-create-key',
+        message: 'Keep the original policy',
+        target: {
+          environment: { kind: 'current' as const },
+          agent: agentId('station'),
+        },
+        delegation: {
+          mode: 'isolated-child' as const,
+          depth: 1,
+          maxDepth: 2,
+          parentAgentSlug: agentId('parent'),
+          rootAgentSlug: agentId('root'),
+          ...policy,
+        },
+      };
+      const intent = { message: request.message, target: request.target };
+      const create = (delegation: AgentDelegationContext) =>
+        runForegroundCreateClaim(
+          new CreateRequestClaims(home),
+          { ...request, delegation },
+          sessionReadAuthorityFromRequest('test-user', undefined, undefined),
+          intent,
+          (input) => executeForegroundMessage(input, deps),
+          async () => true,
+        );
+      if (legacy) {
+        // Before policy identity was retained, this is the durable intent written
+        // by the foreground create caller. Never turn its mismatch into a resend.
+        await new CreateRequestClaims(home).run(
+          {
+            kind: 'foreground',
+            principal: undefined,
+            authority: sessionReadAuthorityFromRequest(
+              'test-user',
+              undefined,
+              undefined,
+            ),
+            requestKey: request.clientTurnId,
+            intent,
+            hasSessionStartRecord: async () => true,
+          },
+          (conversationId) =>
+            executeForegroundMessage({ ...request, conversationId }, deps),
+        );
+        await expect(create(request.delegation)).rejects.toMatchObject({
+          code: 'create_request_conflict',
+        });
+      } else {
+        const first = await create(request.delegation);
+        expect(await create(request.delegation)).toEqual(first);
+      }
+      const weaker = {
+        ...request.delegation,
+        blockedTools: undefined,
+        denyApprovals: undefined,
+        allowedTools: undefined,
+      };
+      if (!legacy)
+        await expect(create(weaker)).rejects.toMatchObject({
+          code: 'create_request_conflict',
+        });
       expect(deps.startSession).toHaveBeenCalledTimes(1);
       expect(deps.sendTurn).toHaveBeenCalledTimes(1);
     },

@@ -1,0 +1,7 @@
+{
+  "revision": "f87992cc551486a30131f4870bc0575421c9cca6",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r2b-evidence.md","note":"Reviewed the added native registration guard regression and its ordinary same-route control. It extends current coverage without altering the historical passkey ceremony or qualification facts in the cited evidence.","inputs":["src-server/routes/outside-agent/__tests__/consent-routes.test.ts"]}
+  ]
+}

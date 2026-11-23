@@ -133,20 +133,36 @@ describe('ConsentTransactionStore', () => {
     expect(otherTenant.ok).toBe(true);
   });
 
-  test('bounds pending capacity per tenant', () => {
-    const store = new ConsentTransactionStore();
-    for (let i = 0; i < 100; i += 1) {
-      const result = store.create(
-        makeInit({ rateKey: `principal-${i}`, fingerprint: `fp-${i}` }).init,
-      );
-      expect(result.ok).toBe(true);
-    }
-    expect(
-      store.create(
-        makeInit({ rateKey: 'principal-over', fingerprint: 'fp-x' }).init,
-      ),
-    ).toEqual({ ok: false, reason: 'capacity' });
-  });
+  test.each([
+    { family: 'ordinary', capacity: 100, other: 'outside' },
+    { family: 'outside', capacity: 20, other: 'ordinary' },
+  ] as const)(
+    'saturating $family consent leaves $other consent capacity available',
+    ({ family, capacity, other }) => {
+      const store = new ConsentTransactionStore();
+      const create = (kind: 'ordinary' | 'outside', index: number) => {
+        const { init } = makeInit({ rateKey: `${kind}-${index}` });
+        return store.create(
+          kind === 'outside'
+            ? {
+                ...init,
+                target: { ...init.target, kind: 'outside-agent-approval' },
+                ceremony: 'webauthn',
+                operatorSessionId: init.rateKey,
+              }
+            : init,
+        );
+      };
+      for (let index = 0; index < capacity; index += 1) {
+        expect(create(family, index).ok).toBe(true);
+      }
+      expect(create(family, capacity)).toEqual({
+        ok: false,
+        reason: 'capacity',
+      });
+      expect(create(other, 0).ok).toBe(true);
+    },
+  );
 
   test('tenant partitioning: a transaction is invisible to another tenant', () => {
     const store = new ConsentTransactionStore();

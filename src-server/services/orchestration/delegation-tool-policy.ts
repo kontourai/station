@@ -153,3 +153,39 @@ export function captureInheritedDelegationToolContext(
       : {}),
   };
 }
+
+function delegationToolPolicyIdentity(
+  delegation: AgentDelegationContext | undefined,
+) {
+  const captured = captureInheritedDelegationToolContext(delegation);
+  if (
+    !captured ||
+    (!effectiveGroups(captured).length &&
+      !deniedTools(captured).length &&
+      !forbidsApprovals(captured))
+  )
+    return undefined;
+  return {
+    mode: captured.mode,
+    depth: captured.depth,
+    maxDepth: captured.maxDepth,
+    parentAgentSlug: captured.parentAgentSlug,
+    parentSessionId: captured.parentSessionId ?? null,
+    parentConversationId: captured.parentConversationId ?? null,
+    rootAgentSlug: captured.rootAgentSlug,
+    rootConversationId: captured.rootConversationId ?? null,
+    allowedTools: captured.allowedTools ?? null,
+    blockedTools: captured.blockedTools ?? null,
+    denyApprovals: captured.denyApprovals ?? null,
+    toolAllowlistConstraints: captured.toolAllowlistConstraints ?? null,
+  };
+}
+
+/** Identity only: this never authenticates or grants the policy it records. */
+export function bindDelegationToolIntent(
+  intent: unknown,
+  delegation: AgentDelegationContext | undefined,
+): unknown {
+  const requiredDelegation = delegationToolPolicyIdentity(delegation);
+  return requiredDelegation ? { intent, requiredDelegation } : intent;
+}
