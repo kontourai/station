@@ -101,6 +101,9 @@ async function dragScroller(page: Page, by: number | 'end') {
     return null;
   });
   expect(point, 'a point on the scroller itself').not.toBeNull();
+  // The reader was in the composer: the press moves focus, and the blur that
+  // follows inside the page must not drop the press.
+  await page.locator('.chat-input textarea').focus();
   await page.mouse.move(point!.x, point!.y);
   await page.mouse.down();
   await log.evaluate((element, delta) => {

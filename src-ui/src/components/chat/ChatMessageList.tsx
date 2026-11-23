@@ -1825,7 +1825,7 @@ function ChatMessageListComponent({
       // The window losing focus, not an element inside it: a press on the
       // transcript focuses it, and the blur that follows inside the page
       // reaches this capturing listener too.
-      ['blur', (event) => event.target === window && releaseAll()],
+      ['blur', (event) => !(event.target instanceof Node) && releaseAll()],
     ];
     for (const [type, listener] of listeners)
       window.addEventListener(type, listener, true);
