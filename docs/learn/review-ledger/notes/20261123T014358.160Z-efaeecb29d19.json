@@ -1,0 +1,7 @@
+{
+  "revision": "d066d0e38d93bc0db42975cb8454f160503cf4b6",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Reworded the turn-off exception in the OpenAI-compatible setup step to match refuseMissingAddressUnlessTurnedOff: any saved connection with Enabled cleared can be saved without a server URL; create and turning on still need it. Checked against the route tests for both PUT routes.","inputs":["docs/guides/connections.md"]}
+  ]
+}
