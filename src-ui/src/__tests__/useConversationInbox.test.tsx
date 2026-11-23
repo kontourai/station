@@ -17,14 +17,14 @@ import {
 
 import { useState } from 'react';
 import { afterEach, expect, test, vi } from 'vitest';
-import { useConversationInbox } from '../hooks/useConversationInbox';
-import { useConversationInboxSnapshot } from '../hooks/useConversationInboxSnapshot';
 import { ConversationInboxMessages } from '../components/chat/ConversationInboxMessages';
 import type { PendingMessageMetadata } from '../contexts/active-chats-state';
 import {
   INBOX_ACTIVE_POLL_MS,
   INBOX_IDLE_POLL_MS,
+  useConversationInbox,
 } from '../hooks/useConversationInbox';
+import { useConversationInboxSnapshot } from '../hooks/useConversationInboxSnapshot';
 import { shouldPersistQuery } from '../lib/queryPersistence';
 
 function expand() {
