@@ -1,0 +1,19 @@
+{
+  "revision": "6d1ddddf07b804e086a242848ce248f5861ed86e",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Traced the pinned Claude and Codex probe from the explicit flag through the selected tool, bounded preparer, one invocation, exact follow-up result, CLI completion, producer observation, and confirmed cleanup conditions. Reviewed the synthetic framing and private failed-output fixture. The lab remains unrun at this head and supplies no serving or funding grant.","inputs":["docs/guides/native-model-channel-lab.md","scripts/child-work-native-model-channel-lab.ts","src-server/services/connections/__tests__/native-model-container.test.ts","src-server/services/connections/native-model-container.ts","scripts/lib/native-brokered-rpc-lab.ts","scripts/lib/native-provider-stream-fixture.ts"]},
+
+    {"path":"docs/README.md","note":"Reviewed the explicit brokered lab invocation and checked that the original fixed-text and kernel controls retain their documented behavior. The additional probe makes synthetic calls inside its owned local namespaces.","inputs":["docs/guides/native-model-channel-lab.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the explicit brokered lab invocation and checked that the original fixed-text and kernel controls retain their documented behavior. The additional probe makes synthetic calls inside its owned local namespaces.","inputs":["docs/guides/native-model-channel-lab.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Traced the new brokered option through the explicit native-engine precondition into the pinned synthetic probe after the fixed-text controls. The existing daemon selection, binary pins, image ownership, and qualification flags are unchanged.","inputs":["scripts/child-work-native-model-channel-lab.ts"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Traced the new brokered option through the explicit native-engine precondition into the pinned synthetic probe after the fixed-text controls. The existing daemon selection, binary pins, image ownership, and qualification flags are unchanged.","inputs":["scripts/child-work-native-model-channel-lab.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified brokered terminal output is retained within the prior combined output bound and joined by local exec settlement. The original result keeps its failure, and an unsuccessful retention does not hide that failure. Fixed-text and namespace admission and cleanup rules are unchanged.","inputs":["src-server/services/connections/native-model-container.ts"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Verified brokered terminal output is retained within the prior combined output bound and joined by local exec settlement. The original result keeps its failure, and an unsuccessful retention does not hide that failure. Fixed-text and namespace admission and cleanup rules are unchanged.","inputs":["src-server/services/connections/native-model-container.ts"]}
+  ]
+}
