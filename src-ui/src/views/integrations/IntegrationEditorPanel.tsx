@@ -10,6 +10,12 @@ import { IntegrationTrustReview } from './IntegrationTrustReview';
 import { IntegrationTrustSection } from './IntegrationTrustSection';
 import { OAuthClientSection } from './OAuthClientSection';
 
+const transportLabels = {
+  stdio: 'Local command',
+  sse: 'SSE',
+  'streamable-http': 'HTTP',
+};
+
 const loadSecretBindingPicker = () =>
   import('./SecretBindingPicker').then((module) => ({
     default: module.SecretBindingPicker,
@@ -138,7 +144,10 @@ export function IntegrationEditorPanel({
           isBuiltin || isRuntimeManaged
             ? { label: 'Built in', variant: 'muted' as const }
             : editForm.transport
-              ? { label: editForm.transport, variant: 'muted' as const }
+              ? {
+                  label: transportLabels[editForm.transport],
+                  variant: 'muted' as const,
+                }
               : undefined
         }
         statusDot={
@@ -568,9 +577,11 @@ export function IntegrationEditorPanel({
                       }))
                     }
                   >
-                    <option value="stdio">Local command</option>
-                    <option value="sse">SSE</option>
-                    <option value="streamable-http">HTTP</option>
+                    {Object.entries(transportLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

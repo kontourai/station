@@ -3,9 +3,11 @@ import {
   useDiscoverIntegrationEventsMutation,
 } from '@kontourai/station-sdk';
 import { StationHttpError } from '@kontourai/station-sdk/client';
+import { useState } from 'react';
 import { Button } from '../../components/Button';
+import { Dialog } from '../../components/Dialog';
 import { PageRow } from '../../components/PageRow';
-import { ErrorState } from '../../components/state';
+import { ErrorState, SkeletonBlock } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 
 export function IntegrationEventsSection({
@@ -31,54 +33,71 @@ function EventCatalog({
   integrationId: string;
   scope: ApiRequestScope;
 }) {
+  const [open, setOpen] = useState(false);
   const discovery = useDiscoverIntegrationEventsMutation();
   const check = () =>
     discovery.mutate({ id: integrationId, requestScope: scope });
+  const close = () => setOpen(false);
   const outdated =
     discovery.error instanceof StationHttpError &&
     discovery.error.status === 404;
 
   return (
     <section className="agent-editor__section" aria-label="MCP Events">
-      <div className="agent-editor__section-header">
-        <h3 className="agent-editor__section-title">MCP Events</h3>
-      </div>
-      {outdated ? (
-        <p>Update this Station to check MCP Events.</p>
-      ) : discovery.isError ? (
-        <ErrorState
-          variant="compact"
-          title="Event catalog unavailable"
-          description={discovery.error.message}
-          action={<Button onClick={check}>Retry</Button>}
-        />
-      ) : (
-        <div>
-          <Button onClick={check} disabled={discovery.isPending}>
-            {discovery.isPending ? 'Checking events…' : 'Check events'}
-          </Button>
-        </div>
-      )}
-      {discovery.data?.supported ? (
-        discovery.data.events.length ? (
-          <section
-            className="integration-event-catalog"
-            aria-label="Available event types"
+      <PageRow
+        title="MCP Events"
+        control={
+          <Button
+            onClick={() => {
+              setOpen(true);
+              check();
+            }}
+            disabled={discovery.isPending}
           >
-            {discovery.data.events.map((event) => (
-              <PageRow
-                key={event.name}
-                title={event.title || event.name}
-                description={event.description}
-              />
-            ))}
-          </section>
-        ) : (
-          <p>This tool server offers no event types.</p>
-        )
-      ) : discovery.data ? (
-        <p>This tool server does not advertise MCP Events.</p>
-      ) : null}
+            Check events
+          </Button>
+        }
+      />
+      {open && (
+        <Dialog
+          title="MCP Events"
+          closeLabel="Close MCP Events"
+          onClose={close}
+          footer={<Button onClick={close}>Done</Button>}
+        >
+          {outdated ? (
+            <p>Update this Station to check MCP Events.</p>
+          ) : discovery.isError ? (
+            <ErrorState
+              variant="compact"
+              title="Event catalog unavailable"
+              description={discovery.error.message}
+              action={<Button onClick={check}>Retry</Button>}
+            />
+          ) : discovery.data?.supported ? (
+            discovery.data.events.length ? (
+              <section
+                className="integration-event-catalog"
+                aria-label="Available event types"
+              >
+                {discovery.data.events.map((event) => (
+                  <PageRow
+                    key={event.name}
+                    title={event.title || event.name}
+                    description={event.description}
+                  />
+                ))}
+              </section>
+            ) : (
+              <p>This tool server offers no event types.</p>
+            )
+          ) : discovery.data ? (
+            <p>This tool server does not advertise MCP Events.</p>
+          ) : (
+            <SkeletonBlock label="Checking events" />
+          )}
+        </Dialog>
+      )}
     </section>
   );
 }
