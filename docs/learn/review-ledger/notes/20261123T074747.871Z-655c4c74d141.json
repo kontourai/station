@@ -1,0 +1,7 @@
+{
+  "revision": "118885a904428b83efc585ce693754dfca2bd104",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Source change: the command route marks a person's interruptTurn (personCredentialRequest) as personStop, recorded as byPerson on session.stop-settled; runtime support passes an unattended-Session Task-title resolver to the approval inbox, which prefixes the card body only for Sessions acting for no person. Grepped citing pages for interruptTurn, stop-settled, approval card body and person check: their claims are unchanged; automations.md carries the new behaviour.","inputs":["src-server/runtime/automation-actions-runtime.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "118885a904428b83efc585ce693754dfca2bd104",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Automation subpath row names stopped among the closed delivery outcomes.","inputs":["docs/reference/contracts.md","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
