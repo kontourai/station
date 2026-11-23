@@ -3,7 +3,6 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   cancelConversationInboxEntry,
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
-  listConversationInbox,
   StationHttpError,
 } from '@kontourai/station-sdk/client';
 import {
@@ -18,8 +17,8 @@ import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
 import { useConstrainedNetwork } from '../platform/networkCost';
 import { subscribeSharedOrchestrationStream } from './orchestration/sharedStreamListeners';
 import {
+  inboxQueryFn,
   inboxQueryKey,
-  inboxReceiptsKey,
   useInboxReceipts,
   visibleInboxEntries,
   withInboxReceipts,
@@ -99,31 +98,7 @@ export function useConversationInbox(
             : INBOX_ACTIVE_POLL_MS
           : INBOX_IDLE_POLL_MS,
     refetchIntervalInBackground: false,
-    queryFn: async ({ signal }): Promise<ConversationInboxEntry[]> => {
-      if (!scope?.isCurrent())
-        throw new Error('The Station connection changed.');
-      const receiptsKey = inboxReceiptsKey(queryKey);
-      const confirmedByThisRead =
-        client.getQueryData<ConversationInboxEntry[]>(receiptsKey);
-      const entries = await listConversationInbox(apiBase!, conversationId, {
-        requestScope: scope,
-        requireCredential: scope.requiresEnrolledCredential !== false,
-        signal,
-        timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
-        onHead: (head) => {
-          if (!signal.aborted && scope.isCurrent())
-            client.setQueryData([...queryKey, 'head'], head);
-        },
-      });
-      if (!scope.isCurrent())
-        throw new Error('The Station connection changed.');
-      if (!signal.aborted && confirmedByThisRead?.length) {
-        client.setQueryData<ConversationInboxEntry[]>(receiptsKey, (current) =>
-          current?.filter((entry) => !confirmedByThisRead.includes(entry)),
-        );
-      }
-      return entries;
-    },
+    queryFn: inboxQueryFn({ client, scope, apiBase, conversationId, queryKey }),
   });
   const receipts = useInboxReceipts(queryKey);
   useEffect(() => {

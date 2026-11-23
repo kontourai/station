@@ -893,6 +893,9 @@ for (const readerFirst of [false, true]) {
       'fetch',
       vi.fn(async () => response([entry('queued', `call-${++calls}`)])),
     );
+    // The library reports a missing or skipped query function through
+    // console.error, and the browser journeys fail on any console error.
+    const consoleError = vi.spyOn(console, 'error');
     const client = mountPair(readerFirst);
     await waitFor(() =>
       expect(screen.getByTestId('snapshot').textContent).toBe('call-1'),
@@ -922,6 +925,12 @@ for (const readerFirst of [false, true]) {
     );
     expect(screen.queryByText(/load inbox entries/)).toBeNull();
     expect(screen.getByTestId('owner').textContent).toBe('available');
+    expect(
+      consoleError.mock.calls.filter((call) =>
+        /queryFn/i.test(String(call[0])),
+      ),
+    ).toEqual([]);
+    consoleError.mockRestore();
   });
 }
 
@@ -932,6 +941,7 @@ test('a snapshot reader mounted alone neither fetches nor errors on invalidation
     defaultOptions: { queries: { retry: false } },
   });
   clients.push(client);
+  const consoleError = vi.spyOn(console, 'error');
   render(
     <QueryClientProvider client={client}>
       <SnapshotProbe />
@@ -947,4 +957,8 @@ test('a snapshot reader mounted alone neither fetches nor errors on invalidation
   expect(query?.state.error).toBeNull();
   expect(query?.state.fetchStatus).toBe('idle');
   expect(screen.getByTestId('snapshot').textContent).toBe('');
+  expect(
+    consoleError.mock.calls.filter((call) => /queryFn/i.test(String(call[0]))),
+  ).toEqual([]);
+  consoleError.mockRestore();
 });
