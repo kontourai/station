@@ -274,8 +274,8 @@ Station text aliases to the published Kontour UI tokens: supporting text uses
 person's Comfortable or Compact choice sets only the base text tokens and
 never shrinks a touch target ([density and motion](theming.md#density-and-motion)).
 Desktop and mobile Inbox cards allow two lines for the title. The metadata reads project first, then agent, as it does on Home. The status column shows one elapsed, scheduled or recency time. A task opens
-from its row. Its work-chat disclosure stays separate. Desktop row actions
-appear on hover or keyboard focus. Open Search from its icon or the narrow header menu. **New chat** floats over the Inbox list. This Inbox replaces the title-triggered Chats and tasks sheet
+from its row. Its work-chat disclosure stays separate. A desktop row's ⋯ menu
+appears on hover or keyboard focus. Open Search from its icon or the narrow header menu. **New chat** floats over the Inbox list. This Inbox replaces the title-triggered Chats and tasks sheet
 and shares the desktop Inbox's scope and history preferences. It stays mounted
 behind a conversation, retaining its search and list position. While reading a
 chat, **Inbox** in Chat actions opens the same list. **Browse all conversations**
@@ -510,20 +510,20 @@ Android device.
 
 The Sheet gestures device preview also enables a left swipe on touch inbox rows
 in the dock panel and embedded mobile Inbox. The row reveals 72px-wide
-controls, with Snooze before Settle or Dismiss. A swipe only reveals the
-controls. Snooze opens the time choices; Dismiss offers Undo. A right swipe closes the
+controls, Snooze then Mark done. A swipe only reveals the
+controls. Snooze opens the time choices; Mark done offers Undo. A right swipe closes the
 rail. Vertical movement stays available to the scroll container, and the swipe’s
 trailing click cannot open the conversation. Details and long press retain the
 same actions with the preview off.
 
-Dismissal is browser-local inbox visibility, separate from tab teardown, stopping
-work, or deleting a draft. Inbox search reveals matching dismissed items and
-their Restore action. Lifecycle changes use the existing debounce; running
+Without settlement, Mark done is browser-local inbox visibility, separate from
+tab teardown, stopping work, or deleting a draft. Inbox search reveals matching
+items marked done, under Marked done, with Reopen. Lifecycle changes use the existing debounce; running
 progress does not restore a dismissed row. Hidden Third-party sessions stay
 hidden through external updates and return to normal status handling when
-adopted into Station. With Open and Settled inbox on, an eligible owned chat
-offers Settle. An owned chat that cannot be settled yet can be dismissed from
-this Inbox. Settled chats also offer Dismiss to put them away from this view.
+adopted into Station. With Open and Settled inbox on, Mark done settles an
+eligible owned chat; an owned chat that cannot be settled yet is put away on
+this Inbox instead. A settled chat offers Reopen.
 Hide records a third-party Session on the host for the person.
 The actions are available in the row, swipe tray and Details.
 The swipe Snooze picker uses the dialog layer above its mobile inbox host.
@@ -559,8 +559,9 @@ or, when reading a subagent, to its parent.
 Inbox floats **New chat** above the list. In an open chat it lives in the
 chat actions menu. At narrow widths the Inbox menu also holds Search and
 Filter. Filters combine Station, Project and status. Hold a conversation or
-choose **Select conversations** to select rows. The tray offers Snooze,
-Settle and Dismiss according to the selected rows’ eligibility.
+choose **Select conversations** to select rows. The tray offers Snooze and
+Mark done; Mark done settles or dismisses each row as a single row would, and
+its notice offers one Undo (and ⌘Z) for them all.
 
 The answer's **⋯** sheet lists the answer's actions itself (Provenance,
 Reasoning, Add to Task) below its summary row, instead of a second **⋯** whose
