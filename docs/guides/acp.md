@@ -1071,6 +1071,8 @@ and the scripted profile
 - **Station's tools.** Without `--process-per-session` the engine declares no
   `mcpCapabilities`, and Station's HTTP tool servers are skipped. With it, it
   declares `http` and called a client HTTP MCP server with its headers.
+  When Antigravity uses `call_mcp_tool`, the transcript shows the server and
+  tool named in the call along with the tool's arguments.
 - **Questions** arrive as core `elicitation/create` forms (a `oneOf` choice
   and a free-text `q1_other`) because Station announces `elicitation`.
   Without it the engine prints the question as text and takes the next

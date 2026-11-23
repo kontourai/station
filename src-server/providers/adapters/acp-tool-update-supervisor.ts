@@ -3,6 +3,10 @@ import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-atta
 import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
 import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
 import {
+  type AcpIdentityHandshake,
+  matchesAcpHandshakeIdentity,
+} from '../../services/acp/acp-handshake-facts.js';
+import {
   acpToolUpdateSupervisorBytes,
   acpToolUpdateSupervisorOperations,
   acpToolUpdateSupervisorRetainedBytes,
@@ -46,6 +50,8 @@ function toolIdentity(
   id: string,
   call: CallState,
 ): { toolName: string; toolKind?: EngineToolKind } {
+  if (call.proxiedMcpToolName)
+    return { toolName: call.proxiedMcpToolName, toolKind: 'other' };
   return {
     toolName: call.name || call.title || id,
     ...(call.kind ? { toolKind: call.kind } : {}),
@@ -117,6 +123,7 @@ type AcpToolUpdate = {
   kind?: unknown;
   rawInput?: unknown;
   rawOutput?: unknown;
+  handshake?: AcpIdentityHandshake | null;
   content?: unknown;
   status?: string | null;
   hasTitle?: boolean;
@@ -131,6 +138,7 @@ type AcpToolUpdate = {
 type CallState = {
   name?: string;
   title?: string;
+  proxiedMcpToolName?: string;
   /** The engine's ACP `kind`, kept across updates: OpenCode's `completed`
    * update omits it, and the terminal must still say what the call was. */
   kind?: EngineToolKind;
@@ -239,6 +247,34 @@ function dataProperty(value: unknown, key: PropertyKey): unknown {
   } catch {
     return undefined;
   }
+}
+
+// agy reports call_mcp_tool as an execute call with the MCP identity in rawInput.
+function antigravityMcpToolName(
+  update: AcpToolUpdate,
+  call: CallState,
+): string | undefined {
+  if (
+    call.kind !== 'execute' ||
+    !update.handshake ||
+    !matchesAcpHandshakeIdentity(update.handshake, {
+      agentInfoName: 'Antigravity ACP Server',
+    })
+  )
+    return undefined;
+  const server = dataProperty(update.rawInput, 'ServerName');
+  const tool = dataProperty(update.rawInput, 'ToolName');
+  const name = /^[a-zA-Z0-9_.-]{1,128}$/u;
+  if (
+    typeof server !== 'string' ||
+    typeof tool !== 'string' ||
+    !name.test(server) ||
+    !name.test(tool) ||
+    call.title !== `MCP Tool ${tool}`
+  ) {
+    return undefined;
+  }
+  return `${server}/${tool}`;
 }
 
 function safeArrayEntries(value: unknown): {
@@ -811,17 +847,23 @@ export class AcpToolUpdateSupervisor {
     // claim the engine made, and an unknown string is not that claim.
     if (kindChanged) call.kind = nextKind;
     if (update.hasRawInput) {
+      call.proxiedMcpToolName ??= antigravityMcpToolName(update, call);
       // Full HTML in a render call can otherwise consume the entire budget
       // needed to retain the publication reference returned by Station.
       const resultBytes =
-        stationControlToolName(call.name ?? call.title) === 'html_render'
+        stationControlToolName(
+          call.proxiedMcpToolName ?? call.name ?? call.title,
+        ) === 'html_render'
           ? 2048
           : 0;
+      const input = call.proxiedMcpToolName
+        ? (dataProperty(update.rawInput, 'Arguments') ?? update.rawInput)
+        : update.rawInput;
       const rawInput =
-        update.rawInput === null
+        input === null
           ? ({ value: undefined, bytes: 0 } satisfies RawProjection)
           : projectRaw(
-              update.rawInput,
+              input,
               ACP_TOOL_UPDATE_LIMITS.maxRetainedBytesPerCall -
                 Math.max(call.rawOutputBytes + call.contentBytes, resultBytes),
             );
@@ -991,8 +1033,9 @@ export class AcpToolUpdateSupervisor {
   }
   private complete(id: string, call: CallState, status: string): void {
     const fallBackToRenderResult =
-      stationControlToolName(call.name ?? call.title) === 'html_render' &&
-      !call.content?.length;
+      stationControlToolName(
+        call.proxiedMcpToolName ?? call.name ?? call.title,
+      ) === 'html_render' && !call.content?.length;
     const projectedOutput =
       call.hasContent && !fallBackToRenderResult
         ? call.content
