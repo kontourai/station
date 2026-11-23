@@ -859,11 +859,7 @@ function SnapshotProbe() {
 
 function Owner() {
   const query = useConversationInbox('conversation');
-  return (
-    <output data-testid="owner">
-      {query.unavailable ? 'unavailable' : 'ok'}
-    </output>
-  );
+  return <output data-testid="owner">{query.availability}</output>;
 }
 
 function mountPair(readerFirst: boolean) {
@@ -925,7 +921,7 @@ for (const readerFirst of [false, true]) {
       expect(screen.getByTestId('snapshot').textContent).toBe(`call-${calls}`),
     );
     expect(screen.queryByText(/load inbox entries/)).toBeNull();
-    expect(screen.getByTestId('owner').textContent).toBe('ok');
+    expect(screen.getByTestId('owner').textContent).toBe('available');
   });
 }
 
