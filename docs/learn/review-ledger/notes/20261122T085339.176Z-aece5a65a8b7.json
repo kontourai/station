@@ -1,0 +1,7 @@
+{
+  "revision": "6bd5d6ab0cc78f7d92194fbcd62ff5515c47e8a7",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Scheduler section now states that jobId is distinct from the slug name and the optional displayName, the only name an edit changes. Rest of the page has no claims about job names or one-time defaults.","inputs":["docs/architecture/module-map.md","packages/contracts/src/scheduler.ts","src-server/services/__tests__/scheduler.test.ts","src-server/services/scheduling/builtin-scheduler.ts","src-server/services/scheduling/scheduler-ledger.ts"]}
+  ]
+}

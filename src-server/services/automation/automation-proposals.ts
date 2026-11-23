@@ -615,7 +615,7 @@ function describeRuleProposal(
     watches: `Completed GitHub Actions runs ${from}, when every condition the agent wrote below matches.`,
     opens: `A Task in ${projectLabel(context, action.projectId)} for a matching run, at most ${rule.rateLimit.maxStartsPerHour} per hour.${episode}`,
     wakes: `Agent ${action.agentId} in ${projectLabel(context, action.projectId)}, with the agent's instructions below.`,
-    authority: `Asks before each tool call (approval mode ask) and never has full access. Each run is limited to ${action.budget.maxTurns} turns, ${action.budget.maxTokens.toLocaleString('en-US')} tokens and ${hours(action.budget.maxWallRuntimeMs)}. It cannot merge, publish, or change automations or grants.`,
+    authority: `Asks before acting (approval mode ask) and never has full access. Each run is limited to ${action.budget.maxTurns} turns, ${action.budget.maxTokens.toLocaleString('en-US')} tokens and ${hours(action.budget.maxWallRuntimeMs)}. It cannot merge, publish, or change automations or grants.`,
     startsAs:
       'Created observing: it records what it would have done for each matching run but never starts a Task.',
     ifEnabled:

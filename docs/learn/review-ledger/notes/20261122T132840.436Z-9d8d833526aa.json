@@ -1,0 +1,7 @@
+{
+  "revision": "b78420825342ac366cf00977a2a36b2fc40ec1a9",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Agent Hooks table: afterInvocation in agent-hooks.ts now counts turns and tool calls without usage, leaves tokens and cost absent, falls back to the hooks' own spec when the agent file cannot load, and records nothing for a failed turn with no usage; the edited row and sentence state that. Other rows unchanged.","inputs":["docs/guides/agent-configuration.md","src-server/runtime/agents/agent-hooks.ts","src-server/runtime/agents/runtime-default-agent.ts"]}
+  ]
+}

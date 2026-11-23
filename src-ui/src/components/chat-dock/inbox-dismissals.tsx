@@ -9,7 +9,6 @@ import {
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { toastStore } from '../../contexts/ToastContext';
-import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import {
   dismissInboxItem,
   dropInboxDismissals,
@@ -23,6 +22,10 @@ import {
 } from '../../utils/inbox-dismissal-store';
 import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
+import {
+  trackPendingUndo,
+  untrackPendingUndo,
+} from '../undo/UndoableActionShortcut';
 import {
   inboxHideTarget,
   isHostHidden,
@@ -155,7 +158,6 @@ export function useInboxDismissActions(
       workStateRef.current.hide.mutate({ sessionId: target, hidden: false });
       if (lastDismissToast) toastStore.dismiss(lastDismissToast);
       lastDismissToast = null;
-      undoLastDismiss = null;
     }
     try {
       const current =
@@ -171,7 +173,6 @@ export function useInboxDismissActions(
       restoreInboxItems([current], namespace);
       if (lastDismissToast) toastStore.dismiss(lastDismissToast);
       lastDismissToast = null;
-      undoLastDismiss = null;
       setError(null);
     } catch {
       setError('Could not restore this conversation. Try again.');
@@ -191,18 +192,12 @@ export function useInboxDismissActions(
       const target = hostTarget(item);
       if (target) {
         workState.hide.mutate({ sessionId: target, hidden: true });
-        undoLastDismiss = () => restore(item);
         setError(null);
         if (lastDismissToast) toastStore.dismiss(lastDismissToast);
         lastDismissToast = null;
-        try {
-          lastDismissToast = toastStore.show(
-            'Session hidden',
-            undefined,
-            8000,
-            [{ label: 'Undo', onClick: () => restore(item) }],
-          );
-        } catch {}
+        lastDismissToast = offerDismissUndo('Session hidden', () =>
+          restore(item),
+        );
         return;
       }
       try {
@@ -213,18 +208,12 @@ export function useInboxDismissActions(
       }
       // The dismissal is saved; a toast failure must not report otherwise,
       // and ⌘Z and Restore still reach it.
-      undoLastDismiss = () => restore(item);
       setError(null);
       if (lastDismissToast) toastStore.dismiss(lastDismissToast);
       lastDismissToast = null;
-      try {
-        lastDismissToast = toastStore.show(
-          'Conversation dismissed',
-          undefined,
-          8000,
-          [{ label: 'Undo', onClick: () => restore(item) }],
-        );
-      } catch {}
+      lastDismissToast = offerDismissUndo('Conversation dismissed', () =>
+        restore(item),
+      );
     },
     restore,
     notice: error ? (
@@ -236,31 +225,45 @@ export function useInboxDismissActions(
 }
 
 let lastDismissToast: string | null = null;
-let undoLastDismiss: (() => void) | null = null;
-/** One registered Undo command for the latest dismissal across inbox hosts. */
+let dismissToastSequence = 0;
+
+/**
+ * Shows the Undo notice for a dismissal and enters it in the app's undo stack,
+ * so Mod+Z reaches it through the one registered Undo command, in order with
+ * every other undoable action. Null when the notice could not be shown; the
+ * dismissal itself is already saved, and Restore still reaches it.
+ */
+function offerDismissUndo(message: string, onUndo: () => void): string | null {
+  dismissToastSequence += 1;
+  const id = `inbox-dismiss-${dismissToastSequence}`;
+  try {
+    toastStore.upsert({
+      id,
+      message,
+      tone: 'info',
+      duration: 8000,
+      actions: [{ label: 'Undo', onClick: onUndo }],
+      onDismiss: () => untrackPendingUndo(id),
+    });
+  } catch {
+    return null;
+  }
+  trackPendingUndo(id);
+  return id;
+}
+
+/**
+ * Drops the latest dismissal's Undo notice when the Station or namespace it
+ * was made for changes, so an Undo for another authority is never offered.
+ */
 export function InboxDismissUndo({ children }: { children: ReactNode }) {
   const { apiBase } = useApiBase();
   const { namespace } = useAuthorityPersistence();
   useEffect(() => {
     void apiBase;
     void namespace;
-    undoLastDismiss = null;
+    if (lastDismissToast) toastStore.dismiss(lastDismissToast);
+    lastDismissToast = null;
   }, [apiBase, namespace]);
-  useKeyboardShortcut(
-    'inbox.undoDismiss',
-    'z',
-    ['cmd'],
-    'Undo inbox dismissal',
-    () => {
-      if (
-        document.activeElement?.closest(
-          'input, textarea, select, [contenteditable], [role="textbox"], .station-terminal',
-        )
-      )
-        return false;
-      if (!undoLastDismiss) return false;
-      undoLastDismiss();
-    },
-  );
   return children;
 }

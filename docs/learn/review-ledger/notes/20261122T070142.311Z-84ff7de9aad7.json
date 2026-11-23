@@ -1,0 +1,15 @@
+{
+  "revision": "5b60cfe86e8f2b93211f95b05b11e352489095a8",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"The detail header now repeats the missing-server-URL reason as its subtitle for an OpenAI-compatible connection without an address; no citing page describes the header contents of that state, so their claims stand.","inputs":["src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"The detail header now repeats the missing-server-URL reason as its subtitle for an OpenAI-compatible connection without an address; no citing page describes the header contents of that state, so their claims stand.","inputs":["src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"The detail header now repeats the missing-server-URL reason as its subtitle for an OpenAI-compatible connection without an address; no citing page describes the header contents of that state, so their claims stand.","inputs":["src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"The detail header now repeats the missing-server-URL reason as its subtitle for an OpenAI-compatible connection without an address; no citing page describes the header contents of that state, so their claims stand.","inputs":["src-ui/src/views/ProviderSettingsView.tsx"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"The detail header now repeats the missing-server-URL reason as its subtitle for an OpenAI-compatible connection without an address; no citing page describes the header contents of that state, so their claims stand.","inputs":["src-ui/src/views/ProviderSettingsView.tsx"]}
+  ]
+}

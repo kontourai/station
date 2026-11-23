@@ -100,7 +100,33 @@ The [Enterprise Notes example](../../examples/enterprise-layout/README.md#knowle
 uses the older document API. Applying its layout registers `enterprise-notes`, the
 same namespace its SDK calls use. An earlier `notes` registration remains a
 separate Project namespace with its existing documents. Unscoped document
-search considers registered RAG namespaces with indexed content.
+search considers registered RAG namespaces with indexed content. The same
+holds for the Project-wide document list and status counts, so a directory
+scan that names no namespace registers the `code` RAG namespace (labelled
+Code) before writing the Project's first file into it. A scan with nothing to
+write registers nothing.
+
+Registering `code` makes indexed Project files retrievable, as indexing
+promises. In each chat turn of that Project, Station searches the Project's
+RAG namespaces for the user's message and adds the best-matching chunks
+(at most four, above a minimum score) to the turn's context. Unscoped and
+cross-Project knowledge search include them too. Retrieval needs an embedding
+connection; without one, chats and search get nothing from them. A later scan
+adds new files only: a path already in the namespace is reported as already
+indexed and is not re-read, so an edited file keeps its earlier content until
+it is removed and indexed again.
+
+Because indexed files reach that Project's chat turns, check what a scan
+picks up. "Index directory" does not read `.gitignore`. It skips only the
+directories `.git`, `node_modules`, `dist`, `build`, `.cache`, `__pycache__`,
+`target` and `.next`, and picks files by extension, including configuration
+types such as `.json`, `.yaml`, `.yml` and `.toml`, which can hold secrets. A
+scan takes at most 200 files and goes at most eight directories deep. It skips
+empty files, files over 500,000 characters, and symbolic links, which it never
+follows. To narrow it, use the exclude patterns in the scan dialog under the
+Project's Files & connections; the button in Project settings › Project
+knowledge scans with no patterns. The scan API and `useKnowledgeScanMutation`
+accept `includePatterns` and `excludePatterns` too.
 
 For a concrete example, [browse Station's repository graph](repository-knowledge-graph.md)
 or see [the captured Knowledge Library](../learn/walkthroughs.md#explore-repository-knowledge).

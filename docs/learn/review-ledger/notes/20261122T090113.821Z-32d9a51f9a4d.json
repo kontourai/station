@@ -1,0 +1,7 @@
+{
+  "revision": "a46df40a2bef79288a97a4cb4ead44e5325e4b44",
+
+  "notes": [
+    {"path":"docs/learn/walkthroughs.md","note":"ProjectPage.tsx change only removes the projectId prop to ProjectNavigation; the Project and Task scenes render the same rail Search button, so captions remain accurate.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}

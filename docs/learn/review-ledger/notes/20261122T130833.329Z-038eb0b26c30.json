@@ -1,0 +1,9 @@
+{
+  "revision": "caf947c82dab28bb4ed4c24798afcaa9b2d11991",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"The API reference change only documents the repository acquisition operator-refusal code. Checked that this page states nothing about that body.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The API reference change only documents the repository acquisition operator-refusal code. Checked that this page states nothing about that body.","inputs":["docs/reference/api.md"]}
+  ]
+}

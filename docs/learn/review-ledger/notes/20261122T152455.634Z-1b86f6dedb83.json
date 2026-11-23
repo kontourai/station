@@ -1,0 +1,7 @@
+{
+  "revision": "ac3c0bc3e815b6d8fcfd3997caa9bd94e434f527",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Rechecked (#5398 round 4): Check keeps visible keyboard focus while it runs and stays at the touch floor; New chat still floats over the Inbox list as described here.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat/chat.css"]}
+  ]
+}

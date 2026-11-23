@@ -81,6 +81,7 @@ const QUESTION_IN_OPEN_TURN = folded('questionInOpenTurn');
 const INTERRUPTED = folded('interrupted');
 const BLOCKED = folded('blocked');
 const TURN_COMPLETED = folded('turnCompleted');
+const TURN_CUT_OFF = folded('turnCutOff');
 const FAILED = folded('failed');
 
 function rowFor(summary: OrchestrationSessionSummary): {
@@ -118,6 +119,29 @@ it('keeps an armed check-back in Working after its turn settles, without hiding 
 });
 
 describe('the status ladder, from real server summaries', () => {
+  it('a turn cut off at the output limit reads Cut off, not Done, and still finished', () => {
+    expect(statusOf(TURN_CUT_OFF)).toEqual({
+      rung: 'cutOff',
+      lane: 'finished',
+      line: 'Cut off',
+    });
+    expect(statusOf(TURN_COMPLETED).line).toBe('Done');
+  });
+
+  it('a read, cut-off result of a resumable delegation returns to open work, as Done does', () => {
+    const row = rowFor(TURN_CUT_OFF);
+    const read = { ...row.item, unread: false };
+    const facts = { ...row.facts, resumableDelegationResult: true as const };
+    expect(workStatus(read, NOW, facts)).toMatchObject({
+      rung: 'cutOff',
+      lane: 'idle',
+      word: 'Cut off',
+    });
+    expect(workStatus({ ...read, unread: true }, NOW, facts).lane).toBe(
+      'finished',
+    );
+  });
+
   it('a running row with a pending approval reads as needs-approval, never as running', () => {
     // The turn really is still open on this summary; the shared attention
     // fold files it as awaiting anyway, and the row follows.
@@ -725,20 +749,22 @@ describe('status facts for chat, task and merged rows', () => {
     ).toBe('Queued to send');
   });
 
-  it('an uncertain message reads as delivery unconfirmed instead of queued to send', () => {
-    expect(
-      build({
-        status: 'queued',
-        outboundQueuedTurns: [
-          {
-            clientTurnId: 'uncertain',
-            content: 'continue',
-            createdAt: NOW,
-            status: 'may-have-started',
-          },
-        ],
-      }).line,
-    ).toBe('Delivery unconfirmed');
+  it('an uncertain message is a flag beside the status, not queued to send (#5398)', () => {
+    const built = build({
+      status: 'queued',
+      outboundQueuedTurns: [
+        {
+          clientTurnId: 'uncertain',
+          content: 'continue',
+          createdAt: NOW,
+          status: 'may-have-started',
+        },
+      ],
+    });
+    expect(built.line).toBe('Idle');
+    expect(built.facts?.unconfirmedDelivery).toEqual([
+      { chatSessionId: 'c1', clientTurnId: 'uncertain', createdAt: NOW },
+    ]);
   });
 
   it('a send queued while offline reads as queued', () => {

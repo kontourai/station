@@ -1,0 +1,9 @@
+{
+  "revision": "fbefd43834d3a9ca94e47e8d232b0edfdb82668f",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"api.md's Save a Connection gained the turn-off exception (PUT with enabled:false needs no OpenAI-compatible address). terminal.md and integrating-station.md link to other api.md sections (terminal socket, project sources, the reference as a whole), unaffected.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"api.md's Save a Connection gained the turn-off exception (PUT with enabled:false needs no OpenAI-compatible address). terminal.md and integrating-station.md link to other api.md sections (terminal socket, project sources, the reference as a whole), unaffected.","inputs":["docs/reference/api.md"]}
+  ]
+}

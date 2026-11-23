@@ -7,6 +7,10 @@
  * words is how two surfaces come to describe one failure differently.
  */
 
+import {
+  AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE,
+  AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE,
+} from '@kontourai/station-contracts/managed-model-binding';
 import { render, screen } from '@testing-library/react';
 import { describe, expect, test } from 'vitest';
 import { SessionDetailErrors } from '../../session-detail/SessionDetailErrors';
@@ -108,3 +112,43 @@ describe('the session detail renders that same component', () => {
     expect(screen.queryByText('internal_machine_code')).toBeNull();
   });
 });
+
+// One fixture per server sentence: the provider service's ("application
+// default") and an unbound agent's ("explicit default"), each as the
+// station-agent relay records it.
+const AMBIGUITY_CASES = [
+  ['the provider service', AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE],
+  ['an unbound agent', AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE],
+] as const;
+
+describe.each(AMBIGUITY_CASES)(
+  'SessionFailureAlert: a turn refused by %s (slice 0.17)',
+  (_source, message) => {
+    const raw = `Station agent did not accept the task turn: ${message}`;
+
+    test('reads in plain words, with the recorded text only under Details', () => {
+      render(<SessionFailureAlert failureText={raw} />);
+
+      const banner = screen.getByTestId('session-failure');
+      expect(banner.querySelector('.session-failure__cause')?.textContent).toBe(
+        'Couldn’t start: more than one model connection is turned on and Station can’t tell which one to use.',
+      );
+      const details = banner.querySelector('details');
+      expect(details?.textContent).toContain(raw);
+      const outside = banner.cloneNode(true) as HTMLElement;
+      outside.querySelector('details')?.remove();
+      expect(outside.textContent).not.toContain(message);
+    });
+
+    test('Details starts closed, so the recorded text waits to be asked for', () => {
+      render(<SessionFailureAlert failureText={raw} />);
+
+      const details = screen
+        .getByTestId('session-failure')
+        .querySelector('details');
+      expect(details).not.toBeNull();
+      expect(details?.open).toBe(false);
+      expect(details?.hasAttribute('open')).toBe(false);
+    });
+  },
+);

@@ -1,0 +1,9 @@
+{
+  "revision": "fbefd43834d3a9ca94e47e8d232b0edfdb82668f",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"station schedule create now accepts a body with displayName and no name, still refusing one with neither or with no prompt. api.md cites this file for other CLI callers and its scheduler create section already says prompt is required with name, displayName or both; cli.md was updated to say the same of the CLI and add_job.","inputs":["packages/cli/src/commands/surfaces.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"station schedule create now accepts a body with displayName and no name, still refusing one with neither or with no prompt. api.md cites this file for other CLI callers and its scheduler create section already says prompt is required with name, displayName or both; cli.md was updated to say the same of the CLI and add_job.","inputs":["packages/cli/src/commands/surfaces.ts"]}
+  ]
+}

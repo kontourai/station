@@ -1,0 +1,7 @@
+{
+  "revision": "07323a9c82896bb5f1fbb9f867b2f5bfa40bad92",
+
+  "notes": [
+    {"path":"docs/design/knowledge-foundation.md","note":"KnowledgeSection.tsx change only alters the scan result line to name already-indexed files; the migration design and K2/K3 seams described here are unchanged.","inputs":["docs/design/knowledge-foundation.md","src-ui/src/views/project-settings/KnowledgeSection.tsx"]}
+  ]
+}

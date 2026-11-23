@@ -1,0 +1,7 @@
+{
+  "revision": "b78420825342ac366cf00977a2a36b2fc40ec1a9",
+
+  "notes": [
+    {"path":"docs/reference/config.md","note":"Its agent-hooks.ts link is a usage-context pointer to the agent configuration guide; no config key or claim depends on the stats recording change.","inputs":["docs/reference/config.md","src-server/runtime/agents/agent-hooks.ts"]}
+  ]
+}

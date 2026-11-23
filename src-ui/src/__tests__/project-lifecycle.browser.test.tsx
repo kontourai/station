@@ -41,7 +41,7 @@ const sdkFixture: Plugin = {
             isPending: false, isError: false, refetch() {},
             data: [
               { name: 'monday-digest', provider: 'built-in', prompt: 'x', enabled: true, projectId: 'id-atlas', schedule: { kind: 'cron', expr: '0 9 * * 1' } },
-              { name: 'nightly-triage', provider: 'built-in', prompt: 'x', enabled: false, projectId: 'id-atlas', schedule: { kind: 'every', everyMs: 86400000 } },
+              { name: 'nightly-triage', displayName: 'Nightly triage', provider: 'built-in', prompt: 'x', enabled: false, projectId: 'id-atlas', schedule: { kind: 'every', everyMs: 86400000 } },
               { name: 'elsewhere', provider: 'built-in', prompt: 'x', enabled: true, projectId: 'id-birch', schedule: { kind: 'every', everyMs: 3600000 } },
             ],
           });
@@ -92,6 +92,9 @@ test('Pause banner, Schedules and Delete counts fit and stay usable in both them
     // Only this Project's schedules are listed.
     expect(await page.getByText('elsewhere').count()).toBe(0);
     await page.getByText('monday-digest').waitFor();
+    // A schedule with a display name is listed by it, not by its slug.
+    await page.getByText('Nightly triage').waitFor();
+    expect(await page.getByText('nightly-triage').count()).toBe(0);
     // A cron rule reads in words, as on the Automations page.
     expect(await page.getByText('0 9 * * 1').count()).toBe(0);
     for (const theme of ['light', 'dark']) {

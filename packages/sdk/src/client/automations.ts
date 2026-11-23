@@ -10,7 +10,7 @@
 import type {
   AutomationDeliveryPage,
   AutomationDispatchRuleInput,
-  AutomationEpisodeRecord,
+  AutomationEpisodeList,
   AutomationEpisodeRetry,
   AutomationPollSourceInput,
   AutomationRule,
@@ -238,8 +238,8 @@ export async function listAutomationEpisodes(
   apiBase: string,
   query: Readonly<{ limit?: number }> = {},
   opts?: ClientRequestOptions,
-): Promise<{ episodes: AutomationEpisodeRecord[] }> {
-  return unwrapAutomationResponse<{ episodes: AutomationEpisodeRecord[] }>(
+): Promise<AutomationEpisodeList> {
+  return unwrapAutomationResponse<AutomationEpisodeList>(
     await getJson(
       `${apiBase}/automations/episodes${limitQuery(query.limit)}`,
       opts,

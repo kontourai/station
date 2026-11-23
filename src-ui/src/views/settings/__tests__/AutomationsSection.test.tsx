@@ -164,3 +164,182 @@ test('the section is reachable from the Advanced page beside Feature previews', 
     advanced.indexOf('feature-previews') + 1,
   );
 });
+
+test('an open episode whose start failed says the Agent did not start and offers a retry', () => {
+  episodes.mockReturnValue(
+    ok({
+      episodes: [
+        { ...EPISODE('43', 'open'), attemptCount: 0, startFailed: true },
+        EPISODE('42', 'open'),
+      ],
+    }),
+  );
+  render(<AutomationsSection />);
+  expect(
+    screen.getAllByText(
+      'The Agent did not start, so nothing ran. Retry is available.',
+    ),
+  ).toHaveLength(1);
+  const buttons = screen.getAllByRole('button', { name: /^Retry episode/ });
+  expect(buttons).toHaveLength(1);
+  fireEvent.click(buttons[0]!);
+  expect(retry).toHaveBeenCalledWith({ ruleId: 'rule-1', episodeId: '43' });
+});
+
+test('a failed start on a rule that may not act says so and offers no retry', () => {
+  rules.mockReturnValue(
+    ok({
+      configurationFingerprint: 'f'.repeat(64),
+      rules: [{ ...RULE, mode: 'off' }],
+    }),
+  );
+  episodes.mockReturnValue(
+    ok({
+      episodes: [
+        { ...EPISODE('43', 'open'), attemptCount: 0, startFailed: true },
+      ],
+    }),
+  );
+  render(<AutomationsSection />);
+  expect(
+    screen.getByText(
+      'The Agent did not start, so nothing ran. The rule is not live, so it cannot be retried.',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryAllByRole('button', { name: /^Retry episode/ })).toEqual(
+    [],
+  );
+});
+
+test('a start refused for the rule approval setting names the Agent and offers no retry until the rule changes', () => {
+  rules.mockReturnValue(
+    ok({
+      configurationFingerprint: 'f'.repeat(64),
+      rules: [
+        { ...RULE, action: { kind: 'dispatch-task', agentId: 'helper' } },
+      ],
+    }),
+  );
+  episodes.mockReturnValue(
+    ok({
+      episodes: [
+        {
+          ...EPISODE('43', 'open'),
+          attemptCount: 0,
+          startFailed: true,
+          startFailure: 'agent-own-approval-required',
+          retryNeedsRuleChange: true,
+        },
+      ],
+    }),
+  );
+  render(<AutomationsSection />);
+  expect(
+    screen.getByText(
+      "Agent helper uses its own approval settings; set the rule's approval to the Agent's own, or change its Agent.",
+    ),
+  ).toBeTruthy();
+  expect(screen.queryAllByRole('button', { name: /^Retry episode/ })).toEqual(
+    [],
+  );
+});
+
+test('a start refused for the approval setting says what brings Retry back', () => {
+  rules.mockReturnValue(
+    ok({
+      configurationFingerprint: 'f'.repeat(64),
+      rules: [
+        { ...RULE, action: { kind: 'dispatch-task', agentId: 'helper' } },
+      ],
+    }),
+  );
+  episodes.mockReturnValue(
+    ok({
+      episodes: [
+        {
+          ...EPISODE('43', 'open'),
+          attemptCount: 0,
+          startFailed: true,
+          startFailure: 'agent-option-unsupported',
+          retryNeedsRuleChange: true,
+        },
+      ],
+    }),
+  );
+  render(<AutomationsSection />);
+  expect(
+    screen.getByText(
+      "Agent helper cannot take this approval setting. Retry returns when you change the rule's setting or its Agent.",
+    ),
+  ).toBeTruthy();
+  expect(screen.queryAllByRole('button', { name: /^Retry episode/ })).toEqual(
+    [],
+  );
+});
+
+test('a Task that could not be canceled is shown and not retried over', () => {
+  episodes.mockReturnValue(
+    ok({
+      episodes: [
+        {
+          ...EPISODE('43', 'open'),
+          attemptCount: 0,
+          startFailed: true,
+          startFailure: 'task-not-canceled',
+        },
+      ],
+    }),
+  );
+  render(<AutomationsSection />);
+  expect(
+    screen.getByText(
+      'The Agent did not start, and its Task could not be canceled. Cancel that Task before retrying.',
+    ),
+  ).toBeTruthy();
+  expect(screen.queryAllByRole('button', { name: /^Retry episode/ })).toEqual(
+    [],
+  );
+});
+
+test('each rule shows its effective approval posture', () => {
+  rules.mockReturnValue(
+    ok({
+      configurationFingerprint: 'f'.repeat(64),
+      rules: [
+        { ...RULE, id: 'r1', name: 'One', action: { kind: 'dispatch-task' } },
+        {
+          ...RULE,
+          id: 'r2',
+          name: 'Two',
+          action: { kind: 'dispatch-task', approvalMode: 'connection-default' },
+        },
+      ],
+    }),
+  );
+  render(<AutomationsSection />);
+  expect(
+    screen.getByText('One · dispatch-task · Asks before acting'),
+  ).toBeTruthy();
+  expect(
+    screen.getByText("Two · dispatch-task · Agent's own approval settings"),
+  ).toBeTruthy();
+});
+
+test('paused automation Tasks are shown while Station cannot read its Projects', () => {
+  episodes.mockReturnValue(
+    ok({
+      episodes: [],
+      actionsUnavailable: {
+        reason: 'projects-unreadable',
+        since: '2026-11-06T00:00:00.000Z',
+        detail: "project record identity does not match directory 'broken'",
+      },
+    }),
+  );
+  render(<AutomationsSection />);
+  expect(
+    screen.getByText(
+      "Automation Tasks are paused: Station cannot read its Projects. Pending runs start once it can. project record identity does not match directory 'broken'",
+    ),
+  ).toBeTruthy();
+});

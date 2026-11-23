@@ -986,4 +986,42 @@ describe('Connect Station grant composition', () => {
     expect(wire.select).not.toHaveBeenCalled();
     localStorage.clear();
   });
+
+  test('without a camera API the dialog offers no Scan QR method and no camera error', () => {
+    expect(navigator.mediaDevices).toBeUndefined();
+    mount();
+
+    expect(screen.queryByRole('button', { name: 'Scan QR' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Pairing code' })).toBeTruthy();
+    expect(screen.queryByText(/Camera error/)).toBeNull();
+  });
+
+  test('a scan whose capture finds no camera falls to the pairing code method without an error', async () => {
+    const getUserMedia = vi.fn(async () => {
+      throw Object.assign(new Error('Requested device not found'), {
+        name: 'NotFoundError',
+      });
+    });
+    Object.defineProperty(navigator, 'mediaDevices', {
+      configurable: true,
+      value: { getUserMedia },
+    });
+    try {
+      mount();
+      fireEvent.click(screen.getByRole('button', { name: 'Scan QR' }));
+
+      const code = await screen.findByLabelText('Pairing code');
+      expect(code.tagName).toBe('TEXTAREA');
+      expect(getUserMedia).toHaveBeenCalledOnce();
+      expect(
+        screen
+          .getByRole('button', { name: 'Pairing code' })
+          .getAttribute('aria-pressed'),
+      ).toBe('true');
+      expect(screen.queryByRole('button', { name: 'Scan QR' })).toBeNull();
+      expect(screen.queryByText(/Camera error|not found/)).toBeNull();
+    } finally {
+      Reflect.deleteProperty(navigator, 'mediaDevices');
+    }
+  });
 });

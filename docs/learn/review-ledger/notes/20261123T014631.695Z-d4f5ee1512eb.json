@@ -1,0 +1,7 @@
+{
+  "revision": "3d082b11daa728ca8fd77f912429905b62ad61b5",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Records that an automation Task still in_progress moves to review when the action's first turn ends; blocked and taken-over Tasks keep their status.","inputs":["docs/design/automations.md"]}
+  ]
+}

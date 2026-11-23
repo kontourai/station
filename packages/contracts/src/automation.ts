@@ -196,8 +196,14 @@ export type AutomationAction =
       agentId: string;
       /** Operator instructions; event data is appended separately as untrusted. */
       instructions: string;
-      /** Never wider than the Agent's own approval mode; omitted means the Agent's. */
-      approvalMode?: 'ask' | 'auto';
+      /**
+       * The posture the Task's Agent starts under. Omitted means `ask`: an
+       * Agent that cannot be told `ask` is refused before any Task is
+       * created. `connection-default` (the delegation vocabulary's value)
+       * sends no per-invocation setting, so the Agent's or its connection's
+       * own approval settings apply; only a rule that states it runs so.
+       */
+      approvalMode?: 'ask' | 'auto' | 'connection-default';
       budget: AutomationBudget;
     }>
   | Readonly<{
@@ -446,6 +452,11 @@ export const AUTOMATION_REFUSAL_REASONS = [
   'policy_unavailable',
   /** The rule, its source or its grant changed before the action started. */
   'policy_changed',
+  /**
+   * The rule's Project (by id or slug) names no current Project, so no Task
+   * started. The delivery's decision keeps the value as the rule names it.
+   */
+  'project_unavailable',
   /** A consumer's admission (inbox placement, repair setup) refused the action. */
   'admission_refused',
 ] as const;
@@ -585,6 +596,48 @@ export type AutomationEpisodeRecord = Readonly<{
   maxAttempts: number;
   openedAt: string;
   updatedAt: string;
+  /**
+   * The episode's latest start failed before its Agent started (nothing was
+   * invoked). The episode is still `open`; `retry-episode` accepts it.
+   */
+  startFailed?: true;
+  /** Why, when known (see {@link AutomationStartFailure}). */
+  startFailure?: AutomationStartFailure;
+  /**
+   * Retrying the rule unchanged would be refused the same way: change the
+   * rule's approval setting or its Agent first.
+   */
+  retryNeedsRuleChange?: true;
+}>;
+
+/**
+ * Why an open episode's start failed before its Agent started:
+ * `agent-option-unsupported`, the rule's stated approval mode cannot be
+ * applied to its Agent; `agent-own-approval-required`, the rule states no
+ * mode (so `ask`) and its Agent cannot be told `ask`; `task-not-canceled`,
+ * the Task it created could not be canceled and is still there.
+ */
+export type AutomationStartFailure =
+  | 'agent-option-unsupported'
+  | 'agent-own-approval-required'
+  | 'task-not-canceled';
+
+/**
+ * Why no automation Task can start right now, while that lasts: the
+ * Project list cannot be read, or the action runtime could not check
+ * authority. Absent once it can act again.
+ */
+export type AutomationActionsUnavailable = Readonly<{
+  reason: 'projects-unreadable' | 'unavailable';
+  since: string;
+  /** What failed, as reported (bounded, control characters removed). */
+  detail?: string;
+}>;
+
+/** `GET /automations/episodes`. */
+export type AutomationEpisodeList = Readonly<{
+  episodes: readonly AutomationEpisodeRecord[];
+  actionsUnavailable?: AutomationActionsUnavailable;
 }>;
 
 /** `POST /automations/sources`: a disabled `github-poll` source (#4513). */
@@ -849,7 +902,11 @@ export type AutomationRuleProposalInput = Readonly<{
     projectId: string;
     agentId: string;
     instructions: string;
-    /** Only `ask`; omitted also runs as `ask`. */
+    /**
+     * Only `ask`; omitted also runs as `ask` (an Agent that cannot be told
+     * `ask` is refused). An agent cannot propose `auto` or
+     * `connection-default`.
+     */
     approvalMode?: 'ask';
     budget: AutomationBudget;
   }>;

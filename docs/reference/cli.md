@@ -1236,7 +1236,9 @@ guaranteed retention window. The CLI never resends automatically.
 `--approval-mode`/`--effort`/`--thinking`/`--model-option` (station#978) set
 per-invocation settings on an Agent whose resolved engine supports them. The
 server validates option keys after resolving the target; Station's engine does
-not support this engine-options bag. `--approval-mode` accepts exactly
+not support this engine-options bag. Claude and Codex accept `--approval-mode`;
+an ACP Agent accepts it when Station answers its approvals; other Agents refuse
+it. `--approval-mode` accepts exactly
 `ask`, `auto`, `never`, or `connection-default` (an invalid value is a usage
 error, exit 1, before any request); `--effort` and `--thinking` are
 otherwise engine-specific. `--model-option=key=value` is a repeatable
@@ -2382,11 +2384,16 @@ station schedule disable <job> [--api-base=<url>]
 station schedule delete <job> [--api-base=<url>]
 ```
 
-`create` and `update` accept either the compatible `cron` field or a canonical
+`create` needs a `prompt` and a slug `name`, a `displayName`, or both; with
+only `displayName` the host picks an unused slug, and the host judges what a
+display name may contain. The Station Control `add_job` tool takes the same
+fields. `create` and `update` accept either the compatible `cron` field or a canonical
 schedule object: `{kind:"cron",expr,timezone?}`,
 `{kind:"every",everyMs}`, or `{kind:"at",timeMs,deleteAfterRun?}`, and an
 optional `target` that runs each time in a conversation (see
-[Automations](../user/automations.md)). There is no `station automations`
+[Automations](../user/automations.md)). `create` prints the create answer,
+`output` and `name` (the slug the job was stored under), and the Station
+Control `add_job` tool returns the same `data`. There is no `station automations`
 alias for these verbs: that name's `enable`, `disable` and `delete` are
 reserved for automation rules (`AUTOMATION_OPERATOR_SURFACE`). The same
 operator lifecycle is exposed by the HTTP API, React-free SDK client, and
@@ -2411,6 +2418,14 @@ station automation enable <rule-id> [--expected-fingerprint=<sha256>]
 station automation disable <rule-id>
 station automation delete <rule-id>
 ```
+
+A rule's `action.projectId` and a source grant's `projectId` accept a
+Project's id or slug (for example `"projectId":"station"`). Station stores the
+id, and refuses a value that names no Project, quoting it. A rule's
+`action.approvalMode` is `ask` (the default when omitted), `auto` or
+`connection-default` (the Agent's own approval settings; nothing is sent).
+An Agent that cannot take the rule's mode, including an omitted one, is
+refused before any Task is created.
 
 Every action takes `--api-base=<url>`. Each is one `AUTOMATION_OPERATOR_SURFACE`
 verb under `/automations` (see
@@ -2444,7 +2459,8 @@ isolated repair API instead. A source can be deleted only once no rule names
 it.
 
 `episodes` lists unclosed episodes (`open`, `exhausted`, `indeterminate`).
-`retry-episode` gives an exhausted episode exactly one more attempt under the
+`retry-episode` gives an exhausted episode, or an open one marked
+`startFailed` (its Agent never started), exactly one more attempt under the
 rule's current policy; it is refused for an indeterminate episode, one with
 pending or running work, an event older than 72 hours, or a rule that may not
 act now.

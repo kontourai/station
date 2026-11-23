@@ -1,0 +1,7 @@
+{
+  "revision": "43984b24fef216b82a179674f66432259a25223d",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"#5389: the conversation stats section describes the per-engine lineage fold (engines, absent token totals when more than one engine reported tokens, conversation-wide turns, tool calls and per-unit costs); rechecked against conversation-manager.ts, session-transcript-reads.ts, usage-lineage-fold.ts and parseConversationStatsResponse.","inputs":["docs/reference/api.md","src-server/routes/chat/conversations.ts","src-server/runtime/conversation/conversation-manager.ts","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-transcript-reads.ts"]}
+  ]
+}

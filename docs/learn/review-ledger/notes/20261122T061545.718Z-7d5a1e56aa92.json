@@ -1,0 +1,7 @@
+{
+  "revision": "0d8a3ff687e275de864403f16747a82d41fe7a33",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"Links api.md as the API reference; the added connection_address_required refusal does not change any claim made here.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

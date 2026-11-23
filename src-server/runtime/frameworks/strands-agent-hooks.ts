@@ -250,10 +250,18 @@ export function wireStrandsAgentHooks(options: {
       });
 
       if (hooks?.afterInvocation) {
+        // The SDK fires this event on success, on error and on a consumer
+        // break alike, and carries no error. A turn that produced an answer
+        // ends on an assistant message; any other ending is reported as a
+        // failure, so a turn with nothing reported is not counted (#5390).
+        const answered = agentMessages.at(-1)?.role === 'assistant';
         await hooks.afterInvocation({
           invocation: ctx,
           usage: getLastStreamUsage() || (event as any).metrics?.usage,
           toolCallCount,
+          ...(answered
+            ? {}
+            : { error: new Error('The turn ended without an answer.') }),
         });
       }
     } finally {

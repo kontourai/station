@@ -1041,7 +1041,9 @@ waiting and make 10 an hour.
 ### Scheduled jobs
 
 An agent acting for the operator on a bound credential can create a job
-directly with `add_job`. Its `target` may name only the agent's own
+directly with `add_job`, naming it with a slug `name`, a readable
+`displayName`, or both (with only `displayName`, Station picks an unused slug
+and returns it as `name`). Its `target` may name only the agent's own
 conversation (`{"kind": "conversation", "conversationId": "<own>"}`), so each
 run is a turn in this chat; any other conversation is refused
 `other-conversation`, and a targeted job takes no `retryCount`. `update_job`,

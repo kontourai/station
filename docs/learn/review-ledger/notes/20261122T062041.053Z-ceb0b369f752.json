@@ -1,0 +1,7 @@
+{
+  "revision": "9e4336e1905da60cfb96d14491094ce9dba0d744",
+
+  "notes": [
+    {"path":"docs/learn/media/connections-models.png","note":"Historical capture of an existing connection with a server URL set; the new inline reason appears only when the server URL is blank, so the frame neither shows nor contradicts it. Not recaptured.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/ProviderSettingsView.tsx","src-ui/src/views/provider-settings/ProviderConnectionForm.tsx"]}
+  ]
+}

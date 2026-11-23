@@ -1,5 +1,6 @@
 import type { SchedulerJob } from '@kontourai/station-contracts/scheduler';
 import { useMemo, useState } from 'react';
+import { jobLabel } from '../../components/scheduler/jobName';
 import { SkeletonBlock } from '../../components/state';
 import { useSchedulerJobs } from '../../hooks/useScheduler';
 
@@ -99,7 +100,7 @@ export function ScheduleWeek() {
                       {slots.map(({ job, time, date }) => (
                         <li key={`${job.provider}:${job.name}:${time}`}>
                           <time dateTime={time}>{timeLabel.format(date)}</time>{' '}
-                          {job.name}
+                          {jobLabel(job)}
                         </li>
                       ))}
                     </ul>

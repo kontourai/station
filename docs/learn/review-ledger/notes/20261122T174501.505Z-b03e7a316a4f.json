@@ -1,0 +1,7 @@
+{
+  "revision": "fbefd43834d3a9ca94e47e8d232b0edfdb82668f",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Scheduled jobs: add_job names a job by slug name, displayName or both; with displayName only Station picks an unused slug and returns it as name. Checked against the add_job tool shape and the scheduler.test.ts test that drives add_job over MCP into the real route.","inputs":["docs/guides/self-configuring-agent.md"]}
+  ]
+}

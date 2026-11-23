@@ -1,0 +1,7 @@
+{
+  "revision": "4879b56dd723284fcd62427c0e7dd7a4c8d02a89",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Slice 0.5 change set reviewed against this document's claims: new lastTurnCutOff summary field and Cut off status word (sessionLadderWord, work-status ladder via WorkFacts), Station agent adapter mapping a 'length' finish to max-tokens, turnCutOff row metadata and the cut-off note under a reply, the newest failed turn's error card rebuilt from its stored runtime.error after a reload, and /new opening New chat with /clear removed. A targeted search of this document (slash commands, status words, Done, finish reasons, error-card actions, summary fields) found no claim these change, so it remains accurate; not a full re-read.","inputs":["docs/guides/agent-efficiency.md","src-ui/src/slashCommands/builtins.ts"]}
+  ]
+}

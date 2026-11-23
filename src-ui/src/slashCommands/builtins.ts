@@ -1,6 +1,12 @@
 import type { Skill } from '@kontourai/station-contracts/catalog';
+import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import { resolveSkillCommandName } from '@kontourai/station-contracts/skill-command';
 import { agentQueries } from '@kontourai/station-sdk';
+import {
+  getContextBreakdownEntries,
+  perTurnCostUsd,
+} from '../components/conversation-stats/utils';
+import { escapeHtml } from '../highlight/shared';
 import { runtimeCatalogSourceLabel } from '../utils/execution';
 import { agentCommandSkills } from '../utils/skill-command-catalog';
 import { describeStationFailure } from '../utils/stationFailure';
@@ -200,16 +206,25 @@ registerCommand(
       // payload ConversationStatsModal renders, so it goes through the same
       // shared derivations — a summed or "(uncached)" figure appears only
       // when the provider's declared inclusivity backs it, cache rows render
-      // only when reported, and an absent figure renders as a dash, never an
-      // invented zero (archive#3201). Dynamically imported to keep the
-      // shared usage modules out of the eager entry bundle.
+      // only when reported, and an absent figure reads "Not reported", never
+      // an invented zero (archive#3201). The shared usage modules are
+      // dynamically imported to keep them out of the eager entry bundle;
+      // `engineDisplayLabel` is imported statically because the entry already
+      // ships it, and a dynamic import of an entry module only adds a
+      // namespace object to the entry.
       const [
         {
           cacheInclusivePromptTokens,
           cacheInclusiveTotalTokens,
           providerPromptCacheInclusivity,
         },
-        { formatMeasuredCostUsd, formatMeasuredTokens },
+        {
+          conversationStatsMeasurementView,
+          describeUnreportedMeasurements,
+          enginesReportingTokensSeparately,
+          formatMeasuredCostUsd,
+          formatMeasuredTokens,
+        },
       ] = await Promise.all([
         import('@kontourai/station-shared/usage-fold'),
         import('@kontourai/station-shared/usage-measurement'),
@@ -218,35 +233,73 @@ registerCommand(
         stats.measurement?.source === 'engine-events'
           ? stats.measurement.provider
           : undefined;
-      const consumptionInLabel =
-        providerPromptCacheInclusivity(usageProvider) === 'disjoint'
-          ? 'In (uncached)'
-          : 'In';
-      const promptSideTotal = cacheInclusivePromptTokens(usageProvider, stats);
-      const cacheInclusiveTotal = cacheInclusiveTotalTokens(
-        usageProvider,
-        stats,
+      const tokenRows = (
+        provider: string | undefined,
+        figures: Parameters<typeof cacheInclusiveTotalTokens>[1],
+      ) => {
+        const promptSideTotal = cacheInclusivePromptTokens(provider, figures);
+        const cacheInclusiveTotal = cacheInclusiveTotalTokens(
+          provider,
+          figures,
+        );
+        const inLabel =
+          providerPromptCacheInclusivity(provider) === 'disjoint'
+            ? 'In (uncached)'
+            : 'In';
+        return [
+          `${inLabel}: <strong>${formatMeasuredTokens(figures.inputTokens)}</strong>`,
+          ...(figures.cacheReadTokens !== undefined
+            ? [
+                `Cache read: <strong>${formatMeasuredTokens(figures.cacheReadTokens)}</strong>`,
+              ]
+            : []),
+          ...(figures.cacheWriteTokens !== undefined
+            ? [
+                `Cache write: <strong>${formatMeasuredTokens(figures.cacheWriteTokens)}</strong>`,
+              ]
+            : []),
+          ...(promptSideTotal !== undefined
+            ? [
+                `Prompt total: <strong>${promptSideTotal.toLocaleString()}</strong>`,
+              ]
+            : []),
+          `Out: <strong>${formatMeasuredTokens(figures.outputTokens)}</strong>`,
+          `Total: <strong>${formatMeasuredTokens(cacheInclusiveTotal ?? figures.totalTokens)}</strong>`,
+        ].join('<br/>\n              ');
+      };
+      // #5389: several engines reported tokens, each on its own scale, so the
+      // chat-wide token fields are absent and each engine gets its own rows.
+      const perEngineTokens = enginesReportingTokensSeparately(stats);
+      const consumptionNote = perEngineTokens
+        ? 'Each engine counts tokens its own way, so there is no total across engines'
+        : 'Tokens sent/received across all API calls';
+      const consumptionRows = perEngineTokens
+        ? perEngineTokens
+            .map(
+              (engine) =>
+                `<div style="margin-bottom: 8px;"><strong>${escapeHtml(engineDisplayLabel(engine.provider) ?? engine.provider)}</strong><br/>
+              ${tokenRows(engine.provider, engine)}</div>`,
+            )
+            .join('\n              ')
+        : tokenRows(usageProvider, stats);
+      // The modal's rules, so the two surfaces agree: the token section is
+      // left out when no token figure was reported, the breakdown lists only
+      // Station's own estimates that exist, and one sentence names what was
+      // not reported.
+      const tokensReported =
+        perEngineTokens !== undefined ||
+        [
+          stats.inputTokens,
+          stats.outputTokens,
+          stats.totalTokens,
+          stats.cacheReadTokens,
+          stats.cacheWriteTokens,
+        ].some((value) => value !== undefined);
+      const breakdown = getContextBreakdownEntries(stats);
+      const unreportedNote = describeUnreportedMeasurements(
+        conversationStatsMeasurementView(stats),
+        (provider) => engineDisplayLabel(provider),
       );
-      const consumptionRows = [
-        `${consumptionInLabel}: <strong>${formatMeasuredTokens(stats.inputTokens)}</strong>`,
-        ...(stats.cacheReadTokens !== undefined
-          ? [
-              `Cache read: <strong>${formatMeasuredTokens(stats.cacheReadTokens)}</strong>`,
-            ]
-          : []),
-        ...(stats.cacheWriteTokens !== undefined
-          ? [
-              `Cache write: <strong>${formatMeasuredTokens(stats.cacheWriteTokens)}</strong>`,
-            ]
-          : []),
-        ...(promptSideTotal !== undefined
-          ? [
-              `Prompt total: <strong>${promptSideTotal.toLocaleString()}</strong>`,
-            ]
-          : []),
-        `Out: <strong>${formatMeasuredTokens(stats.outputTokens)}</strong>`,
-        `Total: <strong>${formatMeasuredTokens(cacheInclusiveTotal ?? stats.totalTokens)}</strong>`,
-      ].join('<br/>\n              ');
 
       const html = `
       <div style="font-family: system-ui, -apple-system, sans-serif; font-size: 14px;">
@@ -260,7 +313,7 @@ registerCommand(
             Context Window Usage
           </summary>
           <div style="padding: 12px 8px;">
-            <span style="color: var(--text-muted);">${stats.contextTokens?.toLocaleString() || 0} tokens (all messages + system prompt + tools)</span><br/>
+            <span style="color: var(--text-muted);">${stats.contextTokens !== undefined ? `${stats.contextTokens.toLocaleString()} tokens (all messages + system prompt + tools)` : 'As the engine reported it'}</span><br/>
             <div style="background: var(--bg-tertiary); height: 8px; border-radius: 4px; margin-top: 8px; overflow: hidden;">
               <div style="background: var(--meter-low); height: 100%; width: ${stats.contextWindowPercentage}%;"></div>
             </div>
@@ -271,31 +324,44 @@ registerCommand(
             : ''
         }
         
+        ${
+          breakdown.length > 0
+            ? `
         <details open style="margin-bottom: 12px;">
           <summary style="cursor: pointer; font-weight: 600; padding: 8px; background: var(--bg-secondary); border-radius: 4px; user-select: none;">
             Context Breakdown
           </summary>
           <div style="padding: 12px 8px;">
             <table style="width: 100%;">
-              <tr><td>System Prompt:</td><td style="text-align: right;">${stats.systemPromptTokens?.toLocaleString() || 0}</td></tr>
-              <tr><td>MCP Tools:</td><td style="text-align: right;">${stats.mcpServerTokens?.toLocaleString() || 0}</td></tr>
-              <tr><td>User Messages:</td><td style="text-align: right;">${stats.userMessageTokens?.toLocaleString() || 0}</td></tr>
-              <tr><td>Assistant Messages:</td><td style="text-align: right;">${stats.assistantMessageTokens?.toLocaleString() || 0}</td></tr>
+              ${breakdown
+                .map(
+                  (entry) =>
+                    `<tr><td>${entry.label}:</td><td style="text-align: right;">${entry.value.toLocaleString()}</td></tr>`,
+                )
+                .join('\n              ')}
             </table>
           </div>
         </details>
-        
+        `
+            : ''
+        }
+        ${
+          tokensReported
+            ? `
         <details open style="margin-bottom: 12px;">
           <summary style="cursor: pointer; font-weight: 600; padding: 8px; background: var(--bg-secondary); border-radius: 4px; user-select: none;">
             Total LLM Consumption
           </summary>
           <div style="padding: 12px 8px;">
-            <span style="color: var(--text-muted); font-size: 12px;">Tokens sent/received across all API calls</span><br/>
+            <span style="color: var(--text-muted); font-size: 12px;">${consumptionNote}</span><br/>
             <div style="margin-top: 8px;">
               ${consumptionRows}
             </div>
           </div>
         </details>
+        `
+            : ''
+        }
         
         <details style="margin-bottom: 12px;">
           <summary style="cursor: pointer; font-weight: 600; padding: 8px; background: var(--bg-secondary); border-radius: 4px; user-select: none;">
@@ -309,8 +375,8 @@ registerCommand(
             </div>
             <div>
               <strong>Cost</strong><br/>
-              Total: <strong>$${(stats.estimatedCost || 0).toFixed(4)}</strong><br/>
-              Per Turn: <strong>$${((stats.estimatedCost || 0) / (stats.turns || 1)).toFixed(4)}</strong>
+              Total: <strong>${formatMeasuredCostUsd(stats.estimatedCost)}</strong><br/>
+              Per Turn: <strong>${formatMeasuredCostUsd(perTurnCostUsd(stats))}</strong>
             </div>
           </div>
         </details>
@@ -327,7 +393,7 @@ registerCommand(
                 .map(
                   ([modelId, modelData]: [string, any]) => `
                 <div style="margin-bottom: 12px; padding: 8px; background: var(--bg-tertiary); border-radius: 4px;">
-                  <div style="font-family: monospace; font-size: 12px; margin-bottom: 8px;">${modelId}</div>
+                  <div style="font-family: monospace; font-size: 12px; margin-bottom: 8px;">${escapeHtml(modelId)}</div>
                   <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px;">
                     <div>
                       <strong>Consumed</strong><br/>
@@ -351,6 +417,11 @@ registerCommand(
         `
             : ''
         }
+        ${
+          unreportedNote
+            ? `<div style="color: var(--text-muted); font-size: 12px; margin-bottom: 12px;">${escapeHtml(unreportedNote)}</div>`
+            : ''
+        }
       </div>
     `;
 
@@ -368,25 +439,20 @@ registerCommand(
   },
 );
 
-// Clear/New command
-registerCommand(
-  'clear',
-  async ({ updateChat, sessionId, addEphemeralMessage }) => {
-    updateChat(sessionId, { messages: [] });
-    addEphemeralMessage(sessionId, {
-      role: 'system',
-      content: 'Conversation cleared',
-    });
-  },
-);
-
+// /new opens New chat, the same action as the dock's New chat button. There
+// is no /clear: emptying the list on screen left the agent's memory and the
+// stored transcript untouched, so it looked like a reset and was not one.
 registerCommand(
   'new',
-  async ({ updateChat, sessionId, addEphemeralMessage }) => {
-    updateChat(sessionId, { messages: [] });
+  async ({ autocomplete, addEphemeralMessage, sessionId }) => {
+    autocomplete.closeAll();
+    if (autocomplete.openNewChat) {
+      autocomplete.openNewChat();
+      return;
+    }
     addEphemeralMessage(sessionId, {
       role: 'system',
-      content: 'Conversation cleared',
+      content: 'Start a new chat from the chat panel.',
     });
   },
 );
@@ -394,12 +460,12 @@ registerCommand(
 // Resume/Chat command — opens the "Open chat" modal
 registerCommand('resume', async ({ autocomplete }) => {
   autocomplete.closeAll();
-  autocomplete.openNewChat();
+  autocomplete.openNewChat?.();
 });
 
 registerCommand('chat', async ({ autocomplete }) => {
   autocomplete.closeAll();
-  autocomplete.openNewChat();
+  autocomplete.openNewChat?.();
 });
 
 // Help command - list all available commands

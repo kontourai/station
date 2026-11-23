@@ -1,0 +1,7 @@
+{
+  "revision": "4f101ab0f8de657ae1782cf97535fc02e19c1715",
+
+  "notes": [
+    {"path":"docs/guides/knowledge.md","note":"No claim depends on when the default Agent records its prompt estimate.","inputs":["docs/guides/knowledge.md","src-server/runtime/agents/runtime-default-agent.ts"]}
+  ]
+}

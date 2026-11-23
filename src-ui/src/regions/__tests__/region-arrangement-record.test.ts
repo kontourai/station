@@ -396,94 +396,44 @@ describe('region arrangement record (#928 D)', () => {
     });
   });
 
-  // #928 slice iii: `maximized` is additive to the version-1 record.
-  describe('maximized (additive, #928 slice iii)', () => {
+  // #5397: a maximize belongs to the page where it was made. The record still
+  // spells `maximized` (a build that predates this one reads it), but only as
+  // false, and a `true` an earlier build stored is never read back.
+  describe('maximized is not persisted (#5397)', () => {
     const MAXIMIZED: RegionArrangement = {
       ...VALID,
       right: { ...VALID.right, maximized: true },
     };
 
-    test('round-trips a maximized region and writes the field explicitly', () => {
+    test('a maximized region is written as false, and everything else round-trips', () => {
       const record = toRegionArrangementRecord(MAXIMIZED);
-      expect(record.regions.right.maximized).toBe(true);
-      expect(record.regions.bottom.maximized).toBe(false);
-      expect(parseRegionArrangementRecord(record)).toEqual(MAXIMIZED);
+      expect(REGION_IDS.map((id) => record.regions[id].maximized)).toEqual([
+        false,
+        false,
+        false,
+        false,
+      ]);
+      expect(parseRegionArrangementRecord(record)).toEqual(VALID);
     });
 
-    test('an absent or non-boolean maximized reads as false (a record written before the field existed)', () => {
-      const record = toRegionArrangementRecord(VALID);
-      const regions = Object.fromEntries(
-        Object.entries(record.regions).map(([id, region]) => {
-          const { maximized: _dropped, ...rest } = region;
-          return [id, rest];
-        }),
-      );
-      const parsed = parseRegionArrangementRecord({ version: 1, regions });
+    test('a stored maximized: true an earlier build wrote reads as normal size, in any region', () => {
+      // The exact shape the earlier writer produced for a maximized Activity.
+      const earlier = recordWith('right', { maximized: true });
+      expect(earlier.regions.right).toMatchObject({
+        visible: true,
+        occupant: { kind: 'surface', id: 'workspace-agents' },
+        maximized: true,
+      });
+      const parsed = parseRegionArrangementRecord(earlier);
       expect(parsed).toEqual(VALID);
-      expect(
-        parseRegionArrangementRecord(recordWith('right', { maximized: 'yes' }))!
-          .right.maximized,
-      ).toBe(false);
-    });
-
-    test('main is never maximized whatever was stored', () => {
-      expect(
-        parseRegionArrangementRecord(recordWith('main', { maximized: true }))!
-          .main.maximized,
-      ).toBe(false);
-    });
-
-    test('a hidden region and an empty region are never maximized', () => {
-      // `bottom` holds Chat hidden in VALID.
+      expect(REGION_IDS.filter((id) => parsed![id].maximized)).toEqual([]);
       expect(
         parseRegionArrangementRecord(recordWith('bottom', { maximized: true }))!
           .bottom.maximized,
       ).toBe(false);
-      // `left` is empty in VALID; make it visible-and-maximized with nothing in it.
-      expect(
-        parseRegionArrangementRecord(
-          recordWith('left', { visible: true, maximized: true }),
-        )!.left.maximized,
-      ).toBe(false);
-      // An occupant the parser empties (retired surface) drops the maximize too.
-      expect(
-        parseRegionArrangementRecord(
-          recordWith('right', {
-            occupant: { kind: 'surface', id: 'retired-surface' },
-            maximized: true,
-          }),
-        )!.right.maximized,
-      ).toBe(false);
     });
 
-    test('more than one maximized region keeps the first in REGION_IDS order', () => {
-      const record = toRegionArrangementRecord({
-        ...VALID,
-        left: {
-          visible: true,
-          size: 400,
-          panes: ['chat'],
-          occupant: 'chat',
-          maximized: true,
-        },
-        bottom: {
-          visible: false,
-          size: 320,
-          panes: [],
-          occupant: null,
-          maximized: false,
-        },
-        right: { ...VALID.right, maximized: true },
-      });
-      const parsed = parseRegionArrangementRecord(record);
-      expect(parsed!.left.maximized).toBe(true);
-      expect(parsed!.right.maximized).toBe(false);
-      expect(REGION_IDS.filter((id) => parsed![id].maximized)).toEqual([
-        'left',
-      ]);
-    });
-
-    test('a record without the field equals one spelling out false, so a pre-field default still reads as the default', () => {
+    test('records that differ only in maximized are equal, and a pre-field default still reads as the default', () => {
       const record = toRegionArrangementRecord(VALID);
       const withoutField = {
         ...record,
@@ -500,9 +450,16 @@ describe('region arrangement record (#928 D)', () => {
           record,
           recordWith('right', { maximized: true }),
         ),
+      ).toBe(true);
+      // A real difference still counts.
+      expect(
+        regionArrangementRecordsEqual(
+          record,
+          recordWith('right', { size: 600 }),
+        ),
       ).toBe(false);
       // The upgrade pin: a device holding the slice-D default literal (no
-      // `maximized`) must still read as "no record" after this slice.
+      // `maximized`) must still read as "no record".
       const preFieldDefault = {
         version: 1,
         regions: {

@@ -1,0 +1,7 @@
+{
+  "revision": "af2af7774b74d4b0ca50956727eabf136beec4f9",
+
+  "notes": [
+    {"path":"docs/design/shell-ownership-and-boards.md","note":"The later ProjectSidebar test edit only reformats the archived-project cases; the page's sidebar claims (widths, Boards, footer) do not describe archived Projects, so none changed.","inputs":["docs/design/shell-ownership-and-boards.md","src-ui/src/__tests__/ProjectSidebar.test.tsx"]}
+  ]
+}

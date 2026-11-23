@@ -1,0 +1,15 @@
+{
+  "revision": "1d0abda341fd30eacb6b6328bc5b454465fd79ba",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Delta: adds a table test of ACP approvalMode acceptance by acpApprovalControl. Test only; checked the citing pages: no described behavior changes.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Delta: adds a table test of ACP approvalMode acceptance by acpApprovalControl. Test only; checked the citing pages: no described behavior changes.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Delta: adds a table test of ACP approvalMode acceptance by acpApprovalControl. Test only; checked the citing pages: no described behavior changes.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Delta: adds a table test of ACP approvalMode acceptance by acpApprovalControl. Test only; checked the citing pages: no described behavior changes.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Delta: adds a table test of ACP approvalMode acceptance by acpApprovalControl. Test only; checked the citing pages: no described behavior changes.","inputs":["src-server/services/execution-target/__tests__/execution-target-resolver.test.ts"]}
+  ]
+}

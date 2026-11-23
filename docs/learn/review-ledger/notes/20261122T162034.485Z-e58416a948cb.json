@@ -1,0 +1,7 @@
+{
+  "revision": "4f101ab0f8de657ae1782cf97535fc02e19c1715",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Cites agent-hooks.ts as the managed tool-policy hook; only afterInvocation stats recording changed, not beforeToolCall.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/runtime/agents/agent-hooks.ts"]}
+  ]
+}

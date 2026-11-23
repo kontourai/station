@@ -787,6 +787,45 @@ describe('the "This chat" card’s Automations section', () => {
     ).toBeTruthy();
   });
 
+  test('an automation with a display name is listed and labelled by it, and acted on by its slug', async () => {
+    schedule = {
+      wakeUps: [],
+      jobProposals: [],
+      jobs: [],
+      automations: [{ name: 'repo-digest', enabled: true }],
+    };
+    scheduler.jobs = [
+      {
+        name: 'repo-digest',
+        displayName: 'Repo digest',
+        provider: 'builtin',
+        prompt: 'p',
+        enabled: true,
+        target: { kind: 'conversation', conversationId: CONVERSATION },
+        schedule: { kind: 'every', everyMs: 3_600_000 },
+      },
+    ];
+    mount(
+      <SessionScheduledSection conversationId={CONVERSATION} wrap={wrap} />,
+    );
+    const section = await screen.findByRole('region', { name: 'Automations' });
+    expect(section.textContent).toContain('Repo digest');
+    expect(section.textContent).not.toContain('repo-digest');
+    expect(
+      screen.getByRole('button', { name: 'Edit Repo digest' }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('switch', { name: 'Repo digest on' }));
+    expect(scheduler.toggle).toHaveBeenCalledWith({
+      target: 'repo-digest',
+      enabled: false,
+    });
+    // Only the label: Run now is never pressed in a test that can reach an
+    // engine, and here it stays a mocked mutation.
+    expect(
+      screen.getByRole('button', { name: 'Run Repo digest now' }),
+    ).toBeTruthy();
+  });
+
   test('the usage-limit resume’s Cancel is the per-stop Don’t resume', async () => {
     schedule = {
       wakeUps: [],

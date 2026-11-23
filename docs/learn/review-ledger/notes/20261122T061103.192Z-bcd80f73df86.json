@@ -1,0 +1,7 @@
+{
+  "revision": "09c82d735e478d29bb920425840278b4321bad34",
+
+  "notes": [
+    {"path":"docs/guides/integrating-station.md","note":"#5389 adds foldLineageUsageEvents for the conversation stats read only; the per-Session fold (foldUsageEvents), the observation projection, lifetime analytics and the usage tree are unchanged. Checked this document's usage, provider-scope and architecture claims; none describes the conversation-lineage stats fold, so no prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/contracts.md","docs/reference/sdk.md"]}
+  ]
+}

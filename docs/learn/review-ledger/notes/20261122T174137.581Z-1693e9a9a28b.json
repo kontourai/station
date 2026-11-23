@@ -1,0 +1,7 @@
+{
+  "revision": "fbefd43834d3a9ca94e47e8d232b0edfdb82668f",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Added one test: schedule create with displayName only is sent unchanged, and bodies with neither name nor displayName, or no prompt, are refused before any request. cli.md (updated) describes exactly that.","inputs":["packages/cli/src/__tests__/surface-http.test.ts"]}
+  ]
+}

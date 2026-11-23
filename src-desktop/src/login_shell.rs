@@ -137,27 +137,39 @@ fn capture_path(mut command: Command, budget: Duration) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::os::unix::fs::PermissionsExt;
+    use std::path::Path;
+
     fn shell(script: &str) -> Command {
         let mut command = Command::new("/bin/sh");
         command.args(["-c", script]);
         command
     }
+
+    fn write_shell_fixture(path: &Path, script: &str) {
+        // A parallel fork from the test process must not inherit a writable
+        // descriptor to the script that the login-path lookup will execute.
+        let status = shell(r#"printf '%s' "$1" > "$2""#)
+            .args(["shell-fixture", script])
+            .arg(path)
+            .status()
+            .expect("start shell fixture writer");
+        assert!(status.success(), "shell fixture writer failed: {status}");
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+
     #[test]
     fn resolves_once_until_explicit_refresh() {
-        use std::os::unix::fs::PermissionsExt;
         let directory = tempfile::tempdir().unwrap();
         let shell = directory.path().join("shell");
         let calls = directory.path().join("calls");
         let write_shell = |path: &str| {
-            std::fs::write(
+            write_shell_fixture(
                 &shell,
-                format!(
-                    "#!/bin/sh\necho call >> '{}'\nprintf '\\036%s\\037' '{path}'\n",
-                    calls.display()
+                &format!(
+                    "#!/bin/sh\necho call >> \"${{0%/*}}/calls\"\nprintf '\\036%s\\037' '{path}'\n",
                 ),
-            )
-            .unwrap();
-            std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o700)).unwrap();
+            );
         };
         let cache = LoginPath(std::sync::Mutex::new(LoginPathState::default()));
         write_shell("/first:/usr/bin");
@@ -171,18 +183,15 @@ mod tests {
     }
     #[test]
     fn failed_lookup_retries_after_floor_without_caching_fallback() {
-        use std::os::unix::fs::PermissionsExt;
         let directory = tempfile::tempdir().unwrap();
         let shell = directory.path().join("shell");
         let cache = LoginPath(std::sync::Mutex::new(LoginPathState::default()));
         let fallback = std::env::var("PATH").unwrap_or_default();
         assert_eq!(cache.resolve(shell.to_str().unwrap()), fallback);
-        std::fs::write(
+        write_shell_fixture(
             &shell,
             "#!/bin/sh\nprintf '\\036/recovered:/usr/bin\\037'\n",
-        )
-        .unwrap();
-        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o700)).unwrap();
+        );
         assert_eq!(
             cache.resolve(shell.to_str().unwrap()),
             fallback,
@@ -203,17 +212,14 @@ mod tests {
 
     #[test]
     fn explicit_refresh_bypasses_failure_floor() {
-        use std::os::unix::fs::PermissionsExt;
         let directory = tempfile::tempdir().unwrap();
         let shell = directory.path().join("shell");
         let cache = LoginPath(std::sync::Mutex::new(LoginPathState::default()));
         cache.resolve(shell.to_str().unwrap());
-        std::fs::write(
+        write_shell_fixture(
             &shell,
             "#!/bin/sh\nprintf '\\036/refreshed:/usr/bin\\037'\n",
-        )
-        .unwrap();
-        std::fs::set_permissions(&shell, std::fs::Permissions::from_mode(0o700)).unwrap();
+        );
         cache.invalidate();
         assert_eq!(
             cache.resolve(shell.to_str().unwrap()),

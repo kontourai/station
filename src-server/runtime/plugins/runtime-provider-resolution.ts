@@ -1,6 +1,9 @@
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
-import { classifyManagedModelBinding } from '@kontourai/station-contracts/managed-model-binding';
+import {
+  AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE,
+  classifyManagedModelBinding,
+} from '@kontourai/station-contracts/managed-model-binding';
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
 import {
   createEmbeddingProvider,
@@ -493,8 +496,7 @@ function classifyManagedProviderConnection(
     default:
       return {
         kind: 'ambiguous',
-        reason:
-          'Multiple enabled LLM provider connections require an explicit default.',
+        reason: AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE,
       };
   }
 }

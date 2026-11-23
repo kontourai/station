@@ -1,0 +1,7 @@
+{
+  "revision": "e88633bcb6a218871895902d9c0bd707a8f92ddc",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"Re-read Get Conversation Statistics: conversation-manager.ts now returns an empty modelId after an engine change when the new engine reported none, and the new paragraph on Station-agent counting (all answered turns, averages over them, system prompt estimate, older Station Assistant chats counting from their next turn) matches agent-hooks.ts and runtime-default-agent.ts. The default-Agent builder paragraph still holds; the estimate is now also removed on the external-binding and no-model paths.","inputs":["docs/reference/api.md","src-server/runtime/agents/runtime-default-agent.ts","src-server/runtime/conversation/conversation-manager.ts"]}
+  ]
+}

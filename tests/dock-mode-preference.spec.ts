@@ -275,10 +275,28 @@ test.describe('Dock Mode Preference', () => {
     const openBox = await landmark.boundingBox();
     expect(openBox!.width).toBeGreaterThanOrEqual(240);
     expect(openBox!.width).toBeLessThanOrEqual(360);
+    // Exiting makes the landmark inert before the DOM node is detached.
+    const panel = page.locator('aside[aria-label="Inbox chats"]');
     await hide.click();
-    await expect(landmark).toHaveCount(0);
+    await expect(panel).toHaveCount(0);
     await expect(show).toHaveAttribute('aria-pressed', 'false');
+    const reopen = await show.evaluateHandle((toggle) => ({
+      committed: new Promise<boolean>((resolve) => {
+        const observer = new MutationObserver(() => {
+          if (toggle.getAttribute('aria-pressed') !== 'true') return;
+          observer.disconnect();
+          resolve(
+            Boolean(document.querySelector('aside[aria-label="Inbox chats"]')),
+          );
+        });
+        observer.observe(toggle, { attributes: true });
+      }),
+    }));
     await show.click();
+    expect(
+      await reopen.evaluate(({ committed }) => committed),
+      'Inbox mounts when the warm toggle opens',
+    ).toBe(true);
     await expect(landmark).toHaveCount(1);
     await expect
       .poll(async () => (await landmark.boundingBox())?.width)

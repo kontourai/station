@@ -1,0 +1,7 @@
+{
+  "revision": "67bc53f6e0384566a0842a955240ff3d0ace0b25",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Rechecked (#5398 fix round): touch rows keep their anatomy; the flag's Check now meets the 44px touch floor on a phone (measured 44px at 390x844).","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/views/home/work-facts.ts"]}
+  ]
+}

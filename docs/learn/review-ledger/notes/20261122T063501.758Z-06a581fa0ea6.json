@@ -1,0 +1,7 @@
+{
+  "revision": "43984b24fef216b82a179674f66432259a25223d",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"#5389: ConversationStatsResponse.engines (ConversationEngineUsage) and its parser refusal; rechecked against packages/contracts/src/runtime.ts after the lineage fold moved to usage-lineage-fold.ts.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/orchestration-service.ts","src-server/services/orchestration/session-transcript-reads.ts"]}
+  ]
+}

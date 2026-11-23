@@ -53,13 +53,13 @@ import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { openApprovalConversation } from '../../lib/openApprovalConversation';
 import {
   attentionKindLabel,
+  explainSessionFailure,
   isAcknowledgeableAttentionItem,
   isApprovalLivePending,
   isPeerHostedAttentionItem,
   peerAttentionElsewhereText,
   peerRequestDecision,
   sessionFailedIdentity,
-  sessionFailureCause,
 } from '../../utils/attention';
 import {
   isPlainLeftClick,
@@ -241,14 +241,21 @@ function SessionFailedDetail({
   showIdentity: boolean;
 }) {
   const identity = showIdentity ? sessionFailedIdentity(item) : null;
+  const { cause, details } = explainSessionFailure(item);
   return (
     <>
       <div
         className="attention-item__detail attention-item__detail--cause"
         data-testid="attention-cause"
       >
-        {sessionFailureCause(item)}
+        {cause}
       </div>
+      {details && (
+        <details className="attention-item__raw" data-testid="attention-raw">
+          <summary>Details</summary>
+          <p>{details}</p>
+        </details>
+      )}
       {identity && (
         <div
           className="attention-item__identity"
@@ -1163,6 +1170,7 @@ function OpenSessionAction({ item }: { item: ReviewPendingAttentionItem }) {
 function SessionFailedAction({ item }: { item: SessionFailedAttentionItem }) {
   const { apiBase } = useApiBase();
   const mutation = useAcknowledgeAttentionItemMutation(apiBase);
+  const { action } = explainSessionFailure(item);
   return (
     <>
       {/*
@@ -1178,6 +1186,22 @@ function SessionFailedAction({ item }: { item: SessionFailedAttentionItem }) {
         href={item.openHref}
         onOpen={() => mutation.mutateAsync(item.id)}
       />
+      {action && (
+        <a
+          className="attention-open-link"
+          href={action.href}
+          onClick={(event) => {
+            if (!isPlainLeftClick(event)) return;
+            event.preventDefault();
+            void openThenAcknowledge({
+              acknowledge: () => mutation.mutateAsync(item.id),
+              navigate: () => navigateToAttentionTarget(action.href),
+            });
+          }}
+        >
+          {action.label}
+        </a>
+      )}
     </>
   );
 }

@@ -9,6 +9,7 @@ import {
   RateCell,
   relTime,
 } from '../../components/scheduler';
+import { jobLabel } from '../../components/scheduler/jobName';
 import { SortHeader, TableFilter } from '../SortableTable';
 
 const IconPlay = () => (
@@ -137,8 +138,8 @@ export function ScheduleJobsTable({
             <tr>
               <SortHeader
                 label="Name"
-                sortKey="name"
-                active={sortKey === 'name'}
+                sortKey="label"
+                active={sortKey === 'label'}
                 dir={sortDir}
                 onClick={toggleSort}
               />
@@ -197,7 +198,7 @@ export function ScheduleJobsTable({
                       >
                         <IconChevron />
                       </span>
-                      {job.name}
+                      {jobLabel(job)}
                       {job.target && (
                         <span className="schedule__td--muted">
                           {job.target.kind === 'dedicated'
@@ -304,7 +305,7 @@ export function ScheduleJobsTable({
                         <button
                           type="button"
                           title="Edit"
-                          aria-label={`Edit ${job.name}`}
+                          aria-label={`Edit ${jobLabel(job)}`}
                           onClick={() => onEdit(job)}
                           className="schedule__action-btn"
                         >
@@ -313,7 +314,7 @@ export function ScheduleJobsTable({
                         <button
                           type="button"
                           title="Duplicate"
-                          aria-label={`Duplicate ${job.name}`}
+                          aria-label={`Duplicate ${jobLabel(job)}`}
                           onClick={() => onDuplicate(job)}
                           className="schedule__action-btn"
                         >
@@ -322,7 +323,7 @@ export function ScheduleJobsTable({
                         <button
                           type="button"
                           title="Run now"
-                          aria-label={`Run ${job.name}`}
+                          aria-label={`Run ${jobLabel(job)}`}
                           data-testid={`run-${job.name}`}
                           disabled={running || runPendingJob === job.name}
                           onClick={() => handleRun(job.name)}
@@ -333,7 +334,7 @@ export function ScheduleJobsTable({
                         <button
                           type="button"
                           title="Delete"
-                          aria-label={`Delete ${job.name}`}
+                          aria-label={`Delete ${jobLabel(job)}`}
                           onClick={() => onDelete(job)}
                           className="schedule__action-btn schedule__action-btn--danger"
                         >
@@ -350,7 +351,7 @@ export function ScheduleJobsTable({
                       <td colSpan={7}>
                         <div className="schedule__detail">
                           <div className="schedule__detail-header">
-                            <span>{job.name} — Run History</span>
+                            <span>{jobLabel(job)} — Run History</span>
                           </div>
                           {(description ||
                             job.prompt ||

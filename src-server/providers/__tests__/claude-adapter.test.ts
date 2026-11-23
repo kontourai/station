@@ -7649,14 +7649,19 @@ describe('ClaudeAdapter', () => {
       await vi.waitFor(async () =>
         expect((await adapter.listSessions())[0]?.status).toBe('error'),
       );
-      await expect(
-        adapter.sendTurn({
+      // A pre-effect refusal, so orchestration releases the turn-start
+      // claim instead of holding it as a turn that may have started.
+      const refusal = await adapter
+        .sendTurn({
           threadId: 'refused-turn',
           input: 'must not be silently accepted',
-        }),
-      ).rejects.toThrow(
-        'The provider turn ended before the input could be enqueued.',
-      );
+        })
+        .then(
+          () => undefined,
+          (error: unknown) => error,
+        );
+      expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+      expect(refusal).toMatchObject({ kind: 'session_gone' });
       expect(events.some((event) => event.method === 'turn.started')).toBe(
         false,
       );
@@ -7765,7 +7770,7 @@ describe('ClaudeAdapter', () => {
         threadId: 'later-failure',
         input: 'no silent enqueue',
       }),
-    ).rejects.toThrow('The provider turn ended');
+    ).rejects.toThrow('This Claude Session has stopped');
     await adapter.stopAll();
     await drain;
     expect(
@@ -14174,6 +14179,101 @@ describe('ClaudeAdapter — child work at the session seams (#2457)', () => {
     ]);
     expect(settled, 'no settle after the engine died').not.toBeNull();
     expect(childSettles(seen)).toEqual(['unresolved:engine-exit']);
+  });
+
+  // The owner's case: a long-lived engine SIGTERMed while idle. Its stream
+  // fails with the exit, which publishes the failure and keeps the record
+  // (`status: 'error'`); the observed exit must still end the session, or
+  // every later message is sent back to this dead record.
+  test.each(['the exit first', 'the stream failure first'])(
+    'an engine SIGTERMed while idle ends its session (%s): one failure, then session.exited',
+    async (order) => {
+      const threadId = `thread-engine-exited-143-${order.length}`;
+      const { adapter, query, until, seen } = await runningChild(threadId, {
+        engineExitStreamGraceMs: 20,
+      });
+      const engine = spawnEngine();
+      expect(adapter.engineEnded(threadId)).toBe(false);
+      const crash = () =>
+        query.crash(new Error('Claude Code process exited with code 143'));
+      if (order === 'the stream failure first') crash();
+      engine.exit(143, null);
+      engine.closeStderr();
+      if (order === 'the exit first') crash();
+      const exited = await until((event) => event.method === 'session.exited');
+      expect(exited).toMatchObject({ reason: 'process-exit', exitCode: 143 });
+      expect(
+        seen.filter((event) => event.method === 'runtime.error'),
+      ).toHaveLength(1);
+      expect(await adapter.hasSession(threadId)).toBe(false);
+      expect(adapter.engineEnded(threadId)).toBe(true);
+    },
+  );
+
+  // Between the observed exit and the session's end (it waits for the
+  // scope's workload outcome) the record still exists; only the process's
+  // own exit says no turn can run on it.
+  test('engineEnded answers from the observed exit while the record still exists', async () => {
+    const threadId = 'thread-engine-exit-pending-outcome';
+    let resolveOutcome: (value: undefined) => void = () => {};
+    const outcome = vi
+      .spyOn(childWorkload, 'childWorkloadOutcome')
+      .mockReturnValue(
+        new Promise<undefined>((resolve) => {
+          resolveOutcome = resolve;
+        }),
+      );
+    try {
+      const { adapter, until } = await runningChild(threadId, {
+        engineExitStreamGraceMs: 20,
+      });
+      const engine = spawnEngine();
+      expect(adapter.engineEnded(threadId)).toBe(false);
+      engine.exit(null, 'SIGTERM');
+      engine.closeStderr();
+      await vi.waitFor(() => expect(adapter.engineEnded(threadId)).toBe(true));
+      expect(await adapter.hasSession(threadId)).toBe(true);
+      resolveOutcome(undefined);
+      await until((event) => event.method === 'session.exited');
+      expect(adapter.engineEnded(threadId)).toBe(true);
+    } finally {
+      outcome.mockRestore();
+    }
+  });
+
+  test('a send to a Session whose stream already failed is refused before any effect', async () => {
+    const threadId = 'thread-stream-failed-refusal';
+    const { adapter, query, until } = await runningChild(threadId);
+    const engine = spawnEngine();
+    query.crash(new Error('Unexpected token in JSON at position 0'));
+    await until((event) => event.method === 'runtime.error');
+    const refusal = await adapter
+      .sendTurn({ threadId, input: 'after the failure' })
+      .then(
+        () => undefined,
+        (error: unknown) => error,
+      );
+    expect(refusal).toBeInstanceOf(SendTurnRefusedError);
+    expect(refusal).toMatchObject({ kind: 'session_gone' });
+    const stopped = adapter.stopSession(threadId);
+    engine.exit(null, 'SIGTERM');
+    engine.closeStderr();
+    await stopped;
+  });
+
+  test('a stream failure with the engine process alive is not engineEnded', async () => {
+    const threadId = 'thread-engine-alive-stream-failed';
+    const { adapter, query, until } = await runningChild(threadId);
+    const engine = spawnEngine();
+    query.crash(new Error('Unexpected token in JSON at position 0'));
+    await until((event) => event.method === 'runtime.error');
+    expect(adapter.engineEnded(threadId)).toBe(false);
+    const stopped = adapter.stopSession(threadId);
+    engine.exit(null, 'SIGTERM');
+    engine.closeStderr();
+    await stopped;
+    // A stop awaits the process, then drops the record.
+    expect(adapter.engineEnded(threadId)).toBe(true);
   });
 
   test('a stream failure with the engine process still running is no interruption (#4266)', async () => {

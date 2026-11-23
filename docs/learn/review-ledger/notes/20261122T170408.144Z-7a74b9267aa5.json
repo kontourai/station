@@ -1,0 +1,7 @@
+{
+  "revision": "d479ad8d5290f7379cfdb24aec4ec18ddf8e3de3",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"afterInvocation sentence re-read against voltagent-adapter.ts: an abort (Stop or a late abort after completion) ends with no output and is not recorded; usage passed on is the turn's total over all model steps.","inputs":["docs/guides/agent-configuration.md","src-server/runtime/frameworks/voltagent-adapter.ts"]}
+  ]
+}

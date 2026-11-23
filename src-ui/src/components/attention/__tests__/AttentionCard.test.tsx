@@ -2,6 +2,10 @@
  * @vitest-environment jsdom
  */
 
+import {
+  AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE,
+  AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE,
+} from '@kontourai/station-contracts/managed-model-binding';
 import type {
   ApprovalAttentionItem,
   AttentionItem,
@@ -1105,5 +1109,64 @@ describe('AttentionCard — pull request feedback needs you', () => {
     );
     // The way to it stays.
     expect(screen.getByRole('link', { name: 'Open chat' })).toBeTruthy();
+  });
+});
+
+// One fixture per server sentence: the provider service's ("application
+// default") and an unbound agent's ("explicit default"), each as the
+// station-agent relay records it.
+const AMBIGUITY_CASES = [
+  ['the provider service', AMBIGUOUS_DEFAULT_MODEL_CONNECTION_MESSAGE],
+  ['an unbound agent', AMBIGUOUS_AGENT_MODEL_CONNECTION_MESSAGE],
+] as const;
+
+describe.each(AMBIGUITY_CASES)(
+  'AttentionCard: a failed turn refused by %s (slice 0.17)',
+  (_source, message) => {
+    const RAW = `Station agent did not accept the task turn: ${message}`;
+
+    test('says it in plain words, with the recorded text only under Details', () => {
+      renderCard(baseFailure({ body: RAW }));
+
+      expect(screen.getByTestId('attention-cause').textContent).toBe(
+        'Couldn’t start: more than one model connection is turned on and Station can’t tell which one to use.',
+      );
+      const details = screen.getByTestId('attention-raw');
+      // Closed until asked for.
+      expect((details as HTMLDetailsElement).open).toBe(false);
+      expect(details.tagName).toBe('DETAILS');
+      expect(details.textContent).toContain(RAW);
+      // The raw sentence appears nowhere outside the Details disclosure.
+      const outside = document.body.cloneNode(true) as HTMLElement;
+      outside.querySelector('[data-testid="attention-raw"]')?.remove();
+      expect(outside.textContent).not.toContain(message);
+    });
+
+    test('offers "Open model connections", which opens that list and acknowledges the row', () => {
+      renderCard(baseFailure({ body: RAW }));
+
+      fireEvent.click(
+        screen.getByRole('link', { name: 'Open model connections' }),
+      );
+
+      expect(navigate).toHaveBeenCalledWith('/connections/models');
+      expect(acknowledgeAsync).toHaveBeenCalledWith(
+        'session-failed:thread-boom',
+      );
+    });
+  },
+);
+
+describe('AttentionCard: any other failure cause (slice 0.17)', () => {
+  test('is quoted as recorded, with no Details and no extra action', () => {
+    renderCard(baseFailure({ body: 'ECONNREFUSED api.example.com:443' }));
+
+    expect(screen.getByTestId('attention-cause').textContent).toBe(
+      'ECONNREFUSED api.example.com:443',
+    );
+    expect(screen.queryByTestId('attention-raw')).toBeNull();
+    expect(
+      screen.queryByRole('link', { name: 'Open model connections' }),
+    ).toBeNull();
   });
 });

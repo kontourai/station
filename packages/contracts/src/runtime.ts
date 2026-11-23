@@ -148,8 +148,71 @@ export interface ConversationStatsResponse {
   assistantMessageTokens?: number;
   contextFilesTokens?: number;
   modelStats?: Record<string, ConversationModelStats>;
+  /**
+   * #5389: what each engine counted, one row per engine in the order the
+   * engines first ran. Present on every `engine-events` view, with one row
+   * for a single-engine conversation. When more than one engine reported
+   * tokens ({@link reportsEngineTokens}), the conversation's own token
+   * figures above are absent: the engines count on different scales, so no
+   * single total exists. Turns, tool calls and costs above stay
+   * conversation-wide.
+   */
+  engines?: ConversationEngineUsage[];
   notFound?: true;
   measurement?: ConversationStatsMeasurement;
+}
+
+/** The token figures an engine row may carry, each on the engine's own scale. */
+export const CONVERSATION_ENGINE_TOKEN_FIGURES = [
+  'inputTokens',
+  'outputTokens',
+  'totalTokens',
+  'cacheReadTokens',
+  'cacheWriteTokens',
+] as const;
+
+/**
+ * Whether an engine row (or a fold's per-engine figures, which use the same
+ * names) reported any token figure, cache figures included. The usage fold
+ * and the stats renderers share this one predicate.
+ */
+export function reportsEngineTokens(
+  usage: Partial<
+    Record<(typeof CONVERSATION_ENGINE_TOKEN_FIGURES)[number], number>
+  >,
+): boolean {
+  return CONVERSATION_ENGINE_TOKEN_FIGURES.some(
+    (field) => usage[field] !== undefined,
+  );
+}
+
+/**
+ * At most this many engine rows in one stats response; the parser refuses a
+ * longer list rather than cutting it. Engines are counted once each, and
+ * Station has far fewer engine kinds than this.
+ */
+export const CONVERSATION_STATS_ENGINES_MAX = 32;
+
+/**
+ * One engine's usage within a conversation, on that engine's own scale.
+ * Same absent-is-not-zero rule as {@link ConversationStatsResponse}.
+ */
+export interface ConversationEngineUsage {
+  /** The engine's provider id (`event.provider`). */
+  provider: string;
+  turns: number;
+  toolCalls: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  totalTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  /** The engine's own USD figure. */
+  estimatedCost?: number;
+  /** The engine's costs in its own units, never converted. */
+  reportedCosts?: ConversationReportedCost[];
+  /** The latest model the engine's Sessions configured. */
+  modelId?: string;
 }
 
 export interface ConversationReportedCost {
@@ -300,6 +363,39 @@ function isConversationReportedCosts(value: unknown): boolean {
 const isFiniteNonnegative = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0;
 
+function isConversationEngineUsage(
+  value: unknown,
+): value is ConversationEngineUsage {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.provider === 'string' &&
+    value.provider.length > 0 &&
+    isFiniteNonnegative(value.turns) &&
+    isFiniteNonnegative(value.toolCalls) &&
+    [...CONVERSATION_ENGINE_TOKEN_FIGURES, 'estimatedCost'].every(
+      (key) => value[key] === undefined || isFiniteNonnegative(value[key]),
+    ) &&
+    (value.modelId === undefined || typeof value.modelId === 'string') &&
+    isConversationReportedCosts(value.reportedCosts) &&
+    (!Array.isArray(value.reportedCosts) ||
+      value.reportedCosts.length <= CONVERSATION_REPORTED_COST_UNITS_MAX)
+  );
+}
+
+/** Each engine once, at most {@link CONVERSATION_STATS_ENGINES_MAX} of them. */
+function isConversationEngineUsageList(value: unknown): boolean {
+  if (
+    !Array.isArray(value) ||
+    value.length > CONVERSATION_STATS_ENGINES_MAX ||
+    !value.every(isConversationEngineUsage)
+  )
+    return false;
+  return (
+    new Set(value.map((engine: ConversationEngineUsage) => engine.provider))
+      .size === value.length
+  );
+}
+
 function isConversationModelStats(
   value: unknown,
 ): value is ConversationModelStats {
@@ -362,6 +458,8 @@ export function parseConversationStatsResponse(
     (candidate.notFound !== undefined && candidate.notFound !== true) ||
     !isConversationStatsMeasurement(candidate.measurement) ||
     !isConversationReportedCosts(candidate.reportedCosts) ||
+    (candidate.engines !== undefined &&
+      !isConversationEngineUsageList(candidate.engines)) ||
     (candidate.modelStats !== undefined &&
       (!isRecord(candidate.modelStats) ||
         !Object.values(candidate.modelStats).every(isConversationModelStats)))

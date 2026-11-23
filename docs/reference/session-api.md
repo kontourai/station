@@ -1842,6 +1842,21 @@ could not be made durable. Foreground execution can return
 `outcome: "indeterminate"` and `code: "foreground_message_indeterminate"` with
 the known Session/receipt detail. Inspect that Session; do not resend the
 request merely because it returned an error or the receipt lookup is empty.
+Until Station can tell whether that turn reached the engine, later sends to the
+same Session are refused with `turn_start_held` (or
+`turn_start_held_until_restart` on an engine that cannot report its process
+ending). Once the Session's engine process is observed gone, the next send
+records the held turn as interrupted (the same banner and abort boot recovery
+writes, with an engine-ended reason) and proceeds; otherwise the turn's own
+end or the next boot settles it. If the engine is seen to end before any
+further send, its Session's end records the held turn as interrupted the same
+way. A Claude engine observed to exit ends its
+Session, so the next message by the conversation id runs in a new Session. If
+that Session failed while its engine process still runs, Station stops the
+process first; until it has stopped, a continuation or an Agent handoff is
+refused with `conversation_predecessor_engine_live` and nothing is sent. A
+send that names an earlier Session of a conversation whose engine cannot be
+resumed is refused with the conversation id to continue by instead.
 A transport failure after dispatch can also leave the outcome uncertain.
 In the [chat UI](../../src-ui/src/hooks/orchestration/queueDrain.ts), an intermediary's
 error page during a queued send leaves the message in the queue; the page does

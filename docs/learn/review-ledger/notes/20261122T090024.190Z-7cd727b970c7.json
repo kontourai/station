@@ -1,0 +1,7 @@
+{
+  "revision": "a46df40a2bef79288a97a4cb4ead44e5325e4b44",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"ProjectPage.tsx change only removes the projectId prop to ProjectNavigation; Starter Work readiness, dispatch and Project page entry points described here are unchanged.","inputs":["docs/guides/starter-work.md","src-ui/src/views/ProjectPage.tsx"]}
+  ]
+}
