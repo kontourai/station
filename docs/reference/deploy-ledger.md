@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-23T13:49:44Z | nightly-desktop | 0.2.0-nightly.20261123.1 | `839a1e8` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45178593921) |
+| 2026-11-23T13:49:44Z | nightly-android | 0.2.0-nightly.20261123.1 | `839a1e8` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45178593921) |
+| 2026-11-23T13:00:14Z | nightly-npm | 0.12.0-nightly.20261123.45178593921 | `839a1e8` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45178593921) |
 | 2026-11-23T05:41:59Z | nightly-desktop | 0.2.0-nightly.20261123 | `c4272d5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45113718916) |
 | 2026-11-23T05:41:59Z | nightly-android | 0.2.0-nightly.20261123 | `c4272d5` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45113718916) |
 | 2026-11-23T04:52:46Z | nightly-npm | 0.12.0-nightly.20261123.45113718916 | `c4272d5` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45113718916) |
@@ -542,6 +545,57 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-23T13:49:44Z · nightly-desktop · 0.2.0-nightly.20261123.1
+
+- Ship SHA: `839a1e8b0a2f47a29efcc54ff9a165495b0dd218`
+- Artifact built at: `2026-11-23T12:59:12.104Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 45178593921)
+
+### Changelog
+
+Commits since `c4272d5` ([full sha](https://github.com/kontourai/station/commit/c4272d565947c19e3457942404e2f69065271377)):
+
+**Fixes**
+
+- [#5501](https://github.com/kontourai/station/pull/5501) fix(ci): reconcile qualification health after Nightly
+- [#5500](https://github.com/kontourai/station/pull/5500) fix(automations): let a person's turn in an automation Session write to its own Task
+- [#5498](https://github.com/kontourai/station/pull/5498) fix(test): load the product cascade in Appearance keyboard checks
+
+## 2026-11-23T13:49:44Z · nightly-android · 0.2.0-nightly.20261123.1
+
+- Ship SHA: `839a1e8b0a2f47a29efcc54ff9a165495b0dd218`
+- Artifact built at: `2026-11-23T12:59:11.346Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 45178593921)
+
+### Changelog
+
+Commits since `c4272d5` ([full sha](https://github.com/kontourai/station/commit/c4272d565947c19e3457942404e2f69065271377)):
+
+**Fixes**
+
+- [#5501](https://github.com/kontourai/station/pull/5501) fix(ci): reconcile qualification health after Nightly
+- [#5500](https://github.com/kontourai/station/pull/5500) fix(automations): let a person's turn in an automation Session write to its own Task
+- [#5498](https://github.com/kontourai/station/pull/5498) fix(test): load the product cascade in Appearance keyboard checks
+
+## 2026-11-23T13:00:14Z · nightly-npm · 0.12.0-nightly.20261123.45178593921
+
+- Ship SHA: `839a1e8b0a2f47a29efcc54ff9a165495b0dd218`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261123.45178593921 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `c4272d5` ([full sha](https://github.com/kontourai/station/commit/c4272d565947c19e3457942404e2f69065271377)):
+
+**Fixes**
+
+- [#5501](https://github.com/kontourai/station/pull/5501) fix(ci): reconcile qualification health after Nightly
+- [#5500](https://github.com/kontourai/station/pull/5500) fix(automations): let a person's turn in an automation Session write to its own Task
+- [#5498](https://github.com/kontourai/station/pull/5498) fix(test): load the product cascade in Appearance keyboard checks
 
 ## 2026-11-23T05:41:59Z · nightly-desktop · 0.2.0-nightly.20261123
 
