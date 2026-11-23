@@ -8103,8 +8103,12 @@ export class EventStore {
     omitTranscriptBodies = false,
   ): CanonicalRuntimeEvent[] {
     if (methods?.length === 0) return [];
+    // Older stores can contain valid JSON beyond SQLite's nesting limit.
+    const payload = omitTranscriptBodies
+      ? "CASE WHEN json_valid(payload) THEN json_remove(payload, '$.prompt', '$.attachments', '$.outputText', '$.delta') ELSE payload END"
+      : 'payload';
     const rows = this.readStatement(
-      `SELECT ${omitTranscriptBodies ? "json_remove(payload, '$.prompt', '$.attachments', '$.outputText', '$.delta') AS payload" : 'payload'} FROM orchestration_events WHERE thread_id = ?
+      `SELECT ${payload} AS payload FROM orchestration_events WHERE thread_id = ?
        ${methods ? `AND (method IN (${methods.map(() => '?').join(', ')}) ${includeLatest ? 'OR sequence = (SELECT MAX(sequence) FROM orchestration_events WHERE thread_id = ?)' : ''})` : ''}
        ORDER BY sequence ASC`,
     ).all(
@@ -8112,7 +8116,72 @@ export class EventStore {
       ...(methods ?? []),
       ...(methods && includeLatest ? [threadId] : []),
     ) as Array<{ payload: string }>;
-    return rows.map((row) => JSON.parse(row.payload as string));
+    return rows.map(({ payload }) => {
+      const event = JSON.parse(payload);
+      if (omitTranscriptBodies && event !== null && typeof event === 'object') {
+        // SQLite returns the raw legacy row when it cannot parse its nesting.
+        delete event.prompt;
+        delete event.attachments;
+        delete event.outputText;
+        delete event.delta;
+      }
+      return event;
+    });
+  }
+
+  /** First-turn instruction facts in engine-context order. */
+  listTurnInstructionInputs(threadId: string): Array<{
+    method: string;
+    metadata?: unknown;
+    code?: unknown;
+  }> {
+    const rows = this.readStatement(
+      `SELECT method,
+         CASE
+           WHEN method = 'turn.started' THEN NULL
+           WHEN NOT json_valid(payload) THEN '!' || payload
+           WHEN method = 'runtime.warning' THEN payload -> '$.code'
+           ELSE payload -> '$.metadata'
+         END AS value
+       FROM orchestration_events INDEXED BY idx_events_history_projection
+       WHERE thread_id = ?
+         AND method IN ('session.started', 'session.configured', 'runtime.warning', 'turn.started')
+       ORDER BY sequence ASC`,
+    ).all(threadId) as Array<{ method: string; value: string | null }>;
+    return rows.map(({ method, value }) => {
+      if (value === null) return { method };
+      const field = method === 'runtime.warning' ? 'code' : 'metadata';
+      // SQLite cannot extract fields beyond its JSON nesting limit.
+      const fact = value.startsWith('!')
+        ? JSON.parse(value.slice(1))?.[field]
+        : JSON.parse(value);
+      return { method, [field]: fact };
+    });
+  }
+
+  /** Ordered input for the final send check's own lifecycle fold. */
+  listSessionLifecycleInputs(threadId: string): CanonicalRuntimeEvent[] {
+    const methods = [...LIFECYCLE_METHODS, 'session.started', 'request.opened'];
+    const placeholders = methods.map(() => '?').join(', ');
+    const payload =
+      "CASE WHEN json_valid(payload) THEN json_remove(payload, '$.prompt', '$.attachments', '$.outputText', '$.delta', '$.output') ELSE payload END";
+    // Both append paths write the stamp alongside its payload. The event-facts
+    // migration populated it for pre-column history. Stamps can occur on any
+    // method, including methods unknown to this reader.
+    const rows = this.readStatement(
+      `SELECT sequence, ${payload} AS payload
+       FROM orchestration_events INDEXED BY idx_events_history_projection
+       WHERE thread_id = ? AND method IN (${placeholders})
+       UNION ALL
+       SELECT sequence, ${payload} AS payload
+       FROM orchestration_events INDEXED BY idx_events_thread_session_state_sequence
+       WHERE thread_id = ? AND session_state IS NOT NULL
+         AND method NOT IN (${placeholders})
+       ORDER BY sequence ASC`,
+    ).all(threadId, ...methods, threadId, ...methods) as Array<{
+      payload: string;
+    }>;
+    return rows.map((row) => JSON.parse(row.payload));
   }
 
   /**
