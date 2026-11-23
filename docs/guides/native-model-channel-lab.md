@@ -115,6 +115,10 @@ withholding after revocation, cancellation before delayed cleanup, and retained
 terminal/accounting ownership. Bypassing only the body-delivery check exposed
 23 private bytes in the stronger test; later response failure could not hide it.
 
+The [simulated exec tests](../../src-server/services/connections/__tests__/native-model-container.test.ts)
+cover private stdin delivery under competing starts, preserving the result when
+exec settlement fails, and closing model admission during a pending exec stop.
+
 The isolated lab exercises real read-only-root and network refusal, private
 staging, synthetic model replies and owned cleanup. With native engines, it
 requires each actual CLI to issue a model-channel request and return its exact

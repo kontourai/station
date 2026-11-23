@@ -583,24 +583,13 @@ export class NativeModelContainer {
     this.#engaged = false;
     if (!this.#closing)
       this.#closing = (async () => {
+        const retirements: Promise<void>[] = [];
+        if (this.#channel) retirements.push(this.#channel.close());
+        else if (this.#id) retirements.push(this.#remove());
+        if (this.#textRun) retirements.push(this.#textRun.close());
         const failures: unknown[] = [];
-        try {
-          await this.#textRun?.close();
-        } catch (error) {
-          failures.push(error);
-        }
-        if (this.#channel)
-          try {
-            await this.#channel.close();
-          } catch (error) {
-            failures.push(error);
-          }
-        else if (this.#id)
-          try {
-            await this.#remove();
-          } catch (error) {
-            failures.push(error);
-          }
+        for (const outcome of await Promise.allSettled(retirements))
+          if (outcome.status === 'rejected') failures.push(outcome.reason);
         await this.#starting?.catch(() => {});
         // Preserve ownership of pending source delivery even after its exec closes.
         await this.#textRun?.result.catch(() => {});

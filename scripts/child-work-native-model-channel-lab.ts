@@ -108,7 +108,7 @@ try {
     /^[a-f0-9]{40}$/,
   );
   const docker = process.env.CHILD_WORK_DOCKER_EXECUTABLE;
-  assert.ok(docker && docker.startsWith('/'));
+  assert.ok(docker?.startsWith('/'));
   const endpoint = process.env.CHILD_WORK_DOCKER_ENDPOINT;
   assert.ok(endpoint);
   assert.ok(endpoint.startsWith('unix:///'));
@@ -465,6 +465,12 @@ try {
           }),
       });
       const observed = await run.result;
+      const observation: typeof observed & {
+        engine: (typeof engines)[number]['name'];
+        closed?: ReturnType<NativeModelContainer['inspect']>;
+      } = { engine: engine.name, ...observed };
+      observations.push(observation);
+      receipt.nativeEngineObservations = observations;
       const expected = `CONFINED_${engine.name.toUpperCase()}_REPLY`;
       if (engine.name === 'claude') {
         z.object({
@@ -519,8 +525,7 @@ try {
       assert.equal(closed.removed, true);
       assert.equal(closed.modelChannel?.pending, 0);
       assert.equal(closed.nativeText.settled, true);
-      observations.push({ engine: engine.name, ...observed, closed });
-      receipt.nativeEngineObservations = observations;
+      observation.closed = closed;
     }
   }
   receipt.deliveries = deliveries;

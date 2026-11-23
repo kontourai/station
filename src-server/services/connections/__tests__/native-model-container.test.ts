@@ -1,4 +1,4 @@
-import { EventEmitter } from 'node:events';
+import { ChildProcess } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { PassThrough, type Writable } from 'node:stream';
 import { afterEach, expect, onTestFinished, test, vi } from 'vitest';
@@ -21,7 +21,7 @@ const containerId = 'b'.repeat(64);
 afterEach(() => vi.resetAllMocks());
 
 function processFixture() {
-  const proc = Object.assign(new EventEmitter(), {
+  const proc = Object.assign(new ChildProcess(), {
     stdin: new PassThrough(),
     stdout: new PassThrough(),
     stderr: new PassThrough(),
@@ -39,8 +39,14 @@ function processFixture() {
   };
 }
 
-async function fixture({ failExecRetirement = false } = {}) {
-  type Spawn = typeof spawnOwnedChild;
+async function fixture({
+  failExecRetirement = false,
+  execStopGate,
+}: {
+  failExecRetirement?: boolean;
+  execStopGate?: Promise<void>;
+} = {}) {
+  const execStopEntered = Promise.withResolvers<void>();
   const active = new Map<
     object,
     { operation: string; process: ReturnType<typeof processFixture> }
@@ -49,97 +55,97 @@ async function fixture({ failExecRetirement = false } = {}) {
   const removals: string[] = [];
   let running = false;
   let label: string | undefined;
-  const spawn = vi
-    .mocked(spawnOwnedChild)
-    .mockImplementation((_, args, options) => {
-      const [, , , , operation, ...parameters] = args;
-      const child = processFixture();
-      active.set(child.proc, { operation, process: child });
-      queueMicrotask(() => {
-        switch (operation) {
-          case 'info':
-            child.finish('fixture-daemon');
-            break;
-          case 'create':
-            label =
-              parameters[parameters.indexOf('--label') + 1]?.split('=')[1];
-            child.finish(containerId);
-            break;
-          case 'inspect':
-            child.finish(
-              JSON.stringify({
-                Id: containerId,
-                Image: imageId,
-                Config: {
-                  User: '10000:10001',
-                  Labels: { 'station.native-model-owner': label },
-                },
-                State: { Running: running },
-                HostConfig: {
-                  NetworkMode: 'none',
-                  ReadonlyRootfs: true,
-                  Privileged: false,
-                  CapAdd: null,
-                  CapDrop: ['ALL'],
-                  SecurityOpt: ['no-new-privileges:true'],
-                  PidMode: '',
-                  IpcMode: 'private',
-                  Memory: 536870912,
-                  MemorySwap: 536870912,
-                  NanoCpus: 1_000_000_000,
-                  PidsLimit: 64,
-                  Binds: null,
-                  Devices: null,
-                  DeviceRequests: null,
-                  VolumesFrom: null,
-                  Tmpfs: { '/home/native': '', '/tmp': '', '/workspace': '' },
-                  LogConfig: { Type: 'none' },
-                },
-                NetworkSettings: { Networks: running ? { none: {} } : {} },
-                Mounts: [],
-              }),
-            );
-            break;
-          case 'start':
-            running = true;
-            child.proc.stdout.write(
-              '{"type":"ready","port":12345,"uid":10000}\n',
-            );
-            break;
-          case 'exec': {
-            execs.push({ args: parameters, env: options?.env ?? {} });
-            const chunks: Buffer[] = [];
-            child.proc.stdin.on('data', (chunk: Buffer) => chunks.push(chunk));
-            child.proc.stdin.on('end', () =>
-              child.finish(Buffer.concat(chunks).toString()),
-            );
-            break;
-          }
-          case 'rm':
-            removals.push(parameters.at(-1) ?? '');
-            running = false;
-            child.finish(containerId);
-            break;
-          default:
-            child.proc.emit(
-              'error',
-              new Error(`Unexpected Docker operation ${operation}`),
-            );
-            child.finish('', 1);
+  vi.mocked(spawnOwnedChild).mockImplementation((_, args, options) => {
+    const [, , , , operation, ...parameters] = args;
+    const child = processFixture();
+    active.set(child.proc, { operation, process: child });
+    queueMicrotask(() => {
+      switch (operation) {
+        case 'info':
+          child.finish('fixture-daemon');
+          break;
+        case 'create':
+          label = parameters[parameters.indexOf('--label') + 1]?.split('=')[1];
+          child.finish(containerId);
+          break;
+        case 'inspect':
+          child.finish(
+            JSON.stringify({
+              Id: containerId,
+              Image: imageId,
+              Config: {
+                User: '10000:10001',
+                Labels: { 'station.native-model-owner': label },
+              },
+              State: { Running: running },
+              HostConfig: {
+                NetworkMode: 'none',
+                ReadonlyRootfs: true,
+                Privileged: false,
+                CapAdd: null,
+                CapDrop: ['ALL'],
+                SecurityOpt: ['no-new-privileges:true'],
+                PidMode: '',
+                IpcMode: 'private',
+                Memory: 536870912,
+                MemorySwap: 536870912,
+                NanoCpus: 1_000_000_000,
+                PidsLimit: 64,
+                Binds: null,
+                Devices: null,
+                DeviceRequests: null,
+                VolumesFrom: null,
+                Tmpfs: { '/home/native': '', '/tmp': '', '/workspace': '' },
+                LogConfig: { Type: 'none' },
+              },
+              NetworkSettings: { Networks: running ? { none: {} } : {} },
+              Mounts: [],
+            }),
+          );
+          break;
+        case 'start':
+          running = true;
+          child.proc.stdout.write(
+            '{"type":"ready","port":12345,"uid":10000}\n',
+          );
+          break;
+        case 'exec': {
+          execs.push({ args: parameters, env: options?.env ?? {} });
+          const chunks: Buffer[] = [];
+          child.proc.stdin.on('data', (chunk: Buffer) => chunks.push(chunk));
+          child.proc.stdin.on('end', () =>
+            child.finish(Buffer.concat(chunks).toString()),
+          );
+          break;
         }
-      });
-      return {
-        // EventEmitter and stream endpoints stand in for the exec client.
-        proc: child.proc as ReturnType<Spawn>['proc'],
-        release: () => active.delete(child.proc),
-      };
+        case 'rm':
+          removals.push(parameters.at(-1) ?? '');
+          running = false;
+          child.finish(containerId);
+          break;
+        default:
+          child.proc.emit(
+            'error',
+            new Error(`Unexpected Docker operation ${operation}`),
+          );
+          child.finish('', 1);
+      }
     });
+    return {
+      proc: child.proc,
+      release: () => active.delete(child.proc),
+    };
+  });
   vi.mocked(terminateProcessTree).mockImplementation(async (handle) => {
     const child = active.get(handle);
     if (!child) throw new Error('Unowned process');
-    if (child.operation === 'exec' && failExecRetirement) {
-      failExecRetirement = false;
-      throw new Error('fixture exec cleanup unconfirmed');
+    if (child.operation === 'exec') {
+      execStopEntered.resolve();
+      await execStopGate;
+      if (failExecRetirement) {
+        failExecRetirement = false;
+        throw new Error('fixture exec cleanup unconfirmed');
+      }
     }
     child.process.finish('', null);
   });
@@ -155,7 +161,13 @@ async function fixture({ failExecRetirement = false } = {}) {
   });
   onTestFinished(() => controller.close());
   await controller.start();
-  return { controller, execs, removals, active, spawn };
+  return {
+    controller,
+    execs,
+    removals,
+    active,
+    execStopEntered: execStopEntered.promise,
+  };
 }
 
 function writePrompt(stdin: Writable, text: string): Promise<void> {
@@ -229,4 +241,32 @@ test('the fixed text result survives an independently failed exec settlement and
   expect(f.removals).toEqual([containerId]);
   expect(f.active.size).toBe(0);
   await expect(run.result).resolves.toBe(result);
+});
+
+test('container retirement closes model admission during a held exec stop', async () => {
+  const stop = Promise.withResolvers<void>();
+  const prompt = Promise.withResolvers<void>();
+  onTestFinished(() => {
+    stop.resolve();
+    prompt.resolve();
+  });
+  const f = await fixture({ execStopGate: stop.promise });
+  const run = await f.controller.startText({
+    engine: 'claude',
+    modelId: 'fixture-model',
+    signal: new AbortController().signal,
+    writePrompt: () => prompt.promise,
+  });
+  const closing = f.controller.close();
+  try {
+    await f.execStopEntered;
+    expect(f.controller.inspect().modelChannel?.admissionClosed).toBe(true);
+  } finally {
+    stop.resolve();
+    prompt.resolve();
+    await closing;
+  }
+  await expect(run.result).rejects.toThrow('native_text_closed');
+  expect(f.removals).toEqual([containerId]);
+  expect(f.active.size).toBe(0);
 });
