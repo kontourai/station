@@ -68,6 +68,8 @@ export interface SessionReadModelReadOptions {
    * readability and ephemeral checks as the full read.
    */
   threadIds?: readonly string[];
-  /** Select admitted Sessions after adapter refresh, before projection reads and counts. */
-  selectThreadIds?: () => readonly string[];
+  /** Select Sessions from the ordinary inventory after refresh, before projections. */
+  selectThreadIds?: (
+    canList: (threadId: string) => boolean,
+  ) => readonly string[];
 }

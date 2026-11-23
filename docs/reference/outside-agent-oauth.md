@@ -45,12 +45,14 @@ faults, real-client checks and topology/release limits.
 The isolated active-work composition also offers `list_active_work`. It
 admits rows by the grant's stable Project ID and recorded owner before
 loading projection events or counts. Every Session in a conversation's
-lineage must pass the same check. Earlier host starts or full-access decisions
+lineage must pass the same scope and inventory checks, which omit ephemeral
+Sessions. Earlier host starts or full-access decisions
 still exclude a conversation after its current posture narrows. The reader
 checks admission again after refreshing the runtime inventory.
 The response identifies partial coverage when it excludes host access or
-hits a scan limit. It examines at most 4,000 candidate IDs for the grant's
-owner and Project and admits up to 2,000. At either limit, the host exclusion
+hits a scan limit. The reader checks scope for at most 4,000 inventory-visible
+candidate IDs for the grant's owner and Project and admits up to 2,000.
+At either limit, the host exclusion
 count is a lower bound. Its cursors bind to the grant, token family, grant
 version, Project scope and activity window, and expire when the server
 restarts. Conversation search and the rest of the read catalog follow in

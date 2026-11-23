@@ -4,6 +4,7 @@ import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy'
 import { publicAgentIdFromRuntimeKey } from '../agents/runtime-agent-identity.js';
 import type { EventStore } from './event-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
+import type { SessionReadModelReadOptions } from './session-read-model-purpose.js';
 import {
   type WorkClaimRecord,
   type WorkClaimStore,
@@ -254,7 +255,7 @@ export function createSessionActivityReader(deps: SessionActivityReaderDeps) {
       authority: SessionReadAuthority;
       viewer: ActivityListViewer;
       threadIds?: readonly string[];
-      selectThreadIds?: () => readonly string[];
+      selectThreadIds?: SessionReadModelReadOptions['selectThreadIds'];
       cursor?: ActivityCursor;
       limit: number;
       activeWithinMinutes?: number;

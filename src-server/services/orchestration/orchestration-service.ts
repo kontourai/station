@@ -5831,13 +5831,16 @@ export class OrchestrationService {
     // ONE timestamp for the whole read: this list is a single observation of
     // this process's state, not one observation per row.
     const observedAt = new Date().toISOString();
-    const selected = options.selectThreadIds?.() ?? options.threadIds;
+    const canList = (threadId: string): boolean =>
+      !this.isEphemeralSession(threadId) &&
+      this.sessionAuthz.canReadSession(threadId, authority);
+    const selected =
+      options.selectThreadIds?.(
+        (threadId) => threadIds.has(threadId) && canList(threadId),
+      ) ?? options.threadIds;
     const only = selected ? new Set(selected) : undefined;
     const readableThreadIds = [...threadIds].filter(
-      (threadId) =>
-        (!only || only.has(threadId)) &&
-        !this.isEphemeralSession(threadId) &&
-        this.sessionAuthz.canReadSession(threadId, authority),
+      (threadId) => (!only || only.has(threadId)) && canList(threadId),
     );
     const readableThreadSet = new Set(readableThreadIds);
     sample.threadsConsidered = readableThreadIds.length;

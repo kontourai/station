@@ -52,6 +52,7 @@ describe('outside-agent MCP transport and live authority', () => {
         localProjectId: string | undefined,
         owner = 'operator',
         extra: Record<string, unknown> = {},
+        ephemeral = false,
       ) => {
         const timestamp = new Date(clock.now - 60_000).toISOString();
         eventStore.appendEvent({
@@ -75,6 +76,7 @@ describe('outside-agent MCP transport and live authority', () => {
           createdAt: timestamp,
           updatedAt: timestamp,
           cwd: `/private/${threadId}`,
+          ...(ephemeral ? { ephemeral: true } : {}),
         });
       };
       seed(firstSessionId, 'id-alpha');
@@ -90,6 +92,15 @@ describe('outside-agent MCP transport and live authority', () => {
           deviceId: 'revoked-test-device',
         },
       });
+      seed(
+        'ephemeral-host',
+        'id-alpha',
+        'operator',
+        {
+          [STATION_CONFINEMENT_METADATA_KEY]: 'host',
+        },
+        true,
+      );
       expect(service.sessionRunsHost('revoked-host')).toBe(false);
       seed('foreign-host', 'id-foreign', 'operator', {
         stationConfinement: 'host',

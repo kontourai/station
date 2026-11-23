@@ -125,9 +125,11 @@ export function createOutsideActiveWorkReader(
       }
       return target;
     };
+    let canListInInventory: (threadId: string) => boolean = () => false;
     const classifyLineage = (ids: ReadonlySet<string>): Admission => {
       let host = false;
       for (const id of ids) {
+        if (!canListInInventory(id)) return undefined;
         const member = scopedTarget(id);
         if (!member) return undefined;
         host ||= member.host || deps.eventStore.hasHostAccessHistory(id);
@@ -161,8 +163,9 @@ export function createOutsideActiveWorkReader(
 
     let scanLimited = false;
     const hostFiltered = new Set<string>();
-    const selectThreadIds = () => {
+    const selectThreadIds = (canList: (threadId: string) => boolean) => {
       assertCurrent();
+      canListInInventory = canList;
       const cache = new Map<string, Admission>();
       const threadIds: string[] = [];
       let scanned = 0;
@@ -170,6 +173,7 @@ export function createOutsideActiveWorkReader(
         caller.delegatingPrincipalId,
         projectId,
       )) {
+        if (!canList(threadId)) continue;
         if (scanned === MAX_METADATA_SCAN) {
           scanLimited = true;
           break;
