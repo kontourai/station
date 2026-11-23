@@ -91,6 +91,21 @@ export const COPY_SOURCE_FILES = [
 ];
 
 /**
+ * `.ts` modules under `src-ui` whose string literals are user-facing copy
+ * (catalogue page copy, skill source labels, plugin messages). They are
+ * scanned like every `.tsx` file's string literals: for the retired place
+ * phrases only (`scanPlaceLiterals`), because the other families above match
+ * code identifiers these modules legitimately contain.
+ */
+export const PLACE_COPY_MODULES = [
+  'src-ui/src/components/registry/registryCatalogModel.ts',
+  'src-ui/src/views/skills/skill-view-utils.ts',
+  'src-ui/src/views/plugin-management/view-utils.ts',
+  'src-ui/src/views/plugin-management/usePluginManagementViewModel.ts',
+  'src-ui/src/workspace-panes/workspacePaneAvailabilityPresentation.ts',
+];
+
+/**
  * The object-literal factory whose blocks carry a file's user-facing copy.
  * `scanCopySourceContent` reads copy only from inside these blocks, because
  * the same field identifiers appear in each file's own `interface`
@@ -327,6 +342,27 @@ export const RETIRED_USER_TERMS = Object.freeze([
     use: 'Customize, its item, or the Station menu',
     pattern:
       /\b(?:(?:open|review|configure in|in|under|from) connections\b(?![-\w])|connections\s*[›→>]\s*(?:models|engines|tools|knowledge|computers)\b)/i,
+  },
+  // Apps area (first-release-apps.md, slice 1.4): Registry and Plugins are
+  // no longer places. Installable things are Apps (Discover, Library); the
+  // other catalogues are pages entered from where their kind is used. Only the
+  // place sense is matched: "browse/open/in/from/through/under the Registry",
+  // "Registry › <tab>", "Registry page/tab", and "open/in/under Plugins",
+  // "Plugins › …", "Plugins page/tab"; "Reload plugins" is an action on the
+  // packages, not a place, and stays legal. Technical registries
+  // (npm, the ACP public registry, "Registry URL") and the developer word
+  // "plugin" stay legal.
+  {
+    term: 'Registry as a place',
+    use: 'Apps › Discover, or the catalogue page of the kind (Browse skills)',
+    pattern:
+      /\b(?:(?:browse|open|in|from|through|under|via) (?:the )?registry\b(?![-\w])|registry\s*[›→>]\s*(?:agents|skills|integrations|plugins|layouts|kits)\b|registry (?:page|tab)s?\b)/i,
+  },
+  {
+    term: 'Plugins as a place',
+    use: 'Apps, Apps › Library or Apps › Discover',
+    pattern:
+      /\b(?:(?:open|in|under) plugins\b(?![-\w]|\.\w)|plugins\s*[›→>]\s*\w|plugins (?:page|tab)s?\b)/i,
   },
 ]);
 
@@ -883,6 +919,52 @@ export function scanFileContent(
   return findings;
 }
 
+/** One-line string and template literals: quoted copy in any position. */
+const STRING_LITERAL_PATTERN =
+  /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g;
+
+/**
+ * The retired place phrases in every string literal of a file, whatever
+ * position it sits in: a ternary branch, a function argument, a returned
+ * label. Only the place terms are applied: the noun families above match
+ * identifiers that string literals legitimately carry.
+ */
+export function scanPlaceLiterals(
+  file,
+  rawContent,
+  retiredTerms = ACTIVE_RETIRED_USER_TERMS,
+) {
+  const placeTerms = retiredTerms.filter(({ term }) =>
+    / as a place$/.test(term),
+  );
+  if (placeTerms.length === 0) return [];
+  const content = stripComments(rawContent);
+  const findings = [];
+  STRING_LITERAL_PATTERN.lastIndex = 0;
+  for (const match of content.matchAll(STRING_LITERAL_PATTERN)) {
+    const text = normalizeSnippet(
+      match[0].slice(1, -1).replace(/\$\{[^}]*\}/g, ' '),
+    );
+    if (
+      text &&
+      placeTerms.some(({ pattern }) =>
+        new RegExp(pattern.source, 'i').test(text),
+      )
+    )
+      findings.push({
+        file,
+        line: lineNumberAt(content, match.index),
+        snippet: text,
+      });
+  }
+  return findings;
+}
+
+/** Test sources name places in test titles and fixtures, not as copy. */
+function isTestSource(file) {
+  return /(^|\/)__tests__\/|\.test\.[jt]sx?$/.test(file);
+}
+
 /**
  * The user-facing string fields of a `SettingDefinition`
  * (`packages/contracts/src/settings-registry.ts`, and the same four fields on
@@ -1032,13 +1114,22 @@ export function runGate({
   readFile,
   allowlist,
   copySourceFiles = [],
+  placeCopyModules = [],
   retiredTerms = ACTIVE_RETIRED_USER_TERMS,
 }) {
   const findings = [];
   for (const file of files) {
     const content = readFile(file);
     findings.push(...scanFileContent(file, content, retiredTerms));
+    if (!isTestSource(file)) {
+      // A place phrase the JSX scanners already reported is not repeated.
+      const seen = new Set(findings.map(allowlistKey));
+      for (const finding of scanPlaceLiterals(file, content, retiredTerms))
+        if (!seen.has(allowlistKey(finding))) findings.push(finding);
+    }
   }
+  for (const file of placeCopyModules)
+    findings.push(...scanPlaceLiterals(file, readFile(file), retiredTerms));
 
   const unscannable = [];
   for (const file of copySourceFiles) {
@@ -1079,7 +1170,7 @@ function main() {
     roots: SCAN_ROOTS,
     extensions: SCAN_EXTENSIONS,
     pinned: PINNED_SCOPE_INVENTORY,
-    files: [...files, ...COPY_SOURCE_FILES],
+    files: [...files, ...COPY_SOURCE_FILES, ...PLACE_COPY_MODULES],
   });
 
   const { unallowlisted, staleEntries, unscannable } = runGate({
@@ -1087,6 +1178,7 @@ function main() {
     readFile: (file) => readFileSync(file, 'utf8'),
     allowlist,
     copySourceFiles: COPY_SOURCE_FILES,
+    placeCopyModules: PLACE_COPY_MODULES,
   });
 
   console.log(
@@ -1157,8 +1249,9 @@ function main() {
         ? 'no allowlist entries'
         : `${allowlist.length} allowlist entries, all still live`;
     console.log(
-      `OK: no un-allowlisted stale-noun matches. Scanned ${scope} — ` +
-        `${files.length + COPY_SOURCE_FILES.length} files total, ` +
+      `OK: no un-allowlisted stale-noun matches. Scanned ${scope} + ` +
+        `${PLACE_COPY_MODULES.length} copy module(s) for place phrases — ` +
+        `${files.length + COPY_SOURCE_FILES.length + PLACE_COPY_MODULES.length} files total, ` +
         `${allowlistNote}.`,
     );
     process.exit(0);

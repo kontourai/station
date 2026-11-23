@@ -327,9 +327,7 @@ describe('New Chat repair and return', () => {
     fireEvent.click(
       await screen.findByRole('button', { name: 'Choose Chosen model' }),
     );
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Browse marketplaces' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Browse apps' }));
     await screen.findByRole('button', { name: 'Return to New Chat' });
     await waitFor(() =>
       expect(navigationStore.getSnapshot().pathname).toBe('/apps/discover'),

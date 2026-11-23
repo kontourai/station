@@ -153,12 +153,12 @@ On a phone: The same transcript with a bottom sheet for the review.
 | Today's fixed Boards | Simplify | Kept as one built-in app kind, "arranged apps", made with chat or the section editor. Daily brief is the default one. "+ New Board" becomes "Make one with chat". |
 | Apps library (preview) | Remove | Apps › Library replaces it. |
 | Plugins as a destination | Remove | Replaced by Apps (Discover, Library, Updates). "Plugin" stays the packaging word. |
-| Registry tabs: Plugins and Layouts | Simplify | Become Apps › Discover. |
+| Registry tab: Plugins | Simplify | Becomes Apps › Discover. |
 | Registry tab: Skills | Simplify | Becomes Skills › Browse. |
 | Registry tab: Integrations | Simplify | Becomes Customize › Tools › From the list. |
-| Registry tab: Agents | Remove | Empty. Agents arrive inside apps. |
-| Layouts tab | Remove | The tab goes and the concept stays: a Layout is how an app's screen is built, a developer word. |
-| Kits | Hide for the first release | Still hidden for v1. A read-only view from a portable package would appear as an app with a project view when one ships. |
+| Registry tab: Agents | Remove | Empty on a fresh install; agents arrive inside apps. Its address opens Agents. A source that lists `type: "agent"` entries in a Station manifest has them no longer browsed: such an agent is still added by installing its package from its source (Apps › Library › Install plugin, or `station plugin install`). Apps › Discover › Manage sources lists every source, whatever it supplies, so such a source can still be seen and removed. |
+| Layouts tab | Simplify | The tab goes and the concept stays: a Layout is how an app's screen is built, a developer word. The ready-made layouts stay a page of their own with no navigation entry, opened from a project's Add Layout, until adding apps as views from the project's plus replaces it (`apps-09`). |
+| Kits | Hide for the first release | Hidden for v1: the kit catalogue keeps its address with no entry. A read-only view from a portable package would appear as an app with a project view when one ships. |
 | Starter layout (New Project) | Simplify | Becomes an optional "Add apps as views", per the Projects design. |
 
 ## New work

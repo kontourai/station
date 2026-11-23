@@ -1,9 +1,12 @@
 import type { RegistryCatalogTab } from '@kontourai/station-sdk';
-import type { ReactNode } from 'react';
+import { type ReactNode, useMemo } from 'react';
 import { describeStationFailure } from '../../utils/stationFailure';
-import { PageFrameActions, usePageHeader } from '../page-frame';
+import {
+  PageEyebrowTrail,
+  PageFrameActions,
+  usePageHeader,
+} from '../page-frame';
 import { Empty, ErrorState, FilteredEmpty, SkeletonList } from '../state';
-import { Tabs, tabElementId, tabPanelElementId } from '../Tabs';
 import {
   RegistryCatalogCard,
   RegistryCatalogDetail,
@@ -22,26 +25,6 @@ import { Button } from '../Button';
 
 export type { RegistryItem } from './registryCatalogModel';
 export { getRegistryItemId } from './registryCatalogModel';
-
-const TABS = [
-  { key: 'agents', label: 'Agents' },
-  { key: 'skills', label: 'Skills' },
-  { key: 'integrations', label: 'Integrations' },
-  { key: 'layouts', label: 'Layouts' },
-  { key: 'kits', label: 'Kits' },
-] as const satisfies readonly { key: RegistryCatalogTab; label: string }[];
-// Plugins are browsed in Apps › Discover, not as a tab here.
-type RegistryTabKeysExhaustive =
-  Exclude<RegistryCatalogTab, 'plugins'> extends (typeof TABS)[number]['key']
-    ? true
-    : [
-        'TABS is missing a RegistryCatalogTab member:',
-        Exclude<RegistryCatalogTab, (typeof TABS)[number]['key']>,
-      ];
-true satisfies RegistryTabKeysExhaustive;
-
-/** Groups this view's generated tab/panel ids — see `components/Tabs.tsx`. */
-const TABS_ID = 'registry-catalog';
 
 export interface RegistryCatalogModel {
   activeTab: RegistryCatalogTab;
@@ -64,7 +47,6 @@ export interface RegistryCatalogModel {
 }
 
 export interface RegistryCatalogActions {
-  setActiveTab: (tab: RegistryCatalogTab) => void;
   setSearch: (value: string) => void;
   clearMessage: () => void;
   select: (id: string) => void;
@@ -82,6 +64,8 @@ export interface RegistryCatalogActions {
   retryInstalled: () => void;
   retryCatalog: () => void;
   renderKits?: () => ReactNode;
+  /** Opens the place this catalogue is entered from (its eyebrow link). */
+  openOwner?: (path: string) => void;
 }
 
 export function RegistryCatalog({
@@ -120,8 +104,21 @@ export function RegistryCatalog({
     openSkill: actions.openSkill,
     openProjects: actions.openProjects,
   };
-  // The tab decides the description; the frame decides where it renders.
-  usePageHeader({ subtitle: getRegistryTabCopy(activeTab).description });
+  // Each catalogue is a page of its own: the tab decides its title,
+  // description and the place its eyebrow climbs back to.
+  const copy = getRegistryTabCopy(activeTab);
+  const { openOwner } = actions;
+  const eyebrow = useMemo(() => {
+    const owner = getRegistryTabCopy(activeTab).owner;
+    return owner && openOwner ? (
+      <PageEyebrowTrail
+        segments={[
+          { label: owner.label, onClick: () => openOwner(owner.path) },
+        ]}
+      />
+    ) : undefined;
+  }, [activeTab, openOwner]);
+  usePageHeader({ eyebrow, title: copy.title, subtitle: copy.description });
   const isInstalled = (item: RegistryItem, id: string) => {
     const override = installationOverrides.get(`${activeTab}:${id}`);
     return override ?? (installedIds.has(id) || !!item.installed);
@@ -138,35 +135,7 @@ export function RegistryCatalog({
           </Button>
         )}
       </PageFrameActions>
-      <Tabs
-        id={TABS_ID}
-        aria-label="Registry catalog"
-        sticky
-        // Automatic activation: switching tabs is a cheap in-place list
-        // swap (no route push), matching Guidance/Memory below.
-        //
-        // archive#4463: whether ACTIVATION itself should
-        // clear the search box is a real, open UX question (an arrow-key
-        // journey through the strip clears it on every intermediate tab
-        // under automatic activation, same as a click always did) — kept
-        // as-is per arbiter decision, not silently changed here. What
-        // changed is only that this can no longer fire on mere focus
-        // movement without activation, which manual-mode hosts now do.
-        activation="automatic"
-        items={TABS}
-        activeKey={activeTab}
-        onSelect={(key) => {
-          actions.clearMessage();
-          actions.setSearch('');
-          actions.setActiveTab(key as RegistryCatalogTab);
-        }}
-      />
-      <div
-        className="page__section-stack"
-        role="tabpanel"
-        id={tabPanelElementId(TABS_ID, activeTab)}
-        aria-labelledby={tabElementId(TABS_ID, activeTab)}
-      >
+      <div className="page__section-stack">
         {activeTab === 'kits' ? (
           actions.renderKits?.()
         ) : (
@@ -175,10 +144,10 @@ export function RegistryCatalog({
               <input
                 type="text"
                 className="page__search-input"
-                placeholder={`Search ${activeTab}...`}
+                placeholder={`Search ${copy.noun}…`}
                 value={search}
                 onChange={(event) => actions.setSearch(event.target.value)}
-                aria-label={`Search ${activeTab}`}
+                aria-label={`Search ${copy.noun}`}
               />
             </div>
             <RegistryCatalogState
@@ -261,7 +230,7 @@ function RegistryCatalogState({
       {loading && <SkeletonList count={4} label="Loading catalog" />}
       {!loading && error && (
         <ErrorState
-          title={`Could not load ${tab} right now.`}
+          title={`Could not load ${getRegistryTabCopy(tab).noun} right now.`}
           description={describeStationFailure(error).body}
           action={<Button onClick={onRetryCatalog}>Retry catalog</Button>}
         />
@@ -273,7 +242,7 @@ function RegistryCatalogState({
           description={
             tab === 'layouts'
               ? 'Install a plugin that contributes a layout, then add that layout to a Project.'
-              : 'Add a marketplace, or ask the Station operator to add one.'
+              : 'Add a source, or ask the Station operator to add one.'
           }
           action={
             tab === 'plugins' ? (
@@ -292,7 +261,7 @@ function RegistryCatalogState({
       {!loading && !error && availableCount > 0 && filteredCount === 0 && (
         <FilteredEmpty
           query={query}
-          noun={tab}
+          noun={getRegistryTabCopy(tab).noun}
           variant="prominent"
           onClear={onClearFilter}
         />

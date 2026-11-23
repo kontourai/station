@@ -277,7 +277,7 @@ Ollama-compatible server whose models are scripted scenarios:
 `scripted-showcase` (Markdown with a list, table and code block),
 `scripted-echo`, `scripted-long`, `scripted-truncated` (finish reason
 `length`) and `scripted-error` (fails mid-stream). In the dev instance, add an
-Ollama connection under Connections with base URL `http://127.0.0.1:4417` and
+Ollama connection under Customize › Providers with base URL `http://127.0.0.1:4417` and
 pick a scenario as the model. The turn then runs through the real Ollama
 adapter, orchestration, persistence and live stream; only the model is
 replaced. It offers no tools, so a scripted turn never asks Station to run

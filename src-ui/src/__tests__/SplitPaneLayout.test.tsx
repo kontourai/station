@@ -1499,14 +1499,14 @@ describe('SplitPaneLayout', () => {
         addLabel: '+ Add provider',
         headerActions: (
           <button type="button" className="page__btn-secondary">
-            Browse Registry
+            Browse skills
           </button>
         ),
         sidebarActions: <div className="delegated-card">list chrome</div>,
       });
 
       const actions = container.querySelector('.page__actions');
-      expect(actions?.textContent).toContain('Browse Registry');
+      expect(actions?.textContent).toContain('Browse skills');
       expect(actions?.textContent).toContain('+ Add provider');
       // The shared Button, not a third button family: `page__btn-primary`
       // was retired with the rest of it.

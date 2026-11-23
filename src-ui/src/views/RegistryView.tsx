@@ -7,7 +7,7 @@ import {
   useRegistryLayoutActionMutation,
   useRegistrySkillActionMutation,
 } from '@kontourai/station-sdk';
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Button } from '../components/Button';
 import { KitCatalog } from '../components/registry/KitCatalog';
 import { MarketplaceSources } from '../components/registry/MarketplaceSources';
@@ -21,32 +21,27 @@ import {
   type RegistryLayoutAction,
 } from '../components/registry/RegistryLayoutActions';
 import { getRegistrySkillInstallRefusal } from '../components/registry/registryCatalogModel';
-import {
-  StationExtensionsAccess,
-  useStationExtensionsAccess,
-} from '../components/registry/StationExtensionsAccess';
 import { useNavigation } from '../contexts/NavigationContext';
 import { useShowSurface } from '../contexts/useShowSurface';
-import { pluginRegistry } from '../core/PluginRegistry';
 import { AgentToolCatalog } from './agent-editor/AgentToolCatalog';
 import { usePluginCatalogInstall } from './plugin-management/usePluginCatalogInstall';
 import './PluginManagementView.css';
 import './RegistryView.css';
 import './page-layout.css';
 
-/** The source kinds the catalogue tabs on this page list. */
-const REGISTRY_PAGE_SOURCE_KINDS = ['skills', 'agents'] as const;
+/**
+ * The source kind each catalogue page lists sources of. Of the pages that
+ * remain only skills come from sources; tool servers, layouts and kits do
+ * not, so those pages have no source picker. Every source, of any kind, is
+ * managed from Apps › Discover.
+ */
+const PAGE_SOURCE_KINDS: Partial<
+  Record<RegistryCatalogTab, readonly ['skills']>
+> = { skills: ['skills'] };
 
 function registryInstallationKey(tab: RegistryCatalogTab, itemId: string) {
   return `${tab}:${itemId}`;
 }
-
-/**
- * A source chosen together with a switch to its catalog tab. The route
- * boundary keys this view by route (`RouteViewBoundary`), so the tab switch
- * remounts it; the choice is handed to that next mount, for that tab only.
- */
-let sourceForNextTab: { tab: RegistryCatalogTab; source: string } | null = null;
 
 export function RegistryView({
   initialTab,
@@ -63,38 +58,20 @@ export function RegistryView({
   // #928 C2a: "Open a Project" means Home by name; reveal the surface.
   const showSurface = useShowSurface();
   const invalidateQuery = useInvalidateQuery();
-  const extensionAccess = useStationExtensionsAccess();
   const [activeTab, setActiveTab] = useState<RegistryCatalogTab>(
-    initialTab ?? 'agents',
+    initialTab ?? 'skills',
   );
   // The URL is authoritative: Back/Forward (or any in-app navigation that
   // changes /registry/:tab while this view stays mounted) must re-sync the
   // rendered tab — initializer-only state desyncs on popstate (archive#2678).
   useEffect(() => {
-    setActiveTab(initialTab ?? 'agents');
+    setActiveTab(initialTab ?? 'skills');
   }, [initialTab]);
-  // The route remounts this view for each tab (`RouteViewBoundary` keys by
-  // route), so the chosen source is handed to the next mount: browsing a
-  // source keeps it across tabs.
-  const selectTab = (
-    tab: RegistryCatalogTab,
-    source: string = selectedSource,
-  ) => {
-    setActiveTab(tab);
-    if (!toolPicker) {
-      sourceForNextTab = { tab, source };
-      navigate(`/registry/${tab}`);
-    }
-  };
+  // The agent editor's tool picker switches its own tabs in place.
+  const selectTab = (tab: RegistryCatalogTab) => setActiveTab(tab);
   const [message, setMessage] = useState<string | null>(null);
   const [search, setSearch] = useState(installTarget ?? '');
-  const [selectedSource, setSelectedSource] = useState(() => {
-    const handed = sourceForNextTab;
-    sourceForNextTab = null;
-    return handed && handed.tab === (initialTab ?? 'agents')
-      ? handed.source
-      : 'all';
-  });
+  const [selectedSource, setSelectedSource] = useState('all');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [inspectedSelection, setInspectedSelection] = useState<{
     tab: RegistryCatalogTab;
@@ -103,10 +80,6 @@ export function RegistryView({
   const [installationOverrides, setInstallationOverrides] = useState(
     () => new Map<string, boolean>(),
   );
-  const pluginRegistryStatus = useSyncExternalStore(
-    pluginRegistry.subscribe,
-    pluginRegistry.getLoadStatus,
-  );
   const {
     data: availableData,
     error: availableError,
@@ -114,7 +87,7 @@ export function RegistryView({
     dataUpdatedAt: availableUpdatedAt,
     refetch: refetchAvailable,
   } = useRegistryItemsQuery<RegistryItem>(
-    activeTab === 'kits' ? 'agents' : activeTab,
+    activeTab === 'kits' ? 'skills' : activeTab,
     { enabled: activeTab !== 'kits' },
   );
   const {
@@ -123,7 +96,7 @@ export function RegistryView({
     isLoading: loadingInstalled,
     refetch: refetchInstalled,
   } = useInstalledRegistryItemsQuery<RegistryItem>(
-    activeTab === 'kits' ? 'agents' : activeTab,
+    activeTab === 'kits' ? 'skills' : activeTab,
     { enabled: activeTab !== 'kits' },
   );
   useEffect(() => {
@@ -138,7 +111,6 @@ export function RegistryView({
   const {
     startInstall,
     previewMutation,
-    agentMutation,
     pluginMutation,
     modal: pluginInstallModal,
   } = usePluginCatalogInstall({
@@ -197,25 +169,21 @@ export function RegistryView({
     ? isInstalled(selectedItem, selectedItemId ?? '')
     : false;
   const pendingId =
-    activeTab === 'agents'
-      ? agentMutation.variables?.id
-      : activeTab === 'skills'
-        ? skillMutation.variables?.id
-        : activeTab === 'integrations'
-          ? integrationMutation.variables?.id
-          : activeTab === 'layouts'
-            ? layoutMutation.variables?.id
-            : pluginMutation.variables?.id;
+    activeTab === 'skills'
+      ? skillMutation.variables?.id
+      : activeTab === 'integrations'
+        ? integrationMutation.variables?.id
+        : activeTab === 'layouts'
+          ? layoutMutation.variables?.id
+          : pluginMutation.variables?.id;
   const mutationPending =
-    activeTab === 'agents'
-      ? agentMutation.isPending
-      : activeTab === 'skills'
-        ? skillMutation.isPending
-        : activeTab === 'integrations'
-          ? integrationMutation.isPending
-          : activeTab === 'layouts'
-            ? layoutMutation.isPending
-            : pluginMutation.isPending;
+    activeTab === 'skills'
+      ? skillMutation.isPending
+      : activeTab === 'integrations'
+        ? integrationMutation.isPending
+        : activeTab === 'layouts'
+          ? layoutMutation.isPending
+          : pluginMutation.isPending;
 
   const runLayoutAction = (
     item: RegistryItem,
@@ -288,23 +256,15 @@ export function RegistryView({
       setMessage(refusal);
       return;
     }
-    // Installing a registry entry the plugin registry resolves starts at the
-    // preview, exactly like the Plugins view: the decision the server needs
-    // is about the previewed bytes, so there is nothing honest to send until
-    // the preview has been shown. The server is the authority on which ids
-    // are plugins — an agent-face entry it cannot resolve answers
-    // `registry-plugin-not-found` and keeps the plain agent install path.
-    if (
-      action === 'install' &&
-      (activeTab === 'agents' || activeTab === 'plugins')
-    ) {
+    // Installing a plugin (the tool picker's Plugins tab) starts at the
+    // preview: the decision the server needs is about the previewed bytes,
+    // so there is nothing honest to send until the preview has been shown.
+    if (action === 'install' && activeTab === 'plugins') {
       startInstall(activeTab, item, itemId);
       return;
     }
     const callbacks = actionCallbacks(activeTab, item, itemId, isInstalled);
-    if (activeTab === 'agents') {
-      agentMutation.mutate({ id: itemId, action }, callbacks);
-    } else if (activeTab === 'skills') {
+    if (activeTab === 'skills') {
       skillMutation.mutate({ id: itemId, action }, callbacks);
     } else if (activeTab === 'integrations') {
       integrationMutation.mutate({ id: itemId, action }, callbacks);
@@ -319,41 +279,18 @@ export function RegistryView({
     }
   };
 
-  const remoteBundlesSection = <StationExtensionsAccess />;
-  const remoteIsolationActive = extensionAccess.blocked;
-
+  // Each catalogue is a page entered from where its kind is used. The
+  // remote extension code controls live with installed apps (Apps ›
+  // Library) and Discover, where extension code is added and runs.
   return (
     <div className="registry-view">
-      {remoteIsolationActive && remoteBundlesSection}
-      {pluginRegistryStatus.state === 'degraded' &&
-        pluginRegistryStatus.failure !== 'remote-isolation' && (
-          <div className="page__message" role="alert">
-            <p>
-              {pluginRegistryStatus.failedPluginNames.length
-                ? `Couldn't load extensions: ${pluginRegistryStatus.failedPluginNames.join(', ')}.`
-                : "Couldn't load extensions for this Station."}
-            </p>
-            <Button onClick={() => void pluginRegistry.reload()}>
-              Retry extensions
-            </Button>
-          </div>
-        )}
-      {!toolPicker && (
+      {/* A source narrows this page's own list; choosing one never opens
+          another page. */}
+      {!toolPicker && PAGE_SOURCE_KINDS[activeTab] && (
         <MarketplaceSources
           selected={selectedSource}
-          onSelect={(id, _kind, supplied) => {
-            setSelectedSource(id);
-            // Show the chosen source's catalog: keep the tab when the source
-            // supplies it, otherwise open its first kind this page lists.
-            // Plugins are browsed in Apps › Discover, not here.
-            const tabs: readonly RegistryCatalogTab[] = (supplied ?? []).filter(
-              (tab) => tab !== 'plugins',
-            );
-            if (tabs.length > 0 && !tabs.includes(activeTab))
-              selectTab(tabs[0]!, id);
-          }}
-          // A source that only supplies plugins has nothing on these tabs.
-          kinds={REGISTRY_PAGE_SOURCE_KINDS}
+          onSelect={(id) => setSelectedSource(id)}
+          kinds={PAGE_SOURCE_KINDS[activeTab]}
           manage="dialog"
         />
       )}
@@ -423,7 +360,6 @@ export function RegistryView({
             layoutPending: layoutMutation.isPending,
           }}
           actions={{
-            setActiveTab: selectTab,
             setSearch,
             clearMessage: () => setMessage(null),
             select: (id) => {
@@ -457,10 +393,10 @@ export function RegistryView({
               void refetchAvailable();
             },
             renderKits: () => <KitCatalog />,
+            openOwner: navigate,
           }}
         />
       )}
-      {!remoteIsolationActive && remoteBundlesSection}
       {pluginInstallModal}
     </div>
   );

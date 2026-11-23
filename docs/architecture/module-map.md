@@ -1164,7 +1164,7 @@ currently returns a rejected row without that warning; collection visibility and
 are separate. Provider resolution and Registry installed-state consume only valid scan
 entries, while `GET /api/plugins` projects both valid and rejected entries. A rejected
 directory has no trustworthy plugin version, permissions, bundle, settings, update, or
-removal claim. The Plugins surface therefore gives it a distinct selection identity,
+removal claim. Apps › Library therefore gives it a distinct selection identity,
 renders the exact rejection and repair instruction, and offers only the existing Reload
 plugins recovery action.
 
@@ -5038,8 +5038,8 @@ leaving it only on a transient event.
 **Seam, Implementation, callers, and tests.** Runtime route composition supplies the
 existing plugin-module quiescence, operational-event subscription quiescence/reconcile,
 provider registry, Adapter retirement, and engine-connection Adapters. Both direct
-revocation and the distinct-origin trusted regrant path invoke the same service. The
-Plugins surface renders terminal, winding, and incomplete truth with an actionable
+revocation and the distinct-origin trusted regrant path invoke the same service.
+Apps › Library renders terminal, winding, and incomplete truth with an actionable
 idempotent check/retry path. Adversarial evidence covers drain ordering, disjoint
 supersession, stale revoke/regrant generations, content-locked activation,
 content-generation replacement, timeout ownership, partial failure, retained consent

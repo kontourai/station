@@ -82,7 +82,10 @@ import {
   inspectWorkspace,
   sourceFiles,
 } from '../lib/package-dist-freshness.mjs';
-import { PINNED_SCOPE_INVENTORY as NOUN_PINNED_SCOPE_INVENTORY } from '../noun-consistency-gate.mjs';
+import {
+  PINNED_SCOPE_INVENTORY as NOUN_PINNED_SCOPE_INVENTORY,
+  PLACE_COPY_MODULES as NOUN_PLACE_COPY_MODULES,
+} from '../noun-consistency-gate.mjs';
 import {
   baselineDeferrals,
   configuredExclusions,
@@ -383,6 +386,10 @@ describe('noun-consistency:gate rejects its known-bad tree', {
         files[pinned] = fixture(GATE, 'clean-view.tsx.fixture');
       }
     }
+    // The `.ts` copy modules the gate reads for retired place phrases.
+    for (const module of NOUN_PLACE_COPY_MODULES) {
+      files[module] = fixture(GATE, 'place-copy-module.ts.fixture');
+    }
     return files;
   }
 
@@ -434,6 +441,40 @@ describe('noun-consistency:gate rejects its known-bad tree', {
     );
     expect(result.output).toContain('Runtime settings');
     expect(result.output).toContain('Guidance');
+  });
+
+  it('rejects a retired place phrase in a ternary branch and in a function argument', () => {
+    const dir = scratchRepo({
+      script: SCRIPT,
+      libs: LIBS,
+      files: {
+        ...cleanFiles(),
+        'src-ui/src/views/PlaceLiteralView.tsx': fixture(
+          GATE,
+          'place-literal-view.tsx.fixture',
+        ),
+      },
+    });
+    const result = runGuardrail(dir, SCRIPT);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain('Browse the Registry');
+    expect(result.output).toContain('Check its status in Plugins.');
+  });
+
+  it('rejects a retired place phrase in a .ts copy module', () => {
+    const [module] = NOUN_PLACE_COPY_MODULES;
+    const dir = scratchRepo({
+      script: SCRIPT,
+      libs: LIBS,
+      files: {
+        ...cleanFiles(),
+        [module]: fixture(GATE, 'place-copy-module-retired.ts.fixture'),
+      },
+    });
+    const result = runGuardrail(dir, SCRIPT);
+    expect(result.status).toBe(1);
+    expect(result.output).toContain(module);
+    expect(result.output).toContain('Install one from the Registry');
   });
 
   it('fails closed on copy it cannot read rather than passing over it', () => {

@@ -17,6 +17,7 @@ import {
   getRegistryItemId,
   getRegistrySkillInstallRefusal,
   getRegistrySourceLabel,
+  getRegistryTabCopy,
   type RegistryItem,
 } from './registryCatalogModel';
 
@@ -72,7 +73,9 @@ export function RegistryCatalogDetail({
       data-testid="registry-detail"
       aria-labelledby={`registry-detail-${id}`}
     >
-      <div className="page__section-label">Selected {tab.slice(0, -1)}</div>
+      <div className="page__section-label">
+        Selected {getRegistryTabCopy(tab).noun.slice(0, -1)}
+      </div>
       <RegistryItemHeading
         item={item}
         installed={installed}
@@ -91,7 +94,7 @@ export function RegistryCatalogDetail({
         </div>
       )}
       {item.catalogFreshness === 'stale' && (
-        <p role="status">Offline marketplace · last successful catalog</p>
+        <p role="status">Offline source · last successful catalog</p>
       )}
       {item.version && !mcpServer && (
         <div className="page__subtitle">v{item.version}</div>
@@ -111,7 +114,7 @@ export function RegistryCatalogDetail({
       {isInstalledPlugin && (
         <div className="page__subtitle">
           This plugin is installed. Add its enabled layout to a project, or
-          manage its settings in Plugins.
+          manage its settings in Apps › Library.
         </div>
       )}
       <div className="page__card-footer">

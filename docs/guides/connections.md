@@ -1259,7 +1259,7 @@ A saved `kiro` connection keeps its own arguments.
    **Not connected yet** card say "Kiro (KAS, no CLI) isn't installed yet".
    Installing needs permission to operate Station on a paired device.
    Until you sign in, a chat on this engine is held with **Sign in to Kiro
-   (KAS, no CLI) from its sign-in panel in Connections**, and the engines
+   (KAS, no CLI) from its sign-in panel in Customize › Engines**, and the engines
    list shows it as **Sign in required** even though the engine answers its
    handshake. If Station cannot read that readiness, the row says it could
    not verify the engine; other engines still list. Station's readiness reads the installed
@@ -2037,7 +2037,7 @@ and account. Portable preparation and reproducible recipes remain owned by
 
 ## Integrations from MCP subregistries
 
-**Registry → Integrations** lists Station's curated MCP servers under
+**Browse tool servers** (from Customize › Tools) lists Station's curated MCP servers under
 **Station curated**. Each card shows what Station checked:
 
 - **Station qualified**: Station checked the endpoint and sign-in, and
@@ -2229,7 +2229,7 @@ on overflow); remote protocol-negotiation error bodies are limited to 64 KiB.
 Both limits refuse oversized bodies rather than truncating them.
 Remote HTTP 4xx/5xx errors retain their status with sanitized JSON-RPC error
 text, except upstream 401: Station refreshes once, then returns HTTP 403 with
-“Open Connections → Tools” needs-sign-in guidance if authorization is missing
+“Open Customize › Tools” needs-sign-in guidance if authorization is missing
 or rejected again. That response has no `WWW-Authenticate` and does not invite
 the engine to discover OAuth on Station. Transient refresh unavailability
 returns HTTP 503. Invalid, expired or revoked proxy credentials return HTTP 401.
@@ -2602,8 +2602,8 @@ The Customize, Guidance and Tool-server URLs have a single canonical route per c
 | Computers (not a Customize item) | `/connections/computers` | `/connections/environments` |
 | Skills | `/guidance?tab=skills` | `/skills`, and the retired `/playbooks`, `/prompts`, `/manage/prompts` |
 | Tool servers | `/customize/tools` | `/connections/tools`, `/integrations`, `/tools`, `/manage/integrations` |
-| Apps | `/apps/discover`, `/apps/library` | `/registry` and `/registry/plugins` (Discover), `/plugins` (Library) |
-| Registry | `/registry/:tab` for `agents`\|`skills`\|`integrations`\|`layouts`\|`kits` | — |
+| Apps | `/apps/discover`, `/apps/library` | `/registry`, `/registry/plugins` and any other `/registry/<segment>…` that is not a catalogue page (Discover), `/plugins`, `/manage/plugins` (Library), each in one step |
+| Catalogue pages | `/registry/:tab` for `skills`\|`integrations`\|`layouts`\|`kits`: Browse skills (from Skills), Browse tool servers (from Tools), Browse layouts (from a project's Add Layout), Browse kits (no entry) | `/registry/agents` (Agents) |
 
 The connection section registry and `getPathForView` emit canonical routes.
 Navigation ingestion also normalizes the listed aliases, including old deep

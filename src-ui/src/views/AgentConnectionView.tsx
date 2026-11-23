@@ -1331,7 +1331,8 @@ function ClaudeSkillsMaterializationField({
         </p>
         {skills.length === 0 ? (
           <p className="editor-help">
-            No skills installed yet — install one from the Registry.
+            No skills installed yet. Browse skills in Customize › Skills to add
+            one.
           </p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>

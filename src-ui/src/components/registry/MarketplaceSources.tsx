@@ -119,8 +119,9 @@ export function MarketplaceSources({
   onSelect,
   kinds,
   manage = 'inline',
-  label = 'Browse marketplace',
+  label = 'Source',
   hideLabel = false,
+  manageAll = false,
 }: {
   selected: string;
   /**
@@ -133,6 +134,13 @@ export function MarketplaceSources({
   /** The source picker's name; a host with its own heading can hide it. */
   label?: string;
   hideLabel?: boolean;
+  /**
+   * Manage sources lists every configured source, whatever it supplies, while
+   * the picker still offers only `kinds`. Each card says what its source
+   * provides, so a source this page does not browse can still be seen and
+   * removed.
+   */
+  manageAll?: boolean;
 }) {
   const sources = useRegistrySourcesQuery();
   const mutation = useRegistrySourceActionMutation();
@@ -200,7 +208,7 @@ export function MarketplaceSources({
         </Button>
         {manage === 'dialog' && (
           <Button variant="secondary" onClick={() => setManaging(true)}>
-            Manage sources ({visible.length})
+            Manage sources ({manageAll ? all.length : visible.length})
           </Button>
         )}
       </div>
@@ -234,7 +242,7 @@ export function MarketplaceSources({
           <MarketplaceSourceManager
             selected={selected}
             onSelect={onSelect}
-            kinds={kinds}
+            kinds={manageAll ? undefined : kinds}
             presentation="list"
           />
         </Dialog>

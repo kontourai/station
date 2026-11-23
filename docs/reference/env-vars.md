@@ -5,7 +5,7 @@ every internal launcher variable, test seam, or dependency's environment options
 Feature-specific settings are linked below. Set server variables before starting
 the process; a shell change does not reconfigure an already running service.
 
-> **Model providers are mostly not env vars.** Ollama and OpenAI-compatible endpoints are configured in the **Connections** UI, not through environment variables — see the [Connections Guide](../guides/connections.md). The AWS variables below apply **only when you run AWS Bedrock**; a local Ollama setup needs none of them.
+> **Model providers are mostly not env vars.** Ollama and OpenAI-compatible endpoints are configured in **Customize › Providers**, not through environment variables — see the [Connections Guide](../guides/connections.md). The AWS variables below apply **only when you run AWS Bedrock**; a local Ollama setup needs none of them.
 
 ## Server
 

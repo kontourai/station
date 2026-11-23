@@ -7,6 +7,7 @@ import type { AgentSummary, NavigationView } from '../types';
 import { resolvePageFrame } from './page-frame-registry';
 import { RoutePendingSkeleton } from './RoutePendingSkeleton';
 import { routeIdentity, routeSurfaceIdentity } from './route-identity';
+import { isCataloguePageTab } from './routing';
 import './route-transition.css';
 import { CustomizeShell } from './CustomizeShell';
 import {
@@ -291,7 +292,13 @@ function AppViewContentBody({
     return <GuidanceView route={currentView} />;
   }
   if (currentView.type === 'registry') {
-    return <RegistryView initialTab={currentView.tab} />;
+    // Only a catalogue page renders a catalogue; any other registry view
+    // shows Apps › Discover, where its address redirects.
+    return isCataloguePageTab(currentView.tab) ? (
+      <RegistryView initialTab={currentView.tab} />
+    ) : (
+      <AppsView tab="discover" />
+    );
   }
   if (currentView.type === 'apps') {
     return <AppsView tab={currentView.tab} />;

@@ -233,7 +233,7 @@ export function UnpairedSampleWorkspace({
             <>
               <p>Choose the agents and tools that power your work.</p>
               <div className="unpaired-sample__fact">
-                <strong>Agents · Skills · Engines · Plugins</strong>
+                <strong>Agents · Skills · Engines · Tools</strong>
                 <span>Available after pairing a Station</span>
               </div>
               <Button onClick={() => openSampleStep('decisions')}>

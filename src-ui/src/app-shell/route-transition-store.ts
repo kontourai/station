@@ -14,7 +14,7 @@
  * sidebar already resolves the row it highlights through
  * `getDestinationForView`, so publishing the same id makes "the pending row" and
  * "the active row" two readings of one derivation — and a deep route
- * (`/registry/agents`, `/connections/providers/x`) marks its owning row,
+ * (`/registry/skills`, `/connections/providers/x`) marks its owning row,
  * which a pathname equality check silently never did.
  */
 type Listener = () => void;

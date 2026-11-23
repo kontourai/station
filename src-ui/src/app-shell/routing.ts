@@ -92,7 +92,10 @@ export function getLegacyPathRedirect(path: string): string | null {
     if (pathname !== legacyPrefix && !pathname.startsWith(`${legacyPrefix}/`)) {
       return null;
     }
-    const suffix = pathname.slice(legacyPrefix.length);
+    // A bare trailing slash is dropped here, so the canonical address needs
+    // no second redirect.
+    const rawSuffix = pathname.slice(legacyPrefix.length);
+    const suffix = rawSuffix === '/' ? '' : rawSuffix;
     const params = new URLSearchParams(canonicalSearch);
     for (const [key, value] of new URLSearchParams(search)) {
       params.append(key, value);
@@ -101,20 +104,22 @@ export function getLegacyPathRedirect(path: string): string | null {
     return `${canonicalPrefix}${suffix}${mergedSearch ? `?${mergedSearch}` : ''}`;
   };
 
-  // The catalogue root and its Plugins tab (with any trailing segment) are
-  // Apps › Discover; Apps' own addresses accept a trailing slash. This pairs
-  // with the `registry` destination, whose route is `/registry/agents`, the
-  // first remaining tab: nothing may build a `{ type: 'registry' }` view
-  // without a tab, because its bare path lands here, on Discover.
-  if (
-    pathname === '/registry' ||
-    pathname === '/registry/' ||
-    pathname === '/registry/plugins' ||
-    pathname.startsWith('/registry/plugins/')
-  ) {
-    return preserveSearch('/apps/discover');
+  // Registry is not a place. Each catalogue page that remains (skills, tool
+  // servers, layouts, kits) keeps its address; the agent catalogue is gone,
+  // so its address lands on Agents; the root, the Plugins tab and anything
+  // else under /registry are Apps › Discover. Each lands in one step.
+  if (pathname === '/registry' || pathname.startsWith('/registry/')) {
+    const segment = pathname.split('/')[2] ?? '';
+    if (!isCataloguePageTab(segment))
+      return preserveSearch(
+        segment === 'agents' ? '/agents' : '/apps/discover',
+      );
   }
-  if (pathname === '/apps/' || pathname === '/apps/discover/') {
+  if (
+    pathname === '/apps/' ||
+    pathname === '/apps/discover/' ||
+    pathname === '/apps/library/'
+  ) {
     return preserveSearch(pathname.slice(0, -1));
   }
   if (pathname === '/developer/config') {
@@ -285,34 +290,22 @@ export function decodeUrlSelection(
   }
 }
 
-const REGISTRY_TABS = [
-  'agents',
+/**
+ * The catalogues that are still pages of their own. Agents and Plugins are
+ * not: their addresses redirect, and a registry view naming neither these
+ * nor any tab renders no catalogue.
+ */
+const CATALOGUE_PAGE_TABS = [
   'skills',
   'integrations',
-  'plugins',
   'layouts',
   'kits',
 ] as const satisfies readonly RegistryCatalogTab[];
 
-// Compile-time exhaustiveness check: if `RegistryCatalogTab` (from the SDK)
-// ever gains a member not listed in `REGISTRY_TABS` above, this resolves to
-// a descriptive tuple type instead of `true`, and the `satisfies` assignment
-// below fails to typecheck — turning a silently-missing `/registry/:tab`
-// deep-link into a build break instead. `satisfies readonly
-// RegistryCatalogTab[]` above only checks the reverse direction (every
-// listed value is a valid tab); this checks the other direction (every
-// valid tab is listed).
-type RegistryTabsExhaustive =
-  RegistryCatalogTab extends (typeof REGISTRY_TABS)[number]
-    ? true
-    : [
-        'REGISTRY_TABS is missing a RegistryCatalogTab member:',
-        Exclude<RegistryCatalogTab, (typeof REGISTRY_TABS)[number]>,
-      ];
-true satisfies RegistryTabsExhaustive;
-
-function isRegistryCatalogTab(value: string): value is RegistryCatalogTab {
-  return (REGISTRY_TABS as readonly string[]).includes(value);
+export function isCataloguePageTab(
+  value: string | undefined,
+): value is (typeof CATALOGUE_PAGE_TABS)[number] {
+  return (CATALOGUE_PAGE_TABS as readonly string[]).includes(value ?? '');
 }
 
 export function resolveViewFromPath(
@@ -360,15 +353,15 @@ export function resolveViewFromPath(
       ...(selectedId ? { selectedId } : {}),
     };
   }
-  if (path === '/registry') return { type: 'registry' };
-  if (path.startsWith('/registry/')) {
-    const tabSegment = path.startsWith('/registry/')
-      ? path.split('/')[2]
-      : undefined;
-    if (tabSegment && isRegistryCatalogTab(tabSegment)) {
+  if (path === '/registry' || path.startsWith('/registry/')) {
+    // Only a catalogue page resolves to one; any other address resolves to
+    // where its redirect lands, so no registry view without a page exists.
+    const tabSegment = path.split('/')[2];
+    if (isCataloguePageTab(tabSegment))
       return { type: 'registry', tab: tabSegment };
-    }
-    return { type: 'registry' };
+    return tabSegment === 'agents'
+      ? { type: 'agents' }
+      : { type: 'apps', tab: 'discover' };
   }
   if (path === '/apps/discover') return { type: 'apps', tab: 'discover' };
   if (path === '/apps/library' || path.startsWith('/apps/library/')) {
@@ -752,10 +745,15 @@ export function getParentView(view: NavigationView): NavigationView | null {
     case 'board':
     case 'not-found':
       return { type: 'home' };
-    // The catalogue root is Apps › Discover now, so its tabs have no
-    // level up of their own.
+    // Each catalogue page goes up to the place it is opened from: Skills,
+    // Customize › Tools, or Apps › Discover for layouts and kits, which have
+    // no opener of their own on a direct load.
     case 'registry':
-      return null;
+      return view.tab === 'skills'
+        ? { type: 'guidance', tab: 'skills' }
+        : view.tab === 'integrations'
+          ? { type: 'connections-tools' }
+          : { type: 'apps', tab: 'discover' };
     default:
       return null;
   }

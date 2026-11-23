@@ -588,7 +588,7 @@ export function usePluginManagementViewModel() {
           if (!installedPlugin) {
             setMessage({
               type: 'error',
-              text: 'Station did not return installed plugin details. Refresh Plugins before continuing.',
+              text: 'Station did not return installed plugin details. Refresh Apps › Library before continuing.',
             });
             await reloadPluginsMutation.mutateAsync().catch(() => {});
             await reloadClientPluginRegistry();
@@ -623,7 +623,7 @@ export function usePluginManagementViewModel() {
           ) {
             setMessage({
               type: 'error',
-              text: `${pluginName} is installed, but Station did not report current dependency approval status. Check Plugins on the Station host.`,
+              text: `${pluginName} is installed, but Station did not report current dependency approval status. Check Apps › Library on the Station host.`,
             });
             await reloadPluginsMutation.mutateAsync().catch(() => {});
             await reloadClientPluginRegistry();

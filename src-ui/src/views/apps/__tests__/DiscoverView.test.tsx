@@ -432,6 +432,39 @@ describe('Apps › Discover', () => {
     expect(cardNames()).toEqual(['Knowledge Docs Starter']);
   });
 
+  test('pressing a chosen facet value again clears it, even when the search leaves it at zero', () => {
+    render(<DiscoverView />);
+    const pane = () =>
+      within(facetGroup('Opens as')).getByRole('button', { name: /A pane/ });
+    fireEvent.click(pane());
+    expect(pane().getAttribute('aria-pressed')).toBe('true');
+    fireEvent.change(screen.getByLabelText('Search apps'), {
+      target: { value: 'knowledge docs' },
+    });
+    expect(pane().textContent).toContain('0');
+    fireEvent.click(pane());
+    expect(
+      within(facetGroup('Opens as'))
+        .getByRole('button', { name: 'Anywhere' })
+        .getAttribute('aria-pressed'),
+    ).toBe('true');
+    expect(cardNames()).toEqual(['Knowledge Docs Starter']);
+  });
+
+  test('search matches the source and version the card shows', () => {
+    state.rows = catalogRows().map((row) =>
+      row.id === 'fieldwork-review'
+        ? { ...row, catalogSourceName: 'Field team catalog' }
+        : row,
+    );
+    render(<DiscoverView />);
+    const search = screen.getByLabelText('Search apps');
+    fireEvent.change(search, { target: { value: 'field team' } });
+    expect(cardNames()).toEqual(['Fieldwork Review']);
+    fireEvent.change(search, { target: { value: 'v0.1.0' } });
+    expect(cardNames()).toEqual(['Fieldwork Review']);
+  });
+
   test('claims no trust line when the server does not say where screen code runs', () => {
     state.rows = catalogRows().map((row) => {
       if (!row.app || row.app.kind !== 'app') return row;
@@ -559,6 +592,62 @@ describe('Apps › Discover', () => {
     expect(state.sourceActions).toEqual([
       expect.objectContaining({ id: 'team', action: 'refresh' }),
     ]);
+  });
+
+  test('Manage sources lists every source, so one Discover does not browse can still be removed', () => {
+    state.sources = [
+      {
+        id: 'apps',
+        kind: 'plugins',
+        displayName: 'App catalog',
+        origin: 'user',
+        adapter: 'directory',
+        enabled: true,
+        status: 'ready',
+      },
+      {
+        id: 'agents-only',
+        kind: 'agents',
+        displayName: 'Agent catalog',
+        origin: 'user',
+        adapter: 'directory',
+        enabled: true,
+        status: 'ready',
+        detection: {
+          state: 'detected',
+          checkedAt: '2026-11-12T00:00:00.000Z',
+          kinds: [
+            {
+              kind: 'agents',
+              count: 2,
+              via: 'station-manifest',
+              installable: true,
+            },
+          ],
+        },
+      },
+    ];
+    render(<DiscoverView />);
+    // The picker offers only what Discover shows.
+    const picker = screen.getByLabelText('Show apps from') as HTMLSelectElement;
+    expect([...picker.options].map((option) => option.value)).toEqual([
+      'all',
+      'apps',
+    ]);
+    fireEvent.click(screen.getByRole('button', { name: 'Manage sources (2)' }));
+    const dialog = screen.getByRole('dialog', { name: 'Manage sources' });
+    expect(within(dialog).getByText('Agent catalog')).toBeTruthy();
+    // Its card says what it provides.
+    expect(within(dialog).getByText('2 agents')).toBeTruthy();
+    fireEvent.click(
+      within(dialog).getByRole('button', {
+        name: 'More actions for Agent catalog',
+      }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Remove source' }));
+    expect(state.sourceActions).toContainEqual(
+      expect.objectContaining({ id: 'agents-only', action: 'remove' }),
+    );
   });
 
   test('keeps the remote extension consent on the page', () => {

@@ -481,7 +481,7 @@ establish a consumer contract for it or for arbitrary `promptRegistry` or
 
 ### Settings
 
-Plugins can declare configurable settings that users edit in the Plugins UI.
+Plugins can declare configurable settings that users edit in Apps › Library.
 Values are persisted as plaintext JSON in
 `<STATION_HOME>/config/plugin-overrides.json` and passed to provider factory
 functions at load time. `secret: true` masks the UI input and suppresses the
@@ -596,7 +596,8 @@ GitHub repository. Station detects what it provides from its content:
 marketplace index or MCP definitions, which are recognized but not yet
 installable ([decision](../decisions/registry-sources-detected-by-structure.md)). Each
 source under **Manage sources** (opened from Discover's source picker, so the
-catalog comes first) shows its trust tier
+catalog comes first; Discover's list holds every source, including one that
+supplies only skills or agents) shows its trust tier
 (Station, Default, Plugin, or Unverified for one a person added), what it was
 detected to provide with counts (a default catalog shows its last count, or
 that it has not been scanned yet), and when it was last read and last changed
@@ -686,7 +687,7 @@ one renders Station's explicit unavailable-component recovery state rather than
 silently substituting another layout. Reinstall the same registry item, refresh
 the project, and open the preserved layout again.
 
-If installed files remain but `plugin.json` is missing or rejected, Plugins
+If installed files remain but `plugin.json` is missing or rejected, Apps › Library
 keeps the folder visible with a **Rejected** badge, the validation reason, and
 specific repair guidance. Fix or restore the manifest, then choose **Reload
 plugins**. Station does not invent a version or expose normal settings, update,
@@ -711,7 +712,7 @@ activation rather than hold every other configuration change behind it, and it
 does not retry it on its own. Recovery runs under the same limit, so a retry may
 work and removing the plugin is the way out. While the server is still
 activating the plugin, its row reads **Activating…** with no recovery offered;
-it becomes ready by itself or, once stopped, **Needs recovery**. Plugins
+it becomes ready by itself or, once stopped, **Needs recovery**. Apps › Library
 then says the plugin was installed (or updated) but is not active, and opens
 its row, which reads **Needs recovery**. It did not fail, and installing it
 again would install a second copy: installing a plugin that reads **Needs
@@ -1426,7 +1427,7 @@ does not grant trusted permissions.
   Other dependency permissions (for example `network.fetch`) currently lack
   canonical dependency lifecycle support and are rejected by preview before
   offering approval; approving them does not expand the supported permission set.
-  The Plugins and Registry install flows route each installed dependency through
+  The Apps › Library and Apps › Discover install flows route each installed dependency through
   that existing host approval before claiming its providers are active.
 
 Physical cleanup depends on the installation format. The digest-bound legacy
@@ -1547,7 +1548,7 @@ DELETE /api/plugins/:name
 GET /api/plugins/check-updates
 ```
 
-Plugins shows when an update check was unavailable or incomplete and offers
+Apps › Library shows when an update check was unavailable or incomplete and offers
 a retry. A partial check keeps any updates it found. The view confirms that
 it found no updates only after the eligible sources complete.
 
@@ -2185,22 +2186,22 @@ may first offer review when its blocked view opens; preview bundle metadata
 currently describes the staged root plugin.
 
 Manage access in **Stations → current Station details → Extensions**, or from
-Registry. **Turn off extensions** removes the stored permission, verifies the
+Apps › Library or Apps › Discover. **Turn off extensions** removes the stored permission, verifies the
 removal, then reloads the window. Failed persistence stays in the review and
 does not report success. A Station switch while review is open cancels admission;
 permission is never rebound to the newly selected Station. Consent remains bound
 to the saved connection and its exact origin. These controls do not install a
 plugin or grant its server-side permissions.
 
-A failed inventory or bundle load produces a notification linking to Extensions.
-The screen retains the failure message and Retry extensions until the registry
-recovers. A rejected registry import on a healthy connection is retried once before a
+A failed inventory or bundle load produces a notification whose Open Apps action leads to Apps › Discover.
+Apps › Discover and Apps › Library keep the failure message ("Couldn't load: …")
+and its **Retry** until the registry recovers. A rejected registry import on a healthy connection is retried once before a
 persistent failure is reported. A failure to start the deferred registry itself produces a notification
 with Reload Station; it does not displace unrelated work with a global banner.
 Core shell and connection recovery retain their own failure surfaces.
 
 Owners: [registry bootstrap](../../src-ui/src/components/registry/PluginRegistryGate.tsx),
-[Extensions view](../../src-ui/src/views/RegistryView.tsx),
+[Apps › Library and Discover](../../src-ui/src/views/apps/AppsView.tsx),
 [shared access review](../../src-ui/src/components/registry/StationExtensionsAccess.tsx), and
 [deferred capability boundary](../../src-ui/src/components/DeferredCapabilityBoundary.tsx).
 Loading rules, consent storage and origin binding stay unchanged. These

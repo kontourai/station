@@ -67,10 +67,13 @@ function matchesQuery(item: RegistryItem, query: string): boolean {
   const needle = query.trim().toLowerCase();
   if (!needle) return true;
   const facts = appFactsOf(item);
+  // Everything the card shows can be searched, its source and version too.
   return [
     item.displayName,
     item.description,
     item.catalog?.itemId,
+    item.catalogSourceName,
+    item.version && `v${item.version}`,
     ...(facts?.screens ?? []),
   ].some((value) => value?.toLowerCase().includes(needle));
 }

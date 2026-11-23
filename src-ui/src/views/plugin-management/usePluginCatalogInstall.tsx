@@ -4,7 +4,6 @@ import {
   usePluginRegistryInstallMutation,
   usePluginRegistryPreviewMutation,
   usePluginsQuery,
-  useRegistryAgentActionMutation,
   useReloadPluginsMutation,
 } from '@kontourai/station-sdk';
 import { type ReactNode, useState } from 'react';
@@ -19,11 +18,8 @@ import { InstallPreviewModal } from './InstallPreviewModal';
 import { installedDependencyPermissions, type PreviewData } from './types';
 import { unappliedMessage, unappliedTone } from './view-utils';
 
-/** Catalog tabs whose entries install as plugins, through the preview. */
-export type PluginCatalogTab = Extract<
-  RegistryCatalogTab,
-  'agents' | 'plugins'
->;
+/** The catalog whose entries install as plugins, through the preview. */
+export type PluginCatalogTab = Extract<RegistryCatalogTab, 'plugins'>;
 
 /**
  * How a caller reports an install's outcome: the same callbacks it gives its
@@ -69,7 +65,6 @@ export function usePluginCatalogInstall({
   const previewMutation = usePluginRegistryPreviewMutation();
   const reloadPluginsMutation = useReloadPluginsMutation();
   const { requestConsent, requestInstallConsent } = usePermissions();
-  const agentMutation = useRegistryAgentActionMutation();
   const pluginMutation = usePluginRegistryInstallMutation();
   // Which installed plugins read Needs recovery, so an install of one offers
   // Recover instead of a second copy.
@@ -78,16 +73,13 @@ export function usePluginCatalogInstall({
   /**
    * Starts an install at the preview: the decision the server needs is about
    * the previewed bytes, so there is nothing honest to send until the preview
-   * has been shown. The server is the authority on which ids are plugins: an
-   * agent-face entry it cannot resolve answers `registry-plugin-not-found`
-   * and keeps the plain agent install path.
+   * has been shown.
    */
   const startInstall = (
     tab: PluginCatalogTab,
     item: RegistryItem,
     itemId: string,
   ) => {
-    const action = 'install' as const;
     setMessage(null);
     // A failed preview is terminal mutation state, not a disabled install
     // action. Clear it before each attempt so the selected-card entry point
@@ -95,13 +87,6 @@ export function usePluginCatalogInstall({
     previewMutation.reset();
     previewMutation.mutate(itemId, {
       onSuccess: (data: PreviewData & { code?: string }) => {
-        if (data.code === 'registry-plugin-not-found' && tab === 'agents') {
-          agentMutation.mutate(
-            { id: itemId, action },
-            actionCallbacks(tab, item, itemId, false),
-          );
-          return;
-        }
         if (
           !data.valid ||
           !data.contentDigest ||
@@ -340,11 +325,7 @@ export function usePluginCatalogInstall({
       },
       skip: Array.from(previewSkips),
     };
-    if (tab === 'agents') {
-      agentMutation.mutate(variables, callbacks);
-    } else {
-      pluginMutation.mutate(variables, callbacks);
-    }
+    pluginMutation.mutate(variables, callbacks);
   };
 
   const modal: ReactNode = pluginInstallPreview ? (
@@ -354,7 +335,7 @@ export function usePluginCatalogInstall({
         <InstallPreviewExtensionAccess preview={pluginInstallPreview.data} />
       }
       previewSkips={previewSkips}
-      installPending={agentMutation.isPending || pluginMutation.isPending}
+      installPending={pluginMutation.isPending}
       onClose={() => setPluginInstallPreview(null)}
       onToggleSkip={(key) =>
         setPreviewSkips((current) => {
@@ -374,7 +355,6 @@ export function usePluginCatalogInstall({
   return {
     startInstall,
     previewMutation,
-    agentMutation,
     pluginMutation,
     modal,
   };

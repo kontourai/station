@@ -140,7 +140,7 @@ export function WorkspacePaneRouteView({
     }
     if (action.code === 'enable-distribution') {
       navigate('/registry/layouts');
-      return 'Opening the layout registry to review distribution.';
+      return 'Opening Browse layouts to review distribution.';
     }
     return WORKSPACE_PANE_ACTION_ELSEWHERE;
   };

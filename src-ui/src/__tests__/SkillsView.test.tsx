@@ -422,14 +422,15 @@ describe('SkillsView', () => {
     },
   );
 
-  test('offers Registry and file import from the empty library', () => {
+  test('offers Browse skills and file import from the empty library', () => {
     localSkillsMock = [];
     render(<SkillsView />);
     expect(screen.getByText('No skills yet')).toBeTruthy();
+    // One way to browse: the header does not repeat the list's button.
     expect(
-      screen.queryByRole('button', { name: 'Browse Registry Skills' }),
-    ).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Browse Registry' }));
+      screen.getAllByRole('button', { name: 'Browse skills' }),
+    ).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Browse skills' }));
     expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
     fireEvent.click(screen.getByRole('button', { name: 'Import .md' }));
     expect(screen.getByRole('dialog', { name: 'Import skills' })).toBeTruthy();
@@ -438,15 +439,13 @@ describe('SkillsView', () => {
     ).toBeTruthy();
   });
 
-  test('keeps the Registry Skills link in the skills body', () => {
+  test('keeps the Browse skills link in the skills body', () => {
     localSkillsMock = [
       { name: 'existing-skill', source: 'local', origin: 'local', body: 'x' },
     ];
     renderEditor();
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Browse Registry Skills' }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Browse skills' }));
     expect(navigateMock).toHaveBeenCalledWith('/registry/skills');
   });
 
@@ -528,6 +527,27 @@ describe('SkillsView', () => {
 
     expect(screen.queryByText('Workspace-authored skill')).toBeNull();
     expect(screen.getAllByText('This machine').length).toBeGreaterThan(0);
+  });
+
+  // A skill added from a catalogue names where it came from in the
+  // glossary's word, a source; "Registry" is not a place.
+  test('a catalogue skill names its source, not the Registry', () => {
+    selectionState.selectedId = 'catalogue-skill';
+    localSkillsMock = [
+      {
+        name: 'catalogue-skill',
+        source: 'registry',
+        origin: 'registry',
+        installed: true,
+        writable: true,
+      },
+    ];
+    editableSkillMock = { name: 'catalogue-skill', body: 'do the thing' };
+
+    renderEditor();
+
+    expect(screen.getAllByText('From a source').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Registry', { exact: true })).toBeNull();
   });
 
   // The Skills editor owns the whole authoring surface: the command switch,
@@ -985,7 +1005,7 @@ describe('SkillsView', () => {
     /** A registry install in the workspace root: `source: 'registry'`, writable. */
     const REGISTRY_BUT_WRITABLE = {
       name: 'bought-in',
-      description: 'From the registry',
+      description: 'From a source',
       source: 'registry',
       origin: 'registry' as const,
       writable: true,
@@ -1157,9 +1177,7 @@ describe('SkillsView', () => {
         screen.getByText(/Install it into your workspace to author it here\./),
       ).toBeTruthy();
       // And not the generic sentence that used to stand in for every refusal.
-      expect(
-        screen.queryByText(/Browse Registry to discover or install skills/),
-      ).toBeNull();
+      expect(screen.queryByText(/Browse skills to find more/)).toBeNull();
     });
 
     test('a server that states no decision is read-only, not permissively writable', () => {
@@ -1172,9 +1190,7 @@ describe('SkillsView', () => {
       expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
       // With no reason to state, the generic sentence is what is left — and it
       // is honest, because Station has not said why.
-      expect(
-        screen.getByText(/Browse Registry to discover or install skills/),
-      ).toBeTruthy();
+      expect(screen.getByText(/Browse skills to find more/)).toBeTruthy();
     });
 
     // Review medium: one fixed remedy was appended to all three reasons,

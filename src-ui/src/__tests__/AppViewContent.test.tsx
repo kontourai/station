@@ -511,3 +511,28 @@ describe('AppViewContent — Agents surface continuity', () => {
     ).toBe('agent-edit:a');
   });
 });
+
+describe('AppViewContent — catalogue pages', () => {
+  // Only a catalogue page renders a catalogue. A registry view built in
+  // code with no tab, or naming the removed agent catalogue or the Plugins
+  // tab, shows Apps › Discover, where its address redirects.
+  test.each([
+    [{ type: 'registry' }],
+    [{ type: 'registry', tab: 'agents' }],
+    [{ type: 'registry', tab: 'plugins' }],
+  ] as const)('%o shows Apps, not a catalogue', async (view) => {
+    render(<AppViewContent {...baseProps} currentView={view} />);
+    expect(await screen.findByText('Apps')).toBeTruthy();
+    expect(screen.queryByText('Registry')).toBeNull();
+  });
+
+  test('a catalogue page renders its catalogue', async () => {
+    render(
+      <AppViewContent
+        {...baseProps}
+        currentView={{ type: 'registry', tab: 'skills' }}
+      />,
+    );
+    expect(await screen.findByText('Registry')).toBeTruthy();
+  });
+});

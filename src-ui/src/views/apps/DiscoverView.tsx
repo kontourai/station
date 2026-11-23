@@ -10,13 +10,7 @@ import {
   useRegistryItemsQuery,
 } from '@kontourai/station-sdk';
 import { Badge } from '@kontourai/ui/react';
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { DisclosureToggle } from '../../components/DisclosureToggle';
 import { LockGlyph } from '../../components/icons/Glyph';
@@ -37,10 +31,10 @@ import {
   SkeletonList,
 } from '../../components/state';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { pluginRegistry } from '../../core/PluginRegistry';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { RemovePluginModal } from '../plugin-management/RemovePluginModal';
 import { usePluginCatalogInstall } from '../plugin-management/usePluginCatalogInstall';
+import { AppsLoadFailure } from './AppsLoadFailure';
 import {
   appFactsOf,
   bringsLine,
@@ -64,10 +58,6 @@ export function DiscoverView() {
   const { navigate } = useNavigation();
   const invalidateQuery = useInvalidateQuery();
   const extensionAccess = useStationExtensionsAccess();
-  const pluginRegistryStatus = useSyncExternalStore(
-    pluginRegistry.subscribe,
-    pluginRegistry.getLoadStatus,
-  );
   const [filter, setFilter] = useState<DiscoverFilter>({
     worksWith: null,
     opensAs: null,
@@ -180,22 +170,7 @@ export function DiscoverView() {
   return (
     <div className="discover">
       {extensionAccess.blocked && remoteAccess}
-      {pluginRegistryStatus.state === 'degraded' &&
-        pluginRegistryStatus.failure !== 'remote-isolation' && (
-          <ErrorState
-            variant="compact"
-            title={
-              pluginRegistryStatus.failedPluginNames.length
-                ? `Couldn't load: ${pluginRegistryStatus.failedPluginNames.join(', ')}`
-                : "Couldn't load this Station's apps"
-            }
-            action={
-              <Button size="sm" onClick={() => void pluginRegistry.reload()}>
-                Retry
-              </Button>
-            }
-          />
-        )}
+      <AppsLoadFailure />
       <div className="discover__layout">
         <input
           type="search"
@@ -254,6 +229,10 @@ export function DiscoverView() {
                   onSelect={(id) => setSource(id)}
                   kinds={['plugins']}
                   manage="dialog"
+                  // Discover is where sources are managed: every source is
+                  // listed there, including one that only supplies agents,
+                  // which no page browses.
+                  manageAll
                   label="Show apps from"
                   hideLabel
                 />
@@ -430,7 +409,11 @@ function FacetGroup<T extends string>({
               type="button"
               className="discover__facet"
               aria-pressed={selected === entry.value}
-              onClick={() => onSelect(entry.value)}
+              // Pressing the chosen value again clears it, so a value left at
+              // zero by the search can always be let go.
+              onClick={() =>
+                onSelect(selected === entry.value ? null : entry.value)
+              }
             >
               {/* Spaced so the name reads "Knowledge 2 apps", not "Knowledge2". */}
               <span>{entry.label}</span>{' '}
