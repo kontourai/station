@@ -1802,12 +1802,13 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         name: `Details for ${ITEM_TITLE}`,
       }),
     ).toBeNull();
-    // The one row action is the snooze choice, in the hover slot.
-    const snooze = within(recent).getByRole('button', {
-      name: `Snooze ${ITEM_TITLE}`,
+    // The one row action is its ⋯ menu, which holds the snooze list, in the
+    // hover slot.
+    const actions = within(recent).getByRole('button', {
+      name: `Actions for ${ITEM_TITLE}`,
     });
-    expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
-    expect(snooze.closest('.inbox-row__actions')).not.toBeNull();
+    expect(actions.getAttribute('aria-haspopup')).toBe('menu');
+    expect(actions.closest('.inbox-row__actions')).not.toBeNull();
   });
 
   test('a coarse pointer opens Details and snooze choices from the row', async () => {
@@ -1837,7 +1838,7 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
         name: `Details for ${ITEM_TITLE}`,
       });
       expect(
-        within(details).getByRole('button', { name: '1 hour' }),
+        within(details).getByRole('button', { name: /^In 1 hour,/ }),
       ).toBeTruthy();
     } finally {
       media.mockImplementation(() => ({
@@ -1859,18 +1860,24 @@ describe('HomeView lane wiring (review finding: snooze/shelf/settled-tail intera
     const recent = screen.getByRole('region', { name: 'Recent work' });
 
     fireEvent.click(
-      within(recent).getByRole('button', { name: `Snooze ${ITEM_TITLE}` }),
+      within(recent).getByRole('button', {
+        name: `Actions for ${ITEM_TITLE}`,
+      }),
     );
 
     const menu = await screen.findByRole('menu', {
-      name: `Snooze ${ITEM_TITLE}`,
+      name: `Actions for ${ITEM_TITLE}`,
     });
     const clickedAt = Date.now();
-    fireEvent.click(within(menu).getByRole('menuitem', { name: '1 hour' }));
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: /^In 1 hour,/ }),
+    );
 
     // The row left the active lane for the snoozed shelf.
     expect(
-      within(recent).queryByRole('button', { name: `Snooze ${ITEM_TITLE}` }),
+      within(recent).queryByRole('button', {
+        name: `Actions for ${ITEM_TITLE}`,
+      }),
     ).toBeNull();
     expect(
       within(recent).getByRole('button', { name: 'Snoozed · 1' }),
