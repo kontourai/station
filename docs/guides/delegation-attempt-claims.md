@@ -75,9 +75,12 @@ matched facts are bound with the admitted facts, and every preparation
 refusal the receiver raises after claiming is recorded as the tombstone's
 `refusalCode` (the bound preparation receipt is dropped on refusal).
 
-Duplicates: same attempt + same validated intent joins (`pending` /
-`exists` 409, never a second effect); changed intent under the same key
-conflicts; unknown capacity refuses.
+A duplicate with the same attempt ID and validated intent joins the existing
+claim and receives `pending` or `exists` (HTTP 409). The receiver includes the
+required tool restrictions from the verified delegation context in that intent.
+Changing the restrictions under the same attempt ID conflicts before dispatch.
+A policy-bound retry also conflicts with a retained claim that did not record
+the policy. When claim capacity is unknown, the receiver refuses.
 
 ## Capacity and no-replay limits
 
