@@ -152,17 +152,19 @@ function AgentPickerRow({
               <span className="engine-chip__pill">{engineLabel}</span>
             </span>
           )}
-          {/* The Station's default for new chats. It keeps its width: the
-              engine pill gives way first. */}
-          {isNewChatDefault && (
-            <span className="engine-chip__pill new-chat-modal__agent-default">
-              Default for new chats
-            </span>
-          )}
           {!runnable && !agentFixLabel(agent) && (
             <AgentReadinessCell agent={agent} part="status" compact />
           )}
         </div>
+        {/* The Station's default for new chats, on its own line so the
+            name keeps its width in a narrow menu. */}
+        {isNewChatDefault && (
+          <div className="new-chat-modal__agent-default-line">
+            <span className="engine-chip__pill new-chat-modal__agent-default">
+              Default for new chats
+            </span>
+          </div>
+        )}
         {!agent.engineDefault && agent.description && (
           <div
             className="new-chat-modal__agent-purpose"
