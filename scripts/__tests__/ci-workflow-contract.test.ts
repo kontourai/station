@@ -4514,7 +4514,7 @@ describe('hosted qualification workflow covers the full regression', () => {
       expect(text).not.toContain('--exclude-quarantined');
   });
 
-  it('qualifies UI-only main pushes and routes completion through main health', () => {
+  it('qualifies UI-only main pushes and reconciles health after qualification and Nightly', () => {
     const qualification = load(workflow('main-qualification.yml')) as {
       name: string;
       on: { push: unknown };
@@ -4538,9 +4538,14 @@ describe('hosted qualification workflow covers the full regression', () => {
     const health = load(workflow('qualification-health.yml')) as {
       name: string;
     };
+    const nightly = load(workflow('nightly.yml')) as { name: string };
     expect(health).toMatchObject({
       on: {
-        workflow_run: { workflows: [qualification.name], types: ['completed'] },
+        workflow_run: {
+          workflows: [qualification.name, nightly.name],
+          types: ['completed'],
+          branches: ['main'],
+        },
       },
     });
     expect(load(workflow('main-health.yml'))).toMatchObject({
