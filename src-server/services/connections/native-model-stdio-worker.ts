@@ -3,7 +3,9 @@ import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { createServer, type ServerResponse } from 'node:http';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { runNativeDelegationRpcClient } from './native-delegation-rpc-client.js';
 import {
+  NATIVE_DELEGATION_RPC_PATH,
   NATIVE_MODEL_CHANNEL_LIMITS,
   nativeModelFrameWriter,
   nativeModelHostFrame,
@@ -34,6 +36,7 @@ async function main(): Promise<void> {
   const active = new Map<string, ServerResponse>();
   let token: Buffer | undefined;
   let initialized = false;
+  let delegationRpc = false;
   let closed = false;
   let received = 0;
   let failure: unknown;
@@ -84,11 +87,14 @@ async function main(): Promise<void> {
           return;
         }
         const path = request.url ?? '';
+        const rpc = path === NATIVE_DELEGATION_RPC_PATH;
         if (
-          !path.startsWith('/') ||
-          path.startsWith('//') ||
-          !modelPaths.has(new URL(path, 'http://127.0.0.1').pathname) ||
-          !['GET', 'POST'].includes(request.method ?? '')
+          rpc
+            ? !delegationRpc || request.method !== 'POST'
+            : !path.startsWith('/') ||
+              path.startsWith('//') ||
+              !modelPaths.has(new URL(path, 'http://127.0.0.1').pathname) ||
+              !['GET', 'POST'].includes(request.method ?? '')
         ) {
           request.resume();
           refuse(response, 404);
@@ -123,19 +129,36 @@ async function main(): Promise<void> {
         if (response.destroyed) return;
         const headers: [string, string][] = [];
         for (const [name, value] of Object.entries(request.headers)) {
-          if (!requestHeaders.has(name)) continue;
+          if (
+            !(rpc
+              ? ['accept', 'content-type'].includes(name)
+              : requestHeaders.has(name))
+          )
+            continue;
           if (typeof value !== 'string')
             throw new Error('native_model_header_unsupported');
           headers.push([name, value]);
         }
-        await send({
-          type: 'request',
+        const payload = {
           id,
-          method: request.method === 'GET' ? 'GET' : 'POST',
-          path,
           headers,
           body: Buffer.concat(chunks).toString('base64'),
-        });
+        };
+        await send(
+          rpc
+            ? {
+                ...payload,
+                type: 'delegation-rpc',
+                method: 'POST',
+                path: NATIVE_DELEGATION_RPC_PATH,
+              }
+            : {
+                ...payload,
+                type: 'request',
+                method: request.method === 'GET' ? 'GET' : 'POST',
+                path,
+              },
+        );
       } catch {
         if (id) active.delete(id);
         if (!response.headersSent && !response.destroyed) refuse(response, 502);
@@ -154,6 +177,7 @@ async function main(): Promise<void> {
             throw new Error('native_model_duplicate_init');
           initialized = true;
           token = Buffer.from(frame.token);
+          delegationRpc = frame.delegationRpc === true;
           await new Promise<void>((resolve, reject) => {
             server.once('error', reject);
             server.listen(0, '127.0.0.1', () => {
@@ -231,7 +255,11 @@ if (
   process.argv[1] &&
   pathToFileURL(resolve(process.argv[1])).href === import.meta.url
 )
-  void main().catch(() => {
+  void (
+    process.argv[2] === '--delegation-rpc-client'
+      ? runNativeDelegationRpcClient()
+      : main()
+  ).catch(() => {
     process.stderr.write('Native model worker failed.\n');
     process.exitCode = 1;
   });

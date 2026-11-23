@@ -27,7 +27,7 @@ Automations get a readable list and one page per automation, and the Inbox repla
 - The bell badge counts Needs you only (approvals, questions, device requests). Updates never raise it. The bell popover (a bottom sheet on a phone) answers Needs you items in place, shows the latest updates with one action each, and links to "Open inbox".
 - The Inbox page shows everything that wants you or just finished, one row per thing, with tabs All, Needs you and Snoozed, a project filter and search. The chat list in the dock uses the same status words and row menu, and its header reads "Chats", not "Inbox".
 - Home's "Waiting on you" shows the same Needs you rows (top 3 and "See all"), and "Finished recently" shows updates. Home adds no extra verbs.
-- One item has one status everywhere, as on the Tasks board: the status is the ladder's word, and flags are "Last message may not have arrived", "Snoozed until Mon 9 AM" and "Last 2 runs failed". A chat appears once, under whichever group its status puts it in.
+- One item has one status everywhere, as on the Tasks board: the status is the ladder's word, and flags are "Last message may not have arrived", "Snoozed until Mon 9 AM" and "Last 2 runs didn't work". A chat appears once, under whichever group its status puts it in.
 
 ## Before and after
 
@@ -58,12 +58,12 @@ Automations get a readable list and one page per automation, and the Inbox repla
 On a phone: "Next up" shows three rows, with no sideways scroll.
 
 1. **The scheduler, jobs, success and runs tiles are removed. A stopped scheduler becomes a page notice ("Automations aren't running: …").** None of the tiles answer what runs next or whether the last run worked. The notice is backed by the scheduler status and the stale-heartbeat event. _(layout; slice 5.13)_
-2. **"Next 7 days" replaces the Calendar tab. Paused automations are left out.** Today the Calendar tab is a week of "None scheduled". The data already exists. On a phone it becomes "Next up", three rows, with no sideways scroll. _(layout; slice 5.13)_
+2. **"Next 7 days" replaces the Calendar tab. Paused automations are left out.** Today the Calendar tab is a week of "None scheduled". The data already exists: the strip reads the same Monday-week forecast the Calendar tab used ([#5332](https://github.com/kontourai/station/pull/5332)), for the week holding today and the week after, in the reader's time zone, so the tab's display time zone picker goes. It starts today, so it never shows a week that is already over. A day lists its first three runs and then "N more". On a phone it becomes "Next up", three rows and how many more, with no sideways scroll. _(layout; slice 5.13)_
 3. **The schedule as a sentence, plus "Next: Mon 8:00 AM".** It replaces cron text and a "NEXT FIRE" column. _(copy, layout; slice 5.13)_
-4. **A strip of the last 12 outcomes: filled means worked, red with a dot means failed, outline means skipped as late.** It replaces "SUCCESS%", and uses shape plus colour, never colour alone. The list read returns only a success rate, the last run and consecutive failures, so the strip needs the last N log entries per job. _(server work, backend check first; slice 5.13)_
-5. **Status is Active, Paused or Running, in words.** It replaces the clickable on and off dot. Pause moves to the ⋯ menu and the page. Today the toggle looks like a status label. _(layout, copy; slice 5.13)_
-6. **A flag, "Last 2 runs failed". The status stays Active.** Today failure is a red "N failed" badge and nothing more. _(layout; slice 5.13)_
-7. **A flag, "Paused itself after 5 failed runs", with status Paused.** Today the list shows "off", the same as a deliberate pause. This needs a stored reason. _(new screen state, server work; slice 5.13)_
+4. **A strip of the last 12 outcomes: filled means worked, red with a dot means failed, outline means skipped as late, and a dashed outline means Station cannot tell how the run ended.** It replaces "SUCCESS%", and uses shape plus colour, never colour alone. The list read returned only a success rate, the last run and consecutive failures, so it now carries the last 12 finished runs per job, counted by occurrence like the failure count. The fourth shape was added in building: a run whose outcome is unknown is neither worked nor failed. A list read without outcomes (an older Station, or runs the reader may not see) reads "Recent runs unknown", not "No runs yet". _(server work; slice 5.13)_
+5. **Status is Active, Paused or Running, in words, and Done for a one-time automation that has had its run.** It replaces the clickable on and off dot. Pause moves to the ⋯ menu and the page. Today the toggle looks like a status label. Done was added in building: a one-time automation whose time has passed and that ran at or after it will not run again, so "Active · No more runs" (kept after its run) and "Paused" with a Resume that does nothing (removed-after-run turns it off) both misread it. Done is derived from its schedule and last run, nothing stores it; it reads "Ran Nov 25, 10:00 AM", its menu has no Pause or Resume, and it sorts after the paused ones. A run started by hand before its time leaves it Active with its next run unchanged. One whose time came while Station was off, and that was recorded missed (more than 6 hours late) instead of run, is not Done: it reads Missed and "Missed Nov 25, 10:00 AM" (its due time), because its last run row is that record, not a run. It sorts with the Done ones. _(layout, copy; slice 5.13)_
+6. **A flag, "Last 2 runs didn't work". The status stays Active.** Today failure is a red "N failed" badge and nothing more. The words changed in building from "failed": the count the scheduler pauses on includes runs whose outcome is unknown (the strip's dashed squares), and "didn't work" is true of both, while "failed" claimed more than Station knows. _(layout; slice 5.13)_
+7. **A flag, "Paused itself after 5 runs that didn't work", with status Paused.** Today the list shows "off", the same as a deliberate pause. The reason is derived from what Station already stores: the repeated-failure pause records its one notification, and turning the job back on records when the count was reset. A job is "paused itself" while its latest repeated-failure pause is newer than its last resume. The notification says "paused itself" too, and "Its last 5 runs didn't work", for the same reason as change 6. _(new screen state, server work; slice 5.13)_
 8. **A row ⋯ menu: Run now, Pause or Resume, Edit, Duplicate, Delete.** All of them exist today as icon buttons. _(layout; slice 5.13)_
 9. **The List, Calendar and Executions tabs and "Filter automations…" are removed. Filtering returns only with more than about 15 automations.** Today three tabs split one question. _(layout; slice 5.13)_
 
@@ -80,7 +80,7 @@ On a phone: The same page in one column.
 7. **Each run links to its chat or task.** Today no run links to the chat it ran in. A dedicated target is one chat for every run, so the link must land on that run's turn. Anchoring a turn by client turn id needs a backend check. _(new screen state, backend check first; slice 5.14)_
 8. **Skipped runs say why, in plain words.** The reason comes from the skipped-as-late record and the 6 hour lateness cutoff. _(layout; slice 5.14)_
 9. **"Who runs it": agent, engine and model, where results go, and "Asks first, like any chat".** Runs go through the chat's approvals. Today's form says "Each run is a message in the chat, with its approvals". _(layout; slice 5.14)_
-10. **Two plain lines under "Who runs it": it pauses itself after 5 failed runs, and skips a run more than 6 hours late.** These are two real behaviours. Both are confirmed in code. There is no per-run limit in v1, by decision. _(copy; slice 5.14)_
+10. **Two plain lines under "Who runs it": it pauses itself after 5 runs in a row that didn't work, and skips a run more than 6 hours late.** These are two real behaviours. Both are confirmed in code. There is no per-run limit in v1, by decision. _(copy; slice 5.14)_
 
 ### `automations-inbox-03b` Automation page with run limits (later version, not v1)
 
@@ -105,7 +105,7 @@ On a phone: A full-screen sheet with Cancel and Create pinned at the bottom. Tod
 
 On a phone: The same page in one column.
 
-1. **A notice: "Paused itself after 5 failed runs in a row", with the shared reason in plain words.** Today the list shows "off" plus a toast. _(new screen state, server work; slice 5.14)_
+1. **A notice: "Paused itself after 5 runs in a row that didn't work", with the shared reason in plain words.** Today the list shows "off" plus a toast. _(new screen state, server work; slice 5.14)_
 2. **One next step that fixes the cause: "Sign in to Codex", which goes to Customize › Engines.** The agent's runnability reason already exists. _(layout; slice 5.14)_
 3. **Resume sits where Pause was.** It is the same enable call. _(layout; slice 5.14)_
 4. **The engine flag "Not signed in" in "Who runs it", with the two real behaviours under it.** _(layout; slice 5.14)_
@@ -182,8 +182,8 @@ On a phone: The same sheet.
 | Templates on the empty state | Keep | Listed as working well. |
 | Schedule preview and next runs | Keep | Made more prominent. Real and reassuring. |
 | Stat tiles (Scheduler, Jobs, Success rate, Total runs) | Remove | They answer nothing. Health becomes a notice. |
-| Calendar tab | Simplify | Becomes the 7-day strip on the list. Same data, no extra tab. |
-| Executions tab | Remove | Runs move to each automation's page, and failures go to the Inbox. It was a duplicate view. |
+| Calendar tab | Simplify | Becomes the 7-day strip on the list. Same week forecast as the tab ([#5332](https://github.com/kontourai/station/pull/5332), part of [#565](https://github.com/kontourai/station/issues/565)), starting today, no extra tab and no display time zone picker. |
+| Executions tab | Remove | Runs move to each automation's page ([#5467](https://github.com/kontourai/station/issues/5467), slice 5.14), and failures go to the Inbox. It was a duplicate view of the run history each automation already shows ([#5332](https://github.com/kontourai/station/pull/5332), part of [#565](https://github.com/kontourai/station/issues/565)). A link to one run still opens that automation's history in its row. Gone with the tab and not offered elsewhere: one history across all automations, the success rate, filtering runs by status, and the display time zone picker. |
 | Pause (status-cell toggle) | Keep | Made visible as Pause and Resume. It is real but undiscoverable. |
 | Run now, Duplicate, Delete | Keep |  |
 | Name as a slug | Simplify | A display name, with the slug hidden. The slug is technical and blocks rename. |
@@ -204,8 +204,8 @@ On a phone: The same sheet.
 | Hide, Dismiss, Close and Settle on an inbox item | Simplify | Was four verbs. Now one: Mark done. |
 | Chat dock "Inbox" title | Simplify | Becomes "Chats". It is the chat list. |
 | Automation status on and off (a clickable dot) | Simplify | Was "on" and "off". Now Active and Paused (plus Running). "off" read as a fact, not a control. |
-| "Automation disabled after repeated failures" and "turned off" | Simplify | Was "turned off". Now Paused plus the flag "Paused itself after 5 failed runs". Today it is the same state as a deliberate pause. |
-| "N failed" badge | Simplify | Becomes the flag "Last N runs failed", beside a status. |
+| "Automation disabled after repeated failures" and "turned off" | Simplify | Was "turned off". Now Paused plus the flag "Paused itself after 5 runs that didn't work". Today it is the same state as a deliberate pause. |
+| "N failed" badge | Simplify | Becomes the flag "Last N runs didn't work", beside a status. |
 | Scheduler "Healthy" tile | Remove | A label for the normal state carries no information. A notice shows only when broken. |
 | "Needs attention" section | Simplify | Was "Needs attention". Now "Needs you", matching Home and the Tasks board. |
 | Session failed and Turn Failed (two rows) | Simplify | Was two rows. Now one Failed row with a plain reason and one step. |
@@ -228,10 +228,10 @@ On a phone: The same sheet.
 | --- | --- | --- |
 | Automations copy, labelled Pause and Resume, status words | copy | Also layout. |
 | 7-day strip | layout | The week data already exists. |
-| Run-outcome strip in the list | server work | New server data: the last N outcomes per job in the list read. Needs a backend check. |
+| Run-outcome strip in the list | server work | New server data: the last 12 outcomes per job in the list read (`recentOutcomes`). |
 | Automation page route | new screen state |  |
 | Run linking to its turn in a dedicated chat | new screen state | Needs a backend check: anchoring by the run's client turn id. |
-| "Paused itself" versus paused by you | server work | Store a disable reason. The repeated-failure path already knows it. |
+| "Paused itself" versus paused by you | server work | Derived in the list read (`pausedItself`) from the repeated-failure pause Station already records and the resume that resets it. |
 | Per-run limit for scheduled jobs (later, not v1) | server work | Specified only on the screen recorded for a later release. Reuses the existing budget type, plus new UI. |
 | "Last run used" meters (later, not v1) | server work | New server data: usage recorded by turn. Needs a backend check. |
 | Display name and rename | server work | New server data. |
