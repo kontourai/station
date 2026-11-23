@@ -475,7 +475,7 @@ describe('chat-24 transcript markers', () => {
       return renderTranscript(
         window,
         transcript(window, (event) => {
-          const index = turns.indexOf(event.turnId);
+          const index = event.turnId ? turns.indexOf(event.turnId) : -1;
           const base = isTurnEvent(event)
             ? {
                 ...event,
