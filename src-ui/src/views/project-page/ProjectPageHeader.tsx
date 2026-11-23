@@ -26,7 +26,7 @@ export function ProjectPageHeader({
   invitePeople?: () => void;
 }) {
   return (
-    <div className="project-page__header">
+    <div className="project-page__header project-page__header--operator">
       <div className="project-page__identity">
         <ProjectIcon project={project} size={48} fallback="initials" />
         <div className="project-page__identity-info">
@@ -44,16 +44,19 @@ export function ProjectPageHeader({
           )}
         </div>
       </div>
-      {invitePeople && <Button onClick={invitePeople}>Invite people</Button>}
-      <button
-        type="button"
+      <Button
         className="project-page__settings-btn"
         aria-label="Project settings"
         onClick={navigateToSettings}
       >
         <SettingsGlyph />
         <span className="project-page__settings-label">Settings</span>
-      </button>
+      </Button>
+      {invitePeople && (
+        <Button className="project-page__invite-btn" onClick={invitePeople}>
+          Invite people
+        </Button>
+      )}
     </div>
   );
 }

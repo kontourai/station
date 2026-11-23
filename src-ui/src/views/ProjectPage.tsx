@@ -56,6 +56,7 @@ import { ProjectPageHeader } from './project-page/ProjectPageHeader';
 import { ProjectPluginPublishSection } from './project-page/ProjectPluginPublishSection';
 import { ProjectRoom } from './project-page/ProjectRoom';
 import { ProjectTasksSection } from './project-page/ProjectTasksSection';
+import { ProjectWebMcpShare } from './project-page/ProjectWebMcp';
 import { useProjectSearch } from './project-page/project-room-navigation';
 import { SetupRecommendationsCard } from './project-page/SetupRecommendationsCard';
 import type { AvailableLayout } from './project-page/types';
@@ -461,11 +462,14 @@ function ProjectOperatorPage({
                 </Button>
               </div>
               {destination === 'overview' && (
-                <ProjectRepositoriesSection
-                  slug={slug}
-                  projectId={project.id}
-                  onManageSources={() => selectDestination('sources')}
-                />
+                <>
+                  <ProjectWebMcpShare project={project} scope={requestScope} />
+                  <ProjectRepositoriesSection
+                    slug={slug}
+                    projectId={project.id}
+                    onManageSources={() => selectDestination('sources')}
+                  />
+                </>
               )}
               <ProjectOverviewSection
                 slug={slug}

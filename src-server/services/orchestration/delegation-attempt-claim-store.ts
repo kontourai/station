@@ -5,6 +5,7 @@ import {
   timingSafeEqual,
 } from 'node:crypto';
 import { join } from 'node:path';
+import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import type { ExecutionPreparationReceipt } from '@kontourai/station-contracts/execution-preparation';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
 import {
@@ -12,6 +13,7 @@ import {
   readJsonFile,
 } from '../../domain/file-storage-helpers.js';
 import { CreateRequestClaims } from './create-request-claims.js';
+import { bindDelegationToolIntent } from './delegation-tool-policy.js';
 
 /**
  * #485 receiver request-claim slice — the small durable execution-domain
@@ -421,8 +423,8 @@ function readLedger(file: string): DelegationAttemptClaimLedger {
  * Canonical JSON with recursively sorted object keys, so the digest of a
  * validated raw intent is stable across key order and harmless insertion
  * differences. The digest covers the RAW (pre-resolution) intent only:
- * prompt, target (agent/environment/model/workspace as validated at the
- * route seam), and parentTaskId. Resolved workspace paths and incarnations
+ * prompt, target, parentTaskId, and required tool restrictions from the
+ * verified delegation context. Resolved workspace paths and incarnations
  * CANNOT be in this digest — they do not exist yet when the claim is
  * written; they are bound separately under the same claim after resolution.
  */
@@ -449,8 +451,11 @@ export interface DelegationAttemptIntent {
 
 export function delegationAttemptIntentDigest(
   intent: DelegationAttemptIntent,
+  delegation?: AgentDelegationContext,
 ): string {
-  return createHash('sha256').update(canonicalJson(intent)).digest('hex');
+  return createHash('sha256')
+    .update(canonicalJson(bindDelegationToolIntent(intent, delegation)))
+    .digest('hex');
 }
 
 export type ReserveDelegationAttemptOutcome =
