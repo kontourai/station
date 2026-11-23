@@ -25,9 +25,10 @@
           <article class="docs-content">
             <h1 id="automations">Automations</h1>
 <p>An automation is work Station runs for you on a schedule: every weekday at 9:00, every hour, or once at a set time. Open <strong>Automations</strong> in the sidebar (it was called Schedule; old <code>/schedule</code> links still work).</p>
-<h2 id="review-the-week-and-its-executions">Review the week and its executions</h2>
-<p><strong>Calendar</strong> shows the current Monday-first week. Change <strong>Display time zone</strong> to see scheduled times in another zone. The automation keeps its stored schedule and time zone. Frequent jobs can have more occurrences than the calendar displays.</p>
-<p><strong>Executions</strong> shows the recorded runs. Choose <strong>View run</strong> to see a run's status and attempt, and <strong>Load result</strong> when that receipt has a saved result.</p>
+<h2 id="the-list">The list</h2>
+<p><strong>Next 7 days</strong> shows what runs from now to the end of the sixth day after today, in your time zone. A day lists its first three runs, then how many more. Paused automations are left out. On a phone it is <strong>Next up</strong>: the next three runs.</p>
+<p>Below it, <strong>All automations</strong> has one row per automation: its name, the agent and where results go, the schedule as a sentence (&quot;Weekdays at 8:00 AM&quot;, with the zone named when it is not yours), the next run, and a strip of its last 12 runs. A filled square worked, a red square with a dot failed, an outline was skipped because it was too late, and a dashed outline means Station cannot tell how it ended. The status reads <strong>Active</strong>, <strong>Paused</strong> or <strong>Running</strong>, or <strong>Done</strong> for a one-time automation that has had its run (it lists last, says when it ran, and has no Pause or Resume; <strong>Run now</strong> still runs it again), or <strong>Missed</strong> when its time came while Station was off and it was more than 6 hours late, so it never ran. A row can carry a flag: <strong>Last 2 runs didn't work</strong>, or <strong>Paused itself after 5 runs that didn't work</strong> when Station turned it off. &quot;Didn't work&quot; covers runs that failed and runs whose outcome Station cannot tell. Open <strong>⋯</strong> on a row for <strong>Run now</strong>, <strong>Pause</strong> or <strong>Resume</strong>, <strong>Edit</strong>, <strong>Duplicate</strong> and <strong>Delete</strong>; if one of them fails, the page says so. Select the name to see its instructions and run history, or select a run in <strong>Next 7 days</strong> to go to its automation.</p>
+<p>A filter appears once you have more than 15 automations. If the scheduler is stopped, or has stopped checking for due runs on time, the page says so above the list; otherwise it says nothing about the scheduler.</p>
 <p>A job whose stored record needs repair appears separately for the Station operator, with a job ID for recovery. Healthy automations remain available.</p>
 <h2 id="name-and-one-time-runs">Name and one-time runs</h2>
 <p>Give an automation a name in plain words, such as &quot;Daily briefing&quot;. You can rename it later in <strong>Edit</strong>; its runs and history stay with it.</p>
@@ -66,7 +67,7 @@
 <ul>
 <li>A run that fails is listed as failed and notifies you. The notice is generic; open Automations to see the jobs and runs you can access.
 </li>
-<li>After <strong>5 failed runs in a row</strong>, Station turns the automation off and notifies you once. A run that retried counts once. A successful run resets the count, and so does turning the automation back on.
+<li>After <strong>5 runs in a row that didn't work</strong> (failed, or ended with an outcome Station cannot tell), Station pauses the automation and notifies you once. Its row reads <strong>Paused</strong> with the flag <strong>Paused itself after 5 runs that didn't work</strong> until you resume it. A run that retried counts once. A successful run resets the count, and so does resuming the automation.
 </li>
 <li>If Station was not running when a chat automation was due and it is more than <strong>6 hours</strong> late, that run is recorded as missed instead of running late.
 </li>
@@ -74,7 +75,7 @@
 </li>
 </ul>
 <h2 id="templates">Templates</h2>
-<p>New automations can start from a template: <strong>Daily repo digest</strong>, <strong>Check back on open work</strong>, <strong>Weekly dependency check</strong> and <strong>Stale pull requests</strong>. Templates only ask for work an agent can do with its workspace and tools.</p>
+<p>With no automations yet, the page says what one is and offers four templates, each with what it does and when: <strong>Daily repo digest</strong>, <strong>Check back on open work</strong>, <strong>Weekly dependency check</strong> and <strong>Stale pull requests</strong>. Templates only ask for work an agent can do with its workspace and tools. You can also ask in any chat (&quot;Every morning, tell me which tests failed overnight&quot;): the agent proposes an automation for you to approve.</p>
 <h2 id="limits">Limits</h2>
 <ul>
 <li>An automation that runs in a chat cannot retry and cannot have a GitHub pull request monitor.
