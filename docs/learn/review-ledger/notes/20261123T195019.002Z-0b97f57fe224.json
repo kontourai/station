@@ -1,0 +1,11 @@
+{
+  "revision": "39679db8ccf6c39678bc30a98ec675dda990f2d0",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Traced the strict JSON decoder and the Anthropic and Responses builders. The fixed-text profiles require the selected model, cap output, reject hidden state, and suppress tools. The fixtures exercise the returned bytes and malformed input. Source admission, reservation, credential handling and provider transport remain outside this prerequisite.","inputs":["docs/guides/native-model-channel-lab.md","src-server/runtime/conversation/bounded-provider-json.ts","src-server/runtime/conversation/native-text-model-request.ts","src-server/runtime/conversation/__tests__/native-text-model-request.test.ts"]},
+
+    {"path":"docs/README.md","note":"Checked the guide addition against the documentation index and NativeModelStdioChannel section. Fixed-text preparation has no network effect. The existing lab command and model callback owners retain their scope.","inputs":["docs/guides/native-model-channel-lab.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the guide addition against the documentation index and NativeModelStdioChannel section. Fixed-text preparation has no network effect. The existing lab command and model callback owners retain their scope.","inputs":["docs/guides/native-model-channel-lab.md"]}
+  ]
+}
