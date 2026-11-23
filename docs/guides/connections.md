@@ -2689,6 +2689,15 @@ stays visible and an explicit edit takes precedence over a suggestion. No
 Tailscale configuration or listener binding is changed.
 
 
+## Share a Project summary with a browser assistant
+
+In a browser that supports WebMCP, open **Overview** for a Project you operate.
+Under **Browser assistant**, choose **Share summary**. The assistant can read
+the displayed Project name and description from that tab. Choose **Stop sharing**
+to end access. Leaving Overview, switching Stations, or changing the summary
+also ends the share. Browser support depends on its WebMCP preview configuration.
+[Chrome WebMCP](https://developer.chrome.com/docs/ai/webmcp/imperative-api)
+
 ## Outside-agent OAuth remains inert
 
 The [R3 OAuth protocol contract](../reference/outside-agent-oauth.md) adds an
