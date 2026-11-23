@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import { PAIRING_SCOPE_ORCHESTRATION_OPERATE } from '@kontourai/station-contracts/environment-security';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
@@ -7,6 +8,7 @@ import {
   outsideConsentFixture,
 } from '../../../__test-utils__/outside-agent-consent-fixture.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
 import {
   createConsentApp,
   registerConsentRoutes,
@@ -17,6 +19,7 @@ import {
 } from '../../../security/pairing-route-scopes.js';
 import type { ConsentDecisionAuthority } from '../../../services/consent/consent-transactions.js';
 import { ConsentTransactionStore } from '../../../services/consent/consent-transactions.js';
+import { EventBus } from '../../../services/orchestration/event-bus.js';
 import type { OutsideManagementAction } from '../../../services/outside-agent/management-service.js';
 import { DAY } from '../../../services/outside-agent/oauth-records.js';
 import { consentDecisionOps } from '../../../telemetry/metrics.js';
@@ -821,6 +824,134 @@ test.each(kinds)(
     }
   },
 );
+
+test('real runtime admission hides an outside registration without a passkey ceremony from native consent', async () => {
+  const { security, channel } = await fixture();
+  const app = new Hono();
+  configureRuntimeHttp({
+    app,
+    logger: createLogger({
+      name: 'outside-registration-guard',
+      level: 'error',
+    }),
+    eventBus: new EventBus(),
+    security: {
+      verifyCredential: (credential, request) =>
+        request
+          ? security.authorizeCredential(credential, request)
+          : security.verifyCredential(credential),
+      recognizeCredential: (credential) =>
+        security.verifyCredential(credential),
+      resolveGrantedScope: (credential) =>
+        security.resolveGrantedScope(credential),
+      resolveCredentialAuthority: (credential) =>
+        security.identifyDevice(credential) ? 'device-credential' : undefined,
+      resolveCredentialDeviceId: (credential) =>
+        security.identifyDevice(credential)?.id,
+      resolveCredentialLocality: (credential) =>
+        security.credentialLocality(credential),
+      resolveCredentialMintKind: (credential) =>
+        security.credentialMintKind(credential),
+    },
+  });
+  app.route(
+    '/api/consent',
+    createConsentNativeRoutes({ consentChannel: channel }),
+  );
+
+  const pairing = security.devicePairing;
+  const offer = pairing.createOffer({
+    endpoint: OUTSIDE_TEST_APP,
+    scope: PAIRING_SCOPE_ORCHESTRATION_OPERATE,
+  });
+  const pending = pairing.requestPairing({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    deviceName: 'Local desktop',
+    source: 'pairing-code',
+    requesterPosition: 'unproven',
+  });
+  pairing.confirmRequest(pending.requestId, { kind: 'local-grant' });
+  const { credential } = pairing.exchange({
+    offerId: offer.offerId,
+    proof: offer.challenge,
+    requestId: pending.requestId,
+    locality: 'home-possession',
+    mintKind: 'local-grant',
+  });
+  const nativeRequest = (id: string, operation: string, body: unknown) =>
+    app.request(`${OUTSIDE_TEST_APP}/api/consent/requests/${id}/${operation}`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${credential}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+  const create = (kind: string) => {
+    const target = { kind, subject: 'fixture', fingerprint: 'revision-1' };
+    const commitApproval = vi.fn(async () => {});
+    const created = channel.store.create({
+      tenantId: channel.tenantId,
+      target,
+      description: {
+        title: 'Review',
+        summary: 'Review the change',
+        items: [],
+        approveLabel: 'Approve',
+        denyLabel: 'Deny',
+      },
+      requester: { kind: 'local-operator', id: 'fixture' },
+      rateKey: 'local-operator',
+      revalidateTarget: async () => target,
+      commitApproval,
+    });
+    if (!created.ok) throw new Error('consent fixture was refused');
+    return { id: created.transaction.id, commitApproval };
+  };
+
+  const ordinary = create('plugin-trusted-permissions');
+  const review = await nativeRequest(ordinary.id, 'native-review', {});
+  expect(review.status).toBe(200);
+  const {
+    review: { nonce },
+  } = await review.json();
+  const decided = await nativeRequest(ordinary.id, 'native-decide', {
+    decision: 'approve',
+    nonce,
+  });
+  expect(decided.status).toBe(200);
+  expect(ordinary.commitApproval).toHaveBeenCalledOnce();
+
+  const guarded = create('outside-agent-registration');
+  const guardedReview = channel.store.renderReview(
+    channel.tenantId,
+    guarded.id,
+    'native-host',
+  );
+  if (!guardedReview.ok) throw new Error('guarded nonce fixture was refused');
+  const before = structuredClone(
+    channel.store.auditTrail(channel.tenantId, guarded.id),
+  );
+  for (const [operation, body] of [
+    ['native-review', {}],
+    ['native-decide', { decision: 'approve', nonce: guardedReview.nonce }],
+  ] as const) {
+    const unknown = await nativeRequest('unknown-id', operation, body);
+    expect(unknown.status).toBe(404);
+    await expectSameResponse(
+      await nativeRequest(guarded.id, operation, body),
+      unknown,
+    );
+  }
+  expect(guarded.commitApproval).not.toHaveBeenCalled();
+  expect(channel.store.get(channel.tenantId, guarded.id)?.status).toBe(
+    'pending',
+  );
+  expect(channel.store.auditTrail(channel.tenantId, guarded.id)).toEqual(
+    before,
+  );
+});
 
 test('ordinary and unknown ids retain base handler ordering, response bytes and refusal telemetry', async () => {
   const h = await fixture();

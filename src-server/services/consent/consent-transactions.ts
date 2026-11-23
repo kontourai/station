@@ -47,6 +47,7 @@ export const LOCAL_CONSENT_TENANT = 'local';
 export const CONSENT_TRANSACTION_TTL_MS = 5 * 60_000;
 const CONSENT_RETENTION_MS = CONSENT_TRANSACTION_TTL_MS * 2;
 const MAX_PENDING_PER_TENANT = 100;
+const MAX_PENDING_OUTSIDE_AGENT_PER_TENANT = 20;
 const CREATE_RATE_LIMIT = 10;
 const CREATE_RATE_WINDOW_MS = 60_000;
 const MAX_RATE_KEYS = 1024;
@@ -73,6 +74,10 @@ type ConsentTransactionStatus =
   | 'target_changed'
   | 'session_ended';
 export type ConsentDecision = 'approved' | 'denied';
+
+function isOutsideAgentTarget(kind: string): boolean {
+  return kind.startsWith('outside-agent-');
+}
 
 /** Exactly what would be granted, in a canonically comparable form. */
 export interface ConsentTargetSnapshot {
@@ -482,11 +487,20 @@ export class ConsentTransactionStore {
       throw new Error('operator_action_requires_passkey_ceremony');
     this.#sweep(init.tenantId);
     const records = this.#tenant(init.tenantId);
+    const outsideAgent = isOutsideAgentTarget(init.target.kind);
+    const capacity = outsideAgent
+      ? MAX_PENDING_OUTSIDE_AGENT_PER_TENANT
+      : MAX_PENDING_PER_TENANT;
     let pending = 0;
     for (const record of records.values()) {
-      if (record.status === 'pending') pending += 1;
+      if (
+        record.status === 'pending' &&
+        isOutsideAgentTarget(record.target.kind) === outsideAgent
+      ) {
+        pending += 1;
+      }
     }
-    if (pending >= MAX_PENDING_PER_TENANT) {
+    if (pending >= capacity) {
       return { ok: false, reason: 'capacity' };
     }
     if (!this.#consumeCreationBudget(init.tenantId, init.rateKey)) {
