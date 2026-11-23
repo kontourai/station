@@ -352,7 +352,10 @@ export function continuityBinding(
     bindingSessionId,
     'session.configured',
   )?.payload;
-  const metadata = configured?.metadata;
+  const metadata =
+    configured?.method === 'session.configured'
+      ? configured.metadata
+      : undefined;
   const boundAgent =
     reservation?.targetAgentId ??
     (typeof metadata?.agentId === 'string'
