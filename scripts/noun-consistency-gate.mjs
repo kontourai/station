@@ -115,6 +115,7 @@ export const LITERAL_COPY_FILES = [
   'src-ui/src/components/inbox-row/snooze-presets.ts',
   'src-ui/src/components/chat-dock/mobile-activity-groups.ts',
   'src-ui/src/components/chat-dock/useInboxGroups.ts',
+  'src-ui/src/components/chat-dock/inbox-toggle-label.ts',
 ];
 
 export const COPY_SOURCE_OPENERS = {
@@ -368,8 +369,15 @@ export const RETIRED_USER_TERMS = Object.freeze([
   // inbox" or "Refresh inbox" could be the page's own once it is the Inbox.
   {
     term: 'Show inbox',
-    use: 'Show chats',
+    use: 'Show chat list',
     pattern: /\b(?:show|hide) inbox\b/i,
+  },
+  // Beside the dock's own "Show chat"/"Hide chat", the list's control names
+  // the list, not one letter more of the same word.
+  {
+    term: 'Show chats',
+    use: 'Show chat list',
+    pattern: /\b(?:show|hide) chats\b/i,
   },
   {
     term: 'Inbox chats',

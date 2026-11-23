@@ -404,6 +404,12 @@ describe('noun-consistency:gate rejects its known-bad tree', {
       'Settle conversation',
     ],
     [
+      "the dock list toggle's own label module",
+      'src-ui/src/components/chat-dock/inbox-toggle-label.ts',
+      "export const label = (open: boolean) => (open ? 'Hide inbox' : 'Show chats');\n",
+      'Hide inbox',
+    ],
+    [
       'a notice in a template literal',
       'src-ui/src/views/NoticeView.tsx',
       "export const fail = (e: string) => `Couldn't unsnooze: ${e}`;\n",

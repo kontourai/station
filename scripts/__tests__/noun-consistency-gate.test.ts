@@ -466,6 +466,7 @@ describe('noun-consistency-gate', () => {
       'Discard unsent draft': 'Discard unsent draft',
       Unsnooze: 'Unsnooze',
       'Show inbox': 'Show inbox',
+      'Show chats': 'Show chats',
       'Inbox chats': 'Inbox chats',
     };
     // Plural and lowercase forms of the same terms.
@@ -498,6 +499,7 @@ describe('noun-consistency-gate', () => {
       'Discard unsent draft': 'discard unsent drafts',
       Unsnooze: 'Unsnoozing…',
       'Show inbox': 'Hide inbox, 2 need you',
+      'Show chats': 'Hide chats, 2 working',
       'Inbox chats': 'inbox chats',
     };
     /** Retired by a slice that removed every use, so enforced now. */
@@ -509,6 +511,7 @@ describe('noun-consistency-gate', () => {
       'Discard unsent draft',
       'Unsnooze',
       'Show inbox',
+      'Show chats',
       'Inbox chats',
     ];
 
