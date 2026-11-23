@@ -1,0 +1,15 @@
+{
+  "revision": "10a71d5d4a4b2dd6ff9ee62313483ec24e2457b0",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the CLI Session group owner's existing create, run and stop path after the storage-lock refactor. The same pre-rename guard applies to each existing caller. The optional sync journal has no mounted route or adapter owner in this scope.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/cli-session-group.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the optional sync receipt against CliSessionGroups. It carries operation and content identity, member attempt counts and exact observed terminal evidence. Reopening an operation projects the matching observation without dispatching or moving the group revision. The sync journal stays dormant pending route and adapter composition.","inputs":["docs/reference/contracts.md","packages/contracts/src/delegation-group.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the references to the contracts guide after its Session-group receipt edit. The glossary, integration reading path and package instructions still refer to shared contract declarations. The optional receipt describes an observation from the dormant sync journal.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the references to the contracts guide after its Session-group receipt edit. The glossary, integration reading path and package instructions still refer to shared contract declarations. The optional receipt describes an observation from the dormant sync journal.","inputs":["docs/reference/contracts.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed the references to the contracts guide after its Session-group receipt edit. The glossary, integration reading path and package instructions still refer to shared contract declarations. The optional receipt describes an observation from the dormant sync journal.","inputs":["docs/reference/contracts.md"]}
+  ]
+}
