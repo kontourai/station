@@ -124,6 +124,7 @@ import {
   tenantExecutionContextForRequest,
 } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   type FullAccessGrant,
   requestMayBeAnAgent,
@@ -141,6 +142,11 @@ import {
   stationControlRequestAuthority,
   stationControlRequestCurrent,
 } from '../../security/station-control-request-authority.js';
+import type { FeaturePreviewSelector } from '../../services/feature-previews/feature-preview-registry.js';
+import {
+  CliSessionGroups,
+  CliSessionGroupUnavailable,
+} from '../../services/orchestration/cli-session-group.js';
 import {
   CreateRequestCapacityError,
   CreateRequestConflictError,
@@ -974,6 +980,50 @@ export const delegateTaskSchema = z.object({
     .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/)
     .optional(),
 });
+
+const groupTaskFields = delegateTaskSchema
+  .pick({ prompt: true, target: true, parentTaskId: true })
+  .strict();
+
+function isLocalGroupTask({
+  target,
+}: z.infer<typeof groupTaskFields>): boolean {
+  return (
+    (target.environment?.kind ?? 'current') === 'current' &&
+    target.expectedEngine?.kind === 'connection' &&
+    target.workspace?.kind !== 'project-portable' &&
+    target.workspace?.kind !== 'project-portable-prepared'
+  );
+}
+
+const groupTaskSchema = groupTaskFields.refine(
+  isLocalGroupTask,
+  'Session groups require a local, explicitly bound external engine.',
+);
+const groupSeatIdSchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[A-Za-z0-9][A-Za-z0-9._:-]*$/);
+const groupCreateSchema = z
+  .object({
+    operationId: groupSeatIdSchema,
+    members: z
+      .array(
+        groupTaskFields
+          .extend({
+            seatId: groupSeatIdSchema,
+            needs: z.array(groupSeatIdSchema).max(32).default([]),
+          })
+          .refine(isLocalGroupTask),
+      )
+      .min(1)
+      .max(32),
+    maxConcurrent: z.number().int().min(1).max(32),
+    maxDispatches: z.number().int().min(0).max(32).optional(),
+    deadlineAt: z.number().int().positive(),
+  })
+  .strict();
 
 const inputRequestReferenceSchema = z.object({
   threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
@@ -2398,6 +2448,7 @@ export function createOrchestrationRoutes(
     /** Bounded caller-bound MCP App occurrences for session inventory. */
     sessionInventoryAppRead?: SessionInventoryAppReadModule;
     callerBindingForRequest?: (request: Request) => string | undefined;
+    cliSessionGroups?: { home: string; preview: FeaturePreviewSelector };
     /**
      * Immutable deployment registry supplied by runtime wiring. Its presence,
      * rather than any request field, selects hosted authorization semantics.
@@ -5249,6 +5300,108 @@ export function createOrchestrationRoutes(
         400,
       );
     }
+  }
+
+  const groupConfiguration = deps.cliSessionGroups;
+  if (groupConfiguration) {
+    let groups: CliSessionGroups<z.infer<typeof groupTaskSchema>> | undefined;
+    const previewEnabled = () =>
+      groupConfiguration.preview.select({
+        enabled: () => true,
+        disabled: () => false,
+      });
+
+    const respondSessionGroup = async (
+      c: Context,
+      operation: (
+        owner: NonNullable<typeof groups>,
+        binding: string,
+        assertCurrent: () => void,
+      ) => Promise<unknown>,
+    ): Promise<Response> => {
+      c.header('Cache-Control', 'private, no-store');
+      try {
+        if (!previewEnabled())
+          return c.json({ success: false, code: 'group_unavailable' }, 404);
+        const request = c.req.raw;
+        const binding = deps.callerBindingForRequest?.(request);
+        const { userId } = resolveActorPrincipal(deps, c);
+        const assertCurrent = () => {
+          if (!previewEnabled())
+            throw new CliSessionGroupUnavailable('group_unavailable');
+          if (
+            !binding ||
+            !userId ||
+            request.signal.aborted ||
+            stationControlRequestAuthority(request)?.kind === 'caller' ||
+            tenantExecutionContextForRequest(request) ||
+            deps.isRequestPrincipalCurrent?.(request) !== true ||
+            deps.callerBindingForRequest?.(request) !== binding ||
+            resolveActorPrincipal(deps, c).userId !== userId
+          )
+            throw new CliSessionGroupUnavailable('group_authority_required');
+        };
+        assertCurrent();
+        groups ??= new CliSessionGroups(
+          groupConfiguration.home,
+          (input) => groupTaskSchema.parse(input),
+          deps.logger,
+        );
+        const data = await operation(
+          groups,
+          JSON.stringify([userId, binding]),
+          assertCurrent,
+        );
+        assertCurrent();
+        return c.json({ success: true, data });
+      } catch (error) {
+        if (error instanceof SyntaxError || error instanceof z.ZodError)
+          return c.json({ success: false, code: 'group_invalid' }, 400);
+        if (error instanceof CliSessionGroupUnavailable) {
+          const { code } = error;
+          return c.json(
+            { success: false, code },
+            code === 'group_authority_required'
+              ? 403
+              : code === 'group_not_found' || code === 'group_unavailable'
+                ? 404
+                : code === 'group_invalid'
+                  ? 400
+                  : 409,
+          );
+        }
+        return c.json({ success: false, code: 'group_unavailable' }, 503);
+      }
+    };
+
+    app.post('/session-groups', (c) =>
+      respondSessionGroup(c, async (owner, binding, assertCurrent) => {
+        const body = await readBoundedRequestBody(c.req.raw, 262_144);
+        if (body.status !== 'ok')
+          throw new CliSessionGroupUnavailable('group_invalid');
+        const input = groupCreateSchema.parse(JSON.parse(body.body));
+        return owner.create(
+          binding,
+          input.operationId,
+          {
+            seats: input.members.map(({ seatId, needs, ...task }) => ({
+              seatId,
+              needs,
+              input: task,
+            })),
+            maxConcurrent: input.maxConcurrent,
+            maxDispatches: input.maxDispatches,
+            deadlineAt: input.deadlineAt,
+          },
+          assertCurrent,
+        );
+      }),
+    );
+    app.get('/session-groups/:groupId', (c) =>
+      respondSessionGroup(c, (owner, binding) =>
+        owner.view(param(c, 'groupId'), binding),
+      ),
+    );
   }
 
   app.post('/delegations', validateFiles(delegateTaskSchema), (c) =>

@@ -1568,6 +1568,24 @@ open through the existing chat inbox resolver, independently of dispatch Session
 identity. See [Task contracts](contracts.md#task-deliverable-and-work-chat-relationships)
 and [SDK Task mutations](sdk.md#task-mutations).
 
+## Personal Session-group preview
+
+The **Session groups** feature preview is off by default and is offered on
+personal Stations. When enabled, `POST /api/orchestration/session-groups`
+records a group of Tasks for local, explicitly bound external Engines.
+Creation records the plan without starting a Session. It accepts an operation
+ID, a deadline, up to 32 named members with dependency IDs, a concurrency
+limit, and an optional dispatch limit. A zero dispatch limit creates a closed
+group.
+
+The operation ID binds to the current verified credential and the captured
+plan. An unchanged request returns the existing group. A changed plan under
+the same operation ID conflicts. `GET /api/orchestration/session-groups/:groupId`
+reads the group projection for the creating credential. A disabled preview or
+unavailable group returns 404. A credential that becomes stale during creation
+cannot authorize the durable write. The projection contains group and member
+state without exposing the captured Task prompts.
+
 ## Personal Task room agent requests
 
 `GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned

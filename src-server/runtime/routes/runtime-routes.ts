@@ -7866,6 +7866,19 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
+      ...(isPersonalHost
+        ? {
+            cliSessionGroups: {
+              home: context.configLoader.getProjectHomeDir(),
+              preview: context.featurePreviews.bind({
+                id: 'cli-session-groups',
+                label: 'Session groups',
+                description:
+                  'Create and inspect groups of Tasks for local external engines.',
+              }),
+            },
+          }
+        : {}),
       eventBus: context.eventBus,
       reopenSettledConversation: (c, id) =>
         reopenSettledConversation(

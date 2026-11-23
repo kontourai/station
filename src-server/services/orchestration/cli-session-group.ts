@@ -113,7 +113,7 @@ const digest = (value: unknown) =>
   createHash('sha256').update(canonicalJson(value)).digest('hex');
 const MAX_BYTES = 1024 * 1024;
 
-class CliSessionGroupUnavailable extends Error {
+export class CliSessionGroupUnavailable extends Error {
   constructor(readonly code: string) {
     super(code);
     this.name = 'CliSessionGroupUnavailable';
