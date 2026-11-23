@@ -1608,6 +1608,20 @@ Deferred interrupts and owned cascades use their separate Session owners.
 Missing acceptance or stop evidence remains unconfirmed. Paired callers need
 `orchestration:read` for inspection and `orchestration:operate` for mutations.
 
+`POST /api/orchestration/session-groups/:groupId/sync` requires the group's
+owning credential and the `orchestration:operate` pairing scope. Supply
+`operationId`, `runId`, `content`, and `deadlineAt`. The folded content must
+fit within 128 KiB of UTF-8 inside the 256 KiB request. For a new operation,
+the deadline must be within 30 minutes and every member must have completed
+its exact initial turn. Station checks each retained Session and runtime
+before reserving an attempt. Replaying a matching operation observes its
+receipt without another send.
+
+The sync response includes `contextSync`. On group GET and list requests,
+pass `includeContextSync=1` to inspect a receipt. Older clients can continue
+reading the original group view. A receipt identifies observed completion
+and does not grant native, portable, or financial authority.
+
 ## Personal Task room agent requests
 
 `GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned

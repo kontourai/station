@@ -1,0 +1,7 @@
+{
+  "revision": "2ddb90ae57735d193d0e007604f6d4edafa41c02",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rechecked the held interrupt and park controls after replacing the fixture's deferred promise construction with a Promise implementation supported by the server-test TypeScript library. The event, identity and cleanup assertions retain their scopes.","inputs":["src-server/services/orchestration/__tests__/retained-session-sync.test.ts"]}
+  ]
+}

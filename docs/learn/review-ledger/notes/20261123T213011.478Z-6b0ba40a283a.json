@@ -1,0 +1,31 @@
+{
+  "revision": "2d64134f0e84421bbe0effc58bfcc617025675fe",
+
+  "notes": [
+    {"path":"docs/reference/cli.md","note":"Traced the bounded sync file through the shared parser, selected credential and exact operation receipt. Checked the bare receipt flag on get and list, the existing interruption handler, and the wire test for one sync POST followed by explicit inspection.","inputs":["docs/reference/cli.md","packages/cli/src/__tests__/group.test.ts","packages/cli/src/commands/group.ts","packages/cli/src/help.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Verified the shared sync parser is exported through the client barrel and validates the same exact shape consumed by syncCliSessionGroup and the CLI. Existing sync receipt and capability checks are unchanged.","inputs":["docs/reference/sdk.md","packages/sdk/src/client/cli-session-groups.ts"]},
+
+    {"path":"README.md","note":"The group topic adds the sync command and explicit receipt inspection to the existing Session-group preview documentation. Shared CLI setup, distribution, trust and command entry anchors are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"The group topic adds the sync command and explicit receipt inspection to the existing Session-group preview documentation. Shared CLI setup, distribution, trust and command entry anchors are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"The group topic adds the sync command and explicit receipt inspection to the existing Session-group preview documentation. Shared CLI setup, distribution, trust and command entry anchors are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The group topic adds the sync command and explicit receipt inspection to the existing Session-group preview documentation. Shared CLI setup, distribution, trust and command entry anchors are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"The group topic adds the sync command and explicit receipt inspection to the existing Session-group preview documentation. Shared CLI setup, distribution, trust and command entry anchors are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/adr/0016-merge-playbooks-into-skills-behind-a-boot-flag.md","note":"Verified the added group sync usage, action and receipt flags against command dispatch. The changes are limited to the group topic and leave MCP, skill-authoring and unrelated CLI help claims unchanged.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/authoring-skill-experiences.md","note":"Verified the added group sync usage, action and receipt flags against command dispatch. The changes are limited to the group topic and leave MCP, skill-authoring and unrelated CLI help claims unchanged.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Verified the added group sync usage, action and receipt flags against command dispatch. The changes are limited to the group topic and leave MCP, skill-authoring and unrelated CLI help claims unchanged.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"packages/cli/README.md","note":"Verified the added group sync usage, action and receipt flags against command dispatch. The changes are limited to the group topic and leave MCP, skill-authoring and unrelated CLI help claims unchanged.","inputs":["packages/cli/src/help.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The Session-group subsection now names the shared sync plan parser and its local validation. SDK discovery and unrelated client surfaces keep their existing contract.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The Session-group subsection now names the shared sync plan parser and its local validation. SDK discovery and unrelated client surfaces keep their existing contract.","inputs":["docs/reference/sdk.md"]}
+  ]
+}

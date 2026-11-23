@@ -32,6 +32,10 @@ import type {
   ConversationContextBoundaryProjection,
   ConversationContextBoundaryRequest,
 } from '@kontourai/station-contracts/conversation-context-boundary';
+import type {
+  CliSessionGroupListPage,
+  CliSessionGroupView,
+} from '@kontourai/station-contracts/delegation-group';
 import {
   CLIENT_PROTOCOL_HEADER,
   readClientProtocolHeader,
@@ -5324,6 +5328,13 @@ export function createOrchestrationRoutes(
         disabled: () => false,
       });
 
+    function withoutSyncReceipt({
+      contextSync: _receipt,
+      ...view
+    }: CliSessionGroupView) {
+      return view;
+    }
+
     const respondSessionGroup = async (
       c: Context,
       operation: (
@@ -5331,7 +5342,8 @@ export function createOrchestrationRoutes(
         binding: string,
         assertCurrent: () => void,
         assertStopCurrent: () => void,
-      ) => Promise<unknown>,
+      ) => Promise<CliSessionGroupView | CliSessionGroupListPage>,
+      includeContextSync = false,
     ): Promise<Response> => {
       c.header('Cache-Control', 'private, no-store');
       try {
@@ -5372,7 +5384,12 @@ export function createOrchestrationRoutes(
           assertStopCurrent,
         );
         assertCurrent();
-        return c.json({ success: true, data });
+        if (includeContextSync) return c.json({ success: true, data });
+        const view =
+          'groups' in data
+            ? { ...data, groups: data.groups.map(withoutSyncReceipt) }
+            : withoutSyncReceipt(data);
+        return c.json({ success: true, data: view });
       } catch (error) {
         if (error instanceof SyntaxError || error instanceof z.ZodError)
           return c.json({ success: false, code: 'group_invalid' }, 400);
@@ -5391,6 +5408,55 @@ export function createOrchestrationRoutes(
         }
         return c.json({ success: false, code: 'group_unavailable' }, 503);
       }
+    };
+
+    const retainedMemberContext = async (
+      c: Context,
+      handle: NonNullable<CliSessionGroupView['members'][number]['handle']>,
+      assertCurrent: () => void,
+    ) => {
+      assertCurrent();
+      const refused = refuseOutOfScopeDispatch(
+        c,
+        deps.stationControlDispatchScope,
+        () => ({ kind: 'task', taskId: handle.taskId, remote: false }),
+      );
+      if (refused)
+        throw new CliSessionGroupUnavailable('group_authority_required');
+      if (!deps.observeDelegatedTask)
+        throw new CliSessionGroupUnavailable('group_unavailable');
+      const actor = resolveDispatchActor(deps, c);
+      const clientOrigin = resolveClientOriginForRequest(c.req.raw);
+      const snapshot = z
+        .object({
+          taskId: z.string(),
+          conversationId: z.string(),
+          currentSessionId: z.string(),
+          environment: z.object({ kind: z.literal('current') }),
+        })
+        .safeParse(
+          await deps.observeDelegatedTask({
+            taskId: handle.taskId,
+            userId: actor.userId,
+            principal: actor.principal,
+            clientOrigin,
+          }),
+        );
+      assertCurrent();
+      if (
+        !snapshot.success ||
+        snapshot.data.taskId !== handle.taskId ||
+        snapshot.data.conversationId !== handle.conversationId ||
+        snapshot.data.currentSessionId !== handle.sessionId
+      )
+        throw new CliSessionGroupUnavailable('group_not_found');
+      return {
+        ...actor,
+        clientOrigin,
+        requestCurrent: () =>
+          !c.req.raw.signal.aborted &&
+          deps.isRequestPrincipalCurrent?.(c.req.raw) === true,
+      };
     };
 
     const groupHost = (
@@ -5493,6 +5559,26 @@ export function createOrchestrationRoutes(
         });
         assertStopCurrent();
       },
+      prepareSync: async (handle) => {
+        const context = await retainedMemberContext(c, handle, assertCurrent);
+        await orchestrationService.assertRetainedSessionSyncAvailable(
+          handle.sessionId,
+          context,
+        );
+        assertCurrent();
+      },
+      sync: async (handle, input) => {
+        const context = await retainedMemberContext(c, handle, assertCurrent);
+        return orchestrationService.syncRetainedSession({
+          threadId: handle.sessionId,
+          ...input,
+          context,
+          assertCurrent: () => {
+            assertCurrent();
+            input.assertCurrent();
+          },
+        });
+      },
     });
 
     app.post('/session-groups', (c) =>
@@ -5519,13 +5605,18 @@ export function createOrchestrationRoutes(
       }),
     );
     app.get('/session-groups', (c) =>
-      respondSessionGroup(c, (owner, binding, assertCurrent) =>
-        owner.list(binding, c.req.query('afterGroupId'), assertCurrent),
+      respondSessionGroup(
+        c,
+        (owner, binding, assertCurrent) =>
+          owner.list(binding, c.req.query('afterGroupId'), assertCurrent),
+        c.req.query('includeContextSync') === '1',
       ),
     );
     app.get('/session-groups/:groupId', (c) =>
-      respondSessionGroup(c, (owner, binding) =>
-        owner.view(param(c, 'groupId'), binding),
+      respondSessionGroup(
+        c,
+        (owner, binding) => owner.view(param(c, 'groupId'), binding),
+        c.req.query('includeContextSync') === '1',
       ),
     );
     app.post('/session-groups/:groupId/run', (c) =>
@@ -5549,6 +5640,37 @@ export function createOrchestrationRoutes(
             binding,
             groupHost(c, assertCurrent, assertStopCurrent),
           ),
+      ),
+    );
+    app.post('/session-groups/:groupId/sync', (c) =>
+      respondSessionGroup(
+        c,
+        async (owner, binding, assertCurrent, assertStopCurrent) => {
+          const body = await readBoundedRequestBody(c.req.raw, 262_144);
+          if (body.status !== 'ok')
+            throw new CliSessionGroupUnavailable('group_invalid');
+          const input = z
+            .object({
+              operationId: z.string().min(1).max(128),
+              runId: z.string().min(1).max(128),
+              content: z
+                .string()
+                .min(1)
+                .max(128 * 1024),
+              deadlineAt: z.number().int().positive().safe(),
+            })
+            .strict()
+            .parse(JSON.parse(body.body));
+          assertCurrent();
+          return owner.sync(
+            param(c, 'groupId'),
+            binding,
+            input,
+            groupHost(c, assertCurrent, assertStopCurrent),
+            c.req.raw.signal,
+          );
+        },
+        true,
       ),
     );
   }

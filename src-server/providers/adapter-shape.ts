@@ -486,6 +486,8 @@ export interface ProviderAdapterShape {
   readonly adoptionLifecycle?: 'reported';
   readonly provider: EngineId;
   readonly metadata: ProviderAdapterMetadata;
+  /** Read-only runtime preflight; a restricted launch verifies its own handshake. */
+  assertContextSyncRuntime?(): Promise<void>;
 
   /** Absent means unsupported. Neither operation may materialize an engine session. */
   readonly goals?: {

@@ -1,0 +1,7 @@
+{
+  "revision": "60a3343229c550937d9c5afbf077ab2f04648d18",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the Session-group SDK claims against the combined listing and retained-sync owners. The additive receipt type is dormant at this head. List, inspect, run, and cancel retain the existing SDK decoder and route contract.","inputs":["docs/reference/sdk.md","packages/contracts/src/delegation-group.ts"]}
+  ]
+}

@@ -2438,6 +2438,19 @@ authority again before interruption or escalation. A zero dispatch allowance
 closes admission at creation. The allowance counts reserved member starts.
 Dollar, token, and physical-attempt caps are unavailable in this preview.
 
+The [retained activation owner](../../src-server/services/orchestration/orchestration-service.ts)
+serves context sync through the personal Station's Session groups preview.
+The group journal reserves one operation and checks each completed member
+before admitting an attempt. The retained owner waits for the previous process
+exit and resumes the same persistent personal Claude Session with wildcard
+tool denial. The adapter qualifies the launched runtime before accepting the
+turn. The owner reads the exact terminal event and requires confirmed release
+before returning its receipt. An uncertain activation remains fenced until
+explicit teardown. A matching group operation can read its stored receipt
+without another send.
+The [service tests](../../src-server/services/orchestration/__tests__/retained-session-sync.test.ts)
+exercise restricted activation, authority withdrawal, and exit custody.
+
 Starting a Session crosses two boundaries: an engine may start, and Station must record the command’s result. The [command owner](../../src-server/services/orchestration/session-command-module.ts) reports those facts separately; losing a receipt must not invite a second engine start.
 
 **Interface.** `execute({ type: 'start-session', input }, context)` is the closed caller Interface. It always returns one of `accepted`, `rejected`, `failed`, or `indeterminate`, together with a receipt and `receiptStatus: persisted|unavailable`. `accepted` has a persisted accepted receipt and a session. `rejected` and `failed` report whether their terminal receipt is durable. `indeterminate` covers uncertain provider creation as well as missing accepted-receipt durability; a Session is included only when one is known. The server-only `executeInternal` also carries recovery, Task dispatch, owned-workspace, and portable-execution admission capabilities. Those options are not accepted from public command JSON.

@@ -5,6 +5,7 @@ import {
 import type {
   CliSessionGroupCreateInput,
   CliSessionGroupListPage,
+  CliSessionGroupSync,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
 import { z } from 'zod/v3';
@@ -20,6 +21,7 @@ import { fetchPublicStationCapabilities } from './publicStationCapabilities.js';
 export type {
   CliSessionGroupCreateInput,
   CliSessionGroupListPage,
+  CliSessionGroupSync,
   CliSessionGroupView,
 } from '@kontourai/station-contracts/delegation-group';
 
@@ -89,6 +91,51 @@ const inputSchema = z
       .max(32),
   })
   .strict();
+const sha256 = z.string().regex(/^sha256:[0-9a-f]{64}$/);
+const contextSyncSchema: z.ZodType<CliSessionGroupSync> = z
+  .object({
+    operationId: seatId,
+    runId: seatId,
+    contentHash: sha256,
+    timestamp: z.string().datetime(),
+    status: z.enum(['syncing', 'acknowledged', 'incomplete']),
+    members: z
+      .array(
+        z
+          .object({
+            seatId,
+            status: z.enum(['pending', 'acknowledged', 'failed', 'unknown']),
+            attempts: z.number().int().min(0).max(2),
+            timestamp: z.string().datetime().optional(),
+            turnId: text.optional(),
+            terminalEventId: text.optional(),
+            nativeIdentityHash: sha256.optional(),
+            toolCalls: z.number().int().min(0).max(1_000_000).optional(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(32),
+  })
+  .strict();
+
+const syncInputSchema = z
+  .object({
+    operationId: seatId,
+    runId: seatId,
+    content: z
+      .string()
+      .min(1)
+      .refine(
+        (content) =>
+          content.trim().length > 0 &&
+          new TextEncoder().encode(content).byteLength <= 128 * 1024,
+        'Sync content must be nonempty and fit within 128 KiB of UTF-8.',
+      ),
+    deadlineAt: z.number().int().positive().safe(),
+  })
+  .strict();
+
 const viewSchema: z.ZodType<CliSessionGroupView> = z
   .object({
     version: z.literal('station.cli-session-group/v1'),
@@ -101,6 +148,7 @@ const viewSchema: z.ZodType<CliSessionGroupView> = z
     maxDispatches: z.number().int().min(0).max(32),
     admissionClosed: z.literal('dispatch-limit-exhausted').optional(),
     dispatchCount: z.number().int().min(0).max(32),
+    contextSync: contextSyncSchema.optional(),
     guarantees: z
       .object({
         authority: z.literal('station-session'),
@@ -200,13 +248,16 @@ export async function createCliSessionGroup(
 export async function getCliSessionGroup(
   apiBase: string,
   groupId: string,
-  options?: ClientRequestOptions,
+  options?: ClientRequestOptions & { includeContextSync?: boolean },
 ): Promise<CliSessionGroupView> {
   await requireCliSessionGroups(apiBase);
+  const { includeContextSync, ...requestOptions } = options ?? {};
+  const path = groupPath(apiBase, groupId);
+  const url = includeContextSync ? `${path}?includeContextSync=1` : path;
   return viewSchema.parse(
     await readEnvelopeOrThrow<unknown>(
-      await getJson(groupPath(apiBase, groupId), {
-        ...options,
+      await getJson(url, {
+        ...requestOptions,
         maxResponseBytes: 262_144,
       }),
     ),
@@ -234,16 +285,44 @@ export async function cancelCliSessionGroup(
   return command(`${groupPath(apiBase, groupId)}/cancel`, {}, options);
 }
 
+/** Validate a local Session-group sync plan before sending it. */
+export function parseCliSessionGroupSyncInput(input: unknown) {
+  return syncInputSchema.parse(input);
+}
+
+/** Send bounded folded context to the retained member Sessions. */
+export async function syncCliSessionGroup(
+  apiBase: string,
+  groupId: string,
+  input: z.infer<typeof syncInputSchema>,
+  options?: ClientRequestOptions,
+): Promise<CliSessionGroupView> {
+  const sent = parseCliSessionGroupSyncInput(input);
+  await requireCliSessionGroups(apiBase);
+  const result = await command(`${groupPath(apiBase, groupId)}/sync`, sent, {
+    timeoutMs: null,
+    ...options,
+  });
+  if (
+    result.groupId !== groupId ||
+    result.contextSync?.operationId !== sent.operationId ||
+    result.contextSync.runId !== sent.runId
+  )
+    throw new Error('Unexpected Session-group sync receipt.');
+  return result;
+}
+
 /** Read one page of groups created with the selected Station credential. */
 export async function listCliSessionGroups(
   apiBase: string,
-  input: { afterGroupId?: string } = {},
+  input: { afterGroupId?: string; includeContextSync?: boolean } = {},
   options?: ClientRequestOptions,
 ): Promise<CliSessionGroupListPage> {
-  const suffix =
-    input.afterGroupId === undefined
-      ? ''
-      : `?afterGroupId=${encodeURIComponent(seatId.parse(input.afterGroupId))}`;
+  const query = new URLSearchParams();
+  if (input.afterGroupId !== undefined)
+    query.set('afterGroupId', seatId.parse(input.afterGroupId));
+  if (input.includeContextSync) query.set('includeContextSync', '1');
+  const suffix = query.size ? `?${query}` : '';
   await requireCliSessionGroups(apiBase);
   const response = await getJson(`${root(apiBase)}${suffix}`, {
     ...options,

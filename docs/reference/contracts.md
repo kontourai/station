@@ -21,9 +21,12 @@ Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shar
 
 `@kontourai/station-contracts/delegation-group` defines the
 [CLI Session group view](../../packages/contracts/src/delegation-group.ts)
-for the dormant server owner. It describes reserved member starts, observed
-Session state and Flow lineage. The dispatch allowance bounds reservations.
-The view carries neither dispatch authority nor a portable Flow envelope.
+for the personal Session groups preview. It describes reserved member starts,
+observed Session state and Flow lineage. The dispatch allowance bounds
+reservations. The optional `contextSync` receipt identifies an operation, its
+content hash, and each member's observed disposition. The sync operation returns
+this receipt, and group reads include it when explicitly requested. The view
+carries neither dispatch authority nor a portable Flow envelope.
 
 `LayoutPanelsRecord` holds device-local side/lower-panel state by layout host
 scope and conversation. `LAYOUT_PANELS_LAYOUT_BOUND` and

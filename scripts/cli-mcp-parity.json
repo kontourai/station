@@ -505,6 +505,10 @@
       "exempt": "person-only",
       "reason": "The Session groups preview uses the verified personal Station credential. Session-authored Station Control callers cannot operate these routes."
     },
+    "group session-sync": {
+      "exempt": "person-only",
+      "reason": "The sync route requires the verified personal Station credential that owns the group."
+    },
     "home backup": {
       "exempt": "local-host",
       "reason": "Station home backup/restore/reset on disk."

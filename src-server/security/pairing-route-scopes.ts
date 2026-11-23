@@ -4834,6 +4834,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
       method: 'POST',
       path: '/api/orchestration/session-groups/:groupId/cancel',
     },
+    { method: 'POST', path: '/api/orchestration/session-groups/:groupId/sync' },
     { method: 'GET', path: '/api/orchestration/delegations' },
     { method: 'POST', path: '/api/orchestration/delegations' },
     { method: 'GET', path: '/api/orchestration/delegations/:taskId' },

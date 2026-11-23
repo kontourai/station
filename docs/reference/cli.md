@@ -2642,16 +2642,21 @@ The **Session groups** preview on a personal Station supports the following comm
 
 ```sh
 station group session-create --file=group.json
-station group session-list [--after=<group>]
-station group session-get <group>
+station group session-list [--after=<group>] [--include-context-sync]
+station group session-get <group> [--include-context-sync]
 station group session-run <group>
 station group session-cancel <group>
+station group session-sync <group> --file=sync.json
 ```
 
 Create reads a bounded local JSON file and records the plan under its operation
 ID. Run dispatches ready Tasks through Station and can spend provider credits.
 Ctrl-C requests interruption. Inspect retained state with `session-get`.
 Cancellation closes admission and requests a stop for confirmed initial turns.
+Sync reads a bounded JSON file containing the operation ID, run ID, folded
+context, and deadline. It can spend provider credits on completed retained
+members. Ctrl-C ends the caller's wait. Use `--include-context-sync` with
+`session-get` or `session-list` to inspect the retained receipt.
 See the [Session-group API](api.md#personal-session-group-preview) for the
 plan and authorization rules.
 

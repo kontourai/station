@@ -416,7 +416,9 @@
 
     "src-ui/src/views/home/home-role-projection.ts",
 
-    "packages/contracts/src/project-room-coordinator.ts"
+    "packages/contracts/src/project-room-coordinator.ts",
+
+    "packages/contracts/src/delegation-group.ts"
   ],
 
   "checks": [
