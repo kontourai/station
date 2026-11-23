@@ -376,7 +376,7 @@ function ScopedOutsideClients({
                 title="Client grants"
                 description={
                   olderGrantsOmitted
-                    ? 'Showing the 50 most recent ended grants.'
+                    ? 'Showing 50 ended grants by approval date.'
                     : undefined
                 }
               >

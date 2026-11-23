@@ -188,7 +188,7 @@ grant change or revocation and complete it on the consent listener with their
 passkey. Approval selects a single Project or work outside Projects and a
 read-only expiry. A grant change can keep or shorten the displayed expiry.
 The panel reports the passkey decision and refreshes the inventory. It lists
-current grants and up to 50 recently ended grants. In a paired browser, the
+current grants and up to 50 ended grants by approval date. In a paired browser, the
 panel offers operator sign-in when the listener is configured. The native app
 directs the operator to a paired browser. The release guard returns 404 before
 this panel can load inventory.
