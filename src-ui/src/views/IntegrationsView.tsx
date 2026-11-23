@@ -12,7 +12,6 @@ import {
 } from '@kontourai/station-sdk';
 import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { Button } from '../components/Button';
 import { SettingsGlyph } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
 import { SplitPaneLayout } from '../components/SplitPaneLayout';
@@ -342,20 +341,22 @@ export function IntegrationsView({
         collectionEmpty={integrations.length === 0}
         searchPlaceholder="Search tool servers…"
         /* The Customize item frame owns this section's single add action
-           (design P3: exactly one add entry per section). The catalogue of
-           tool servers is a page of its own, entered from here until Add tool
-           server offers it in place. */
-        // Inside the agent editor's tool picker (`selection`) the picker has
-        // its own catalogue, so the page link is left out there.
-        headerActions={
+           (design P3: exactly one add entry per section), so the catalogue
+           of tool servers is opened from the list, not the header, until
+           Add tool server offers it in place. Inside the agent editor's
+           tool picker (`selection`), which has its own catalogue, it is
+           left out. */
+        listIntro={
           selection ? undefined : (
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => navigate('/registry/integrations')}
-            >
-              Browse tool servers
-            </Button>
+            <div className="integrations-view__list-actions">
+              <button
+                type="button"
+                className="split-pane__add-btn split-pane__add-btn--secondary"
+                onClick={() => navigate('/registry/integrations')}
+              >
+                Browse tool servers
+              </button>
+            </div>
           )
         }
         listEmptyTitle="No tool servers yet"
