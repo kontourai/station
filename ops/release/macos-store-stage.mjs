@@ -122,6 +122,12 @@ function stageStore(
 ) {
   const { marketingVersion, bundleVersion } = taggedStoreIdentity(tag);
   const plist = assertBundle(input, stableId, 'station-stable');
+  const minimum = Number.parseInt(
+    plistValue(plist, 'LSMinimumSystemVersion'),
+    10,
+  );
+  if (!(minimum >= 12))
+    throw new Error('The Mac Store package requires macOS 12 or later.');
   if (
     plistValue(plist, 'CFBundleShortVersionString') !== marketingVersion ||
     plistValue(plist, 'CFBundleVersion') !== bundleVersion
@@ -173,7 +179,9 @@ function stageStore(
       'The provisioning profile does not authorize the Stable Mac Store signer.',
     );
 
-  copyFileSync(profile, join(app, 'Contents/embedded.provisionprofile'));
+  const embeddedProfile = join(app, 'Contents/embedded.provisionprofile');
+  copyFileSync(profile, embeddedProfile);
+  chmodSync(embeddedProfile, 0o644);
   const entitlements = join(root, 'app-entitlements.plist');
   copyFileSync(appEntitlements, entitlements);
   run('/usr/libexec/PlistBuddy', [

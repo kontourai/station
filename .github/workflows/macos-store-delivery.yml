@@ -53,6 +53,7 @@ jobs:
       - name: Build the Stable Mac bundle without a desktop updater
         env:
           STATION_CHANNEL: stable
+          MACOSX_DEPLOYMENT_TARGET: '12.0'
           STATION_CLIENT_BUILD_REUSE: '1'
         run: |
           set -euo pipefail
@@ -61,7 +62,7 @@ jobs:
           npm run build:connect
           node scripts/release-client-build-provenance.mjs stage --source-sha "$RELEASE_SHA" --artifact release-client-build-provenance/station-client-build.json
           node scripts/lib/native-release-config.mjs --tag "$RELEASE_TAG" --channel-identity --output "$RUNNER_TEMP/macos-store-tag.json"
-          jq '.bundle.category = "DeveloperTool"' "$RUNNER_TEMP/macos-store-tag.json" > "$RUNNER_TEMP/macos-store.json"
+          jq --arg minimum "$MACOSX_DEPLOYMENT_TARGET" '.bundle.category = "DeveloperTool" | .bundle.macOS.minimumSystemVersion = $minimum' "$RUNNER_TEMP/macos-store-tag.json" > "$RUNNER_TEMP/macos-store.json"
           STATION_BUILD_VERSION="$(jq -er .version "$RUNNER_TEMP/macos-store.json")"
           export STATION_BUILD_VERSION
           npm run build:desktop -- --no-sign --target aarch64-apple-darwin --bundles app --config "$RUNNER_TEMP/macos-store.json"
