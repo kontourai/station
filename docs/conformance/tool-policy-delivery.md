@@ -135,8 +135,11 @@ refuses execution of requests or recorded sessions carrying inherited groups,
 including managed Station execution and forwarding to a peer or SSH target.
 When reusing a Session, Station checks that the recorded policy retains the
 requested tool allowlist, blocked tools, and approval denial before sending a
-turn. Inherited groups still require durable intent binding and proof of
-enforcement at the actual tool effect before execution can be enabled.
+turn. The durable Task and foreground create claims include the requested tool
+restrictions in their identity. A retry with different restrictions conflicts
+before dispatch. An older receipt without a policy binding also conflicts with
+a policy-bound retry. Inherited groups still require proof of enforcement at
+the actual tool effect before execution can be enabled.
 
 Station Control derives the dispatch caller from its verified session.
 A child can start another child only on this Station in the caller's own
