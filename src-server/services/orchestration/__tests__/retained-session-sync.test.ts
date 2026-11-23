@@ -128,8 +128,9 @@ async function fixture(persistSession = true) {
   cleanup.push(async () => {
     await store.close();
   });
+  const registry = createGateTestRegistry(adapter);
   const service = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(adapter),
+    adapterRegistry: registry,
     eventStore: store,
     eventBus: new EventBus(),
     logger: { debug() {}, warn() {} },
@@ -181,7 +182,7 @@ async function fixture(persistSession = true) {
     assertCurrent() {},
     context: { userId: 'owner' },
   };
-  return { adapter, service, input };
+  return { adapter, service, input, registry };
 }
 
 function holdRuntimePreflight(adapter: SyncAdapter) {
@@ -228,6 +229,25 @@ test.each(['prompt/client-turn', 'context'] as const)(
     });
   },
 );
+
+test('preflight does not qualify an adapter that replaced the checked instance', async () => {
+  const f = await fixture();
+  const preflight = holdRuntimePreflight(f.adapter);
+  const replacement = new SyncAdapter();
+  const stop = vi.spyOn(f.adapter, 'stopSession');
+  const outcome = expect(
+    f.service.assertRetainedSessionSyncAvailable('retained', f.input.context),
+  ).rejects.toThrow('group_sync_unavailable');
+  await preflight.entered;
+  vi.spyOn(f.registry, 'get').mockReturnValue(replacement);
+  preflight.release();
+  await outcome;
+  expect(stop).not.toHaveBeenCalled();
+  expect(f.adapter.starts).toHaveLength(1);
+  expect(f.adapter.sends).toHaveLength(1);
+  expect(replacement.starts).toHaveLength(0);
+  expect(replacement.sends).toHaveLength(0);
+});
 
 test('replacing the sync authority callback during preflight cannot drop original revocation', async () => {
   const f = await fixture();

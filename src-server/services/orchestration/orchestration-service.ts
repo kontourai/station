@@ -2496,23 +2496,70 @@ export class OrchestrationService {
     threadId: string,
     context: Parameters<OrchestrationService['dispatchWithReceipt']>[1],
   ): Promise<void> {
+    await this.qualifyRetainedSync(
+      threadId,
+      context ? { ...context } : undefined,
+    );
+  }
+
+  private async qualifyRetainedSync(
+    threadId: string,
+    context: Parameters<OrchestrationService['dispatchWithReceipt']>[1],
+  ) {
     this.initialize();
     const session = this.sessionReadModel.get(threadId);
     const adapter =
       session && this.options.adapterRegistry.get(session.provider);
+    const inspectRuntime = adapter?.assertContextSyncRuntime;
+    const readNativeIdentity = adapter?.nativeSessionIdentity;
+    const observeExit = adapter?.engineEnded;
     if (
       !this.options.eventStore ||
-      session?.provider !== 'claude' ||
+      !session ||
       session.persistSession === false ||
-      !adapter?.assertContextSyncRuntime ||
-      !adapter.engineEnded ||
-      !adapter.nativeSessionIdentity?.(session.resumeCursor) ||
-      typeof this.preparedTurnBinding(threadId).nativeBindingKey !== 'string' ||
+      !adapter ||
+      adapter.provider !== session.provider ||
+      !inspectRuntime ||
+      !readNativeIdentity ||
+      !observeExit ||
       !this.isRetainedSyncOwner(threadId, context) ||
       this.persistedPortableConsentOfThread(threadId)
     )
       throw new Error('group_sync_unavailable');
-    await adapter.assertContextSyncRuntime();
+
+    const provider = session.provider;
+    const nativeSessionId = readNativeIdentity.call(
+      adapter,
+      session.resumeCursor,
+    )?.sessionId;
+    const nativeBindingKey =
+      this.preparedTurnBinding(threadId).nativeBindingKey;
+    if (!nativeSessionId || typeof nativeBindingKey !== 'string')
+      throw new Error('group_sync_unavailable');
+
+    const isCurrent = () =>
+      this.sessionReadModel.get(threadId)?.provider === provider &&
+      this.isAdapterCurrent(adapter) &&
+      adapter.assertContextSyncRuntime === inspectRuntime &&
+      adapter.nativeSessionIdentity === readNativeIdentity &&
+      adapter.engineEnded === observeExit;
+
+    await inspectRuntime.call(adapter);
+
+    const retained = this.sessionReadModel.get(threadId);
+    if (
+      !retained ||
+      retained.persistSession === false ||
+      !isCurrent() ||
+      readNativeIdentity.call(adapter, retained.resumeCursor)?.sessionId !==
+        nativeSessionId ||
+      this.preparedTurnBinding(threadId).nativeBindingKey !==
+        nativeBindingKey ||
+      !this.isRetainedSyncOwner(threadId, context) ||
+      this.persistedPortableConsentOfThread(threadId)
+    )
+      throw new Error('group_sync_unavailable');
+    return { adapter, nativeSessionId, nativeBindingKey, isCurrent };
   }
 
   /** One reserved attempt in the existing conversation; the caller owns its durable receipt. */
@@ -2538,22 +2585,12 @@ export class OrchestrationService {
     this.initialize();
     assertCurrent();
     signal.throwIfAborted();
-    await this.assertRetainedSessionSyncAvailable(threadId, context);
+    const { adapter, nativeSessionId, nativeBindingKey, isCurrent } =
+      await this.qualifyRetainedSync(threadId, context);
     assertCurrent();
     signal.throwIfAborted();
-    const session = this.sessionReadModel.get(threadId);
-    const adapter =
-      session && this.options.adapterRegistry.get(session.provider);
-    const native =
-      session && adapter?.nativeSessionIdentity?.(session.resumeCursor);
-    const nativeBindingKey =
-      session && this.preparedTurnBinding(threadId).nativeBindingKey;
     if (
-      session?.provider !== 'claude' ||
-      session.persistSession === false ||
-      !adapter?.engineEnded ||
-      !native ||
-      typeof nativeBindingKey !== 'string' ||
+      !isCurrent() ||
       !this.isRetainedSyncOwner(threadId, context) ||
       this.persistedPortableConsentOfThread(threadId) ||
       this.toolRestrictions.has(threadId) ||
@@ -2564,7 +2601,7 @@ export class OrchestrationService {
       throw new Error('group_sync_unavailable');
     const restriction: SessionToolRestriction = {
       threadId,
-      nativeSessionId: native.sessionId,
+      nativeSessionId,
       nativeBindingKey,
       generation: crypto.randomUUID(),
       clientTurnId,
@@ -2573,7 +2610,7 @@ export class OrchestrationService {
         if (
           signal.aborted ||
           this.toolRestrictions.get(threadId)?.restriction !== restriction ||
-          this.options.adapterRegistry.get('claude') !== adapter ||
+          !isCurrent() ||
           !this.isRetainedSyncOwner(threadId, context)
         )
           throw new Error('group_sync_activation_changed');
@@ -2606,7 +2643,7 @@ export class OrchestrationService {
           recovered !== adapter ||
           adapter.nativeSessionIdentity?.(
             this.sessionReadModel.get(threadId)?.resumeCursor,
-          )?.sessionId !== native.sessionId ||
+          )?.sessionId !== nativeSessionId ||
           this.preparedTurnBinding(threadId).nativeBindingKey !==
             nativeBindingKey
         )
@@ -2677,7 +2714,7 @@ export class OrchestrationService {
                 this.sessionReadModel.get(threadId)?.resumeCursor,
               );
               if (
-                observedNative?.sessionId !== native.sessionId ||
+                observedNative?.sessionId !== nativeSessionId ||
                 this.preparedTurnBinding(threadId).nativeBindingKey !==
                   nativeBindingKey
               )
@@ -2688,10 +2725,10 @@ export class OrchestrationService {
               restriction.assertCurrent();
               return {
                 sessionId: threadId,
-                nativeSessionId: native.sessionId,
+                nativeSessionId,
                 nativeIdentityHash: `sha256:${crypto
                   .createHash('sha256')
-                  .update(JSON.stringify([nativeBindingKey, native.sessionId]))
+                  .update(JSON.stringify([nativeBindingKey, nativeSessionId]))
                   .digest('hex')}`,
                 turnId,
                 terminalEventId: event.eventId,
