@@ -199,6 +199,10 @@ describe('typing a command skill', () => {
       content:
         'Could not read /release-check "unclosed: unterminated double quote (") — it never closes',
     });
+    // It did not run: the line stays in the composer to correct (#5491).
+    expect(mocks.updateChat).not.toHaveBeenCalledWith('session-1', {
+      input: '',
+    });
   });
 
   test('a surplus positional is an error naming it, not a dropped value', async () => {
@@ -218,6 +222,10 @@ describe('typing a command skill', () => {
         "/release-check: no variable left for 'b' — this command takes 1 value — nothing was sent",
     });
     expect(mocks.runSkill).not.toHaveBeenCalled();
+    // It did not run: the line stays in the composer to correct (#5491).
+    expect(mocks.updateChat).not.toHaveBeenCalledWith('session-1', {
+      input: '',
+    });
   });
 
   // The command word can differ from the skill name.
@@ -274,6 +282,10 @@ describe('typing a command skill', () => {
       content: 'Could not read /release-check: Try again in a moment.',
     });
     expect(mocks.runSkill).not.toHaveBeenCalled();
+    // It did not run: the line stays in the composer to correct (#5491).
+    expect(mocks.updateChat).not.toHaveBeenCalledWith('session-1', {
+      input: '',
+    });
   });
 
   test('a skill nobody enabled is not a command', async () => {

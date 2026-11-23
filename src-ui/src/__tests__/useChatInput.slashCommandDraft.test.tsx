@@ -211,6 +211,7 @@ describe('slash commands and the saved draft', () => {
   for (const [line, said] of [
     ['/hlep me', 'Unknown command: /hlep me'],
     ['/help "unclosed', 'Could not read /help "unclosed'],
+    ['/clear', '/clear isn’t a Station command'],
   ] as const) {
     test(`a command that did not run (${line}) keeps its line in the composer and saved`, async () => {
       const { result } = renderComposer();

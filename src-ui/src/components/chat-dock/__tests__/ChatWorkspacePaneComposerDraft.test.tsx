@@ -1150,6 +1150,82 @@ test('a started New chat leaves no text behind, and a request with its own promp
   expect(pickerProps.at(-1)!.initialPrompt).toBeUndefined();
 });
 
+// Every field a New chat request (`NewChatIntent`) can carry makes it a
+// request with its own payload: it never shows kept text; only a plain open
+// does.
+const KEPT_SELECTION = { context: '__global__', agentSlug: 'assistant' };
+for (const [kind, intent] of [
+  ['taskShaping', { taskShaping: true }],
+  ['startWithDefault', { startWithDefault: true }],
+  ['initialPrompt', { initialPrompt: 'Its own prompt' }],
+  ['initialFiles', { initialFiles: [new File(['x'], 'notes.txt')] }],
+  ['selection', { selection: KEPT_SELECTION }],
+  // On the wire this is a selection that does not parse (`readNewChatIntent`
+  // derives `selectionInvalid` from it; the field itself is not read).
+  [
+    'selectionInvalid',
+    { selection: { context: '__global__', agentSlug: '' } as never },
+  ],
+  ['handoff', { handoff: { kind: 'skills' as const } }],
+  ['onClosed', { onClosed: () => {} }],
+] as const) {
+  test(`a request carrying ${kind} never shows kept New chat text`, async () => {
+    renderDockedPane();
+    await act(async () => {});
+    act(() => {
+      dispatchNewChatIntent({});
+    });
+    await screen.findByRole('region', { name: 'New chat picker' });
+    act(() => pickerProps.at(-1)!.onDraftChange('Kept from a plain draft'));
+    act(() => pickerProps.at(-1)!.onClose());
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('region', { name: 'New chat picker' }),
+      ).toBeNull(),
+    );
+    const before = pickerProps.length;
+    act(() => {
+      dispatchNewChatIntent(
+        intent as Parameters<typeof dispatchNewChatIntent>[0],
+      );
+    });
+    await waitFor(() => expect(pickerProps.length).toBeGreaterThan(before));
+    await screen.findByRole('region', { name: 'New chat picker' });
+    expect(pickerProps.at(-1)!.initialPrompt).not.toBe(
+      'Kept from a plain draft',
+    );
+  });
+}
+
+// Intended: a request's own prompt is the draft's text once it is open; if
+// the person dismisses it, that text is kept for the dock's Project like any
+// other dismissed draft's, replacing what was kept there before.
+test("a dismissed request's own prompt becomes the kept text for its Project", async () => {
+  renderDockedPane();
+  await act(async () => {});
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await screen.findByRole('region', { name: 'New chat picker' });
+  act(() => pickerProps.at(-1)!.onDraftChange('Earlier kept text'));
+  act(() => pickerProps.at(-1)!.onClose());
+  act(() => {
+    dispatchNewChatIntent({ initialPrompt: 'From a link' });
+  });
+  await waitFor(() =>
+    expect(pickerProps.at(-1)!.initialPrompt).toBe('From a link'),
+  );
+  // The real draft reports its text as it mounts.
+  act(() => pickerProps.at(-1)!.onDraftChange('From a link'));
+  act(() => pickerProps.at(-1)!.onClose());
+  act(() => {
+    dispatchNewChatIntent({});
+  });
+  await waitFor(() =>
+    expect(pickerProps.at(-1)!.initialPrompt).toBe('From a link'),
+  );
+});
+
 // Kept text stays with the scope it was typed in: the Project the draft was
 // opened for, or none. It is offered only to a New chat for that same scope.
 test('kept New chat text is offered only to a New chat for the same Project, both ways', async () => {

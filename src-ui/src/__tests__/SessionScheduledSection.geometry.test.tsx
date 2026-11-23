@@ -48,7 +48,11 @@ vi.mock('../hooks/useAgentSchedule', () => ({
       wakeUps: [],
       jobProposals: [],
       jobs: [],
-      automations: [{ name: 'release-notes-digest' }],
+      automations: [
+        { name: 'release-notes-digest' },
+        { name: 'nightly-dependency-audit' },
+        { name: 'weekly-review-summary' },
+      ],
     },
     loaded: true,
     cancelWakeUp: { mutate: vi.fn(), isPending: false },
@@ -65,6 +69,25 @@ vi.mock('../hooks/useScheduler', () => ({
         prompt: 'p',
         enabled: true,
         schedule: { kind: 'every', everyMs: 3_600_000 },
+      },
+      // Long names: one with no break opportunity at all, one with spaces.
+      {
+        name: 'nightly-dependency-audit',
+        displayName:
+          'NightlyDependencyAuditAcrossEveryWorkspacePackageAndTheLockfileToo',
+        provider: 'builtin',
+        prompt: 'p',
+        enabled: true,
+        schedule: { kind: 'every', everyMs: 86_400_000 },
+      },
+      {
+        name: 'weekly-review-summary',
+        displayName:
+          'Weekly review summary of every merged change and the open questions left on them',
+        provider: 'builtin',
+        prompt: 'p',
+        enabled: false,
+        schedule: { kind: 'every', everyMs: 604_800_000 },
       },
     ],
     isSuccess: true,
@@ -145,10 +168,13 @@ describe.skipIf(!chromiumAvailable)(
         const controls = [
           page.getByRole('button', { name: 'New automation' }),
           page.getByRole('button', { name: 'All automations' }),
-          page.getByRole('button', { name: /^Run .* now$/ }),
-          page.getByRole('button', { name: /^Edit / }),
-          page.getByRole('switch'),
+          ...(await page.getByRole('button', { name: /^Run .* now$/ }).all()),
+          ...(await page.getByRole('button', { name: /^Edit / }).all()),
+          ...(await page.getByRole('switch').all()),
+          ...(await page.locator('.session-scheduled__name').all()),
         ];
+        // Three rows, each with Run, Edit, a switch and a name.
+        expect(controls).toHaveLength(2 + 3 * 4);
         for (const control of controls) {
           const box = await control.boundingBox();
           expect(box).not.toBeNull();
@@ -161,6 +187,17 @@ describe.skipIf(!chromiumAvailable)(
         const allLink = await controls[1].boundingBox();
         expect(Math.abs(newLink!.y - allLink!.y)).toBeLessThan(1);
         expect(newLink!.x).toBeLessThan(allLink!.x);
+        // Each link is one line of text, not "New / automation" stacked.
+        for (const link of controls.slice(0, 2)) {
+          const lines = await link.evaluate((node) => {
+            const range = document.createRange();
+            range.selectNodeContents(node);
+            return new Set(
+              [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+            ).size;
+          });
+          expect(lines).toBe(1);
+        }
         // Nothing in the card is wider than the card.
         const overflow = await page
           .getByTestId('card')
