@@ -1571,7 +1571,9 @@ and [SDK Task mutations](sdk.md#task-mutations).
 ## Personal Session-group preview
 
 The **Session groups** feature preview is off by default and is offered on
-personal Stations. When enabled, `POST /api/orchestration/session-groups`
+personal Stations. The `cliSessionGroups` handshake flag indicates API support.
+The feature preview still governs each operation.
+When enabled, `POST /api/orchestration/session-groups`
 records a group of Tasks for local, explicitly bound external Engines.
 Creation records the plan without starting a Session. It accepts an operation
 ID, a deadline, up to 32 named members with dependency IDs, a concurrency
@@ -1585,6 +1587,16 @@ reads the group projection for the creating credential. A disabled preview or
 unavailable group returns 404. A credential that becomes stale during creation
 cannot authorize the durable write. The projection contains group and member
 state without exposing the captured Task prompts.
+
+`POST /api/orchestration/session-groups/:groupId/run` runs ready members
+through local Task dispatch. Station checks the creating credential, the
+group deadline, and the reserved Session and first-turn IDs at dispatch.
+Running a group can spend provider credits. A completed dependency requires
+positive terminal evidence for that member's accepted initial turn.
+`POST /api/orchestration/session-groups/:groupId/cancel` closes further
+admission and requests stops for the group's confirmed initial turns.
+Missing acceptance remains unconfirmed. Paired callers need
+`orchestration:read` for inspection and `orchestration:operate` for mutations.
 
 ## Personal Task room agent requests
 
