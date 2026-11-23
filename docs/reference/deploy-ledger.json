@@ -1,5 +1,47 @@
 [
   {
+    "timestampUtc": "2026-11-23T19:56:44Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261123.45253065268",
+    "sha": "0db85c43f969e1a903eb3ed9d05d25e0fb0534a6",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45253065268",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261123.45253065268 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "839a1e8b0a2f47a29efcc54ff9a165495b0dd218",
+      "groups": {
+        "feat": [
+          "[#5514](https://github.com/kontourai/station/pull/5514) feat: show automations with the next seven days and recent outcomes",
+          "[#5510](https://github.com/kontourai/station/pull/5510) feat(projects): add scoped WebMCP sharing and align Project actions"
+        ],
+        "fix": [
+          "[#5513](https://github.com/kontourai/station/pull/5513) fix(chat): stop the pending list's second reader from breaking the inbox read",
+          "[#5509](https://github.com/kontourai/station/pull/5509) fix(consent): isolate pending outside-agent approvals",
+          "[#5508](https://github.com/kontourai/station/pull/5508) fix(mcp): honor access token expiry for authorization-code-only servers",
+          "[#5512](https://github.com/kontourai/station/pull/5512) fix: bind portable delegation attempts to tool restrictions",
+          "[#5507](https://github.com/kontourai/station/pull/5507) fix: bind child tool restrictions to durable create claims",
+          "[#5503](https://github.com/kontourai/station/pull/5503) fix(automations): record a person's Stop as stopped and pause the budget while a Task waits on a person",
+          "[#5502](https://github.com/kontourai/station/pull/5502) fix(chat): keep the transcript still when a status appears and when a row is opened at the end"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5511](https://github.com/kontourai/station/pull/5511) refactor: share authorized Task delegation dispatch",
+          "[#5505](https://github.com/kontourai/station/pull/5505) perf(chat): reduce history reads before follow-up sends",
+          "[#5504](https://github.com/kontourai/station/pull/5504) chore(ci): empty the qualification known-failures list of entries whose issues closed"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
     "timestampUtc": "2026-11-23T13:49:44Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261123.1",

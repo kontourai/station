@@ -1,5 +1,12 @@
 import type { ConversationInboxEntry } from '@kontourai/station-contracts/orchestration';
-import { skipToken, useQuery } from '@tanstack/react-query';
+import {
+  hashKey,
+  type QueryState,
+  skipToken,
+  useQuery,
+  useQueryClient,
+} from '@tanstack/react-query';
+import { useCallback, useSyncExternalStore } from 'react';
 import { useOptionalConversationConnection } from '../components/conversation/ConversationConnectionContext';
 import type { StationConnection } from '../connections/station-connection';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
@@ -52,6 +59,33 @@ export function withInboxReceipts(
 }
 
 /**
+ * The list's inbox query as the cache holds it, without becoming one of its
+ * observers. An observer's options replace the query's, so a second observer
+ * with no real read (skipToken, or none) could be the one a refetch runs
+ * through; a cache subscriber registers nothing. With no list mounted there
+ * is no query, and so no entries.
+ */
+function useInboxQueryState(
+  queryKey: readonly unknown[],
+): QueryState<ConversationInboxEntry[]> | undefined {
+  const client = useQueryClient();
+  const queryHash = hashKey(queryKey);
+  const subscribe = useCallback(
+    (onChange: () => void) =>
+      client.getQueryCache().subscribe((event) => {
+        if (event.query.queryHash === queryHash) onChange();
+      }),
+    [client, queryHash],
+  );
+  const read = useCallback(
+    () =>
+      client.getQueryCache().get<ConversationInboxEntry[]>(queryHash)?.state,
+    [client, queryHash],
+  );
+  return useSyncExternalStore(subscribe, read, read);
+}
+
+/**
  * The entries the pending list shows now, read from the same query without
  * reading the inbox again: for a second view of that list (the chat's
  * context card). Empty while the list's own read has no current answer.
@@ -71,15 +105,14 @@ export function useConversationInboxSnapshot(
       ? undefined
       : (connection?.targetApiBase ?? target?.apiBase ?? scope?.apiBase);
   const queryKey = inboxQueryKey(scope, conversationId, apiBase);
-  const query = useQuery<ConversationInboxEntry[]>({
-    queryKey,
-    queryFn: skipToken,
-    gcTime: 0,
-  });
+  const query = useInboxQueryState(queryKey);
   const receipts = useInboxReceipts(queryKey);
   const current =
     connection?.isCurrent() ?? (target?.requestScope ?? hostScope)?.isCurrent();
-  return connection !== null && current && !query.isError && !query.isPaused
-    ? visibleInboxEntries(withInboxReceipts(query.data, receipts))
+  return connection !== null &&
+    current &&
+    query?.status !== 'error' &&
+    query?.fetchStatus !== 'paused'
+    ? visibleInboxEntries(withInboxReceipts(query?.data, receipts))
     : [];
 }
