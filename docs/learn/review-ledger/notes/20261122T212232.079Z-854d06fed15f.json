@@ -1,0 +1,9 @@
+{
+  "revision": "c21b82d9ea0d489bce1be052adcc1dade65286f4",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the test fixture against the startup guide and module map. The Rust tests still execute the real fixture and check framed output, cache reuse, refresh and fallback. The test child writes the fixture before the Rust test sets permissions and runs it. The production process group, five-second deadline, 64 KiB output limit and retry floor remain accurate. A Linux descriptor-retention control reproduced the original PATH mismatch. The final fixture passed the same control and all seven Linux module tests.","inputs":["src-desktop/src/login_shell.rs"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed the test fixture against the startup guide and module map. The Rust tests still execute the real fixture and check framed output, cache reuse, refresh and fallback. The test child writes the fixture before the Rust test sets permissions and runs it. The production process group, five-second deadline, 64 KiB output limit and retry floor remain accurate. A Linux descriptor-retention control reproduced the original PATH mismatch. The final fixture passed the same control and all seven Linux module tests.","inputs":["src-desktop/src/login_shell.rs"]}
+  ]
+}

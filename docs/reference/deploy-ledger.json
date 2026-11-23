@@ -1,5 +1,36 @@
 [
   {
+    "timestampUtc": "2026-11-22T23:57:28Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261122.45085428207",
+    "sha": "70bc93f92d99038e0e5a959ba4c5d60b7773ab8c",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45085428207",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261122.45085428207 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "91be22328f12a9aa40ab279c9ada7120bc68ed48",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5483](https://github.com/kontourai/station/pull/5483) fix(test): isolate login-shell fixture writes"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5482](https://github.com/kontourai/station/pull/5482) perf(dock): show the desktop Inbox immediately on warm reopen"
+        ]
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-11-22T14:47:44Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261122.2",
