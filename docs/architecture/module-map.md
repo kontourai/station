@@ -687,7 +687,7 @@ live attention facts exist. The built-in application composition is
 exact-route owners, duplicate management-view owners, and duplicate sidebar or palette
 order slots. Customize rows have unique order within each group and cannot also be
 sidebar entries or hidden from navigation. The Customize page's groups are
-`CUSTOMIZE_NAV_GROUPS` (Your agents, What they run on, What they can reach), and its
+`CUSTOMIZE_NAV_GROUP_ORDER` (Your agents, What they run on, What they can reach), and its
 projection orders by group, then by order within the group. `customizeItemForView`
 names the item a view belongs to, from the same management ownership, so the page's
 list and the sidebar's Customize button cannot disagree about it. Composition and
