@@ -2311,6 +2311,17 @@ capability, or `{success: true, data: {supported: true, events}}` for a
 successful catalog read. Each entry has `name` and optional `title` and
 `description`. A catalog read failure returns HTTP 502 with a Station error.
 
+### Poll an integration’s events
+
+`POST /integrations/:id/events/poll` uses the same operator and shared-account
+checks. Send an event `name` and a `cursor`. Start with `null`, then pass the
+returned cursor when checking again. Optional fields are `arguments`,
+`maxEvents` (1–100, default 25) and `maxAgeMs`. Station returns the server’s
+`hasMore` and `truncated` flags with the page. If the server advertises no
+Events support, `data.supported` is false. Station bounds the response while
+reading it and checks event count before returning the page. Polls do not
+create subscriptions.
+
 ### Discover transcript App tools
 
 `GET /integrations/:serverId/ui-tools` returns `{success: true, data: string[]}`

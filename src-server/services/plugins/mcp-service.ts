@@ -15,6 +15,8 @@ import type {
   ToolDef,
   ToolMetadata,
   ToolServerEventCatalog,
+  ToolServerEventPollInput,
+  ToolServerEventPollPage,
 } from '@kontourai/station-contracts/tool';
 import {
   type MCPConnection,
@@ -202,6 +204,28 @@ const mcpEventListResult = z.object({
     )
     .max(512),
 });
+
+const mcpEventPollResult = z.object({
+  cursor: z.string().min(1).max(4096),
+  truncated: z.boolean(),
+  hasMore: z.boolean(),
+  events: z
+    .array(
+      z.object({
+        eventId: z.string().min(1).max(256),
+        timestamp: z.iso.datetime({ offset: true }),
+        data: z.json(),
+      }),
+    )
+    .max(100),
+});
+
+function supportsMcpEvents(conn: MCPConnection): boolean {
+  return (
+    conn.negotiation.era === 'modern' &&
+    conn.negotiation.extensionIds.includes('io.modelcontextprotocol/events')
+  );
+}
 
 export class MCPServerDisabledError extends StationOwnedToolServerError {}
 export class MCPToolDisabledError extends StationOwnedToolServerError {}
@@ -1528,12 +1552,17 @@ export class MCPService {
       | 'prompt-read'
       | 'event-read',
     fn: (conn: MCPConnection) => Promise<T>,
-    openOnly = false,
+    {
+      openOnly = false,
+      signal,
+    }: { openOnly?: boolean; signal?: AbortSignal } = {},
   ): Promise<T> {
+    signal?.throwIfAborted();
     const claim = this.mcpCustody.acquire(serverId, 'app');
     let failed = false;
     try {
       const def = await this.configLoader.loadIntegration(serverId);
+      signal?.throwIfAborted();
       if (!claim.isCurrent()) throw new MCPLocalCustodyError('stale');
       if (def.enabled === false) {
         throw new MCPServerDisabledError(
@@ -1578,9 +1607,11 @@ export class MCPService {
         throw new StationOwnedToolServerError('MCP server is not connected');
       let conn: MCPConnection;
       try {
-        conn = await this.establishChild(def, async (child) =>
-          claim.connect(child, await this.oauthConnectOptions(def)),
-        );
+        conn = await this.establishChild(def, async (child) => {
+          const options = await this.oauthConnectOptions(def);
+          signal?.throwIfAborted();
+          return claim.connect(child, options);
+        });
         await this.requireCurrentDefinition(claim, def);
       } catch (error) {
         throw captureToolServerOperationFailure(
@@ -1763,7 +1794,7 @@ export class MCPService {
           ...(hasUiPolicy ? { ui } : {}),
         };
       },
-      openOnly,
+      { openOnly },
     );
   }
 
@@ -1889,13 +1920,7 @@ export class MCPService {
 
   async discoverMCPEvents(serverId: string): Promise<ToolServerEventCatalog> {
     return this.withMcpConnection(serverId, 'event-read', async (conn) => {
-      if (
-        conn.negotiation.era !== 'modern' ||
-        !conn.negotiation.extensionIds.includes(
-          'io.modelcontextprotocol/events',
-        )
-      )
-        return { supported: false };
+      if (!supportsMcpEvents(conn)) return { supported: false };
       const { events } = await conn.client.request(
         { method: 'events/list', params: {} },
         mcpEventListResult,
@@ -1907,6 +1932,36 @@ export class MCPService {
         );
       return { supported: true, events };
     });
+  }
+
+  async pollMCPEvents(
+    serverId: string,
+    input: ToolServerEventPollInput,
+    signal: AbortSignal,
+  ): Promise<ToolServerEventPollPage> {
+    return this.withMcpConnection(
+      serverId,
+      'event-read',
+      async (conn) => {
+        signal.throwIfAborted();
+        if (!supportsMcpEvents(conn)) return { supported: false };
+        const maxEvents = input.maxEvents ?? 25;
+        const page = await conn.client.request(
+          { method: 'events/poll', params: { ...input, maxEvents } },
+          mcpEventPollResult,
+          { signal, timeout: 10_000 },
+        );
+        if (
+          page.events.length > maxEvents ||
+          Buffer.byteLength(JSON.stringify(page)) > 256 * 1024
+        )
+          throw new StationOwnedToolServerError(
+            'The event page exceeds the read limit.',
+          );
+        return { supported: true, ...page };
+      },
+      { signal },
+    );
   }
 
   private async assertMcpUiToolEnabled(

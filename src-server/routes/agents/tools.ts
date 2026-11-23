@@ -11,6 +11,7 @@ import {
   originalMcpToolName,
 } from '@kontourai/station-shared/mcp-tool-selection';
 import { type Context, Hono } from 'hono';
+import { z } from 'zod';
 import {
   markIntegrationEnabledExplicit,
   wasIntegrationEnabledExplicit,
@@ -21,6 +22,7 @@ import {
   MCPAppsToolAccessError,
 } from '../../runtime/mcp/mcp-apps-metadata.js';
 import { resolveMCPToolUIRef } from '../../runtime/mcp/mcp-ui-resolver.js';
+import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import { normalizePersistedToolServerReason } from '../../security/tool-server-reason.js';
 import {
   type ApprovalOutcome,
@@ -234,6 +236,14 @@ function integrationReadProjection(
 
 /** The fields whose values reach a launched tool server's environment. */
 const ENV_FIELDS = ['env', 'secretEnv'] as const;
+
+const eventPollInput = z.strictObject({
+  name: z.string().min(1).max(256),
+  cursor: z.string().min(1).max(4096).nullable(),
+  arguments: z.record(z.string(), z.json()).optional(),
+  maxEvents: z.number().int().min(1).max(100).optional(),
+  maxAgeMs: z.number().int().positive().optional(),
+});
 
 export function createToolRoutes(
   mcpService: MCPService,
@@ -587,41 +597,80 @@ export function createToolRoutes(
     }
   });
 
-  app.post('/:id/events/discover', async (c) => {
+  async function eventRead(
+    c: Context,
+    read: (refusal: () => Promise<Response | undefined>) => Promise<Response>,
+  ) {
     const authorizeOperator = mcpUiCallDeps.authorizeOperator;
     if (!authorizeOperator) return c.notFound();
     c.header('Cache-Control', 'private, no-store');
-    const authorized = async () => {
+    const refusal = async () => {
       try {
         await authorizeOperator(c);
-        return true;
       } catch {
-        return false;
+        return c.json(
+          {
+            success: false,
+            error: 'Only the Station operator can check events.',
+          },
+          403,
+        );
       }
     };
-    const forbidden = () =>
+    const denied = await refusal();
+    if (denied) return denied;
+    const response = await read(refusal).catch(() =>
       c.json(
         {
           success: false,
-          error: 'Only the Station operator can check events.',
+          error: 'Could not read events from this tool server.',
         },
-        403,
-      );
-    if (!(await authorized())) return forbidden();
-    const data = await mcpService
-      .discoverMCPEvents(param(c, 'id'))
-      .catch(() => undefined);
-    if (!(await authorized())) return forbidden();
-    return data
-      ? c.json({ success: true, data })
-      : c.json(
-          {
-            success: false,
-            error: 'Could not read events from this tool server.',
-          },
-          502,
+        502,
+      ),
+    );
+    return (await refusal()) ?? response;
+  }
+
+  app.post('/:id/events/discover', (c) =>
+    eventRead(c, async () => {
+      const data = await mcpService.discoverMCPEvents(param(c, 'id'));
+      return c.json({ success: true, data });
+    }),
+  );
+
+  app.post('/:id/events/poll', (c) =>
+    eventRead(c, async (refusal) => {
+      const body = await readBoundedRequestBody(c.req.raw, 16 * 1024);
+      if (body.status === 'too-large')
+        return c.json(
+          { success: false, error: 'Event filters exceed 16 KiB.' },
+          413,
         );
-  });
+      let input: unknown;
+      try {
+        if (body.status === 'ok') input = JSON.parse(body.body);
+      } catch {
+        return c.json(
+          { success: false, error: 'Invalid event poll request.' },
+          400,
+        );
+      }
+      const parsed = eventPollInput.safeParse(input);
+      if (!parsed.success)
+        return c.json(
+          { success: false, error: 'Invalid event poll request.' },
+          400,
+        );
+      const denied = await refusal();
+      if (denied) return denied;
+      const data = await mcpService.pollMCPEvents(
+        param(c, 'id'),
+        parsed.data,
+        c.req.raw.signal,
+      );
+      return c.json({ success: true, data });
+    }),
+  );
 
   app.get('/:serverId/ui-tools', async (c) => {
     const catalog = await mcpService.getOpenMCPUIToolCatalog(

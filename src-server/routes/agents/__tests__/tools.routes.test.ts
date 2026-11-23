@@ -120,7 +120,7 @@ function enableReadOnlyInitialResult(
 
 describe('Tool Routes', () => {
   const makeTempDir = trackTempDirs();
-  test('refuses event discovery before calling upstream and after operator access is lost', async () => {
+  test('refuses event reads before upstream work and before returning results after operator loss', async () => {
     let operator = false;
     function deferred<T>() {
       let resolve!: (value: T) => void;
@@ -171,6 +171,31 @@ describe('Tool Routes', () => {
       success: false,
       error: 'Only the Station operator can check events.',
     });
+
+    operator = true;
+    const poll = vi.spyOn(service, 'pollMCPEvents');
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          operator = false;
+          controller.enqueue(
+            new TextEncoder().encode(
+              JSON.stringify({ name: 'work.settled', cursor: null }),
+            ),
+          );
+          controller.close();
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const init = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+      duplex: 'half' as const,
+    };
+    expect((await app.request('/mcp-1/events/poll', init)).status).toBe(403);
+    expect(poll).not.toHaveBeenCalled();
   });
 
   test('serves only a resolver-approved local icon with private caching and nosniff', async () => {

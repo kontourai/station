@@ -147,6 +147,8 @@ type OAuthFixture = {
   protectedErrors: string[];
   failEventDiscovery: () => void;
   onlyAdvertiseEvents: (enabled: boolean) => void;
+  oversizeNextPoll: () => void;
+  oversizedPollCancelled: () => boolean;
 };
 
 async function startOAuthFixture(): Promise<OAuthFixture> {
@@ -160,6 +162,8 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
   const protectedErrors: string[] = [];
   let eventCatalogAvailable = true;
   let eventsOnly = false;
+  let oversizePoll = false;
+  let cancelledPoll = false;
   const mcpHandler = createMcpHandler(
     () => {
       const server = new McpServer(
@@ -253,6 +257,61 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
             },
           });
         }
+        if (request.headers.get('mcp-method') === 'events/poll') {
+          const { id, params } = z
+            .object({
+              id: z.number(),
+              params: z.object({
+                name: z.literal('work.settled'),
+                cursor: z.string().nullable(),
+                arguments: z.object({ projectIds: z.array(z.string()) }),
+                maxEvents: z.literal(1),
+              }),
+            })
+            .parse(await request.json());
+          expect(request.headers.get('mcp-name')).toBe('work.settled');
+          expect(params.arguments.projectIds).toEqual(['project-alpha']);
+          expect(params.cursor === null || params.cursor === 'start').toBe(
+            true,
+          );
+          if (oversizePoll) {
+            oversizePoll = false;
+            const body = new ReadableStream<Uint8Array>({
+              start(controller) {
+                controller.enqueue(new Uint8Array(512 * 1024 + 1).fill(32));
+              },
+              cancel() {
+                cancelledPoll = true;
+              },
+            });
+            return new Response(body, {
+              headers: { 'content-type': 'application/json' },
+            });
+          }
+          return Response.json({
+            jsonrpc: '2.0',
+            id,
+            result: {
+              resultType: 'complete',
+              cursor: params.cursor === null ? 'start' : 'next',
+              hasMore: params.cursor !== null,
+              truncated: false,
+              events:
+                params.cursor === null
+                  ? []
+                  : [
+                      {
+                        eventId: 'settled-1',
+                        timestamp: '2026-11-23T18:00:00Z',
+                        data: {
+                          projectId: 'project-alpha',
+                          outcome: 'completed',
+                        },
+                      },
+                    ],
+            },
+          });
+        }
         if (request.headers.get('mcp-method') === 'events/list') {
           const body = await request.json();
           const { id } = z.object({ id: z.number() }).parse(body);
@@ -325,6 +384,10 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
   );
   return {
     close: () => mcpHandler.close(),
+    oversizeNextPoll: () => {
+      oversizePoll = true;
+    },
+    oversizedPollCancelled: () => cancelledPoll,
     onlyAdvertiseEvents: (enabled) => {
       eventsOnly = enabled;
     },
@@ -548,6 +611,58 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
       success: false,
       error: 'Could not read events from this tool server.',
     });
+    const pollPath = '/integrations/oauth-proof/events/poll';
+    const poll = (cursor: string | null, maxEvents = 1) =>
+      app.request(
+        pollPath,
+        {
+          method: 'POST',
+          headers: operatorHeaders(),
+          body: JSON.stringify({
+            name: 'work.settled',
+            cursor,
+            maxEvents,
+            arguments: { projectIds: ['project-alpha'] },
+          }),
+        },
+        loopbackEnv(),
+      );
+    expect((await poll(null, 0)).status).toBe(400);
+    const started = await poll(null);
+    expect(started.status).toBe(200);
+    expect(await started.json()).toEqual({
+      success: true,
+      data: {
+        supported: true,
+        cursor: 'start',
+        hasMore: false,
+        truncated: false,
+        events: [],
+      },
+    });
+    const page = await poll('start');
+    expect(page.status).toBe(200);
+    expect(await page.json()).toEqual({
+      success: true,
+      data: {
+        supported: true,
+        cursor: 'next',
+        hasMore: true,
+        truncated: false,
+        events: [
+          {
+            eventId: 'settled-1',
+            timestamp: '2026-11-23T18:00:00Z',
+            data: { projectId: 'project-alpha', outcome: 'completed' },
+          },
+        ],
+      },
+    });
+
+    fixture.oversizeNextPoll();
+    expect((await poll('start')).status).toBe(502);
+    await vi.waitFor(() => expect(fixture.oversizedPollCancelled()).toBe(true));
+
     const resolveEngine = createEngineMcpOAuthResolver({
       homeDir: () => home,
       port: () => 43141,

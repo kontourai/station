@@ -386,6 +386,24 @@ export type ToolServerEventCatalog =
       }>;
     };
 
+export interface ToolServerEventPollInput {
+  name: string;
+  cursor: string | null;
+  arguments?: Record<string, unknown>;
+  maxEvents?: number;
+  maxAgeMs?: number;
+}
+
+export type ToolServerEventPollPage =
+  | { supported: false }
+  | {
+      supported: true;
+      cursor: string;
+      hasMore: boolean;
+      truncated: boolean;
+      events: Array<{ eventId: string; timestamp: string; data: unknown }>;
+    };
+
 export interface ToolServerProbeResult {
   ok: boolean;
   error?: string;

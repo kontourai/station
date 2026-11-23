@@ -179,6 +179,7 @@ const NON_ELICITING_METHODS_2026: ReadonlySet<string> = new Set([
   'ping',
   'completion/complete',
   'events/list',
+  'events/poll',
 ]);
 
 /** The JSON-RPC method each client helper sends. */
@@ -776,6 +777,53 @@ export const REQUIRES_AUTHORIZATION_FETCH = Symbol.for(
   'kontourai.station.oauth.requiresAuthorizationFetch',
 );
 
+// The current SDK omits Mcp-Name on Events poll requests.
+function withEventsPollTransport(fetch: FetchLike): FetchLike {
+  return async (input, init) => {
+    const headers = new Headers(init?.headers);
+    if (headers.get('mcp-method') !== 'events/poll') return fetch(input, init);
+    if (!headers.has('mcp-name')) {
+      if (typeof init?.body !== 'string')
+        throw new Error('Missing MCP poll request body');
+      const request: unknown = JSON.parse(init.body);
+      if (
+        !isObjectRecord(request) ||
+        request.method !== 'events/poll' ||
+        !isObjectRecord(request.params) ||
+        typeof request.params.name !== 'string'
+      )
+        throw new Error('Missing MCP event name');
+      const { name } = request.params;
+      const plain =
+        name.trim() === name &&
+        /^[\x20-\x7e]+$/u.test(name) &&
+        !(name.startsWith('=?base64?') && name.endsWith('?='));
+      headers.set(
+        'mcp-name',
+        plain ? name : `=?base64?${Buffer.from(name).toString('base64')}?=`,
+      );
+    }
+    const response = await fetch(input, { ...init, headers });
+    if (!response.body) return response;
+    let bytes = 0;
+    const body = response.body.pipeThrough(
+      new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          bytes += chunk.byteLength;
+          if (bytes > 512 * 1024)
+            throw new Error('MCP poll response exceeds 512 KiB');
+          controller.enqueue(chunk);
+        },
+      }),
+    );
+    return new Response(body, {
+      headers: response.headers,
+      status: response.status,
+      statusText: response.statusText,
+    });
+  };
+}
+
 export function createMCPTransport(
   def: ToolDef,
   authProvider?: OAuthClientProvider | AuthProvider,
@@ -820,24 +868,28 @@ export function createMCPTransport(
         ...remoteFetch(),
       });
 
-    case 'streamable-http':
+    case 'streamable-http': {
       if (!def.endpoint)
         throw new Error(
           `Tool '${def.id}': streamable-http transport requires 'endpoint'`,
         );
+      const { fetch } = remoteFetch(
+        def.headers
+          ? originBoundLiteralHeaderFetch(
+              def.endpoint,
+              def.headers,
+              remoteTransportFetch(def),
+            )
+          : undefined,
+      );
       return new StreamableHTTPClientTransport(new URL(def.endpoint), {
         authProvider,
         requestInit: { redirect: 'error' },
-        ...remoteFetch(
-          def.headers
-            ? originBoundLiteralHeaderFetch(
-                def.endpoint,
-                def.headers,
-                remoteTransportFetch(def),
-              )
-            : undefined,
+        fetch: withEventsPollTransport(
+          fetch ?? globalThis.fetch.bind(globalThis),
         ),
       });
+    }
 
     default:
       if (def.command) {
