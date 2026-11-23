@@ -25,6 +25,13 @@ for the dormant server owner. It describes reserved member starts, observed
 Session state and Flow lineage. The dispatch allowance bounds reservations.
 The view carries neither dispatch authority nor a portable Flow envelope.
 
+`@kontourai/station-contracts/ensemble` parses bounded
+[`station.ensemble/v1` member presets](../../packages/contracts/src/ensemble.ts)
+and renders deterministic rosters and member-specific briefs. It preserves authored
+prompt text and model declarations. Server preparation owns engine and model
+availability checks. Presets, including the Stationmaster designation, confer
+no authentication or execution authority.
+
 `LayoutPanelsRecord` holds device-local side/lower-panel state by layout host
 scope and conversation. `LAYOUT_PANELS_LAYOUT_BOUND` and
 `LAYOUT_PANELS_SESSION_BOUND` bound retention. The v3 device envelope retires the
