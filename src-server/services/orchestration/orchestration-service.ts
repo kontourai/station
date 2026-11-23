@@ -652,6 +652,7 @@ import {
   readThreadUsageTree,
   type ThreadUsageTreeReadOutcome,
 } from './thread-usage-tree-read.js';
+import { isPersonAuthoredTurn } from './turn-authorship.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
 import {
@@ -2628,6 +2629,11 @@ export class OrchestrationService {
     { ownerId: string; parentSessionId: string; clientTurnId: string }
   >();
   private readonly coordinatorToolGenerations = new Map<string, number>();
+  /**
+   * Automation Sessions a person took over (#4511), to the Task each
+   * automation created for it; see `recordPersonTakeover`.
+   */
+  private readonly personTakeovers = new Map<string, string>();
   /**
    * Turn progress + turn-stall observation (epic archive#4024, archive#4116):
    * owns the stall watchdog, per-thread windows, and the process-local
@@ -10170,6 +10176,12 @@ export class OrchestrationService {
        * untrusted-content permission asks about at a Station seam.
        */
       personAnswer?: true;
+      /**
+       * Set by the orchestration command route on an `interruptTurn` that
+       * passes Station's person check (`personCredentialRequest`). Recorded
+       * as `byPerson` on the turn's `session.stop-settled`.
+       */
+      personStop?: true;
     },
     internal?: OrchestrationDispatchInternalOptions,
   ): Promise<
@@ -11887,6 +11899,10 @@ export class OrchestrationService {
           }
         }
         case 'interruptTurn': {
+          // A person's Stop (the route's person check) is recorded as such on
+          // `session.stop-settled`, so an automation can tell it from its own
+          // budget interrupt, which never reaches this command.
+          const byPerson = context?.personStop === true;
           const pendingStart = this.engineStartCancels.get(command.threadId);
           if (
             pendingStart &&
@@ -11976,6 +11992,7 @@ export class OrchestrationService {
                 ? { clientTurnId: command.clientTurnId }
                 : {}),
               ...(command.turnId ? { turnId: command.turnId } : {}),
+              ...(byPerson ? { byPerson: true as const } : {}),
             });
             this.persistReceipt(receipt);
             const pending: InterruptTurnResult = {
@@ -11996,6 +12013,8 @@ export class OrchestrationService {
               adapter,
               command.threadId,
               command.turnId,
+              'user',
+              byPerson,
             );
           if (
             interrupted.outcome === 'cooperative' ||
@@ -16401,6 +16420,42 @@ export class OrchestrationService {
       if (this.delegatedAppearance.get(threadId) === grant)
         this.delegatedAppearance.delete(threadId);
     };
+  }
+
+  /**
+   * #4511: a person took over this automation Session, which the automation
+   * started for `taskId`. Recorded by the automation runtime at each of that
+   * person's turn admissions, so a restart that forgets it restores it before
+   * the person's next turn starts.
+   */
+  recordPersonTakeover(threadId: string, taskId: string): void {
+    this.personTakeovers.set(threadId, taskId);
+  }
+
+  /**
+   * The Task a Station Control call from this Session may read and write as
+   * its own, when the Session itself acts for no one. Only in an automation
+   * Session a person took over, only while the turn that person typed is the
+   * running turn, and only the Task the automation created for it (the
+   * Session's room execution binding must still name it). The person's other
+   * authority is never lent: the Session's context began with content nobody
+   * on the owner's side wrote. Any other turn (the automation's own, an
+   * engine-opened one, a later wake) and the time between turns get none.
+   */
+  stationControlOwnTaskGrant(threadId: string): string | undefined {
+    const taskId = this.personTakeovers.get(threadId);
+    const store = this.options.eventStore;
+    if (!taskId || !store) return undefined;
+    if (store.readProjectTaskRoomExecutionBinding(threadId)?.taskId !== taskId)
+      return undefined;
+    const started = store.latestOwnTurnStarted(threadId)?.payload;
+    if (
+      !started?.turnId ||
+      !isPersonAuthoredTurn(started) ||
+      this.activeTurnIdOfThread(threadId) !== started.turnId
+    )
+      return undefined;
+    return taskId;
   }
 
   delegatedAppearanceOwner(threadId: string): string | undefined {

@@ -1,0 +1,9 @@
+{
+  "revision": "217ec0c2b8769d0d2c9ac98629bf7514aeb2c454",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"The unattended-Session approval card prefix now applies only to a Task an automation rule created; the citing pages describe tool-policy delivery and the phone notification card, and make no claim about the approval card body.","inputs":["src-server/services/approvals/approval-inbox.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"The unattended-Session approval card prefix now applies only to a Task an automation rule created; the citing pages describe tool-policy delivery and the phone notification card, and make no claim about the approval card body.","inputs":["src-server/services/approvals/approval-inbox.ts"]}
+  ]
+}

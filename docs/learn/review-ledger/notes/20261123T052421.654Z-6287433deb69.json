@@ -1,0 +1,13 @@
+{
+  "revision": "436b4ca4dbab9500c5051b403e99a9d236715639",
+
+  "notes": [
+    {"path":"docs/adr/0011-enforce-the-trusted-producer-pin-station-side.md","note":"Source change: a person's Stop marks session.stop-settled byPerson (operator or device origin) and the automation runtime reads it; the automation wall budget pauses while a blocking request is open. Grepped citing pages for stop-settled, initiatedBy, interruptTurn and maxWallRuntimeMs: their claims (interruptTurn as a command, cooperative stop callers passing initiatedBy user) remain true; no prose change needed.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Source change: a person's Stop marks session.stop-settled byPerson (operator or device origin) and the automation runtime reads it; the automation wall budget pauses while a blocking request is open. Grepped citing pages for stop-settled, initiatedBy, interruptTurn and maxWallRuntimeMs: their claims (interruptTurn as a command, cooperative stop callers passing initiatedBy user) remain true; no prose change needed.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Source change: a person's Stop marks session.stop-settled byPerson (operator or device origin) and the automation runtime reads it; the automation wall budget pauses while a blocking request is open. Grepped citing pages for stop-settled, initiatedBy, interruptTurn and maxWallRuntimeMs: their claims (interruptTurn as a command, cooperative stop callers passing initiatedBy user) remain true; no prose change needed.","inputs":["packages/contracts/src/runtime-events.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Source change: a person's Stop marks session.stop-settled byPerson (operator or device origin) and the automation runtime reads it; the automation wall budget pauses while a blocking request is open. Grepped citing pages for stop-settled, initiatedBy, interruptTurn and maxWallRuntimeMs: their claims (interruptTurn as a command, cooperative stop callers passing initiatedBy user) remain true; no prose change needed.","inputs":["packages/contracts/src/runtime-events.ts"]}
+  ]
+}

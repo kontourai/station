@@ -343,6 +343,7 @@ export function decodeAutomationActionIntent(
       'running',
       'completed',
       'failed',
+      'stopped',
       'indeterminate',
       'refused',
     ].includes(String(value.state)) ||

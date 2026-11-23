@@ -1,0 +1,11 @@
+{
+  "revision": "8fe5ade61c6a162f43f51cc2d5087f85e4678381",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked: the change only limits Scroll to bottom for a held row to when the end is out of view; no claim on this page covers it","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked: the change only limits Scroll to bottom for a held row to when the end is out of view; no claim on this page covers it","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked: the change only limits Scroll to bottom for a held row to when the end is out of view; no claim on this page covers it","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

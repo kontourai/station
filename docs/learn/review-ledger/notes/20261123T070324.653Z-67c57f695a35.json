@@ -1,0 +1,7 @@
+{
+  "revision": "384672c1050a3077184df9f24e4842d45e4c0d8f",
+
+  "notes": [
+    {"path":"docs/design/automations.md","note":"Reviewed the own-Task grant prose against station-control-policy.ts: five ownTask tools (task_thread_resolve removed, stays with a person), the Task brief read-access sentence, and removal of the two outcome sentences that a sibling change replaces.","inputs":["docs/design/automations.md"]}
+  ]
+}
