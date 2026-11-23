@@ -84,7 +84,7 @@ Moves so far:
   (`chat-show-reasoning`, `chat-show-tool-details`, `chat-dock-auto-hide`,
   `diff-style`, `diff-wrap`).
 - Color themes: the theme and accent controls moved to the Appearance page
-  (`/appearance`, listed in Customize). The `theme` and `accent-color` rows
+  (`/appearance`, opened from the command palette and these rows). The `theme` and `accent-color` rows
   stay in `appearance` with their ids, as links to that page (Theme also keeps
   the light/dark toggle), so `highlight=theme` and `highlight=accent-color`
   still reveal a row and Settings search still finds them.
