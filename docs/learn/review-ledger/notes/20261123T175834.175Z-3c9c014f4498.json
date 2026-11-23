@@ -1,0 +1,9 @@
+{
+  "revision": "dcfbe9088e920c49feb08f20b09d2f6f44cf2f1a",
+
+  "notes": [
+    {"path":"docs/guides/mobile-release.md","note":"Added tests for the pending list's second reader (it reads the list's query from the cache, an invalidation refetches through the list's own read, no console error, entries shown only while the list is mounted). Checked the citing pages: both reference this suite as evidence that the inbox read works across connection and credential changes; the existing tests they rely on are unchanged and still pass.","inputs":["src-ui/src/__tests__/useConversationInbox.test.tsx"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Added tests for the pending list's second reader (it reads the list's query from the cache, an invalidation refetches through the list's own read, no console error, entries shown only while the list is mounted). Checked the citing pages: both reference this suite as evidence that the inbox read works across connection and credential changes; the existing tests they rely on are unchanged and still pass.","inputs":["src-ui/src/__tests__/useConversationInbox.test.tsx"]}
+  ]
+}
