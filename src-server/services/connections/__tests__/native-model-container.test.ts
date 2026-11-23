@@ -20,6 +20,14 @@ const containerId = 'b'.repeat(64);
 
 afterEach(() => vi.resetAllMocks());
 
+function gate() {
+  let release!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  return { promise, resolve: release };
+}
+
 function processFixture() {
   const proc = Object.assign(new ChildProcess(), {
     stdin: new PassThrough(),
@@ -46,7 +54,7 @@ async function fixture({
   failExecRetirement?: boolean;
   execStopGate?: Promise<void>;
 } = {}) {
-  const execStopEntered = Promise.withResolvers<void>();
+  const execStopEntered = gate();
   const active = new Map<
     object,
     { operation: string; process: ReturnType<typeof processFixture> }
@@ -244,8 +252,8 @@ test('the fixed text result survives an independently failed exec settlement and
 });
 
 test('container retirement closes model admission during a held exec stop', async () => {
-  const stop = Promise.withResolvers<void>();
-  const prompt = Promise.withResolvers<void>();
+  const stop = gate();
+  const prompt = gate();
   onTestFinished(() => {
     stop.resolve();
     prompt.resolve();
