@@ -2,12 +2,15 @@ import type {
   AppConfig,
   FirstRunState,
   FirstRunTransitionRequest,
+  NewChatDefault,
 } from '@kontourai/station-contracts/config';
 import type { AgentMcpPromptListing } from '@kontourai/station-contracts/mcp-prompts';
 import type { ConversationStatsResponse } from '@kontourai/station-contracts/runtime';
 import type { SettingProvenanceEntry } from '@kontourai/station-contracts/settings-registry';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { _getApiBase } from '../api';
+import { hasCapability } from '../capability';
+import { readPublicStationCapabilities } from '../client/publicStationCapabilities';
 import {
   captureConnectionReadTarget,
   connectionQueryKey,
@@ -639,6 +642,71 @@ export function useRecordFirstRunDecisionMutation(
 ) {
   return useApiMutation<FirstRunState, FirstRunTransitionRequest>(
     (next) => recordFirstRunDecision(next),
+    {
+      invalidateKeys: [['config']],
+      onSuccess: options?.onSuccess,
+      onError: options?.onError,
+    },
+  );
+}
+
+/**
+ * Whether the host records a default for new chats (`newChatDefault`).
+ * `null`: its handshake could not be read. An older host has no such record,
+ * so a client keeps its own fixed-order pick for the session instead.
+ */
+export function useNewChatDefaultCapability(enabled = true) {
+  return useApiQuery(
+    ['config', 'new-chat-default', 'capability'],
+    async () => {
+      const handshake = await readPublicStationCapabilities(
+        await _getApiBase(),
+      );
+      return handshake ? hasCapability(handshake, 'newChatDefault') : null;
+    },
+    { staleTime: 5 * 60_000, retry: false, enabled },
+  );
+}
+
+/** What `POST /config/new-chat-default` left standing. */
+export interface RecordNewChatDefaultResult {
+  /** `false`: a default already stood and a first-signed-in pick never replaces it. */
+  recorded: boolean;
+  newChatDefault: NewChatDefault;
+}
+
+/**
+ * Record the Station's default for new chats. A `first-signed-in` pick is
+ * written only while none exists; the server's 409 for a later pick is an
+ * answer, not a failure, and carries the default that stands.
+ */
+async function recordNewChatDefault(
+  next: NewChatDefault,
+): Promise<RecordNewChatDefaultResult> {
+  const apiBase = await _getApiBase();
+  const response = await authenticatedFetch(
+    `${apiBase}/config/new-chat-default`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(next),
+    },
+  );
+  const result = await response.json();
+  if (result.success) {
+    return { recorded: true, newChatDefault: result.data as NewChatDefault };
+  }
+  if (response.status === 409 && result.data) {
+    return { recorded: false, newChatDefault: result.data as NewChatDefault };
+  }
+  throw new Error(result.error);
+}
+
+export function useRecordNewChatDefaultMutation(
+  options?: MutationOptions<RecordNewChatDefaultResult, NewChatDefault>,
+) {
+  return useApiMutation<RecordNewChatDefaultResult, NewChatDefault>(
+    (next) => recordNewChatDefault(next),
     {
       invalidateKeys: [['config']],
       onSuccess: options?.onSuccess,

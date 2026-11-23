@@ -921,6 +921,18 @@ export const APP_SETTINGS_REGISTRY = [
     // "this home predates the field", which is a different state from
     // `pending` — see `AppConfig.firstRun`.
   }),
+  defineSetting({
+    key: 'newChatDefault',
+    scope: 'station',
+    descriptor: { kind: 'composite' },
+    label: 'Default for new chats',
+    help: 'The agent a new chat starts with when nothing closer names one.',
+    description:
+      'The agent new chats on this Station start with, and whether Station chose the first engine signed in or a person chose it. Written only through POST /config/new-chat-default; absent means Station has not chosen one yet.',
+    // Shown and changed on Customize, not as a Settings row. The generic
+    // config write refuses it, so the "recorded once" rule cannot be skipped.
+    userFacing: false,
+  }),
 ] as const satisfies readonly SettingDefinition[];
 
 /** Persisted settings that are eligible for registry-driven UI rendering. */
@@ -995,6 +1007,32 @@ const REGISTRY_BY_KEY: ReadonlyMap<string, SettingDefinition> = new Map(
 const INTERNAL_FIELD_SET: ReadonlySet<string> = new Set(
   INTERNAL_APP_CONFIG_FIELDS,
 );
+
+/**
+ * Settings that have their own route because a rule governs how they change:
+ * the first-run record moves only forward, and a first-signed-in default for
+ * new chats is written only while none exists. Every generic writer (the
+ * config route and `station config set`, online or `--offline`) refuses them
+ * and names the route, so neither rule can be skipped.
+ */
+export const ROUTE_WRITTEN_APP_CONFIG_KEYS = {
+  firstRun: 'POST /config/first-run',
+  newChatDefault: 'POST /config/new-chat-default',
+} as const satisfies Partial<Record<keyof AppConfig, string>>;
+
+/** The refusal for a generic write naming a route-written key, if any. */
+export function routeWrittenKeyRefusal(
+  updates: Record<string, unknown>,
+): string | undefined {
+  // `in` rather than `Object.hasOwn`: SDK consumers compile contracts for
+  // ES2020. `updates` is a parsed request body or a CLI-built literal.
+  const key = Object.keys(ROUTE_WRITTEN_APP_CONFIG_KEYS).find(
+    (candidate) => candidate in updates,
+  ) as keyof typeof ROUTE_WRITTEN_APP_CONFIG_KEYS | undefined;
+  return key
+    ? `${key} is written through ${ROUTE_WRITTEN_APP_CONFIG_KEYS[key]}; no settings were saved.`
+    : undefined;
+}
 
 export interface SanitizeAppConfigUpdateResult {
   accepted: Partial<AppConfig>;

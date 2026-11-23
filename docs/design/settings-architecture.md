@@ -651,8 +651,10 @@ Station restart. The Veritas evidence switch is read from live configuration
 when Trust bundles or Task answer support are requested, so it applies after
 configuration activation without a restart.
 
-Settings export/import excludes `firstRun`: it records this home's first-run
-decision rather than a preference and cannot be written through `PUT /config/app`.
+Settings export/import excludes `firstRun` and `newChatDefault`: the first
+records this home's first-run decision rather than a preference, the second
+names this Station's own Agents, and neither can be written through
+`PUT /config/app`.
 Imports also ignore it in older settings files; other registered configuration
 and device preferences retain their existing transfer behavior.
 

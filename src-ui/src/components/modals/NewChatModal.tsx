@@ -2287,6 +2287,7 @@ export function NewChatModal({
                   : undefined
               }
               onFix={repairAgent}
+              newChatDefaultSlug={selectionModel.newChatDefaultSlug}
             />
           )}
         </div>

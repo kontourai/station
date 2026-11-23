@@ -1236,6 +1236,11 @@ export interface StationCapabilityFlags {
    * kept Task outputs in one list. Absent on hosted deployments.
    */
   projectLibrary?: boolean;
+  /**
+   * #5401: `POST /config/new-chat-default` records the Station's default
+   * for new chats (`AppConfig.newChatDefault`).
+   */
+  newChatDefault?: boolean;
   peerChatTunnelV1?: boolean;
   delegationLocalConversationV1?: boolean;
   /**

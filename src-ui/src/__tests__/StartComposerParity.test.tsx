@@ -77,6 +77,8 @@ vi.mock('../contexts/ConfigContext', () => ({
 }));
 
 const state = vi.hoisted(() => ({
+  /** App config as `useConfig` serves it; absent unless a test sets it. */
+  config: undefined as Record<string, unknown> | undefined,
   dockOpen: false,
   agents: [] as unknown[],
   projects: [] as unknown[],
@@ -109,6 +111,10 @@ vi.mock('../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => state.device,
 }));
 vi.mock('@kontourai/station-sdk', () => ({
+  // #5401: no host records a default here; the fixed-order pick applies.
+  useNewChatDefaultCapability: () => ({ data: false }),
+  useRecordNewChatDefaultMutation: () => ({ mutate: () => undefined }),
+  useEngineConnectionsQuery: () => ({ data: undefined, isFetching: false }),
   useFeaturePreviewsQuery: () => ({ data: state.featurePreviews }),
   useSshEnvironmentsQuery: () => ({
     data: state.environments,
@@ -179,7 +185,7 @@ vi.mock('@kontourai/station-sdk', () => ({
   useMaterializeEngineAgentMutation: () => ({ mutateAsync: vi.fn() }),
   telemetry: { track: vi.fn() },
 }));
-vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => undefined }));
+vi.mock('../contexts/ConfigContext', () => ({ useConfig: () => state.config }));
 // The caller's server-reported grant: this Station's operator.
 vi.mock('@kontourai/station-sdk/authority-observation', () => ({
   getAuthorityObservation: async () => ({
@@ -285,6 +291,7 @@ beforeAll(() => {
   Element.prototype.scrollIntoView = vi.fn();
 });
 beforeEach(() => {
+  state.config = undefined;
   state.dockOpen = false;
   resetStartChoicesForTests();
   localStorage.clear();
@@ -531,6 +538,35 @@ describe('an Agent that is not set up is never selected for you', () => {
     expect(
       home().queryByRole('region', { name: 'Set up an engine' }),
     ).toBeNull();
+  }, 30_000);
+
+  test('a stale default for new chats is passed over: no missing-Agent alert, and Start still prepares one', async () => {
+    // #5401: the Station default names an Agent this Station no longer has,
+    // and nothing can start. It must read as "nothing chosen", as with no
+    // record at all, not as a missing Agent that blocks Start.
+    state.config = {
+      newChatDefault: { agent: 'deleted-agent', reason: 'chosen' },
+    };
+    state.agents = [MUSE];
+    const { home, starts, cleanupListener } = renderBoth();
+    try {
+      const form = home().getByRole('form', { name: 'Start work' });
+      fireEvent.change(
+        within(form).getByRole('textbox', {
+          name: 'What would you like done?',
+        }),
+        { target: { value: 'Tidy the notes' } },
+      );
+      expect(
+        home().queryByText(/Your previous Agent is no longer available/),
+      ).toBeNull();
+      const start = within(form).getByRole('button', { name: 'Start' });
+      await waitFor(() => expect(start.hasAttribute('disabled')).toBe(false));
+      fireEvent.click(start);
+      await waitFor(() => expect(starts).toHaveLength(1));
+    } finally {
+      cleanupListener();
+    }
   }, 30_000);
 
   test('when nothing can start, setup is one compact card with the reason folded away', async () => {

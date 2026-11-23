@@ -1,0 +1,7 @@
+{
+  "revision": "bd1ef6423957f897bf6954a4b290dda985b7806e",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"The default chain now names the Station's default for new chats after remembered, recent, Project and view defaults, then the fixed engine order; checked against useNewChatSelectionModel and new-chat-modal-utils.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

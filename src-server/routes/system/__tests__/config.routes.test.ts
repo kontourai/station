@@ -2735,3 +2735,140 @@ describe('Station default approval mode under a managed ceiling', () => {
     expect(response.status, await response.clone().text()).toBe(200);
   });
 });
+
+/**
+ * The default for new chats (#5401): recorded once when Station chooses it,
+ * replaced only by a person's choice, and kept on disk through the app schema.
+ */
+describe('default for new chats', () => {
+  const post = (app: Hono, payload: unknown) =>
+    app.request('/new-chat-default', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+  async function withHome(
+    run: (
+      app: Hono,
+      reload: () => Promise<Record<string, unknown>>,
+    ) => Promise<void>,
+  ) {
+    const home = makeTempDir('station-new-chat-default-');
+    const loader = new ConfigLoader({
+      projectHomeDir: home,
+      watchFiles: false,
+    });
+    const app = createConfigRoutes(loader, mockLogger);
+    try {
+      await loader.loadAppConfig();
+      await run(app, async () => {
+        const restarted = new ConfigLoader({
+          projectHomeDir: home,
+          watchFiles: false,
+        });
+        try {
+          return (await restarted.loadAppConfig()) as unknown as Record<
+            string,
+            unknown
+          >;
+        } finally {
+          restarted.dispose();
+        }
+      });
+    } finally {
+      loader.dispose();
+    }
+  }
+
+  test('the first engine signed in is persisted and GET reports it', async () => {
+    await withHome(async (app, reload) => {
+      const response = await post(app, {
+        agent: 'codex',
+        reason: 'first-signed-in',
+      });
+      expect(response.status, await response.clone().text()).toBe(200);
+      expect((await json(response)).data).toEqual({
+        agent: 'codex',
+        reason: 'first-signed-in',
+      });
+      expect((await reload()).newChatDefault).toEqual({
+        agent: 'codex',
+        reason: 'first-signed-in',
+      });
+      const read = await json(await app.request('/app'));
+      expect(read.data.newChatDefault).toEqual({
+        agent: 'codex',
+        reason: 'first-signed-in',
+      });
+    });
+  });
+
+  test('an engine that becomes ready later does not replace it', async () => {
+    await withHome(async (app, reload) => {
+      await post(app, { agent: 'codex', reason: 'first-signed-in' });
+      const later = await post(app, {
+        agent: 'claude',
+        reason: 'first-signed-in',
+      });
+      expect(later.status).toBe(409);
+      expect((await json(later)).data).toEqual({
+        agent: 'codex',
+        reason: 'first-signed-in',
+      });
+      expect((await reload()).newChatDefault).toEqual({
+        agent: 'codex',
+        reason: 'first-signed-in',
+      });
+    });
+  });
+
+  test('a person’s choice replaces it', async () => {
+    await withHome(async (app, reload) => {
+      await post(app, { agent: 'codex', reason: 'first-signed-in' });
+      const chosen = await post(app, { agent: 'claude', reason: 'chosen' });
+      expect(chosen.status, await chosen.clone().text()).toBe(200);
+      expect((await reload()).newChatDefault).toEqual({
+        agent: 'claude',
+        reason: 'chosen',
+      });
+    });
+  });
+
+  test.each([
+    [{ agent: 'Not An Id', reason: 'chosen' }, 'by its id'],
+    [{ agent: 'codex', reason: 'because' }, 'must be'],
+    [{ agent: 'codex', reason: 'chosen', model: 'gpt' }, '"model"'],
+    [['codex'], 'must be an object'],
+  ])(
+    'a malformed request %j is refused and nothing is written',
+    async (payload, message) => {
+      await withHome(async (app, reload) => {
+        const response = await post(app, payload);
+        expect(response.status).toBe(400);
+        expect((await json(response)).error).toContain(message);
+        expect((await reload()).newChatDefault).toBeUndefined();
+      });
+    },
+  );
+
+  test('the generic config route refuses newChatDefault outright', async () => {
+    await withHome(async (app, reload) => {
+      const response = await app.request('/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          region: 'us-west-2',
+          newChatDefault: { agent: 'claude', reason: 'first-signed-in' },
+        }),
+      });
+      expect(response.status).toBe(400);
+      expect((await json(response)).error).toContain(
+        'POST /config/new-chat-default',
+      );
+      const stored = await reload();
+      expect(stored.newChatDefault).toBeUndefined();
+      expect(stored.region).not.toBe('us-west-2');
+    });
+  });
+});

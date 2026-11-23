@@ -40,6 +40,27 @@ function acpStatusFingerprint(payload: unknown): string | undefined {
   );
 }
 
+/**
+ * Re-read everything that says whether an engine can run: the Agents (their
+ * availability), the picker catalog, system status and the connection reads.
+ * The engine status event does this; so does a sign-in this client saw finish,
+ * which emits no such event.
+ */
+export function invalidateEngineReadiness(queryClient: QueryClient): void {
+  for (const name of ['agents', 'model-picker-catalog', 'system-status']) {
+    void queryClient.invalidateQueries({ queryKey: [name] });
+  }
+  void queryClient.invalidateQueries({
+    queryKey: ['connections'],
+    refetchType: 'all',
+    predicate: ({ queryKey }) =>
+      queryKey.length <= 2 ||
+      (queryKey.length === 3 &&
+        queryKey[1] === 'engines' &&
+        queryKey[2] === 'catalog'),
+  });
+}
+
 /** Compare with the last applied status for this authority, including across reconnects. */
 export function applyACPStatusEvent(
   queryClient: QueryClient,
@@ -68,18 +89,7 @@ export function applyACPStatusEvent(
   if (statuses.size > 128) statuses.delete(statuses.keys().next().value!);
   // An absent or evicted baseline is unknown and must refresh conservatively.
   if (previous === fingerprint) return;
-  for (const name of ['agents', 'model-picker-catalog', 'system-status']) {
-    void queryClient.invalidateQueries({ queryKey: [name] });
-  }
-  void queryClient.invalidateQueries({
-    queryKey: ['connections'],
-    refetchType: 'all',
-    predicate: ({ queryKey }) =>
-      queryKey.length <= 2 ||
-      (queryKey.length === 3 &&
-        queryKey[1] === 'engines' &&
-        queryKey[2] === 'catalog'),
-  });
+  invalidateEngineReadiness(queryClient);
   for (const name of [
     'engine-setup',
     'acp-connections',

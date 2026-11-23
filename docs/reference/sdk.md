@@ -2146,6 +2146,15 @@ shape and rules). An error answer rejects rather than resolving as no branding.
 
 Fetches app configuration.
 
+### `useNewChatDefaultCapability()` and `useRecordNewChatDefaultMutation()`
+
+`useNewChatDefaultCapability()` reads whether the host advertises
+`newChatDefault`; `null` means its handshake could not be read.
+`useRecordNewChatDefaultMutation()` posts `{ agent, reason }` to
+[`POST /config/new-chat-default`](api.md#default-for-new-chats) and refreshes
+the config read. It resolves `{ recorded, newChatDefault }`: `recorded: false`
+is the host keeping the default that already stood (its 409), not a failure.
+
 ### `useStatsQuery(agentSlug, conversationId, config?)`
 
 Fetches conversation stats. Disabled when either param is undefined. The
@@ -6722,6 +6731,9 @@ view lists `social` only for a browser on that computer and otherwise carries
 `socialSignIn: 'needs-browser-on-host'`. Responses are parsed
 strictly against `@kontourai/station-contracts/engine-sign-in`, and every
 caller supplies a captured `ApiRequestScope`.
+When an attempt turns `succeeded`, a Station-run sign-in turns `completed`, or
+a check answers `authenticated`, these hooks re-read engine readiness (Agents,
+the picker catalog and the connection reads), as the engine status event does.
 
 ## Guided engine setup queries
 

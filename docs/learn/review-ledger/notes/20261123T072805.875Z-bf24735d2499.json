@@ -1,0 +1,13 @@
+{
+  "revision": "aef7a1c513df4bedb5dc00e2559a303ec414e033",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Checked: routeWrittenKeyRefusal now tests keys with the in operator for ES2020 consumers; behaviour unchanged.","inputs":["packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"Checked: routeWrittenKeyRefusal now tests keys with the in operator for ES2020 consumers; behaviour unchanged.","inputs":["packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/guides/discord-gateway.md","note":"Checked: routeWrittenKeyRefusal now tests keys with the in operator for ES2020 consumers; behaviour unchanged.","inputs":["packages/contracts/src/settings-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked: routeWrittenKeyRefusal now tests keys with the in operator for ES2020 consumers; behaviour unchanged.","inputs":["packages/contracts/src/settings-registry.ts"]}
+  ]
+}

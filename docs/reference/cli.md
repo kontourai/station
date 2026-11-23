@@ -895,7 +895,7 @@ station config set <key> <value> [--offline]
 |----------|-------------|
 | `<key>` | A top-level configuration field, e.g. `registryUrl`. |
 | `<value>` | `true`/`false` become booleans, all-digit values become numbers, and other values stay strings. `null` is retained for registry-nullable fields and clears other accepted fields. |
-| `--offline` | Skip the live Station route and write `config/app.json` directly. A setting the installed [managed policy](../guides/managed-policy.md#settings) locks is refused, as it is by the live route. |
+| `--offline` | Skip the live Station route and write `config/app.json` directly. A setting the installed [managed policy](../guides/managed-policy.md#settings) locks is refused, as it is by the live route, and so are `firstRun` and `newChatDefault`, which only their own routes write. |
 
 `config get <key>` prints `(not set)` for an absent key.
 

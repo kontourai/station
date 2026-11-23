@@ -1,4 +1,6 @@
 import {
+  type AgentId,
+  agentId,
   type EngineConnectionId,
   parseEngineConnectionId,
 } from './agent-identity.js';
@@ -337,6 +339,83 @@ export interface AppConfig {
    * derivation.
    */
   firstRun?: FirstRunState;
+  /**
+   * The Agent every new chat on this Station starts with when nothing closer
+   * names one. Written through `POST /config/new-chat-default` only; see
+   * {@link NewChatDefault}.
+   */
+  newChatDefault?: NewChatDefault;
+}
+
+/**
+ * Why the default for new chats is what it is.
+ *
+ * - `first-signed-in` — Station chose the first engine that could run a chat,
+ *   in fixed order. Recorded once: an engine that becomes ready later does
+ *   not replace it.
+ * - `chosen` — a person chose it.
+ */
+export type NewChatDefaultReason = 'first-signed-in' | 'chosen';
+
+/**
+ * The Station's default for new chats: an Agent (an engine's own Agent, or
+ * Station's), never a model. A new chat uses that Agent's engine with the
+ * model the engine currently reports, so a model the engine retires is never
+ * pinned here.
+ *
+ * Precedence, closest first: the person's own choice in this tab, the Agent
+ * they last chose or chatted with in that context, the Project's default
+ * Agent, the view's default Agent, then this. An Agent that cannot start
+ * right now (signed out, deleted) is passed over for that chat and the
+ * record is kept, so it applies again once the engine is back.
+ */
+export interface NewChatDefault {
+  agent: AgentId;
+  reason: NewChatDefaultReason;
+}
+
+/**
+ * Why this default may not be recorded, or `undefined` when it may.
+ *
+ * A `first-signed-in` record is written only while none exists, so a second
+ * engine becoming ready, or a second device racing the first, never replaces
+ * it. A `chosen` record always replaces the current one.
+ */
+export function describeNewChatDefaultViolation(
+  current: NewChatDefault | undefined,
+  next: unknown,
+): string | undefined {
+  if (!next || typeof next !== 'object' || Array.isArray(next)) {
+    return 'A default for new chats must be an object with an agent and a reason.';
+  }
+  const extra = Object.keys(next).filter(
+    (key) => key !== 'agent' && key !== 'reason',
+  );
+  if (extra.length > 0) {
+    return `A default for new chats has only "agent" and "reason"; a request may not set ${extra
+      .map((key) => `"${key}"`)
+      .join(', ')}.`;
+  }
+  const { agent, reason } = next as { agent?: unknown; reason?: unknown };
+  if (typeof agent !== 'string' || !isCleanAgentId(agent)) {
+    return 'The default for new chats must name an Agent by its id.';
+  }
+  if (reason !== 'first-signed-in' && reason !== 'chosen') {
+    return 'The reason must be "first-signed-in" or "chosen".';
+  }
+  if (reason === 'first-signed-in' && current !== undefined) {
+    return 'This Station already has a default for new chats.';
+  }
+  return undefined;
+}
+
+function isCleanAgentId(value: string): boolean {
+  try {
+    agentId(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
