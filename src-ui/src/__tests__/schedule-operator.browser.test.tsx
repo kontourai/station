@@ -121,6 +121,7 @@ test('Automations: Next 7 days and the list fit phone and desktop in both themes
     import {createRoot} from 'react-dom/client';
     import {ScheduleNextDays, NextDaysTitle} from './src-ui/src/views/schedule/ScheduleNextDays';
     import {ScheduleAutomationList, OutcomeLegend} from './src-ui/src/views/schedule/ScheduleAutomationList';
+    import {PageSection} from './src-ui/src/components/PageSection';
     const NativeDate = Date;
     const fixed = NativeDate.parse('${NOW}');
     globalThis.Date = class extends NativeDate {
@@ -133,12 +134,13 @@ test('Automations: Next 7 days and the list fit phone and desktop in both themes
       return <main className="schedule" style={{padding:16}}>
         <h2 className="page-section__title" data-testid="next-title"><NextDaysTitle /></h2>
         <ScheduleNextDays onOpen={noop} />
-        <OutcomeLegend jobs={jobs} />
+        <PageSection title="All automations" className="automations-section" actions={<OutcomeLegend jobs={jobs} />}>
         <ScheduleAutomationList jobs={jobs}
           agents={[{slug:'helper',name:'Release helper',engineDisplayName:'Codex'}]}
           projectName={() => undefined} expanded={null} onExpand={noop} autoOpenRun={null}
           isRunning={() => false} getMissedCount={() => 0}
           actions={{onRun:noop,onPause:noop,onResume:noop,onEdit:noop,onDuplicate:noop,onDelete:noop}} />
+        </PageSection>
       </main>;
     }
     createRoot(document.getElementById('root')).render(<App/>);
@@ -152,6 +154,10 @@ test('Automations: Next 7 days and the list fit phone and desktop in both themes
         resolveCssImports(resolve(import.meta.dirname, '../index.css')) +
         resolveCssImports(
           resolve(import.meta.dirname, '../views/ScheduleView.css'),
+        ) +
+        // The page's own section frame, as ScheduleView loads it.
+        resolveCssImports(
+          resolve(import.meta.dirname, '../views/page-layout.css'),
         ),
     });
     const out = resolve('.kontourai/automations-list-5466');
@@ -197,16 +203,16 @@ test('Automations: Next 7 days and the list fit phone and desktop in both themes
               menuBox.y + menuBox.height / 2 - (rowBox.y + rowBox.height / 2),
             );
             expect(offset, 'menu centred in its row').toBeLessThanOrEqual(4);
-            // A full strip of twelve never runs into the status word.
+            // A full strip of twelve keeps clear of the status dot.
             const strip = await row.locator('.automations-strip').boundingBox();
-            const status = (await row
-              .locator('.automations-row__status')
+            const dot = (await row
+              .locator('.automations-row__status-dot')
               .boundingBox())!;
-            if (strip && strip.y + strip.height > status.y)
+            if (strip && strip.y + strip.height > dot.y)
               expect(
-                strip.x + strip.width,
-                'strip clear of status',
-              ).toBeLessThanOrEqual(status.x);
+                dot.x - (strip.x + strip.width),
+                'room between strip and status',
+              ).toBeGreaterThanOrEqual(8);
           }
           expect(await week.isVisible()).toBe(false);
           expect(
