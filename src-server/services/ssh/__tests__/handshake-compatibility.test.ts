@@ -135,6 +135,7 @@ describe('public handshake capability flags (station#1095)', () => {
       troubleshootPrepare: true,
       usageConnectionFilters: true,
       followUpAttachments: true,
+      cliSessionGroups: true,
     });
   });
 
@@ -206,6 +207,7 @@ describe('public handshake capability flags (station#1095)', () => {
       troubleshootPrepare: true,
       usageConnectionFilters: true,
       followUpAttachments: true,
+      cliSessionGroups: true,
     });
     for (const buildIdentityField of [
       'build',
