@@ -226,7 +226,7 @@ describe('outside-agent MCP transport and live authority', () => {
           'mcp-protocol-version': '2025-11-25',
         },
         body,
-        duplex: 'half',
+        duplex: 'half' as const,
       };
       const refused = await f.request('/mcp', init);
       expect(refused.status).toBe(404);
