@@ -1,0 +1,9 @@
+{
+  "revision": "10aa84c3b4f87cd3ca781ce6d1a986ac46497db8",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Traced the dormant inspector through the existing preset holder and its final caller and file identity check. The result projects the exact source hash and authored members, display labels and model option values. Briefs, file paths and runtime qualification stay outside that projection.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/ensemble-inspection.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the regenerated SessionCommandModule topic against the added authored inspection paragraph. The deterministic bundle check passed for the existing 139 topics. The text describes the dormant service and its evidence boundary.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]}
+  ]
+}
