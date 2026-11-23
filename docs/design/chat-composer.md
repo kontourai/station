@@ -654,7 +654,8 @@ card or its controls and a short dock spends no line on room for it. While the
 row is back in the composer the turn rail's steps come down, but the
 transcript keeps its end's room, so the reader leaving the end moves no row.
 Scroll to bottom shows while the reader is scrolled up, and from the moment
-they open a row at the end that then grows: that row stays where it is, and
+they open a row at the end that then grows past the view's end: that row stays
+where it is, and
 streaming text and new turns are not followed until the reader returns to the
 end by any means. Their rows stay where they are as it appears. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide inbox /
