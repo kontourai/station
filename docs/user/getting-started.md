@@ -868,7 +868,7 @@ finger and snaps open when released. Only one row's actions stay revealed.
 Swiping itself never runs an action. Mark done leaves running work and history intact.
 Choose **Undo** in the toast, or press **⌘Z** / **Ctrl+Z** outside an editor
 while the toast is shown; a **Mark done** on several selected rows has one
-Undo for all of them. After the toast has gone, search the inbox for the
+Undo for all of them. After the toast has gone, search the chat list for the
 conversation, find it under **Marked done** in the results, and choose
 **Reopen** from its menu.
 Without the Open and Settled inbox preview, Mark done is saved on this
@@ -1720,7 +1720,7 @@ permission has recorded request evidence, its row offers **Approve once** and
 request version, once. A review request with recorded evidence offers
 **Inspect request** instead, where **Request identity** shows its exact record.
 A row's ⋯ menu holds **Mark done**, and **Snooze** (the same choices as the
-chat inbox) when the Attention snooze preview is on. Mark done there waits behind its notice's **Undo** (or **⌘Z**) and is sent
+chat list) when the Attention snooze preview is on. Mark done there waits behind its notice's **Undo** (or **⌘Z**) and is sent
 when the notice closes; reload, close the tab or switch Station before then and the
 item is not marked done (a background tab keeps the notice open). A failed run shows once:
 its row stands for the failed message too, and Mark done marks both done.

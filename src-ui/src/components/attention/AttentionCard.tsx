@@ -1170,8 +1170,8 @@ function OpenSessionAction({ item }: { item: ReviewPendingAttentionItem }) {
 
 /**
  * archive#1914: `session-failed` is DERIVED on every read (see the item's
- * own doc comment), so "Dismiss" here does not delete a stored notification
- * the way every other Dismiss button does — it records an acknowledgement of
+ * own doc comment), so "Mark done" here (the shared action model's label) does
+ * not delete anything — it records an acknowledgement of
  * THIS version of the failure (`AttentionProjectionService.acknowledge`) and
  * the item drops out of the actionable count while staying visible as
  * history. A session that fails again later (a newer `updatedAt`) surfaces
@@ -1218,8 +1218,8 @@ function SessionFailedAction({ item }: { item: SessionFailedAttentionItem }) {
 
 /**
  * A dismissal hides an attention fact; it does not resolve its source, and it
- * destroys nothing — so it keeps the word "Dismiss" (archive#3779), read from
- * the shared action model rather than written here.
+ * destroys nothing. Its label, "Mark done", is read from the shared action
+ * model (archive#3779) rather than written here.
  */
 function DismissAttentionItem({ item }: { item: AttentionItem }) {
   const { apiBase } = useApiBase();

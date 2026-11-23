@@ -531,7 +531,7 @@ On desktop, move the pointer from a Chats row into its preview to scroll
 long content such as Basis. The preview stays inside the window as late
 details arrive. Escape or scrolling the list closes it.
 The Chromium journey in `inbox-swipe.browser.test.tsx` exercises touch reveal,
-hit targets, Snooze, Dismiss/Undo, preview-off recovery and desktop hover controls,
+hit targets, Snooze, Mark done/Undo, preview-off recovery and desktop hover controls,
 and renders 390px and 1440px in both themes. Physical-device behavior remains
 unverified.
 
