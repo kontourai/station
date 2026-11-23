@@ -12,6 +12,14 @@ const temporary = trackTempDirs();
 type Sync = NonNullable<CliSessionGroupHost<string>['sync']>;
 const nativeIdentityHash = `sha256:${'a'.repeat(64)}`;
 
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((accept) => {
+    resolve = accept;
+  });
+  return { promise, resolve };
+}
+
 async function fixture(seatCount = 1) {
   const home = temporary('station-sync-owner-');
   const open = () => new CliSessionGroups(home, (input) => String(input), {});
@@ -282,14 +290,13 @@ test.each([
 
 test('a later attempt cannot claim the terminal evidence from its prior mismatch', async () => {
   const f = await fixture();
+  let attempts = 0;
   const send = vi.fn<Sync>(async (handle, input) => {
     input.assertCurrent();
     return receipt(
       handle,
       'first-terminal-turn',
-      send.mock.calls.length === 1
-        ? 'ordinary mismatched result'
-        : 'ACK SYNC run-one',
+      ++attempts === 1 ? 'ordinary mismatched result' : 'ACK SYNC run-one',
     );
   });
   f.host.sync = send;
@@ -375,8 +382,8 @@ test('retains the exact owned receipt even when response authority is withdrawn'
 
 test('replay during a held attempt observes its reservation without starting or writing work', async () => {
   const f = await fixture();
-  const started = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
+  const started = deferred();
+  const release = deferred();
   const send = vi.fn<Sync>(async (handle, input) => {
     input.assertCurrent();
     started.resolve();
@@ -414,8 +421,8 @@ test('replay during a held attempt observes its reservation without starting or 
 test('an expired caller returns before a held attempt and its late receipt admits no retry', async () => {
   const f = await fixture();
   const controller = new AbortController();
-  const started = Promise.withResolvers<void>();
-  const release = Promise.withResolvers<void>();
+  const started = deferred();
+  const release = deferred();
   const send = vi.fn<Sync>(async (handle, input) => {
     input.assertCurrent();
     started.resolve();
