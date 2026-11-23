@@ -25,6 +25,113 @@ import { OutsideAgentGrantStore } from '../../../services/outside-agent/oauth-st
 
 const resource = `${issuer}/mcp`;
 
+test('outside layout listing reads only the approved Project and drops plugin metadata', async () => {
+  const listLayouts = vi.fn((projectSlug: string) => [
+    {
+      id: 'layout-primary',
+      projectSlug,
+      slug: 'coding',
+      name: 'Coding',
+      type: 'workspace',
+      tabCount: 2,
+      plugin: 'private-plugin-binding',
+      description: 'Private layout description',
+    },
+  ]);
+  const f = await fixture(undefined, { listLayouts });
+  const projectGrant = f.grant();
+  const globalGrant = f.grant(true);
+  const projectSession = await f.initialize(projectGrant.accessToken);
+  const globalSession = await f.initialize(globalGrant.accessToken);
+
+  const catalog = await payload(
+    await f.rpc(
+      projectGrant.accessToken,
+      'tools/list',
+      {},
+      projectSession.session,
+    ),
+  );
+  expect(catalog.result.tools).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ name: 'list_project_layouts' }),
+    ]),
+  );
+
+  const list = (token: string, session: string, slug: string) =>
+    f
+      .rpc(
+        token,
+        'tools/call',
+        {
+          name: 'list_project_layouts',
+          arguments: { slug },
+        },
+        session,
+      )
+      .then(payload);
+  expect(
+    (await list(projectGrant.accessToken, projectSession.session, 'foreign'))
+      .result.isError,
+  ).toBe(true);
+  expect(
+    (await list(globalGrant.accessToken, globalSession.session, 'alpha')).result
+      .isError,
+  ).toBe(true);
+  expect(listLayouts).not.toHaveBeenCalled();
+
+  const admitted = await list(
+    projectGrant.accessToken,
+    projectSession.session,
+    'alpha',
+  );
+  expect(listLayouts).toHaveBeenCalledExactlyOnceWith('alpha');
+  expect(JSON.parse(admitted.result.content[0].text)).toEqual({
+    success: true,
+    data: [
+      {
+        id: 'layout-primary',
+        projectSlug: 'alpha',
+        slug: 'coding',
+        name: 'Coding',
+        type: 'workspace',
+        tabCount: 2,
+      },
+    ],
+  });
+});
+
+test('outside layout listing discards records if the approved Project loses the slug during the read', async () => {
+  const listLayouts = vi.fn();
+  const f = await fixture(undefined, { listLayouts });
+  const tokens = f.grant();
+  const { session } = await f.initialize(tokens.accessToken);
+  listLayouts.mockImplementationOnce((slug: string) => {
+    f.projects.find((project) => project.id === 'id-alpha')!.slug =
+      'renamed-alpha';
+    f.projects.find((project) => project.id === 'id-foreign')!.slug = slug;
+    return [
+      {
+        id: 'replacement-layout',
+        projectSlug: slug,
+        slug: 'coding',
+        name: 'Replacement Project layout',
+        type: 'workspace',
+      },
+    ];
+  });
+  const response = await f.rpc(
+    tokens.accessToken,
+    'tools/call',
+    { name: 'list_project_layouts', arguments: { slug: 'alpha' } },
+    session,
+  );
+  const result = await payload(response);
+  expect(listLayouts).toHaveBeenCalledExactlyOnceWith('alpha');
+  expect(result.result.isError).toBe(true);
+  expect(JSON.stringify(result)).not.toContain('replacement-layout');
+});
+
 describe('outside-agent MCP transport and live authority', () => {
   test('list_active_work filters the live grant before projection and refuses another grant’s cursor', async () => {
     let projectedStore!: EventStore;

@@ -6,6 +6,7 @@ import type {
 import { Hono } from 'hono';
 import { afterEach, expect, vi } from 'vitest';
 import { trackTempDirs } from '../__test-utils__/temp-dirs.js';
+import type { IStorageAdapter } from '../domain/storage-adapter.js';
 import { createOutsideAgentMcpServer } from '../routes/outside-agent/mcp-routes.js';
 import { outsideAgentTokenAudience } from '../security/outside-agent-token-audience.js';
 import type { OutsideActiveWorkDeps } from '../services/outside-agent/active-work.js';
@@ -31,6 +32,7 @@ export async function outsideMcpFixture(
     projects: ProjectConfig[];
     cleanup: (close: () => void | Promise<void>) => void;
   }) => OutsideActiveWorkDeps,
+  layoutStorage?: Pick<IStorageAdapter, 'listLayouts'>,
 ) {
   const home = temp('outside-r4a-');
   const clock = { now: 1_800_000_000_000 };
@@ -78,6 +80,7 @@ export async function outsideMcpFixture(
     store,
     validateGrant: (g) => service.validateGrant(g),
     projects: source,
+    layoutStorage,
     activeWork: work?.({
       home,
       clock,

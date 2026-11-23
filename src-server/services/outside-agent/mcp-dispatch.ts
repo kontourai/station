@@ -8,12 +8,13 @@ import {
   type Tool,
 } from '@modelcontextprotocol/server';
 import { z } from 'zod';
+import type { IStorageAdapter } from '../../domain/storage-adapter.js';
 import type { StationControlToolRegistry } from '../../tools/station-control-mcp-server.js';
-import { registerOperationsTools } from '../../tools/station-control-operations-tools.js';
 import {
   stationControlToolListable,
   stationControlToolPolicy,
 } from '../../tools/station-control-policy.js';
+import { registerProjectReadTools } from '../../tools/station-control-project-read-tools.js';
 import { registerActiveWorkTool } from '../../tools/station-control-work-discovery-tools.js';
 import type { ProjectService } from '../projects/project-service.js';
 import {
@@ -53,11 +54,13 @@ function unknown(): never {
 export function createOutsideMcpDispatch(input: {
   current(): Records['grant'];
   projects: Pick<ProjectService, 'listProjects' | 'getProject'>;
+  layoutStorage?: Pick<IStorageAdapter, 'listLayouts'>;
   listActiveWork?: ReturnType<typeof createOutsideActiveWorkReader>;
   reserveCall(): () => void;
 }) {
   const catalog = new Set(['list_projects', 'get_project']);
-  const { listActiveWork } = input;
+  const { layoutStorage, listActiveWork } = input;
+  if (layoutStorage) catalog.add('list_project_layouts');
   if (listActiveWork) catalog.add('list_active_work');
   const admitted = (name: string, grant: Records['grant']): boolean => {
     const policy = stationControlToolPolicy(name);
@@ -133,7 +136,21 @@ export function createOutsideMcpDispatch(input: {
         });
       },
     };
-  registerOperationsTools(registry, {
+  const approvedProjectId = (tool: string, slug: string) => {
+    const approved = caller(tool).projectScope;
+    const metadata =
+      approved.kind === 'project'
+        ? input.projects
+            .listProjects()
+            .find(
+              (project) =>
+                project.id === approved.projectId && project.slug === slug,
+            )
+        : undefined;
+    if (!metadata) throw new Error('Project not found');
+    return metadata.id;
+  };
+  registerProjectReadTools(registry, {
     async list() {
       const approved = caller('list_projects').projectScope;
       if (approved.kind === 'global') return [];
@@ -142,19 +159,29 @@ export function createOutsideMcpDispatch(input: {
         .filter((p) => p.id === approved.projectId);
     },
     async get(slug) {
-      const approved = caller('get_project').projectScope;
-      // Resolve stable identity before opening the requested Project's configuration.
-      const metadata =
-        approved.kind === 'project'
-          ? input.projects
-              .listProjects()
-              .find((p) => p.id === approved.projectId && p.slug === slug)
-          : undefined;
-      if (!metadata) throw new Error('Project not found');
+      const projectId = approvedProjectId('get_project', slug);
       const project = input.projects.getProject(slug);
-      if (project.id !== metadata.id) throw new Error('Project not found');
+      if (project.id !== projectId) throw new Error('Project not found');
       return project;
     },
+    ...(layoutStorage && {
+      async layouts(slug: string) {
+        const projectId = approvedProjectId('list_project_layouts', slug);
+        const layouts = layoutStorage.listLayouts(slug);
+        if (approvedProjectId('list_project_layouts', slug) !== projectId)
+          throw new Error('Project not found');
+        return layouts
+          .filter((layout) => layout.projectSlug === slug)
+          .map(({ id, slug, projectSlug, name, type, tabCount }) => ({
+            id,
+            slug,
+            projectSlug,
+            name,
+            type,
+            tabCount,
+          }));
+      },
+    }),
   });
   if (listActiveWork) {
     registerActiveWorkTool(
