@@ -6,7 +6,7 @@ import {
 import { CONVERSATION_FORK_REFUSAL_CODES } from '@kontourai/station-contracts/orchestration';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { projectRuntimeEventsToMessages } from '@kontourai/station-shared/runtime-event-projection';
-import { afterEach, describe, expect, onTestFinished, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import {
   continuityBinding,
   continuityRegistry,
@@ -77,12 +77,9 @@ const logger: Logger = {
 
 describe('fork and handoff deliver the transcript seed across engine families', () => {
   const makeTempDir = trackTempDirs();
-  const runtimes: { service: OrchestrationService; store: EventStore }[] = [];
+  const closeRuntimes: (() => Promise<void>)[] = [];
   afterEach(async () => {
-    for (const runtime of runtimes.splice(0)) {
-      await runtime.service.shutdown();
-      runtime.store.close();
-    }
+    for (const close of closeRuntimes.splice(0)) await close();
   });
 
   function harness() {
@@ -120,7 +117,13 @@ describe('fork and handoff deliver the transcript seed across engine families', 
         resolveSkillDir: async () => null,
       }),
     });
-    runtimes.push({ service, store });
+    const pendingTurnReceipts = new Set<() => void>();
+    closeRuntimes.push(async () => {
+      for (const unsubscribe of pendingTurnReceipts) unsubscribe();
+      pendingTurnReceipts.clear();
+      await service.shutdown();
+      store.close();
+    });
     const memory = new Map<string, FileMemoryAdapter>(
       [...ENGINES, FILE_SOURCE, 'default'].map((agent) => [
         agent,
@@ -262,10 +265,11 @@ describe('fork and handoff deliver the transcript seed across engine families', 
             receipt.threadId === adapter.turns[before]?.threadId
           ) {
             unsubscribe();
+            pendingTurnReceipts.delete(unsubscribe);
             resolve();
           }
         });
-        onTestFinished(unsubscribe);
+        pendingTurnReceipts.add(unsubscribe);
       });
       const handle = await executeForegroundMessage(
         {

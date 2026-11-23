@@ -399,8 +399,8 @@ test('accepts and durably seeds a long proposal brief (#4007)', async () => {
 });
 
 /**
- * Fill the Station-wide ledger (#4055) with signed snapshots from other Tasks
- * until even a one-character document's receipt no longer fits.
+ * Fill the Station-wide ledger (#4055) with signed snapshots from other Tasks,
+ * demanding a capacity refusal even for the smallest filler document.
  */
 async function fillRevisionLedger(
   service: TaskGraphService,
