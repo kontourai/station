@@ -494,6 +494,7 @@ release delivery.
 | This device's saved binding to one Station | **Station** (verbs: Add / Edit / **Forget**) |
 | A project's named view | **Layout** |
 | Something installable with a screen of its own | **App**: **Apps › Discover** finds them and **Apps › Library** manages what is installed. Not the Project's **Library** of files. "Plugin" stays the packaging and developer word |
+| The sidebar section after Projects | **Apps**: one row for each Layout you own, each with its own icon, then **Discover**, which opens **Apps › Discover**. Today's Boards are such Layouts, so both meanings of Apps are one: things with a screen of their own. |
 | An MCP server that provides tools | **Tool server** |
 | A catalogue of one kind of installable thing (skills, tool servers, layouts) | **Browse <kind>** ("Browse skills"), a page opened from where that kind is used. Not "Registry" |
 | A place at the edge of the window a surface can occupy | **Region** |

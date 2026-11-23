@@ -15,7 +15,7 @@ A quiet sidebar with one labelled Customize page replaces the footer dialog, and
 - The Registry has no entry anywhere except the palette and buttons inside Plugins and Skills.
 - Settings is reachable only through the avatar menu, Customize, the palette or Cmd+, and Appearance has more than one home.
 - A fresh Home shows two numbered cards ("1 · Choose your AI", "2 · Add a Project") above a composer whose default engine is not saved and drifts as engines become ready.
-- The collapsed rail keeps only Home, a plus and a grid icon, and the footer mixes Automations, new chat, updates and the avatar with no labels.
+- The collapsed rail keeps only Home, a plus and a grid icon, and the footer mixes Automations, Customize, updates and the avatar with no labels. The sidebar has no New chat; it lives on the chat dock's header, the palette and `/new`.
 
 ## Agreed structure
 
@@ -48,8 +48,9 @@ A quiet sidebar with one labelled Customize page replaces the footer dialog, and
 On a phone: The menu button opens the drawer. The composer wraps so the engine picker and Start get their own row.
 
 1. **Only Home and Automations sit above Projects.** A sidebar listing every destination was considered and rejected as too noisy. _(layout; slice 1.5)_
-2. **An APPS section replaces Boards: one row per installed app, each with its own icon, then Discover.** Apps are the word people see. The app names shown are placeholders. _(layout, copy; slice 1.5)_
+2. **An APPS section replaces Boards: one row per installed app, each with its own icon, then Discover.** Apps are the word people see. An installed app's row is a Layout you own, so today's Boards are listed here too. The app names shown are placeholders. _(layout, copy; slice 1.5)_
 3. **Customize is labelled and pinned above Settings, with a dot when anything inside needs attention.** Today Customize is an unlabelled footer icon, and nothing inside it can raise attention. _(layout, new screen state; slice 1.5)_
+4. **New chat is the first row, above Home.** It makes the same request as the chat dock's own New chat, and opens Chat when no dock is showing. Its hint is the dock's New chat shortcut as bound; the render's "⌘N" waits for the palette and shortcut work, because ⌘N opens New project today. Today the sidebar has no New chat. _(layout; slice 1.5)_
 
 ### `navigation-07` Fresh Home
 
@@ -88,7 +89,9 @@ Customize item; the landing links to it until the Station page replaces it.
 
 ### `navigation-10` Collapsed sidebar
 
-1. **The rail keeps Home, Automations, project initials, app icons, Discover, and Customize with its dot.** Today the rail keeps only Home, a plus and a grid icon. _(layout; slice 1.5)_
+1. **The rail keeps New chat, Home, Automations, project initials, app icons, Discover, and Customize with its dot.** Today the rail keeps only Home, a plus and a grid icon. _(layout; slice 1.5)_
+
+What the rail keeps beyond the render: the New Project `+` above the project initials, because the rail has no other way to make a project; Settings, Updates and the account below Customize, because the footer keeps them; and each app's own glyph without a tile, because an app's icon is whatever it stored. A rule parts the place rows from the projects and the projects from the apps.
 
 ### `navigation-11` Phone drawer
 

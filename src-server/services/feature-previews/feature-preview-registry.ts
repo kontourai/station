@@ -147,6 +147,14 @@ export class FeaturePreviewRegistry {
       description:
         'Save work from a chat as a Task or use it to start a Project.',
     });
+    // UI-only: the sidebar reads it to choose which sidebar it draws; every
+    // row opens an address that works with the preview off.
+    this.rememberConsumer({
+      id: 'quiet-sidebar',
+      label: 'Quiet sidebar',
+      description:
+        'Show New chat, Home and Automations above Projects, your apps with Discover, and labelled Customize and Settings rows.',
+    });
     this.state = new GrantsFileStore<FeaturePreviewState>({
       filePath: featurePreviewStatePath(homeDir),
       storeLabel: 'feature-previews',
