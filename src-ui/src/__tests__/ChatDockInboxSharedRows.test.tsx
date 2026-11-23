@@ -1,4 +1,5 @@
 import { useInboxWorkingCount } from '../components/chat-dock/useInboxGroups';
+
 // @vitest-environment jsdom
 
 /**
@@ -26,6 +27,7 @@ import {
 } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { snoozeChoices } from '../components/inbox-row/snooze-presets';
 
 vi.mock('../contexts/ProjectsContext', () => ({
   useProjects: () => ({ projects: [{ slug: 'alpha', name: 'Alpha' }] }),
@@ -907,7 +909,6 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         })}
         isCurrent={false}
         isSnoozed={false}
-        isOpenChat={false}
         now={NOW}
         onActivate={vi.fn()}
       />,
@@ -924,7 +925,6 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         item={workItem({ lifecycleLabel: 'Failed', updatedAt: 0 })}
         isCurrent={false}
         isSnoozed={false}
-        isOpenChat={false}
         now={NOW}
         onActivate={vi.fn()}
       />,
@@ -944,11 +944,11 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       screen.getByRole('button', { name: /^Shared row title/ }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
-    expect(await screen.findByRole('button', { name: '3 hours' })).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Dismiss from inbox' }),
+      await screen.findByRole('button', { name: /^Tomorrow morning,/ }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '3 hours' }));
+    expect(screen.getByRole('button', { name: 'Mark done' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Tomorrow morning,/ }));
     const snoozed = screen.getByRole('region', { name: 'Snoozed · 1' });
     fireEvent.click(
       within(snoozed).getByRole('button', { name: 'Snoozed · 1' }),
@@ -960,10 +960,10 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     ).toBeTruthy();
   });
 
-  it('the desktop panel’s snooze is one control that opens the duration choice (D7)', () => {
+  it('the desktop panel’s snooze is in the one row menu, which opens the duration choice (D7)', () => {
     renderPanelHost(workItem());
     const snooze = screen.getByRole('button', {
-      name: 'Snooze Shared row title',
+      name: 'Actions for Shared row title',
     });
     expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
     expect(
@@ -974,14 +974,22 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     // Pressing it opens the choice and snoozes nothing: a one-tap default
     // would hide the row before the user said for how long.
     fireEvent.click(snooze);
-    const menu = screen.getByRole('menu', { name: 'Snooze Shared row title' });
+    const menu = screen.getByRole('menu', {
+      name: 'Actions for Shared row title',
+    });
     expect(
       within(menu)
         .getAllByRole('menuitem')
-        .map((option) => option.textContent?.trim()),
-    ).toEqual(['1 hour', '3 hours', 'Tomorrow 9am', 'Next Monday 9am']);
+        .map((option) => option.firstChild?.textContent),
+    ).toEqual([
+      'Open chat',
+      'Mark done',
+      ...snoozeChoices(NOW).map((choice) => choice.label),
+    ]);
     expect(screen.queryByRole('button', { name: 'Snoozed · 1' })).toBeNull();
-    fireEvent.click(within(menu).getByRole('menuitem', { name: '1 hour' }));
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: /^In 1 hour,/ }),
+    );
     expect(screen.getByRole('button', { name: 'Snoozed · 1' })).not.toBeNull();
   });
 
@@ -1024,15 +1032,16 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       screen.getByRole('button', { name: /^Shared row title/ }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
-    fireEvent.click(await screen.findByRole('button', { name: '1 hour' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^In 1 hour,/ }));
     sheet.unmount();
 
     renderPanelHost(item);
     const snoozedToggle = screen.getByRole('button', { name: 'Snoozed · 1' });
     fireEvent.click(snoozedToggle);
-    expect(
-      screen.getByRole('button', { name: 'Unsnooze Shared row title' }),
-    ).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for Shared row title' }),
+    );
+    expect(screen.getByRole('menuitem', { name: 'Wake now' })).not.toBeNull();
   });
 });
 

@@ -7,7 +7,6 @@ import {
 import { useMutation } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AttentionSection } from '../components/attention/AttentionSection';
-import { ACKNOWLEDGE_ATTENTION_ACTION } from '../components/attention/notificationRowActions';
 import { ConfirmModal } from '../components/modals/ConfirmModal';
 import { NotificationSection } from '../components/notifications/NotificationSection';
 import { PersonMentionsSection } from '../components/notifications/PersonMentionsSection';
@@ -35,6 +34,7 @@ import '../views/page-layout.css';
 import './NotificationsPage.css';
 import { Button } from '../components/Button';
 import { SearchGlyph } from '../components/icons/Glyph';
+import { failedTurnPairs } from '../components/notifications/failed-turn-pairs';
 import {
   attentionKindMark,
   InboxMarkTile,
@@ -55,6 +55,12 @@ import {
   readNotificationHistoryFilters,
   writeNotificationHistoryFilters,
 } from './notificationHistoryFilters';
+
+/**
+ * The bulk acknowledgement keeps its own word: it acts on every eligible
+ * attention row at once, behind a confirmation, not on one row.
+ */
+const BULK_ACKNOWLEDGE_LABEL = 'Dismiss';
 
 export function NotificationsPage() {
   const { navigate } = useNavigation();
@@ -149,14 +155,23 @@ export function NotificationsPage() {
         : [],
     [filtered.notifications, snooze.enabled],
   );
-  const activityTotal = snooze.enabled
-    ? inbox.notifications.filter(
-        (notification) => !isDeferredNotification(notification),
-      ).length
-    : inbox.notifications.length;
+  // One failed run is one row: a listed failed-Session row stands for its
+  // thread's failed-turn notification.
+  const pairs = useMemo(
+    () => failedTurnPairs(attentionItems, inbox.notifications),
+    [attentionItems, inbox.notifications],
+  );
+  const paired = useMemo(() => new Set([...pairs.values()].flat()), [pairs]);
+  const activityTotal = inbox.notifications.filter(
+    (notification) =>
+      !paired.has(notification.id) &&
+      !(snooze.enabled && isDeferredNotification(notification)),
+  ).length;
   const activityNotifications = useMemo(() => {
     const current = filtered.notifications.filter(
-      (notification) => !deferredNotifications.includes(notification),
+      (notification) =>
+        !deferredNotifications.includes(notification) &&
+        !paired.has(notification.id),
     );
     return exactApprovalNotification &&
       !current.some(
@@ -168,6 +183,7 @@ export function NotificationsPage() {
     deferredNotifications,
     exactApprovalNotification,
     filtered.notifications,
+    paired,
   ]);
   const queryClient = useQueryClient();
   const dismissAllAttention = useMutation({
@@ -341,6 +357,7 @@ export function NotificationsPage() {
               focusedApprovalId={approvalTarget || undefined}
               focusedPairingRequestId={pairingTarget || undefined}
               unavailableSources={inbox.unavailableSources}
+              pairedNotifications={pairs}
             />
             {approvalTarget && !exactApproval && !exactApprovalNotification && (
               <p role="status">That approval request is no longer available.</p>
@@ -387,13 +404,13 @@ export function NotificationsPage() {
        */}
       <ConfirmModal
         isOpen={showDismissConfirm}
-        title={`${ACKNOWLEDGE_ATTENTION_ACTION.label} eligible attention items`}
-        message={`${ACKNOWLEDGE_ATTENTION_ACTION.label} ${
+        title={`${BULK_ACKNOWLEDGE_LABEL} eligible attention items`}
+        message={`${BULK_ACKNOWLEDGE_LABEL} ${
           dismissibleItems.length
         } eligible item${
           dismissibleItems.length === 1 ? '' : 's'
         }${filtersActive ? ' in this view' : ''}? Activity stays.`}
-        confirmLabel={`${ACKNOWLEDGE_ATTENTION_ACTION.label} eligible items`}
+        confirmLabel={`${BULK_ACKNOWLEDGE_LABEL} eligible items`}
         variant="warning"
         onConfirm={() => {
           dismissAllAttention.mutate();
@@ -572,9 +589,9 @@ function SnoozedSection({
               onClick={() => onUnsnooze(item)}
               pending={item.id === unsnoozingItemId}
               disabled={isUnsnoozing}
-              pendingLabel="Unsnoozing…"
+              pendingLabel="Waking…"
             >
-              Unsnooze
+              Wake now
             </Button>
           </li>
         ))}
@@ -675,7 +692,7 @@ function NotificationsHeader({
    * eligible scope keeps the control from promising rows it will not touch;
    * the count stays on the confirmation, where the rows it names are visible.
    */
-  const bulkLabel = `${ACKNOWLEDGE_ATTENTION_ACTION.label} eligible items${
+  const bulkLabel = `${BULK_ACKNOWLEDGE_LABEL} eligible items${
     filtered ? ' in this view' : ''
   }`;
   return (

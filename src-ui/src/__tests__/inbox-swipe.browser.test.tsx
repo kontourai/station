@@ -88,7 +88,7 @@ const discardFixture = `
     root.render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}>
       <NavigationProvider><main style={{padding:12}}>
         <InboxRow item={draft} now={Date.now()} chrome="touch" actionsInDetails={inDetails}
-          isCurrent={false} isSnoozed={false} isOpenChat={false} onActivate={()=>{}}
+          isCurrent={false} isSnoozed={false} onActivate={()=>{}}
           onDraftDiscarded={()=>window.discarded++}/>
       </main></NavigationProvider>
     </QueryClientProvider>);
@@ -386,7 +386,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await rail.waitFor({ state: 'hidden' });
     await swipe(cdp, page, -90);
     await rail
-      .getByRole('button', { name: 'Dismiss Review the inbox from inbox' })
+      .getByRole('button', { name: 'Mark Review the inbox done' })
       .click();
     await page
       .getByRole('button', { name: /^Review the inbox\b/ })
@@ -403,7 +403,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await rail
       .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
       .click();
-    await page.getByRole('menuitem', { name: '1 hour', exact: true }).waitFor();
+    await page.getByRole('menuitem', { name: /^In 1 hour/ }).waitFor();
     await page.keyboard.press('Escape');
     await expect
       .poll(() =>
@@ -413,7 +413,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
     await rail
       .getByRole('button', { name: 'Snooze Review the inbox', exact: true })
       .click();
-    await page.getByRole('menuitem', { name: '1 hour', exact: true }).click();
+    await page.getByRole('menuitem', { name: /^In 1 hour/ }).click();
     await expectBrowser(
       page.getByRole('button', { name: /^Plan the next release\b/ }),
     ).toBeFocused();
@@ -480,19 +480,15 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
       .getByRole('button', { name: /^Review the inbox/ })
       .click({ button: 'right' });
     await page.getByRole('button', { name: 'Details', exact: true }).click();
-    await page
-      .getByRole('button', { name: 'Dismiss from inbox', exact: true })
-      .click();
+    await page.getByRole('button', { name: 'Mark done', exact: true }).click();
     await page.getByRole('button', { name: 'Search inbox' }).click();
     await page.getByRole('searchbox').fill('Review the inbox');
-    await page.getByRole('region', { name: /Dismissed/ }).waitFor();
+    await page.getByRole('region', { name: /Marked done/ }).waitFor();
     await page
       .getByRole('button', { name: /^Review the inbox/ })
       .click({ button: 'right' });
     await page.getByRole('button', { name: 'Details', exact: true }).click();
-    await page
-      .getByRole('button', { name: 'Restore to inbox', exact: true })
-      .click();
+    await page.getByRole('button', { name: 'Reopen', exact: true }).click();
     await page.getByRole('button', { name: /^Review the inbox\b/ }).waitFor();
 
     const artifacts = resolve('.surface/inbox-dismiss-swipe');
@@ -523,7 +519,7 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
               document.activeElement.blur();
           });
           const dismiss = page.getByRole('button', {
-            name: 'Dismiss Review the inbox from inbox',
+            name: 'Actions for Review the inbox',
           });
           expect(
             await dismiss.evaluate((el) =>
@@ -532,7 +528,8 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
           ).toBe(true);
           expect(
             await dismiss.evaluate(
-              (el) => getComputedStyle(el.parentElement!).opacity,
+              (el) =>
+                getComputedStyle(el.closest('.inbox-row__actions')!).opacity,
             ),
           ).toBe('0');
           await page
@@ -543,7 +540,8 @@ test('mobile swipes reveal existing actions without opening or stopping a conver
           await dismiss.waitFor({ state: 'visible' });
           expect(
             await dismiss.evaluate(
-              (el) => getComputedStyle(el.parentElement!).opacity,
+              (el) =>
+                getComputedStyle(el.closest('.inbox-row__actions')!).opacity,
             ),
           ).toBe('1');
         }

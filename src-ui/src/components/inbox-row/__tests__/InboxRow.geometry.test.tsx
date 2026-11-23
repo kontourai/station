@@ -53,6 +53,7 @@ import { ChatDockInboxPanel } from '../../chat-dock/ChatDockInboxPanel';
 import { InboxRow } from '../../chat-dock/ChatDockInboxRows';
 import { ChatDockMobileHeader } from '../../chat-dock/ChatDockMobileHeader';
 import { MobileInboxPanel } from '../../chat-dock/MobileInboxPanel';
+import { snoozeChoices } from '../snooze-presets';
 
 // Inbox scope now reads Projects through the shared query boundary.
 function render(ui: ReactElement) {
@@ -373,7 +374,6 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           item={row}
           isCurrent={false}
           isSnoozed={false}
-          isOpenChat
           now={NOW}
           onActivate={vi.fn()}
           hoverCard={false}
@@ -825,7 +825,8 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
             ),
           };
         });
-        expect(measured.targets.length).toBeGreaterThanOrEqual(2);
+        // The row's one ⋯ menu, and a Draft's in-place Discard beside it.
+        expect(measured.targets.length).toBeGreaterThanOrEqual(1);
         for (const [position, target] of measured.targets.entries()) {
           // Inside the row's own box: never the row above or below.
           expect(target.top, `${target.label} top`).toBeGreaterThanOrEqual(
@@ -1120,12 +1121,11 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
           item={ITEMS[1]}
           isCurrent={false}
           isSnoozed={false}
-          isOpenChat
           now={NOW}
           chrome="touch"
           onActivate={vi.fn()}
           onSnoozeWake={vi.fn()}
-          onCloseChat={vi.fn()}
+          done={{ done: false, onSelect: vi.fn() }}
         />
       </QueryClientProvider>,
     );
@@ -1153,11 +1153,11 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
         );
       }
       expect(labels).toEqual([
-        '1 hour',
-        '3 hours',
-        'Tomorrow 9am',
-        'Next Monday 9am',
-        'Close chat',
+        'Open chat',
+        'Mark done',
+        ...snoozeChoices(NOW).map(
+          (choice) => `${choice.label}, ${choice.hint}`,
+        ),
       ]);
     } finally {
       await pg.close();

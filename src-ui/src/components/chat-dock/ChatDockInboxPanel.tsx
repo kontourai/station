@@ -147,7 +147,7 @@ function ChatDockInboxPanelImpl({
     onCloseChat,
     onAcknowledgeConversation,
   });
-  const { now, scope, groups, openChatIds, query, setQuery } = controller;
+  const { now, scope, groups, query, setQuery } = controller;
 
   const toggleSection = (id: CollapsibleInboxSectionId) => {
     setDeviceSetting('inboxSections', {
@@ -227,7 +227,6 @@ function ChatDockInboxPanelImpl({
             groups={groups}
             idPrefix="chat-dock-inbox"
             activeChatSessionId={activeChatSessionId}
-            openChatIds={openChatIds}
             now={now}
             agents={agents}
             gitLocationByThreadId={gitLocationByThreadId}

@@ -13,8 +13,11 @@ import './RowMenu.css';
 export interface RowMenuItem {
   id: string;
   label: string;
-  onSelect: () => void;
+  /** `trigger` is the menu's ⋯ button, focused again as the menu closes. */
+  onSelect: (trigger: HTMLButtonElement) => void;
   disabled?: boolean;
+  /** A destructive item, drawn in the danger colour. */
+  danger?: boolean;
   /** Items sharing a group render under that group's heading. */
   group?: string;
   /** A secondary line under the label, e.g. the exact time a snooze ends. */
@@ -35,9 +38,12 @@ export interface RowMenuItem {
 export function RowMenu({
   items,
   label = 'More actions',
+  triggerClassName,
 }: {
   items: readonly RowMenuItem[];
   label?: string;
+  /** Replaces the trigger's own class, for a host with its own action slot. */
+  triggerClassName?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<{
@@ -152,7 +158,7 @@ export function RowMenu({
       <button
         ref={triggerRef}
         type="button"
-        className="row-menu__trigger"
+        className={triggerClassName ?? 'row-menu__trigger'}
         aria-label={label}
         title={label}
         aria-haspopup="menu"
@@ -193,14 +199,14 @@ export function RowMenu({
                     key={item.id}
                     type="button"
                     role="menuitem"
-                    className="row-menu__item"
+                    className={`row-menu__item${item.danger ? ' row-menu__item--danger' : ''}`}
                     aria-describedby={headingId}
                     disabled={item.disabled}
                     onClick={() => {
                       // Back to the trigger: if the action leaves the row in
                       // place (a failed snooze), focus must not fall to body.
                       close(true);
-                      item.onSelect();
+                      if (triggerRef.current) item.onSelect(triggerRef.current);
                     }}
                   >
                     <span>{item.label}</span>

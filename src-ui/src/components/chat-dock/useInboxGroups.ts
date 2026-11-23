@@ -80,7 +80,8 @@ export function useInboxGroups(
         ? [
             {
               id: 'dismissed' as const,
-              label: resolution ? 'Hidden' : 'Dismissed',
+              // Rows marked done on this device, or hidden on the host.
+              label: 'Marked done',
               items: dismissed,
             },
           ]

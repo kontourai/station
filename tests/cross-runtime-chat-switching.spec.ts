@@ -1719,7 +1719,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
     });
     await expect(page.locator('.chat-dock__project-badge')).toHaveCount(0);
     const openChatRows = chatList.getByRole('button', {
-      name: /^Dismiss .* from inbox$/,
+      name: /^Actions for /,
     });
     await expect(openChatRows).toHaveCount(6);
     const readOpenChats = () =>
@@ -1728,12 +1728,12 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
       );
     const sessionsBefore = await readOpenChats();
     expect(sessionsBefore).toEqual([
-      'Dismiss Claude Alpha Chat from inbox',
-      'Dismiss Codex Beta Chat from inbox',
-      'Dismiss Remember the exact token CEDAR-82. Reply only: CODEX_CONTEXT_OK from inbox',
-      'Dismiss Station Chat from inbox',
-      'Dismiss Unbound Station Chat from inbox',
-      'Dismiss kiro-cli Chat from inbox',
+      'Actions for Claude Alpha Chat',
+      'Actions for Codex Beta Chat',
+      'Actions for Remember the exact token CEDAR-82. Reply only: CODEX_CONTEXT_OK',
+      'Actions for Station Chat',
+      'Actions for Unbound Station Chat',
+      'Actions for kiro-cli Chat',
     ]);
     const activeBefore = new URL(page.url()).searchParams.get('chat');
     expect(activeBefore).toBeTruthy();

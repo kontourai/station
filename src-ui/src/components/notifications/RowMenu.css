@@ -75,6 +75,15 @@
   background: var(--k-panel-raised);
 }
 
+.row-menu__item--danger {
+  color: var(--error-text);
+}
+
+.row-menu__item--danger:hover:not(:disabled),
+.row-menu__item--danger:focus-visible {
+  background: color-mix(in srgb, var(--error-text) 12%, transparent);
+}
+
 .row-menu__item:disabled {
   cursor: default;
   opacity: 0.5;

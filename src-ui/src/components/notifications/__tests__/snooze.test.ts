@@ -2,11 +2,9 @@
 
 import { ATTENTION_SNOOZE_MAX_MS } from '@kontourai/station-contracts/attention';
 import { describe, expect, test } from 'vitest';
-import {
-  formatSnoozeUntil,
-  isDeferredNotification,
-  snoozePresets,
-} from '../snooze';
+import { clockTime } from '../../../utils/relativeTime';
+import { snoozeChoices, snoozePresets } from '../../inbox-row/snooze-presets';
+import { formatSnoozeUntil, isDeferredNotification } from '../snooze';
 
 // Local-time construction: presets are the reader's clock, not UTC.
 const wednesdayMorning = new Date(2026, 9, 28, 10, 0);
@@ -44,6 +42,29 @@ describe('snoozePresets', () => {
       (p) => p.label === 'Next week',
     )?.until;
     expect(fromMonday?.getDate()).toBe(9);
+  });
+});
+
+describe('snoozeChoices', () => {
+  test('is the one list, in order, each with the real time it ends', () => {
+    const choices = snoozeChoices(wednesdayMorning.getTime());
+    expect(choices.map((choice) => choice.label)).toEqual([
+      'In 1 hour',
+      'This evening',
+      'Tomorrow morning',
+      'Next week',
+    ]);
+    expect(choices[0].wakeAt - wednesdayMorning.getTime()).toBe(3_600_000);
+    const morning = wednesdayMorning.getTime();
+    // Today's choices read as a clock time; another day's lead with it.
+    expect(choices[1].hint).toBe(
+      clockTime(new Date(2026, 9, 28, 18).getTime(), morning),
+    );
+    expect(choices[1].hint).not.toMatch(/^[A-Z][a-z]{2} /);
+    expect(choices[2].hint).toBe(
+      clockTime(new Date(2026, 9, 29, 9).getTime(), morning),
+    );
+    expect(choices[2].hint).toMatch(/^Thu /);
   });
 });
 

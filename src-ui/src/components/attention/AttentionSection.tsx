@@ -42,6 +42,7 @@ export function AttentionSection({
   focusedApprovalId,
   focusedPairingRequestId,
   unavailableSources = [],
+  pairedNotifications,
 }: {
   items: AttentionItem[];
   pendingTotal: number;
@@ -57,6 +58,8 @@ export function AttentionSection({
    * does not have.
    */
   unavailableSources?: readonly AttentionSourceUnavailable[];
+  /** By item id, the notifications its row also stands for (`failedTurnPairs`). */
+  pairedNotifications?: ReadonlyMap<string, readonly string[]>;
 }) {
   const contextFor = useInboxContext();
   const snooze = useInboxSnooze();
@@ -102,6 +105,7 @@ export function AttentionSection({
               key={item.id}
               item={item}
               context={contextFor.forAttention(item)}
+              pairedNotificationIds={pairedNotifications?.get(item.id)}
               menuItems={
                 snooze.enabled
                   ? snoozeMenuItems(

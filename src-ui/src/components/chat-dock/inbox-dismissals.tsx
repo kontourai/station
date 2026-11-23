@@ -8,6 +8,8 @@ import {
 } from 'react';
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
+import { activeChatsStore } from '../../contexts/active-chats-store';
+import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { toastStore } from '../../contexts/ToastContext';
 import {
   dismissInboxItem,
@@ -195,9 +197,7 @@ export function useInboxDismissActions(
         setError(null);
         if (lastDismissToast) toastStore.dismiss(lastDismissToast);
         lastDismissToast = null;
-        lastDismissToast = offerDismissUndo('Session hidden', () =>
-          restore(item),
-        );
+        lastDismissToast = offerInboxUndo('Marked done', () => restore(item));
         return;
       }
       try {
@@ -211,9 +211,24 @@ export function useInboxDismissActions(
       setError(null);
       if (lastDismissToast) toastStore.dismiss(lastDismissToast);
       lastDismissToast = null;
-      lastDismissToast = offerDismissUndo('Conversation dismissed', () =>
-        restore(item),
-      );
+      lastDismissToast = offerInboxUndo('Marked done', () => restore(item));
+    },
+    /**
+     * Mark done where the person's settlement exists: synced across their
+     * devices, with Undo (and ⌘Z) reopening it. Reopen itself needs no Undo.
+     */
+    settle: (conversationId: string, settled: boolean) => {
+      const change = workStateRef.current.change;
+      change.mutate({ conversationId, settled });
+      if (lastDismissToast) toastStore.dismiss(lastDismissToast);
+      lastDismissToast = settled
+        ? offerInboxUndo('Marked done', () =>
+            workStateRef.current.change.mutate({
+              conversationId,
+              settled: false,
+            }),
+          )
+        : null;
     },
     restore,
     notice: error ? (
@@ -228,12 +243,16 @@ let lastDismissToast: string | null = null;
 let dismissToastSequence = 0;
 
 /**
- * Shows the Undo notice for a dismissal and enters it in the app's undo stack,
- * so Mod+Z reaches it through the one registered Undo command, in order with
- * every other undoable action. Null when the notice could not be shown; the
- * dismissal itself is already saved, and Restore still reaches it.
+ * Shows the Undo notice for an inbox action (Mark done, a bulk Mark done,
+ * Discard draft) and enters it in the app's undo stack, so Mod+Z reaches it
+ * through the one registered Undo command, in order with every other
+ * undoable action. Null when the notice could not be shown; the action itself
+ * is already saved, and Reopen still reaches it.
  */
-function offerDismissUndo(message: string, onUndo: () => void): string | null {
+export function offerInboxUndo(
+  message: string,
+  onUndo: () => void,
+): string | null {
   dismissToastSequence += 1;
   const id = `inbox-dismiss-${dismissToastSequence}`;
   try {
@@ -266,4 +285,27 @@ export function InboxDismissUndo({ children }: { children: ReactNode }) {
     lastDismissToast = null;
   }, [apiBase, namespace]);
   return children;
+}
+
+/**
+ * Discard draft for this device's unsent composer text: the text, its quotes
+ * and attachments go, and the notice's Undo (or ⌘Z) puts them back.
+ */
+export function discardUnsentDraft(sessionId: string) {
+  const text = chatDraftsStore.get(sessionId);
+  const quotes = chatDraftsStore.getQuotes(sessionId);
+  const chat = activeChatsStore.getSnapshot()[sessionId];
+  const input = chat?.input;
+  const attachments = chat?.attachments;
+  activeChatsStore.clearInput(sessionId);
+  chatDraftsStore.clear(sessionId);
+  offerInboxUndo('Draft discarded', () => {
+    chatDraftsStore.set(sessionId, text);
+    for (const quote of quotes) chatDraftsStore.addQuote(sessionId, quote);
+    if (chat && activeChatsStore.getSnapshot()[sessionId])
+      activeChatsStore.updateChat(sessionId, {
+        input: input ?? text,
+        attachments: attachments ?? [],
+      });
+  });
 }

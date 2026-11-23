@@ -459,6 +459,12 @@ describe('noun-consistency-gate', () => {
       'Rewind conversation': 'Rewind conversation to here?',
       'Restore workspace': 'Restore workspace?',
       'Reset agent context': 'Reset agent context',
+      'Settle conversation': 'Settle conversation',
+      'Dismiss from inbox': 'Dismiss from inbox',
+      'Hide from inbox': 'Hide from inbox',
+      'Restore to inbox': 'Restore to inbox',
+      'Discard unsent draft': 'Discard unsent draft',
+      Unsnooze: 'Unsnooze',
     };
     // Plural and lowercase forms of the same terms.
     const VARIANTS: Record<string, string> = {
@@ -483,7 +489,22 @@ describe('noun-consistency-gate', () => {
       'Rewind conversation': 'rewind conversation',
       'Restore workspace': 'restore workspace',
       'Reset agent context': 'reset agent context',
+      'Settle conversation': 'settle conversations',
+      'Dismiss from inbox': 'dismiss from the inbox',
+      'Hide from inbox': 'hide from the inbox',
+      'Restore to inbox': 'restore to the inbox',
+      'Discard unsent draft': 'discard unsent drafts',
+      Unsnooze: 'Unsnoozing…',
     };
+    /** Retired by a slice that removed every use, so enforced now. */
+    const ACTIVE = [
+      'Settle conversation',
+      'Dismiss from inbox',
+      'Hide from inbox',
+      'Restore to inbox',
+      'Discard unsent draft',
+      'Unsnooze',
+    ];
 
     it('pins the retired terms, independently of the script', () => {
       expect(RETIRED_USER_TERMS.map(({ term }) => term)).toEqual(
@@ -491,15 +512,15 @@ describe('noun-consistency-gate', () => {
       );
     });
 
-    it('keeps every entry pending until the copy lanes merge', () => {
+    it('keeps every other entry pending until the copy lanes merge', () => {
       // Flip-on is deleting `pending`; when that happens this expectation
       // changes with it, deliberately.
-      expect(RETIRED_USER_TERMS.every(({ pending }) => pending)).toBe(true);
-      expect(ACTIVE_RETIRED_USER_TERMS).toEqual([]);
-      for (const text of Object.values(VIOLATIONS)) {
-        expect(scanFileContent('Pending.tsx', `<p>${text}</p>`), text).toEqual(
-          [],
-        );
+      expect(ACTIVE_RETIRED_USER_TERMS.map(({ term }) => term)).toEqual(ACTIVE);
+      for (const [term, text] of Object.entries(VIOLATIONS)) {
+        expect(
+          scanFileContent('Pending.tsx', `<p>${text}</p>`),
+          text,
+        ).toHaveLength(ACTIVE.includes(term) ? 1 : 0);
       }
     });
 
@@ -588,6 +609,11 @@ describe('noun-consistency-gate', () => {
         '<p>Rewind chat to here</p>',
         '<p>Restore files to here</p>',
         '<p>Start fresh context</p>',
+        '<p>Mark done</p>',
+        '<p>Reopen</p>',
+        '<p>Wake now</p>',
+        '<p>Discard draft</p>',
+        'const unsnoozeAttention = useUnsnoozeAttentionItemMutation(); const x = <p>Saved</p>;',
       ]) {
         expect(scanFileContent('Clean.tsx', source, all), source).toEqual([]);
       }

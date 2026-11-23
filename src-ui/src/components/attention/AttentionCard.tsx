@@ -113,6 +113,7 @@ export function AttentionCard({
   focused = false,
   context = [],
   menuItems,
+  pairedNotificationIds = [],
 }: {
   item: AttentionItem;
   focused?: boolean;
@@ -125,6 +126,11 @@ export function AttentionCard({
    * visible dismiss exactly as it was.
    */
   menuItems?: readonly RowMenuItem[];
+  /**
+   * Stored notifications this row stands for (one failed run's failed-turn
+   * notification): marking the row done marks them done too.
+   */
+  pairedNotificationIds?: readonly string[];
 }) {
   const cardRef = useRef<HTMLElement>(null);
   const menuMode = menuItems !== undefined;
@@ -151,7 +157,13 @@ export function AttentionCard({
               id: 'dismiss',
               label: ACKNOWLEDGE_ATTENTION_ACTION.label,
               disabled: acknowledge.isPending,
-              onSelect: () => acknowledge.mutate(item.id),
+              // Both start now: a row that leaves on the first refetch
+              // must not drop the second.
+              onSelect: () => {
+                for (const id of pairedNotificationIds)
+                  dismissNotification.mutate(id);
+                acknowledge.mutate(item.id);
+              },
             },
           ]
         : [];

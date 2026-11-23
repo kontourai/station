@@ -149,6 +149,19 @@ const row = (title: string, container: HTMLElement = document.body) =>
   within(container).queryByRole('button', {
     name: new RegExp(`^${title}(?:\\s|$)`),
   });
+/**
+ * The host's read is in: with the preview on, rows file under its shelves.
+ * Mark done chooses settle or hide from that read, so the tests wait for it.
+ */
+const hostRead = (shelf: RegExp) =>
+  screen.findByRole('region', { name: shelf });
+/** Mark done (or Reopen) from a row's ⋯ menu. */
+const choose = async (title: string, item: 'Mark done' | 'Reopen') => {
+  fireEvent.click(
+    await screen.findByRole('button', { name: `Actions for ${title}` }),
+  );
+  fireEvent.click(screen.getByRole('menuitem', { name: item }));
+};
 const search = (value: string) =>
   fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
     target: { value },
@@ -166,30 +179,34 @@ beforeEach(() => {
   deviceSettingsStore.reloadFromStorage();
 });
 
-describe('Open and Settled inbox: Settle for owned work, Hide for third-party', () => {
-  it('offers Settle and no Dismiss on an owned conversation, and Hide on a third-party Session', async () => {
-    mount([owned, external]);
-    await screen.findByRole('button', { name: 'Settle Owned chat' });
-    expect(
-      screen.queryByRole('button', { name: 'Dismiss Owned chat from inbox' }),
-    ).toBeNull();
-    expect(
-      screen.getByRole('button', { name: 'Hide Outside session from inbox' }),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole('button', {
-        name: 'Dismiss Outside session from inbox',
-      }),
-    ).toBeNull();
+describe('Open and Settled inbox: Mark done settles owned work and hides third-party Sessions', () => {
+  it('Mark done settles an owned conversation on the host, and its Undo reopens it', async () => {
+    mount([owned]);
+    await hostRead(/^Open/);
+    await choose('Owned chat', 'Mark done');
+    await waitFor(() => expect(host.settled).toHaveProperty('owned'));
+    // Nothing went to this browser's own dismissals.
+    expect(localStorage.getItem('station.inbox.dismissed.v1')).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Undo' }));
+    await waitFor(() => expect(host.settled).toEqual({}));
+  });
+
+  it('Mark done on a third-party Session hides it on the host, not in this browser', async () => {
+    mount([external]);
+    await hostRead(/^Third-party/);
+    await choose('Outside session', 'Mark done');
+    await waitFor(() =>
+      expect(host.hideCalls).toEqual([
+        { sessionId: 'external-thread', hidden: true },
+      ]),
+    );
+    expect(localStorage.getItem('station.inbox.dismissed.v1')).toBeNull();
   });
 
   it('keeps a hidden third-party Session hidden through status changes and on another device, until adopted', async () => {
     const view = mount([external]);
-    fireEvent.click(
-      await screen.findByRole('button', {
-        name: 'Hide Outside session from inbox',
-      }),
-    );
+    await hostRead(/^Third-party/);
+    await choose('Outside session', 'Mark done');
     await waitFor(() => expect(row('Outside session')).toBeNull());
     expect(host.hideCalls).toEqual([
       { sessionId: 'external-thread', hidden: true },
@@ -222,12 +239,15 @@ describe('Open and Settled inbox: Settle for owned work, Hide for third-party', 
     await screen.findByRole('searchbox', { name: 'Search inbox' });
     await waitFor(() => expect(row('Outside session')).toBeNull());
     search('Outside');
-    const section = await screen.findByRole('region', { name: /Hidden/ });
+    const section = await screen.findByRole('region', {
+      name: /Marked done/,
+    });
     fireEvent.click(
       within(section).getByRole('button', {
-        name: 'Restore Outside session to inbox',
+        name: 'Actions for Outside session',
       }),
     );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reopen' }));
     search('');
     await waitFor(() => expect(row('Outside session')).toBeTruthy());
     expect(host.hideCalls).toEqual([
@@ -374,19 +394,16 @@ describe('with the preview off, the inbox keeps today’s behaviour', () => {
         updatedAt: NOW - 30 * DAY,
       },
     ]);
-    expect(
-      screen.getByRole('button', { name: 'Dismiss Owned chat from inbox' }),
-    ).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /^Settle / })).toBeNull();
     expect(row('Stale outside')).toBeTruthy();
     expect(
       screen.queryByRole('button', { name: /^Show \d+ older/ }),
     ).toBeNull();
-    fireEvent.click(
-      screen.getByRole('button', {
-        name: 'Dismiss Outside session from inbox',
-      }),
-    );
+    await choose('Owned chat', 'Mark done');
+    expect(row('Owned chat')).toBeNull();
+    expect(
+      JSON.parse(localStorage.getItem('station.inbox.dismissed.v1')!),
+    ).toHaveProperty('owned');
+    await choose('Outside session', 'Mark done');
     expect(row('Outside session')).toBeNull();
     expect(
       JSON.parse(localStorage.getItem('station.inbox.dismissed.v1')!),
@@ -394,14 +411,15 @@ describe('with the preview off, the inbox keeps today’s behaviour', () => {
     expect(host.hideCalls).toEqual([]);
   });
 
-  it('keeps Dismiss on a third-party row when the host cannot hide Sessions', async () => {
+  it('marks a third-party row done in this browser when the host cannot hide Sessions', async () => {
     host.supportsHidden = false;
     mount([owned, external]);
-    await screen.findByRole('button', { name: 'Settle Owned chat' });
+    await hostRead(/^Open/);
+    await choose('Outside session', 'Mark done');
+    expect(row('Outside session')).toBeNull();
     expect(
-      screen.getByRole('button', {
-        name: 'Dismiss Outside session from inbox',
-      }),
-    ).toBeTruthy();
+      JSON.parse(localStorage.getItem('station.inbox.dismissed.v1')!),
+    ).toHaveProperty('external-thread');
+    expect(host.hideCalls).toEqual([]);
   });
 });

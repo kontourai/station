@@ -1189,7 +1189,7 @@ describe('NotificationsPage', () => {
     renderPage();
 
     expect(screen.getByText('Pairing request expired')).toBeTruthy();
-    chooseRowAction('Dismiss');
+    chooseRowAction('Mark done');
     expect(dismiss).toHaveBeenCalledWith('notif-expired');
   });
 
@@ -1239,10 +1239,58 @@ describe('NotificationsPage', () => {
     renderPage();
 
     expect(screen.getByText('Needs attention (1)')).toBeTruthy();
-    chooseRowAction('Dismiss');
+    chooseRowAction('Mark done');
     expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
       'session-failed:thread-boom',
     );
+  });
+
+  // One failed run, one row: the failed Session's attention row stands for
+  // the same thread's failed-turn notification.
+  test('a failed run is one Failed row, and Mark done marks its notification done too', () => {
+    const timestamp = new Date().toISOString();
+    attention = {
+      pendingCount: 1,
+      items: [
+        {
+          id: 'session-failed:thread-boom',
+          kind: 'session-failed',
+          title: 'Upgrade the test runner',
+          body: 'Engine exited with code 1',
+          createdAt: timestamp,
+          updatedAt: timestamp,
+          openHref: '/?surface=activity&session=thread-boom',
+          source: { threadId: 'thread-boom' },
+        },
+      ],
+    };
+    const turnFailed = (id: string, threadId: string): Notification => ({
+      id,
+      source: 'turn-completion',
+      category: 'turn-failed',
+      title: 'Your agent needs attention',
+      priority: 'high',
+      status: 'delivered',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      metadata: { sessionId: threadId, threadId, turnId: `${id}-turn` },
+    });
+    notifications = [
+      turnFailed('pair', 'thread-boom'),
+      turnFailed('other', 'thread-other'),
+    ];
+
+    renderPage();
+
+    // The pair's notification is not a second row; another thread's is.
+    expect(screen.getAllByText('Your agent needs attention')).toHaveLength(1);
+    expect(screen.getByText('Showing 1 of 1 activity items')).toBeTruthy();
+    chooseRowAction('Mark done');
+    expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
+      'session-failed:thread-boom',
+    );
+    expect(dismiss).toHaveBeenCalledWith('pair');
+    expect(dismiss).not.toHaveBeenCalledWith('other');
   });
 });
 
@@ -1457,7 +1505,7 @@ describe('NotificationsPage attention count scope', () => {
     const page = renderPage();
     expect(attentionHeading()).toBe('Needs attention (2)');
 
-    chooseRowAction('Dismiss');
+    chooseRowAction('Mark done');
     expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
       'session-failed:boom',
     );
@@ -1645,18 +1693,18 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       vi.stubGlobal('fetch', request);
       renderPage();
 
-      fireEvent.click(screen.getByRole('button', { name: 'Unsnooze' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Wake now' }));
 
       await waitFor(() =>
         expect(
-          screen.getByText(/Couldn't unsnooze:.*Try again in a moment/),
+          screen.getByText(/Couldn't wake it:.*Try again in a moment/),
         ).toBeTruthy(),
       );
       expect(screen.getByText('Snoozed failure')).toBeTruthy();
       expect(request).toHaveBeenCalledTimes(1);
       expect(
         screen
-          .getByRole('button', { name: 'Unsnooze' })
+          .getByRole('button', { name: 'Wake now' })
           .hasAttribute('disabled'),
       ).toBe(false);
     });
@@ -1681,7 +1729,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       );
       vi.stubGlobal('fetch', request);
       renderPage();
-      const buttons = screen.getAllByRole('button', { name: 'Unsnooze' });
+      const buttons = screen.getAllByRole('button', { name: 'Wake now' });
       expect(buttons).toHaveLength(2);
       const [button, otherButton] = buttons;
 
@@ -1689,8 +1737,8 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
       try {
         await waitFor(() => expect(button.hasAttribute('disabled')).toBe(true));
-        expect(button.textContent).toBe('Unsnoozing…');
-        expect(otherButton.textContent).toBe('Unsnooze');
+        expect(button.textContent).toBe('Waking…');
+        expect(otherButton.textContent).toBe('Wake now');
         expect(otherButton.hasAttribute('disabled')).toBe(true);
         fireEvent.click(button);
         fireEvent.click(otherButton);
@@ -1730,7 +1778,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       );
       vi.stubGlobal('fetch', request);
       renderPage();
-      chooseRowAction('1 hour');
+      chooseRowAction('In 1 hour');
       await waitFor(() => expect(toastStore.getSnapshot().length).toBe(1));
       const notice = toastStore.getSnapshot()[0];
       expect(notice.actions?.[0].label).toBe('Undo');
@@ -1783,7 +1831,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     // The activity count describes the activity shown, not the snoozed row.
     expect(screen.getByText(/Showing 1 of 1 activity items/)).toBeTruthy();
 
-    fireEvent.click(within(snoozed).getByRole('button', { name: 'Unsnooze' }));
+    fireEvent.click(within(snoozed).getByRole('button', { name: 'Wake now' }));
     expect(unsnoozeAttention.mock.calls.at(-1)?.[0]).toBe('session-failed:b');
     snoozePreviews = [];
   });
@@ -1793,10 +1841,10 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     renderPage();
     expect(screen.queryByRole('region', { name: /Snoozed/ })).toBeNull();
     fireEvent.click(screen.getAllByRole('button', { name: 'More actions' })[0]);
-    expect(screen.queryByRole('menuitem', { name: /^1 hour/ })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /^In 1 hour/ })).toBeNull();
   });
 
-  test('when everything is snoozed, filters stay reachable and clearing restores Unsnooze', () => {
+  test('when everything is snoozed, filters stay reachable and clearing restores Wake now', () => {
     snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
     attention = {
       pendingCount: 0,
@@ -1805,14 +1853,14 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     notifications = [];
     renderPage();
     expect(screen.queryByText('All caught up')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Unsnooze' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Wake now' })).toBeTruthy();
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search' }), {
       target: { value: 'no matching work' },
     });
-    expect(screen.queryByRole('button', { name: 'Unsnooze' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Wake now' })).toBeNull();
     expect(screen.getByRole('searchbox', { name: 'Search' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Unsnooze' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Wake now' }));
     expect(unsnoozeAttention.mock.calls.at(-1)?.[0]).toBe('session-failed:b');
     snoozePreviews = [];
   });

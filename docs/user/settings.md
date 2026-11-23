@@ -412,7 +412,7 @@ handle, and the handle can only be dragged with touch or a pointer; the close
 button and Escape still close every sheet.
 
 The same preview lets you swipe a conversation left in the inbox to reveal
-**Snooze** (clock) and **Dismiss** (×), with larger touch targets and labels.
+**Snooze** (clock) and **Mark done** (check), with larger touch targets and labels.
 Swiping reveals the controls; tap one to act. Swipe right to hide them.
 The row’s Details menu offers the same actions with the preview off.
 

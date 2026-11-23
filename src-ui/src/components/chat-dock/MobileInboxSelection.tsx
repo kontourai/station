@@ -3,16 +3,18 @@ import type { HomeWorkItem } from '../../views/home/home-view-model';
 import type { WorkFactsById } from '../../views/home/work-facts';
 import { ActionOverflowMenu } from '../ActionOverflowMenu';
 import { Button } from '../Button';
-import { CheckGlyph, CloseGlyph, TimeGlyph } from '../icons/Glyph';
-import {
-  type MobileActivityGroup,
-  SNOOZE_OPTIONS,
-  snoozeWakeAt,
-} from './mobile-activity-groups';
+import { CheckGlyph, TimeGlyph } from '../icons/Glyph';
+import { snoozeChoices } from '../inbox-row/snooze-presets';
+import { offerInboxUndo } from './inbox-dismissals';
+import type { MobileActivityGroup } from './mobile-activity-groups';
 import { inboxResolutionId } from './mobile-inbox-selection';
 import { useConversationWorkState } from './useConversationWorkState';
 
 type Entry = { item: HomeWorkItem; group: MobileActivityGroup['id'] };
+/** How one selected row was marked done, so Undo reverses exactly that. */
+type Done =
+  | { kind: 'settled'; conversationId: string }
+  | { kind: 'dismissed'; item: HomeWorkItem };
 export function MobileInboxSelection({
   selected,
   groups,
@@ -20,6 +22,7 @@ export function MobileInboxSelection({
   onChange,
   snooze,
   dismiss,
+  restore,
   isCurrent,
   details,
 }: {
@@ -29,7 +32,10 @@ export function MobileInboxSelection({
   onChange(ids: Set<string> | null): void;
   isCurrent(): boolean;
   snooze(item: HomeWorkItem, wakeAt: number, trigger: HTMLButtonElement): void;
+  /** Mark done on this device, or hide a third-party Session on the host. */
   dismiss(item: HomeWorkItem): Promise<void>;
+  /** Reopen a row `dismiss` marked done. */
+  restore(item: HomeWorkItem): void;
   details(item: HomeWorkItem): void;
 }) {
   const work = useConversationWorkState();
@@ -52,34 +58,30 @@ export function MobileInboxSelection({
     }
   }
   const entries = [...available.values()];
-  const maySettle = (entry: Entry) =>
-    !!inboxResolutionId(
-      entry.item,
-      facts?.get(entry.item.id),
-      work.supported,
-    ) &&
+  /** The settlement Mark done uses for this row, when it reaches it. */
+  const settleId = (entry: Entry) =>
+    inboxResolutionId(entry.item, facts?.get(entry.item.id), work.supported);
+  // Mark done: settle where settlement reaches the row, else dismiss on this
+  // device; a row already done (Settled, or marked done) has nothing to do.
+  const mayMarkDone = (entry: Entry) =>
     entry.group !== 'dismissed' &&
     entry.group !== 'settled' &&
-    !Object.hasOwn(work.settled, entry.item.conversationId!);
-  const mayDismiss = (entry: Entry) =>
-    entry.group !== 'dismissed' &&
-    (entry.group === 'settled' ||
-      entry.item.controlMode === 'read-only-attached');
-  const canSettle =
-    !!entries.length &&
-    !work.change.isPending &&
-    !!work.change.mutateAsync &&
-    entries.every(maySettle);
-  const canDismiss = !!entries.length && entries.every(mayDismiss);
+    !(
+      settleId(entry) &&
+      Object.hasOwn(work.settled, entry.item.conversationId ?? '')
+    ) &&
+    (!settleId(entry) || !!work.change.mutateAsync);
+  const canMarkDone =
+    !!entries.length && !work.change.isPending && entries.every(mayMarkDone);
   const canSnooze =
     !!entries.length &&
     entries.every(
       (entry) => entry.group !== 'snoozed' && entry.group !== 'dismissed',
     );
-  const current = useRef({ available, maySettle, mayDismiss, isCurrent });
-  current.current = { available, maySettle, mayDismiss, isCurrent };
+  const current = useRef({ available, mayMarkDone, settleId, isCurrent });
+  current.current = { available, mayMarkDone, settleId, isCurrent };
   const apply = async (
-    operation: 'settle' | 'dismiss' | 'snooze',
+    operation: 'done' | 'snooze',
     trigger: HTMLButtonElement,
     wakeAt?: number,
   ) => {
@@ -88,6 +90,7 @@ export function MobileInboxSelection({
     setPending(true);
     setNotice('');
     const failed = new Set<string>();
+    const done: Done[] = [];
     for (const { item } of entries) {
       if (!mounted.current) return;
       const fresh = current.current.available.get(item.id);
@@ -96,19 +99,16 @@ export function MobileInboxSelection({
         continue;
       }
       try {
-        if (
-          operation === 'settle' &&
-          current.current.maySettle(fresh) &&
-          fresh.item.conversationId &&
-          work.change.mutateAsync
-        ) {
-          await work.change.mutateAsync({
-            conversationId: fresh.item.conversationId,
-            settled: true,
-          });
-        } else if (operation === 'dismiss' && current.current.mayDismiss(fresh))
-          await dismiss(fresh.item);
-        else if (
+        const conversationId = current.current.settleId(fresh);
+        if (operation === 'done' && current.current.mayMarkDone(fresh)) {
+          if (conversationId && work.change.mutateAsync) {
+            await work.change.mutateAsync({ conversationId, settled: true });
+            done.push({ kind: 'settled', conversationId });
+          } else {
+            await dismiss(fresh.item);
+            done.push({ kind: 'dismissed', item: fresh.item });
+          }
+        } else if (
           operation === 'snooze' &&
           wakeAt !== undefined &&
           fresh.group !== 'snoozed' &&
@@ -120,6 +120,22 @@ export function MobileInboxSelection({
         failed.add(item.id);
       }
     }
+    // What was marked done stays undoable, with its notice and ⌘Z, even
+    // when some of the selection failed.
+    if (done.length)
+      offerInboxUndo(
+        done.length === 1 ? 'Marked done' : `${done.length} marked done`,
+        () => {
+          for (const entry of done) {
+            if (entry.kind === 'settled')
+              work.change.mutate({
+                conversationId: entry.conversationId,
+                settled: false,
+              });
+            else restore(entry.item);
+          }
+        },
+      );
     if (!mounted.current) return;
     busy.current = false;
     setPending(false);
@@ -146,12 +162,12 @@ export function MobileInboxSelection({
           label="Snooze selected conversations"
           triggerClassName="mobile-inbox-selection__action"
           triggerGlyph={snoozeLabel}
-          actions={SNOOZE_OPTIONS.map((option) => ({
-            key: option.label,
-            label: option.label,
+          actions={snoozeChoices(Date.now()).map((choice) => ({
+            key: choice.label,
+            label: `${choice.label} · ${choice.hint}`,
             onSelect: (trigger) => {
               if (trigger instanceof HTMLButtonElement)
-                void apply('snooze', trigger, snoozeWakeAt(option, Date.now()));
+                void apply('snooze', trigger, choice.wakeAt);
             },
           }))}
         />
@@ -159,23 +175,12 @@ export function MobileInboxSelection({
         <Button
           variant="ghost"
           className="mobile-inbox-selection__action"
-          disabled={pending || !canSettle}
-          onClick={(e) => void apply('settle', e.currentTarget)}
+          disabled={pending || !canMarkDone}
+          onClick={(e) => void apply('done', e.currentTarget)}
         >
           <span>
             <CheckGlyph />
-            <span>Settle</span>
-          </span>
-        </Button>
-        <Button
-          variant="ghost"
-          className="mobile-inbox-selection__action"
-          disabled={pending || !canDismiss}
-          onClick={(e) => void apply('dismiss', e.currentTarget)}
-        >
-          <span>
-            <CloseGlyph />
-            <span>Dismiss</span>
+            <span>Mark done</span>
           </span>
         </Button>
       </div>
@@ -184,13 +189,9 @@ export function MobileInboxSelection({
           {notice ||
             (!entries.length
               ? 'Select conversations to update.'
-              : !canSettle
-                ? work.supported
-                  ? 'Settle is available after work finishes and requests are answered.'
-                  : 'Settle requires the Open and Settled inbox preview.'
-                : !canDismiss
-                  ? 'Dismiss applies to settled or imported items.'
-                  : '')}
+              : !entries.every(mayMarkDone)
+                ? 'Some of these are already done.'
+                : '')}
         </small>
         {entries.length === 1 && (
           <Button

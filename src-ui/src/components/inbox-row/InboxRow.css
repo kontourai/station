@@ -864,7 +864,7 @@
 .inbox-row__swipe-actions > button::after {
   content: none;
 }
-.inbox-row__swipe-actions > .inbox-row__swipe-dismiss {
+.inbox-row__swipe-actions > .inbox-row__swipe-done {
   color: var(--k-action);
   background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel-raised));
 }

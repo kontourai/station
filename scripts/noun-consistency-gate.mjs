@@ -315,6 +315,39 @@ export const RETIRED_USER_TERMS = Object.freeze([
     pattern: /\breset agent context\b/i,
     pending: true,
   },
+  // Inbox (first-release-automations-inbox.md, automations-inbox-13): one
+  // verb, Mark done, and Reopen undoes it; one snooze list with Wake now.
+  // Enforced: the inbox slice removed their last uses.
+  {
+    term: 'Settle conversation',
+    use: 'Mark done',
+    pattern: /\bsettle conversations?\b/i,
+  },
+  {
+    term: 'Dismiss from inbox',
+    use: 'Mark done',
+    pattern: /\bdismiss from (?:the )?inbox\b/i,
+  },
+  {
+    term: 'Hide from inbox',
+    use: 'Mark done',
+    pattern: /\bhide from (?:the )?inbox\b/i,
+  },
+  {
+    term: 'Restore to inbox',
+    use: 'Reopen',
+    pattern: /\brestore to (?:the )?inbox\b/i,
+  },
+  {
+    term: 'Discard unsent draft',
+    use: 'Discard draft',
+    pattern: /\bdiscard unsent drafts?\b/i,
+  },
+  {
+    term: 'Unsnooze',
+    use: 'Wake now',
+    pattern: /\bunsnooz(?:e|ed|ing)\b/i,
+  },
 ]);
 
 /** The retired user-facing terms the gate enforces today. */
