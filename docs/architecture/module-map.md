@@ -2427,6 +2427,13 @@ ownership, or an implicit change to completed-session behavior.
 
 ## SessionCommandModule
 
+The dormant [Ensemble preparation owner](../../src-server/services/orchestration/ensemble-presets.ts)
+reads an explicitly selected preset and holds its exact file identity and
+caller binding through local inventory resolution. It assembles the
+member briefs and their observed Agent, Engine, and model bindings.
+Catalog validation of authored model options, actual-context authentication,
+and launch admission have separate owners.
+
 The dormant [CLI Session group owner](../../src-server/services/orchestration/cli-session-group.ts)
 captures create inputs before acquiring the storage lock and reserves each
 member start durably before calling its host adapter. Flow supplies dependency
