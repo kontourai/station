@@ -12,7 +12,7 @@ import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import type { NavigationView } from '../../types';
 import { resolveAgentExecution } from '../../utils/execution';
 import { getInitials } from '../../utils/layout';
-import { selectFirstChatTarget } from '../agent-selection-policy';
+import { selectHelpPromptTarget } from '../agent-selection-policy';
 import { subscribeHelpMenuRequests } from './helpMenuRequest';
 import { getHeaderBreadcrumb, getHelpPrompts } from './utils';
 
@@ -58,7 +58,7 @@ export function useHeaderViewModel({
     // (if any) so a project-owned agent is never picked from the global
     // context — the same A3 rule ChatDockTabBar's selection already
     // applies.
-    const chatTarget = selectFirstChatTarget({
+    const chatTarget = selectHelpPromptTarget({
       agents,
       agentConnections,
       selectedProjectSlug: breadcrumb?.projectSlug,
