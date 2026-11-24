@@ -70,6 +70,7 @@ const ALLOWED_COMPUTED_KEY_FILES = new Set([
   'platform/native/deliveryFeed.ts', // The alert cursor is scoped by the feed's scope key; the prefix is module-private and only the default deps read or write it.
   'utils/activity-snooze-store.ts', // Authority-partitioned snooze map; storageKey is private and exported operations accept work-item identity and namespace, never a raw key.
   'utils/inbox-dismissal-store.ts', // Authority-partitioned bounded dismissal map; storageKey is private and exported operations accept work-item identity and namespace, never a raw key.
+  'components/project-sidebar/quietSidebarPreview.ts', // Last-known quiet-sidebar preview answer (`station.quietSidebar.lastKnown:<namespace>`), a render cache of server state per verified Station namespace; the key builder is module-private and the only export takes the namespace, never a raw key.
 ]);
 
 function productionFiles(directory: string): string[] {

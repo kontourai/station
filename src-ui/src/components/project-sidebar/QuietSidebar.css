@@ -68,7 +68,7 @@
   border-radius: var(--k-radius-control);
   color: var(--k-text-muted);
   font-family: inherit;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 /* On the rail a rule parts the place rows from the projects, as the Apps
