@@ -153,60 +153,96 @@ describe.skipIf(!chromiumAvailable)(
     });
     afterEach(cleanup);
 
-    test('its header links and a row’s controls stay inside the 280px card', async () => {
-      expect(SESSION_CONTEXT_CARD_WIDTH).toBe(280);
-      const page = await browser.newPage({
-        viewport: { width: 1440, height: 900 },
-      });
-      try {
-        await page.setContent(
-          `<style>${css}</style><div style="display:flex;justify-content:flex-end">${cardMarkup()}</div>`,
-        );
-        const card = await page.getByTestId('card').boundingBox();
-        expect(card).not.toBeNull();
-        const right = card!.x + card!.width;
-        const controls = [
-          page.getByRole('button', { name: 'New automation' }),
-          page.getByRole('button', { name: 'All automations' }),
-          ...(await page.getByRole('button', { name: /^Run .* now$/ }).all()),
-          ...(await page.getByRole('button', { name: /^Edit / }).all()),
-          ...(await page.getByRole('switch').all()),
-          ...(await page.locator('.session-scheduled__name').all()),
-        ];
-        // Three rows, each with Run, Edit, a switch and a name.
-        expect(controls).toHaveLength(2 + 3 * 4);
-        for (const control of controls) {
-          const box = await control.boundingBox();
-          expect(box).not.toBeNull();
-          expect(box!.x).toBeGreaterThanOrEqual(card!.x - 0.5);
-          expect(box!.x + box!.width).toBeLessThanOrEqual(right + 0.5);
+    // The text's width depends on the font the host falls back to, so the
+    // pair of links is also measured at a spacing that always fits one line
+    // and at one that never does. Both outcomes are then checked on every
+    // host, whatever its font.
+    test.each([
+      ['in the host’s own font', '', undefined],
+      ['when the pair fits one line', 'letter-spacing:-1px', true],
+      ['when the pair is too wide for one line', 'letter-spacing:4px', false],
+    ] as const)(
+      'its header links and a row’s controls stay inside the 280px card, %s',
+      async (_case, linkSpacing, pairMustFit) => {
+        expect(SESSION_CONTEXT_CARD_WIDTH).toBe(280);
+        const page = await browser.newPage({
+          viewport: { width: 1440, height: 900 },
+        });
+        try {
+          await page.setContent(
+            `<style>${css}</style><style>.session-scheduled__links button{${linkSpacing}}</style><div style="display:flex;justify-content:flex-end">${cardMarkup()}</div>`,
+          );
+          const card = await page.getByTestId('card').boundingBox();
+          expect(card).not.toBeNull();
+          const right = card!.x + card!.width;
+          const controls = [
+            page.getByRole('button', { name: 'New automation' }),
+            page.getByRole('button', { name: 'All automations' }),
+            ...(await page.getByRole('button', { name: /^Run .* now$/ }).all()),
+            ...(await page.getByRole('button', { name: /^Edit / }).all()),
+            ...(await page.getByRole('switch').all()),
+            ...(await page.locator('.session-scheduled__name').all()),
+          ];
+          // Three rows, each with Run, Edit, a switch and a name.
+          expect(controls).toHaveLength(2 + 3 * 4);
+          for (const control of controls) {
+            const box = await control.boundingBox();
+            expect(box).not.toBeNull();
+            expect(box!.x).toBeGreaterThanOrEqual(card!.x - 0.5);
+            expect(box!.x + box!.width).toBeLessThanOrEqual(right + 0.5);
+          }
+          // The two links keep together on one line (under the title when they
+          // do not fit beside it) whenever the pair fits the header's width. When
+          // the text is too wide for that, they stack in order. Neither is ever
+          // left beside the title while the other drops below it: they wrap
+          // inside one group.
+          const newLink = await controls[0].boundingBox();
+          const allLink = await controls[1].boundingBox();
+          const group = page.locator('.session-scheduled__links');
+          const groupBox = await group.boundingBox();
+          expect(groupBox).not.toBeNull();
+          const gap = await group.evaluate(
+            (node) => Number.parseFloat(getComputedStyle(node).columnGap) || 0,
+          );
+          const pairFits =
+            newLink!.width + allLink!.width + gap <= groupBox!.width + 0.5;
+          if (pairMustFit !== undefined) expect(pairFits).toBe(pairMustFit);
+          if (pairFits) {
+            expect(Math.abs(newLink!.y - allLink!.y)).toBeLessThan(1);
+            expect(newLink!.x).toBeLessThan(allLink!.x);
+          } else {
+            expect(allLink!.y).toBeGreaterThanOrEqual(
+              newLink!.y + newLink!.height - 0.5,
+            );
+          }
+          for (const link of [newLink!, allLink!]) {
+            expect(link.x).toBeGreaterThanOrEqual(groupBox!.x - 0.5);
+            expect(link.x + link.width).toBeLessThanOrEqual(
+              groupBox!.x + groupBox!.width + 0.5,
+            );
+            expect(link.y).toBeGreaterThanOrEqual(groupBox!.y - 0.5);
+          }
+          // Each link is one line of text, not "New / automation" stacked.
+          for (const link of controls.slice(0, 2)) {
+            const lines = await link.evaluate((node) => {
+              const range = document.createRange();
+              range.selectNodeContents(node);
+              return new Set(
+                [...range.getClientRects()].map((rect) => Math.round(rect.top)),
+              ).size;
+            });
+            expect(lines).toBe(1);
+          }
+          // Nothing in the card is wider than the card.
+          const overflow = await page
+            .getByTestId('card')
+            .evaluate((node) => node.scrollWidth - node.clientWidth);
+          expect(overflow).toBeLessThanOrEqual(0);
+        } finally {
+          await page.close();
         }
-        // The two links keep together on one line (under the title when they
-        // do not fit beside it), not one stranded on a line of its own.
-        const newLink = await controls[0].boundingBox();
-        const allLink = await controls[1].boundingBox();
-        expect(Math.abs(newLink!.y - allLink!.y)).toBeLessThan(1);
-        expect(newLink!.x).toBeLessThan(allLink!.x);
-        // Each link is one line of text, not "New / automation" stacked.
-        for (const link of controls.slice(0, 2)) {
-          const lines = await link.evaluate((node) => {
-            const range = document.createRange();
-            range.selectNodeContents(node);
-            return new Set(
-              [...range.getClientRects()].map((rect) => Math.round(rect.top)),
-            ).size;
-          });
-          expect(lines).toBe(1);
-        }
-        // Nothing in the card is wider than the card.
-        const overflow = await page
-          .getByTestId('card')
-          .evaluate((node) => node.scrollWidth - node.clientWidth);
-        expect(overflow).toBeLessThanOrEqual(0);
-      } finally {
-        await page.close();
-      }
-    });
+      },
+    );
   },
 );
 
