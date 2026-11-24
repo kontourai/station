@@ -1,0 +1,7 @@
+{
+  "revision": "cde0f6702ad5062c4b8cc1cf7abf35e52c976004",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Reviewed Mac App Store staging from the qualified candidate through signing, attested package retention, Apple processing, and internal assignment. Signing now places the temporary keychain in the search list, verifies a signed probe, and restores the prior list on exit. The documented operator inputs and delivery receipts still apply. Focused release tests and workflow lint passed. Hosted signing and provider delivery await the next candidate.","inputs":[".github/workflows/macos-store-delivery.yml"]}
+  ]
+}
