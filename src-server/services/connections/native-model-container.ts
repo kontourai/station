@@ -87,6 +87,112 @@ type NativeTextLaunchInput = Readonly<{
   writePrompt(stdin: Writable): Promise<void>;
 }>;
 
+const nativeTextProducerBrand = Symbol('owned native text producer receipt');
+interface NativeTextProducerReceipt {
+  readonly [nativeTextProducerBrand]: true;
+}
+type NativeTextProducerFacts = Readonly<{
+  engine: 'claude' | 'codex';
+  namespaceId: string;
+  containerId: string;
+  imageId: string;
+  executablePath: string;
+  executableSha256: string;
+  cliVersion: string;
+}>;
+const nativeTextProducers = new WeakMap<
+  NativeTextProducerReceipt,
+  {
+    owner: NativeModelContainer;
+    facts: NativeTextProducerFacts;
+  }
+>();
+
+const nativeTextReceiptBrand = Symbol('owned native text execution receipt');
+interface NativeTextExecutionReceipt {
+  readonly [nativeTextReceiptBrand]: true;
+}
+type NativeTextExecutionFacts = Readonly<{
+  engine: 'claude' | 'codex';
+  requestedModelId: string;
+  namespaceId: string;
+  containerId: string;
+  imageId: string;
+  nativeSessionId: string;
+  stdoutSha256: string;
+  textSequenceSha256: string;
+  terminal: Readonly<{ code: 0; signal: null }>;
+}>;
+const nativeTextReceipts = new WeakMap<
+  NativeTextExecutionReceipt,
+  {
+    owner: NativeModelContainer;
+    facts: NativeTextExecutionFacts;
+  }
+>();
+
+function nativeTextCompletion(engine: 'claude' | 'codex', stdout: string) {
+  if (engine === 'claude') {
+    const result = z
+      .object({
+        type: z.literal('result'),
+        subtype: z.literal('success'),
+        is_error: z.literal(false),
+        num_turns: z.literal(1),
+        session_id: z.string().uuid(),
+        result: z.string(),
+        permission_denials: z.array(z.unknown()).max(0),
+      })
+      .parse(JSON.parse(stdout));
+    return { nativeSessionId: result.session_id, texts: [result.result] };
+  }
+  const events = stdout
+    .split('\n')
+    .filter((line) => line.trim())
+    .map((line) =>
+      z
+        .object({
+          type: z.enum([
+            'thread.started',
+            'turn.started',
+            'item.completed',
+            'turn.completed',
+          ]),
+          thread_id: z.string().uuid().optional(),
+          item: z
+            .object({
+              id: z.string().min(1),
+              type: z.enum(['agent_message', 'reasoning']),
+              text: z.string(),
+            })
+            .optional(),
+        })
+        .parse(JSON.parse(line)),
+    );
+  const first = events[0];
+  if (
+    first?.type !== 'thread.started' ||
+    !first.thread_id ||
+    events[1]?.type !== 'turn.started' ||
+    events.at(-1)?.type !== 'turn.completed'
+  )
+    throw new Error('native_text_completion_unconfirmed');
+  const texts: string[] = [],
+    ids = new Set<string>();
+  for (const event of events.slice(2, -1)) {
+    if (
+      event.type !== 'item.completed' ||
+      !event.item ||
+      ids.has(event.item.id)
+    )
+      throw new Error('native_text_completion_unconfirmed');
+    ids.add(event.item.id);
+    if (event.item.type === 'agent_message') texts.push(event.item.text);
+  }
+  if (!texts.length) throw new Error('native_text_completion_unconfirmed');
+  return { nativeSessionId: first.thread_id, texts };
+}
+
 interface OwnedNativeTextRun {
   /** Native program result. A later cleanup failure cannot overwrite it. */
   readonly result: Promise<
@@ -127,6 +233,15 @@ export class NativeModelContainer {
   #textSubmitted = false;
   #textSettled = false;
   #textRun: OwnedNativeTextRun | undefined;
+  #textSelection:
+    | Readonly<{
+        engine: NativeTextLaunchInput['engine'];
+        modelId: string;
+        brokered: boolean;
+      }>
+    | undefined;
+  #textReceipt: NativeTextExecutionReceipt | undefined;
+  #producerObservation: Promise<NativeTextProducerReceipt> | undefined;
 
   private constructor(private readonly options: NativeModelContainerOptions) {
     const endpoint = new URL(options.endpoint);
@@ -537,6 +652,11 @@ export class NativeModelContainer {
             '-',
           ];
     this.#textSubmitted = true;
+    this.#textSelection = Object.freeze({
+      engine: input.engine,
+      modelId: input.modelId,
+      brokered,
+    });
     const child = spawnOwnedChild(
       this.options.dockerExecutable,
       this.#args([
@@ -645,6 +765,161 @@ export class NativeModelContainer {
       },
     });
     return this.#textRun;
+  }
+
+  /** Observe the actual immutable executable in this live namespace. This is
+   * neither provider approval nor a host-preparer or financial authority receipt. */
+  async captureTextProducerReceipt(): Promise<NativeTextProducerReceipt> {
+    await this.#inspect(true);
+    if (
+      this.#retiring ||
+      !this.#engaged ||
+      this.#removed ||
+      !this.#textSelection ||
+      !this.#textRun
+    )
+      throw new Error('native_text_producer_unavailable');
+    this.#producerObservation ??= this.#observeTextProducer();
+    return this.#producerObservation;
+  }
+
+  async #observeTextProducer(): Promise<NativeTextProducerReceipt> {
+    const selection = this.#textSelection,
+      id = this.#id;
+    if (!selection || !id) throw new Error('native_text_producer_unavailable');
+    const executablePath = `/station/${selection.engine}`;
+    const executableSha256 = (
+      await this.#run([
+        'exec',
+        '--user',
+        '10001:10001',
+        id,
+        '/usr/local/bin/node',
+        '--input-type=module',
+        '--eval',
+        `import { constants } from 'node:fs';
+import { open, realpath } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+const path = process.argv[1];
+if (await realpath(path) !== path) throw Error('noncanonical native executable');
+const fd = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+try {
+  const before = await fd.stat({ bigint: true });
+  if (!before.isFile()) throw Error('nonregular native executable');
+  const hash = createHash('sha256');
+  for await (const chunk of fd.createReadStream({ autoClose: false })) hash.update(chunk);
+  const after = await fd.stat({ bigint: true });
+  for (const key of ['dev', 'ino', 'size', 'mtimeNs', 'ctimeNs'])
+    if (before[key] !== after[key]) throw Error('native executable changed');
+  process.stdout.write(hash.digest('hex'));
+} finally { await fd.close(); }`,
+        executablePath,
+      ])
+    ).trim();
+    if (!/^[a-f0-9]{64}$/.test(executableSha256))
+      throw new Error('native_text_producer_unconfirmed');
+    const version = (
+      await this.#run([
+        'exec',
+        '--user',
+        '10001:10001',
+        id,
+        executablePath,
+        '--version',
+      ])
+    ).trim();
+    const match =
+      selection.engine === 'claude'
+        ? /^(\d+\.\d+\.\d+) \(Claude Code\)$/.exec(version)
+        : /^codex-cli (\d+\.\d+\.\d+)$/.exec(version);
+    await this.#inspect(true);
+    if (
+      !match ||
+      this.#retiring ||
+      !this.#engaged ||
+      this.#removed ||
+      this.#id !== id ||
+      this.#textSelection !== selection
+    )
+      throw new Error('native_text_producer_unconfirmed');
+    const receipt: NativeTextProducerReceipt = Object.freeze({
+      [nativeTextProducerBrand]: true as const,
+    });
+    nativeTextProducers.set(receipt, {
+      owner: this,
+      facts: Object.freeze({
+        engine: selection.engine,
+        namespaceId: this.options.namespaceId,
+        containerId: id,
+        imageId: this.options.imageId,
+        executablePath,
+        executableSha256,
+        cliVersion: match[1],
+      }),
+    });
+    return receipt;
+  }
+
+  /** Historical observation, bound to its original owner; never a live grant. */
+  inspectTextProducerReceipt(
+    receipt: NativeTextProducerReceipt,
+  ): NativeTextProducerFacts {
+    const held = nativeTextProducers.get(receipt);
+    if (!held || held.owner !== this)
+      throw new Error('native_text_producer_receipt_unavailable');
+    return Object.freeze({ ...held.facts });
+  }
+
+  /** A completion fact from this owner's actual CLI result, never a grant,
+   * billing receipt or proof of namespace/exec cleanup. */
+  async captureTextExecutionReceipt(): Promise<NativeTextExecutionReceipt> {
+    const run = this.#textRun,
+      selection = this.#textSelection;
+    if (!run || !selection || !this.#id || selection.brokered)
+      throw new Error('native_text_completion_unavailable');
+    const result = await run.result;
+    if (this.#channel?.inspect().requests !== 1)
+      throw new Error('native_text_completion_unconfirmed');
+    let completion: ReturnType<typeof nativeTextCompletion>;
+    try {
+      completion = nativeTextCompletion(selection.engine, result.stdout);
+    } catch {
+      throw new Error('native_text_completion_unconfirmed');
+    }
+    if (!this.#textReceipt) {
+      const receipt: NativeTextExecutionReceipt = Object.freeze({
+        [nativeTextReceiptBrand]: true as const,
+      });
+      nativeTextReceipts.set(receipt, {
+        owner: this,
+        facts: Object.freeze({
+          engine: selection.engine,
+          requestedModelId: selection.modelId,
+          namespaceId: this.options.namespaceId,
+          containerId: this.#id,
+          imageId: this.options.imageId,
+          nativeSessionId: completion.nativeSessionId,
+          stdoutSha256: createHash('sha256')
+            .update(result.stdout)
+            .digest('hex'),
+          textSequenceSha256: createHash('sha256')
+            .update(JSON.stringify(completion.texts))
+            .digest('hex'),
+          terminal: Object.freeze({ code: 0, signal: null }),
+        }),
+      });
+      this.#textReceipt = receipt;
+    }
+    return this.#textReceipt;
+  }
+
+  inspectTextExecutionReceipt(
+    receipt: NativeTextExecutionReceipt,
+  ): NativeTextExecutionFacts {
+    const state = nativeTextReceipts.get(receipt);
+    if (!state || state.owner !== this)
+      throw new Error('native_text_receipt_owner_mismatch');
+    return Object.freeze(structuredClone(state.facts));
   }
 
   close(): Promise<void> {

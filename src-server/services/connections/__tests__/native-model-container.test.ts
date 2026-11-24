@@ -1,4 +1,5 @@
 import { ChildProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import { realpathSync } from 'node:fs';
 import { PassThrough, type Writable } from 'node:stream';
 import { beforeEach, expect, onTestFinished, test, vi } from 'vitest';
@@ -20,6 +21,7 @@ vi.mock('../../infra/process-utils.js', () => ({
 const temp = trackTempDirs({ lifetime: 'file' });
 const imageId = `sha256:${'a'.repeat(64)}`;
 const containerId = 'b'.repeat(64);
+const fixtureExecutableDigest = 'c'.repeat(64);
 
 beforeEach(() => vi.resetAllMocks());
 
@@ -54,10 +56,14 @@ async function fixture({
   failExecRetirement = false,
   execStopGate,
   delegationRpc,
+  request = () => {
+    throw new Error('Fixture exec must not make model requests');
+  },
 }: {
   failExecRetirement?: boolean;
   execStopGate?: Promise<void>;
   delegationRpc?: NativeModelContainerOptions['delegationRpc'];
+  request?: NativeModelContainerOptions['request'];
 } = {}) {
   const execStopEntered = gate();
   const active = new Map<
@@ -66,6 +72,8 @@ async function fixture({
   >();
   const execs: { args: string[]; env: NodeJS.ProcessEnv }[] = [];
   const removals: string[] = [];
+  const producerReads: string[][] = [];
+  let worker: ReturnType<typeof processFixture> | undefined;
   let running = false;
   let label: string | undefined;
   vi.mocked(spawnOwnedChild).mockImplementation((_, args, options) => {
@@ -117,12 +125,26 @@ async function fixture({
           );
           break;
         case 'start':
+          worker = child;
           running = true;
           child.proc.stdout.write(
             '{"type":"ready","port":12345,"uid":10000}\n',
           );
           break;
         case 'exec': {
+          if (!parameters.includes('--interactive')) {
+            producerReads.push(parameters);
+            if (parameters.includes('--eval'))
+              child.finish(fixtureExecutableDigest);
+            else if (parameters.at(-1) === '--version')
+              child.finish(
+                parameters.at(-2) === '/station/claude'
+                  ? '2.1.322 (Claude Code)'
+                  : 'codex-cli 0.135.0',
+              );
+            else child.finish('', 1);
+            break;
+          }
           execs.push({ args: parameters, env: options?.env ?? {} });
           const chunks: Buffer[] = [];
           child.proc.stdin.on('data', (chunk: Buffer) => chunks.push(chunk));
@@ -168,9 +190,7 @@ async function fixture({
     dockerExecutable: '/fixture/docker',
     endpoint: 'unix:///fixture/docker.sock',
     controllerRoot: realpathSync(temp('native-text-owner-')),
-    request() {
-      throw new Error('Fixture exec must not make model requests');
-    },
+    request,
     delegationRpc,
   };
   const controller = NativeModelContainer.prepare(options);
@@ -182,6 +202,32 @@ async function fixture({
     execs,
     removals,
     active,
+    producerReads,
+    requestModel: async () => {
+      if (!worker) throw new Error('Fixture worker has not started');
+      const { stdin, stdout } = worker.proc;
+      const id = randomUUID();
+      const ended = new Promise<void>((resolve) => {
+        const onData = (chunk: Buffer) => {
+          const frame = JSON.parse(chunk.toString('utf8'));
+          if (frame.type !== 'end' || frame.id !== id) return;
+          stdin.off('data', onData);
+          resolve();
+        };
+        stdin.on('data', onData);
+      });
+      stdout.write(
+        JSON.stringify({
+          type: 'request',
+          id,
+          method: 'POST',
+          path: '/v1/messages',
+          headers: [],
+          body: Buffer.from('{}').toString('base64'),
+        }) + '\n',
+      );
+      await ended;
+    },
     execStopEntered: execStopEntered.promise,
   };
 }
@@ -324,6 +370,9 @@ test.each(['claude', 'codex'] as const)(
       stdout: 'bounded fixture prompt',
     });
     await run.settled;
+    await expect(f.controller.captureTextExecutionReceipt()).rejects.toThrow(
+      'native_text_completion_unavailable',
+    );
     await expect(f.controller.startText(input)).rejects.toThrow(
       'native_text_admission_closed',
     );
@@ -368,3 +417,65 @@ test.each(['claude', 'codex'] as const)(
     }
   },
 );
+
+test('retains exact producer and single-request completion facts for the original owner', async () => {
+  const f = await fixture({
+    request: () => ({
+      response: Promise.resolve(new Response(null, { status: 204 })),
+      settled: Promise.resolve(),
+      invokeDelivery: async (write) => {
+        write();
+      },
+    }),
+  });
+  const nativeSessionId = randomUUID();
+  const output = JSON.stringify({
+    type: 'result',
+    subtype: 'success',
+    is_error: false,
+    num_turns: 1,
+    session_id: nativeSessionId,
+    result: 'Private controlled result',
+    permission_denials: [],
+  });
+  const run = await f.controller.startText({
+    engine: 'claude',
+    modelId: 'fixture-model',
+    signal: new AbortController().signal,
+    writePrompt: async (stdin) => {
+      await f.requestModel();
+      await writePrompt(stdin, output);
+    },
+  });
+  await run.settled;
+  const producer = await f.controller.captureTextProducerReceipt();
+  expect(await f.controller.captureTextProducerReceipt()).toBe(producer);
+  expect(f.producerReads).toHaveLength(2);
+  expect(f.producerReads[0]?.at(-1)).toBe('/station/claude');
+  expect(f.producerReads[1]?.slice(-2)).toEqual([
+    '/station/claude',
+    '--version',
+  ]);
+  const completed = await f.controller.captureTextExecutionReceipt();
+  expect(f.controller.inspectTextExecutionReceipt(completed)).toMatchObject({
+    containerId,
+    imageId,
+    nativeSessionId,
+    requestedModelId: 'fixture-model',
+    terminal: { code: 0, signal: null },
+  });
+  expect(() =>
+    f.controller.inspectTextExecutionReceipt({ ...completed }),
+  ).toThrow('native_text_receipt_owner_mismatch');
+  expect(() =>
+    f.controller.inspectTextProducerReceipt({ ...producer }),
+  ).toThrow('native_text_producer_receipt_unavailable');
+  await f.controller.close();
+  expect(f.controller.inspectTextProducerReceipt(producer)).toMatchObject({
+    containerId,
+    imageId,
+    executablePath: '/station/claude',
+    executableSha256: fixtureExecutableDigest,
+    cliVersion: '2.1.322',
+  });
+});
