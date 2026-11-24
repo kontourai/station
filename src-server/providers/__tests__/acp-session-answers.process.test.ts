@@ -240,9 +240,9 @@ describe.skipIf(process.platform === 'win32')(
         const turnId = await engine.send('proxy', 'Open the example page');
         await engine.completed(turnId);
 
-        const started = engine.events.findLast(
-          (event) => event.method === 'tool.started',
-        );
+        const started = engine.events
+          .filter((event) => event.method === 'tool.started')
+          .at(-1);
         const completed = engine.events.find(
           (event) => event.method === 'tool.completed',
         );
