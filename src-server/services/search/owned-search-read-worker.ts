@@ -4,6 +4,7 @@ import {
   errorClassFields,
   type SearchReadRefusal,
 } from './search-read-refusal.js';
+import { MAX_SCOPED_TRANSCRIPT_REQUEST_BYTES } from './transcript-search-protocol.js';
 
 type Phase = 'idle' | 'running' | 'retiring' | 'incomplete' | 'closed';
 export interface OwnedSearchReadWorker {
@@ -17,6 +18,7 @@ export interface OwnedSearchReadWorker {
     decode: (value: unknown) => T | null,
     signal?: AbortSignal,
     report?: (refusal: SearchReadRefusal) => void,
+    requestKind?: 'scoped-transcript-search',
   ): Promise<T | null>;
   /**
    * Start the worker if it is not started, and resolve once it has posted the
@@ -67,7 +69,6 @@ export function createOwnedSearchReadWorker(
   const kind = owner.kind;
   if (kind !== 'task' && kind !== 'transcript')
     throw new TypeError('Unknown read operation');
-  const requestBytes = 2048;
   const responseBytes = kind === 'task' ? 20 * 1024 : 64 * 1024;
   const resultKey = kind === 'task' ? 'page' : 'result';
   const deadlineMs = test.deadlineMs ?? 2000;
@@ -231,6 +232,7 @@ export function createOwnedSearchReadWorker(
     decode: (value: unknown) => T | null,
     signal?: AbortSignal,
     report?: (refusal: SearchReadRefusal) => void,
+    requestKind?: 'scoped-transcript-search',
   ): Promise<T | null> {
     const refused = (refusal: SearchReadRefusal) => {
       try {
@@ -252,6 +254,10 @@ export function createOwnedSearchReadWorker(
       return refused({ kind: 'request-invalid' });
     }
     if (wire === null) return refused({ kind: 'request-invalid' });
+    const requestBytes =
+      kind === 'transcript' && requestKind === 'scoped-transcript-search'
+        ? MAX_SCOPED_TRANSCRIPT_REQUEST_BYTES
+        : 2048;
     if (Buffer.byteLength(wire) > requestBytes)
       return refused({ kind: 'request-too-large' });
     let record: OwnedWorker;

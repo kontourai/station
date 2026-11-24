@@ -6,6 +6,14 @@ import {
 } from './search-read-refusal.js';
 import { boundedTaskText } from './task-search-protocol.js';
 
+export const MAX_SCOPED_TRANSCRIPT_THREADS = 64;
+export const MAX_SCOPED_TRANSCRIPT_REQUEST_BYTES = 100 * 1024;
+
+export interface TranscriptSearchSnapshot {
+  owner: string;
+  version: number;
+}
+
 export type TranscriptReadRequest =
   | {
       type: 'message-page';
@@ -25,6 +33,8 @@ export type TranscriptReadRequest =
       ownerUserIds?: readonly string[];
       tenantId?: string;
       projectId?: string;
+      threadIds?: readonly string[];
+      snapshot?: TranscriptSearchSnapshot;
       limit: number;
     }
   | {
@@ -44,7 +54,8 @@ export type TranscriptReadRequest =
       ownerUserIds?: readonly string[];
       tenantId?: string;
     }
-  | { type: 'session-owner'; id: number; threadId: string };
+  | { type: 'session-owner'; id: number; threadId: string }
+  | { type: 'search-snapshot'; id: number };
 export interface TranscriptSearchMatch {
   conversationId: string;
   messageId: string;
@@ -80,6 +91,7 @@ export interface TranscriptMessagePageFact {
 export type TranscriptReadResult =
   | { state: 'available'; page: TranscriptMessagePageFact | null }
   | { state: 'available'; rows: TranscriptSearchMatch[] }
+  | { state: 'available'; snapshot: TranscriptSearchSnapshot }
   | { state: 'available'; owner: string | null }
   | { state: 'available'; target: TranscriptMessageOpenFact | null }
   | { state: 'available'; session: TranscriptSessionOpenFact | null }
@@ -106,13 +118,35 @@ function exact(
   }
   return required.every((key) => Object.hasOwn(result, key)) ? result : null;
 }
+function parseSnapshot(input: unknown): TranscriptSearchSnapshot | null {
+  const snapshot = exact(input, ['owner', 'version'], ['owner', 'version']);
+  if (
+    !snapshot ||
+    !boundedTaskText(snapshot.owner, 64) ||
+    typeof snapshot.version !== 'number' ||
+    !Number.isSafeInteger(snapshot.version) ||
+    snapshot.version < 0
+  )
+    return null;
+  return { owner: snapshot.owner, version: snapshot.version };
+}
+
 export function transcriptMessageRequest(
   input: unknown,
   id: number,
 ): TranscriptReadRequest | null {
   const fields = exact(
     input,
-    ['query', 'ownerUserId', 'ownerUserIds', 'tenantId', 'projectId', 'limit'],
+    [
+      'query',
+      'ownerUserId',
+      'ownerUserIds',
+      'tenantId',
+      'projectId',
+      'threadIds',
+      'snapshot',
+      'limit',
+    ],
     ['query', 'ownerUserId', 'limit'],
   );
   return fields
@@ -162,6 +196,8 @@ export function parseTranscriptReadRequest(
       'projectId',
       'limit',
       'threadId',
+      'threadIds',
+      'snapshot',
       'matchedEventId',
       'continuation',
     ],
@@ -175,6 +211,27 @@ export function parseTranscriptReadRequest(
     return null;
   if (request.type !== 'message-page' && Object.hasOwn(request, 'continuation'))
     return null;
+  if (
+    Object.hasOwn(request, 'threadIds') !== Object.hasOwn(request, 'snapshot')
+  )
+    return null;
+  if (Object.hasOwn(request, 'threadIds')) {
+    const ids = request.threadIds;
+    if (
+      request.type !== 'message-search' ||
+      request.tenantId !== undefined ||
+      !Array.isArray(ids) ||
+      types.isProxy(ids) ||
+      ids.length > MAX_SCOPED_TRANSCRIPT_THREADS ||
+      !parseSnapshot(request.snapshot)
+    )
+      return null;
+    for (let index = 0; index < ids.length; index++) {
+      const field = Object.getOwnPropertyDescriptor(ids, String(index));
+      if (!field || !('value' in field) || !boundedTaskText(field.value, 256))
+        return null;
+    }
+  }
   if (request.ownerUserIds !== undefined) {
     const owners = request.ownerUserIds;
     if (
@@ -191,7 +248,9 @@ export function parseTranscriptReadRequest(
         return null;
     }
   }
-  if (request.type === 'session-owner') {
+  if (request.type === 'search-snapshot') {
+    if (Object.keys(request).length !== 2) return null;
+  } else if (request.type === 'session-owner') {
     if (
       Object.keys(request).length !== 3 ||
       !boundedTaskText(request.threadId, 256)
@@ -251,7 +310,16 @@ export function parseTranscriptReadResult(
 ): TranscriptReadResult | null {
   const result = exact(
     value,
-    ['state', 'rows', 'owner', 'target', 'session', 'page', 'cause'],
+    [
+      'state',
+      'rows',
+      'owner',
+      'target',
+      'session',
+      'page',
+      'snapshot',
+      'cause',
+    ],
     ['state'],
   );
   if (!result) return null;
@@ -264,6 +332,10 @@ export function parseTranscriptReadResult(
   if (Object.hasOwn(result, 'cause')) return null;
   if (result.state !== 'available' || Object.keys(result).length !== 2)
     return null;
+  if (request.type === 'search-snapshot') {
+    const snapshot = parseSnapshot(result.snapshot);
+    return snapshot ? { state: 'available', snapshot } : null;
+  }
   if (request.type === 'session-owner') {
     return result.owner === null || boundedTaskText(result.owner, 256)
       ? { state: 'available', owner: result.owner }
