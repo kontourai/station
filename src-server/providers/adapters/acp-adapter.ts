@@ -5502,6 +5502,7 @@ export class AcpAdapter implements ProviderAdapterShape {
       provider: this.provider,
       session: record.session,
       activeTurnId: record.activeTurnId,
+      handshake: record.process.initResult,
       publish: (event) => this.publishForTurn(record, event),
       state: record,
       toolUpdateSupervisor: record.toolUpdateSupervisor,
