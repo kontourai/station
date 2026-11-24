@@ -1,4 +1,7 @@
-import type { AgentId } from '@kontourai/station-contracts/agent-identity';
+import {
+  type AgentId,
+  STATION_AGENT_ID,
+} from '@kontourai/station-contracts/agent-identity';
 import { projectAllowsAgent } from '@kontourai/station-contracts/project-reference-integrity';
 import type { ConnectionConfig } from '@kontourai/station-contracts/tool';
 import type { AgentData } from '../contexts/AgentsContext';
@@ -150,4 +153,42 @@ export function selectFirstChatTarget({
       agentRunnability(agent).runnable &&
       canAgentStartChat(agent, agentConnections),
   );
+}
+
+/**
+ * Where the header's "Ask Station" prompts start. Each one runs Station's own
+ * tools (`system_status`, `list_active_work`, …), which the built-in Station
+ * Assistant receives, so the Assistant is the target whenever a click can
+ * start a chat on it. It is a global Agent: a Project the header is inside
+ * scopes the chat, not the choice.
+ *
+ * This used to be `selectFirstChatTarget`, which answers with whichever
+ * chat-ready Agent the catalog lists first. It still does when the Assistant
+ * cannot start a chat (no engine yet, or the server marks it unavailable), so
+ * the menu keeps working on a Station that has not set the Assistant up.
+ */
+export function selectHelpPromptTarget({
+  agents,
+  agentConnections,
+  selectedProjectSlug,
+}: {
+  agents: AgentData[];
+  agentConnections: ConnectionConfig[];
+  selectedProjectSlug?: string;
+}): AgentData | undefined {
+  const station = agents.find((agent) => agent.slug === STATION_AGENT_ID);
+  if (
+    station &&
+    selectChatReadyAgents({
+      agents: [station],
+      agentConnections,
+      selectedProjectSlug,
+    }).length > 0
+  )
+    return station;
+  return selectFirstChatTarget({
+    agents,
+    agentConnections,
+    selectedProjectSlug,
+  });
 }

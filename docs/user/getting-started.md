@@ -1583,6 +1583,11 @@ Shared Task history keeps the records already loaded when an earlier page fails;
 use **Retry** to read that page again. Chats search, snooze, Mark done and Undo
 work across its desktop and mobile layouts.
 
+Each prompt under **Ask Station** in the help menu, such as **Check my
+Station**, starts a new chat with the built-in **Station Assistant**. When the
+Station Assistant has no engine to run on, the prompt starts on the first agent
+that can.
+
 Open the help menu and choose **Troubleshoot with an agent**, or search the
 command palette for **Troubleshoot an issue**. It is also under Settings →
 Diagnostics.

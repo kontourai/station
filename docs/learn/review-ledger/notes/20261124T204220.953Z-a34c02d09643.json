@@ -1,0 +1,21 @@
+{
+  "revision": "32ec3dd523e649c0bbbb9e0f56e4e949962131cb",
+
+  "notes": [
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Frozen routing decision. It makes no claim about attention item links, the one topic session-api.md gained.","inputs":["docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","docs/reference/session-api.md"]},
+
+    {"path":"docs/design/automations.md","note":"Links to notification delivery for how automation notices are delivered. It says nothing about where an Open session link lands, the sentence changed in notification-delivery.md.","inputs":["docs/design/automations.md","docs/design/notification-delivery.md"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Rewrote the Open session destination: an Attention row for a session this Station runs carries the dock href (notificationSessionHref), a failed one included, and a stored Activity link still opens the session reader. Checked against sessionOpenHref and the attention projection tests.","inputs":["docs/design/notification-delivery.md"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Cites the attention projection for item derivation, acknowledgement and hosted reads, which are unchanged. The page does not state where a session row's link opens.","inputs":["docs/guides/agent-configuration.md","src-server/services/projects/attention-projection.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Its notification URL forms (/projects/<slug>?chat=...&dock=open, or /?chat=...&dock=open without a Project) are the ones attention rows now use as well. Unchanged and still accurate.","inputs":["docs/guides/web-push-notifications.md","src-server/services/projects/attention-projection.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Added the destination of a row for a session this Station runs (notificationSessionHref, session-failed included) beside the existing peer-record exception. Checked against sessionOpenHref and the attention projection tests.","inputs":["docs/reference/session-api.md","src-server/services/projects/attention-projection.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Added selectHelpPromptTarget for the header's Ask Station prompts. The Agent identity, engine and tool-delivery statements on this page do not depend on it.","inputs":["docs/reference/station-docs.md","src-ui/src/components/agent-selection-policy.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Added where Ask Station prompts start: the Station Assistant, else the first Agent that can start a chat. Checked against selectHelpPromptTarget and the header view-model test.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

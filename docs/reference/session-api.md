@@ -2652,6 +2652,11 @@ answer it instead of offering a local reply. The field is absent for work this
 Station runs. A server that predates the field omits it; a reply sent to a peer
 record through that server is still refused, not delivered elsewhere.
 
+An item for a session this Station runs links to the chat dock on that session,
+inside its Project when it has one (`notificationSessionHref`, the href its
+notification opens). That includes `session-failed`: the dock shows the recorded
+failure.
+
 The same record also opens in Activity from every work-item surface: Home's
 continue action and lists, the dock inbox, the mobile task switcher, the
 Sessions list, and a project's live work. Its agent slug and conversation id

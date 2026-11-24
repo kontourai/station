@@ -17,7 +17,10 @@ import {
 } from '@kontourai/station-contracts/attention';
 import type { DevicePairingRequest } from '@kontourai/station-contracts/environment-security';
 import { projectReviewLayoutHref } from '@kontourai/station-contracts/layout';
-import type { Notification } from '@kontourai/station-contracts/notification';
+import {
+  type Notification,
+  notificationSessionHref,
+} from '@kontourai/station-contracts/notification';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { pluginProposalHref } from '@kontourai/station-contracts/plugin';
 import type { RequestOpenedEvent } from '@kontourai/station-contracts/runtime-events';
@@ -1792,30 +1795,11 @@ export function buildSessionFailedItem(
     ...(sessionProjectSlug(session)
       ? { projectSlug: sessionProjectSlug(session) }
       : {}),
-    openHref: failedSessionOpenHref(session),
+    openHref: sessionOpenHref(session),
     source: { threadId: session.threadId },
     engine: session.provider,
     ...(agent ? { agent } : {}),
   };
-}
-
-/**
- * archive#3203: a failed session's "Open session" must land on the one
- * sub-view that renders the failure. `sessionOpenHref`'s project branch opens
- * the CHAT DOCK (`?chat=…&dock=open`), and the dock has no failure surface at
- * all — `failureText` is derived in `useMutableSessionDetailState` and
- * rendered only by `SessionDetailErrors` inside the session detail pane. That
- * mismatch is the reported "it brings me somewhere.. but I don't see an error
- * message".
- *
- * Only this kind is redirected. The dock is the right target for
- * `needs_input`/`review_pending`, which ask the user to answer — that is what
- * the dock's composer is for. A failed session has nothing to answer, so it
- * goes to the same Activity surface deep link project-less sessions already
- * use, where the reason renders in an `role="alert"` banner on arrival.
- */
-function failedSessionOpenHref(session: OrchestrationSessionSummary): string {
-  return activityDeepLink({ sessionId: session.threadId });
 }
 
 /**
@@ -1833,15 +1817,17 @@ function sessionProjectSlug(
 
 function sessionOpenHref(session: OrchestrationSessionSummary): string {
   const projectSlug = sessionProjectSlug(session);
-  if (projectSlug) {
-    // archive#1284 (AC4): `dock=open` so the deep link actually opens the
-    // chat dock instead of landing on the project layout with the dock
-    // still closed (navigation-store.ts's `isDockOpen` reads this param).
-    // The Activity surface deep link below is not a dock target and carries
-    // no `dock=open`.
-    return `/projects/${encodeURIComponent(projectSlug)}?chat=${encodeURIComponent(session.threadId)}&dock=open`;
-  }
-  return activityDeepLink({ sessionId: session.threadId });
+  // The href the session's notifications open (`notificationSessionHref`): the
+  // chat dock on that session, inside its Project when it has one, so a row and
+  // its alert land in the same place.
+  //
+  // A failure takes it too. archive#3203 sent one to the session reader
+  // because the dock rendered none; archive#3213 gave the dock its failure
+  // banner.
+  return notificationSessionHref({
+    sessionId: session.threadId,
+    ...(projectSlug ? { projectSlug } : {}),
+  });
 }
 
 function stringValue(value: unknown): string | undefined {
