@@ -117,7 +117,7 @@ describe('chat interaction accessibility', () => {
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
 
     const approve = screen.getByRole('button', {
-      name: 'Allow Once',
+      name: 'Allow once',
     }) as HTMLButtonElement;
     expect(approve.type).toBe('button');
     fireEvent.click(approve);

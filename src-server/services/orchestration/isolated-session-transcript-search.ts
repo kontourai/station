@@ -15,7 +15,10 @@ import {
   SearchReadRefusedError,
 } from '../search/search-read-refusal.js';
 import { boundedTaskText } from '../search/task-search-protocol.js';
-import type { TranscriptSearchMatch } from '../search/transcript-search-protocol.js';
+import type {
+  TranscriptSearchMatch,
+  TranscriptSearchSnapshot,
+} from '../search/transcript-search-protocol.js';
 import type { SessionAuthorization } from './session-authorization.js';
 
 export interface IsolatedSessionReadInput {
@@ -192,6 +195,7 @@ export function createIsolatedSessionTranscriptSearch(
       input: IsolatedSessionReadInput & {
         query: string;
         projectId?: string;
+        selectThreadIds?: () => readonly string[];
         limit?: number;
       },
     ): Promise<
@@ -213,6 +217,19 @@ export function createIsolatedSessionTranscriptSearch(
           cause: { kind: 'request-invalid', stage: 'admission' },
         };
       const matches = await readAuthorized(input, async (current, signal) => {
+        const scoped = input.selectThreadIds;
+        let subject:
+          | { threadIds: readonly string[]; snapshot: TranscriptSearchSnapshot }
+          | undefined;
+        if (scoped) {
+          if (!source.captureSearchSnapshot)
+            throw new SearchReadRefusedError({ kind: 'request-invalid' });
+          const snapshot = await source.captureSearchSnapshot(signal);
+          if (!current()) return;
+          const threadIds = scoped();
+          if (threadIds.length === 0) return [];
+          subject = { threadIds, snapshot };
+        }
         const rows = await source.search(
           {
             query,
@@ -222,12 +239,15 @@ export function createIsolatedSessionTranscriptSearch(
               ? { tenantId: authority.tenantExecutionContext!.tenantId }
               : {}),
             ...(projectId !== undefined ? { projectId } : {}),
+            ...subject,
           },
           signal,
         );
         const permitted: TranscriptSearchMatch[] = [];
         for (const row of rows) {
           if (!current()) return;
+          if (subject && !subject.threadIds.includes(row.conversationId))
+            throw new SearchReadRefusedError({ kind: 'result-invalid' });
           if (
             await authorization.canReadSessionAsync(
               row.conversationId,

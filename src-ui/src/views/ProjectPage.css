@@ -1095,15 +1095,14 @@
    flight, and its own call to action. Every value here is an existing token —
    no new colours, no gradients. */
 
-.project-page__live-work {
-  margin-bottom: 2rem;
-}
-
 .project-page__live-work-lane {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 14px;
+}
+
+.project-page__live-work-lane + .project-page__live-work-lane {
+  margin-block-start: var(--k-space-4);
 }
 
 .project-page__live-work-eyebrow {
@@ -1432,7 +1431,6 @@
 
 .project-page__workspace {
   border-top: 1px solid var(--k-line);
-  margin-top: var(--k-space-5);
 }
 
 .project-page__workspace > summary::before {

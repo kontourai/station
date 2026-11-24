@@ -210,7 +210,7 @@ test('a settled card retains the pending approval and answers its exact request'
   expect(failedRow).toBeTruthy();
   fireEvent.click(failedRow!);
   expect(screen.getByText('The page refused the action.')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Allow once' }));
   await waitFor(() => expect(approve).toHaveBeenCalledWith(pending, 'once'));
   client.clear();
 });

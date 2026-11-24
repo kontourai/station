@@ -348,12 +348,14 @@ export function continuityBinding(
   const bindingSessionId = materialized
     ? current.sessionId
     : (current.predecessorSessionId ?? current.sessionId);
-  const configured = store
-    .listEvents(bindingSessionId)
-    .map((item) => item.payload)
-    .reverse()
-    .find((event) => event.method === 'session.configured');
-  const metadata = configured?.metadata;
+  const configured = store.latestEventByMethod(
+    bindingSessionId,
+    'session.configured',
+  )?.payload;
+  const metadata =
+    configured?.method === 'session.configured'
+      ? configured.metadata
+      : undefined;
   const boundAgent =
     reservation?.targetAgentId ??
     (typeof metadata?.agentId === 'string'
@@ -363,9 +365,7 @@ export function continuityBinding(
         : undefined);
   if (!metadata || typeof metadata.environmentId !== 'string' || !boundAgent)
     return null;
-  const session = store
-    .readSessions()
-    .find((item) => item.threadId === bindingSessionId);
+  const session = store.readSessionByThread(bindingSessionId);
   const executionAgentId = reservation
     ? reservation.targetExecutionAgentId
     : metadata.executionAgentId;

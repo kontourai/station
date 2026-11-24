@@ -1,0 +1,7 @@
+{
+  "revision": "3e119df23ae0f56b6e15972f3a27e5bffa9a73d6",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Slice 4.10 (chat-14): re-read the session-grant section against approvalDecisionBody/approvalDecisionLayout, the toast (approvalHandlers), inline card and request sheet (InputRequestDecision) and the inbox card (approval-inbox). Grant kinds, labels, typed scopes and server enforcement are unchanged; only placement (grants in one 'Allow for this session' menu on card and toast) and the 'Allow once' capitalisation changed, neither of which this page claims otherwise. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/__tests__/tool-request-preview.test.ts","src-server/services/approvals/approval-inbox.ts","src-ui/src/__tests__/ChatMessageList.mobileTurnFold.test.tsx","src-ui/src/components/chat/InputRequestDecision.tsx","src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts","src-ui/src/hooks/orchestration/approvalHandlers.ts","tests/mobile-request-sheet.spec.ts","tests/orchestration-chat-flow.spec.ts"]}
+  ]
+}

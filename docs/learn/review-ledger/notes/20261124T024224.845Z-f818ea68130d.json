@@ -1,0 +1,7 @@
+{
+  "revision": "360d2499b9dff4e16f386188aeb75df1c58d85ed",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Checked that the typed event filter and final array access select the latest start frame in the same process fixture. Antigravity proxy identity, late arguments, and terminal assertions remain covered.","inputs":["src-server/providers/__tests__/acp-session-answers.process.test.ts"]}
+  ]
+}

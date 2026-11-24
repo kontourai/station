@@ -13,8 +13,8 @@
  *   the home bumps it, and an old version refuses a newer schema, so a
  *   rollback that kept the trial's marker would leave the old version unable
  *   to boot.
- * - `live`: owned by the service and process lifecycle, not by a Station
- *   version. Never backed up and never touched by a rollback: the service
+ * - `live`: owned by a service, process, or external engine lifecycle.
+ *   Never backed up and never touched by a rollback: the service
  *   manifests and the liveness entry the update window re-points to the
  *   launcher (instances.json) must stay exactly as they are, and logs are the
  *   record of what the failed trial did.
@@ -167,6 +167,8 @@ export const STATION_HOME_ROOTS: Readonly<
   // Default project directories: users' repositories (project-service.ts).
   workspaces: 'external',
 
+  // Provider-owned profiles can contain sign-in data and native transcripts.
+  'engine-profiles': 'live',
   'instances.json': 'live',
   logs: 'live',
   monitoring: 'live',

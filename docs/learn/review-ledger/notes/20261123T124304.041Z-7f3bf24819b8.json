@@ -1,0 +1,7 @@
+{
+  "revision": "ff50277a6d175697884db9f351a54eacf4bf0b96",
+
+  "notes": [
+    {"path":"docs/design/pane-relationships.md","note":"ChatDock changes: kept New chat text scoped by the draft's Project, and the ambient dock publishes whether its New chat draft is open for Home. Pane relations, drafts kept mounted and scroll state are unchanged.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

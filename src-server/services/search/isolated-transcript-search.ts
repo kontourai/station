@@ -14,6 +14,7 @@ import {
   type TranscriptMessagePageFact,
   type TranscriptReadRequest,
   type TranscriptSearchMatch,
+  type TranscriptSearchSnapshot,
   type TranscriptSessionOpenFact,
   transcriptMessageOpenRequest,
   transcriptMessageRequest,
@@ -23,6 +24,9 @@ import {
 /** Database owner only. Callers must still apply the live SessionAuthorization policy. */
 export interface IsolatedTranscriptReads
   extends Pick<OwnedSearchReadWorker, 'close' | 'inspect' | 'whenReady'> {
+  captureSearchSnapshot?(
+    signal?: AbortSignal,
+  ): Promise<TranscriptSearchSnapshot>;
   readMessagePage(
     input: {
       threadId: string;
@@ -41,6 +45,8 @@ export interface IsolatedTranscriptReads
       ownerUserIds?: readonly string[];
       tenantId?: string;
       projectId?: string;
+      threadIds?: readonly string[];
+      snapshot?: TranscriptSearchSnapshot;
       limit: number;
     },
     signal?: AbortSignal,
@@ -80,6 +86,7 @@ export function createIsolatedTranscriptReads(
   async function execute(
     build: (id: number) => TranscriptReadRequest | null,
     signal?: AbortSignal,
+    requestKind?: 'scoped-transcript-search',
   ) {
     let captured: TranscriptReadRequest | null = null;
     let refusal: SearchReadRefusal | undefined;
@@ -93,6 +100,7 @@ export function createIsolatedTranscriptReads(
       (reported) => {
         refusal = reported;
       },
+      requestKind,
     );
     // #2460: the refusal names its own branch — the worker's query-error
     // class, or the owner lifecycle branch that produced no reply.
@@ -118,10 +126,19 @@ export function createIsolatedTranscriptReads(
       if (!('page' in result)) throw mismatch();
       return result.page;
     },
+    async captureSearchSnapshot(signal) {
+      const result = await execute(
+        (id) => parseTranscriptReadRequest({ type: 'search-snapshot', id }),
+        signal,
+      );
+      if (!('snapshot' in result)) throw mismatch();
+      return result.snapshot;
+    },
     async search(input, signal) {
       const result = await execute(
         (id) => transcriptMessageRequest(input, id),
         signal,
+        input.threadIds !== undefined ? 'scoped-transcript-search' : undefined,
       );
       if (!('rows' in result)) throw mismatch();
       return result.rows;

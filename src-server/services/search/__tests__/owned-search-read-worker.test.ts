@@ -18,7 +18,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createOwnedSearchReadWorker } from '../owned-search-read-worker.js';
 
 const FIXTURE = new URL(
@@ -86,25 +86,24 @@ describe('owned search read worker readiness (station#1707)', () => {
     expect(waited).toBeGreaterThan(readyDelayMs * 0.5);
   });
 
-  test('a read after readiness is not charged for the start that preceded it', async () => {
-    // The composed contract, and the reachable one: `runtime-search`'s
-    // `run()` awaits `whenReady()` ahead of every budget, so by the time a
-    // read is issued the boot is already paid. Here the start alone outlasts
-    // the read deadline several times over, and the read still succeeds.
-    //
-    // `execute()` deliberately does NOT await readiness itself: it cannot
-    // know whether its worker posts the sentinel, and the fault fixtures in
-    // `./fixtures` do not. That is stated in the module and is why this case
-    // drives the pair, not `execute()` alone.
-    const worker = readinessWorker({ readyDelayMs: 500, deadlineMs: 300 });
+  test('a ready worker gets a fresh read deadline after being idle', async () => {
+    const deadlineMs = 300;
+    const worker = readinessWorker({ deadlineMs });
+    // The worker still posts its own readiness and reply. Advance only the
+    // owner's clock so thread scheduling cannot consume the test's read budget.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    try {
+      await worker.whenReady();
+      vi.advanceTimersByTime(deadlineMs + 1);
+      const result = await worker.execute(
+        (id) => JSON.stringify({ id, type: 'session-owner', threadId: 't' }),
+        (value) => value as { state: string },
+      );
 
-    await worker.whenReady();
-    const result = await worker.execute(
-      (id) => JSON.stringify({ id, type: 'session-owner', threadId: 't' }),
-      (value) => value as { state: string },
-    );
-
-    expect(result).toEqual({ state: 'available' });
+      expect(result).toEqual({ state: 'available' });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   test('an entry module that fails to load settles readiness at once, not at the bound', async () => {

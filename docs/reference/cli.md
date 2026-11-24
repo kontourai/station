@@ -3812,8 +3812,9 @@ or a file with an existing SQLite WAL. This includes
 WAL and shared-memory sidecars are not copied. Symlinks in included content,
 corrupt databases, detected active instances, and
 configured size/count limits fail closed. Volatile logs, monitoring output,
-service state, temporary files, live instance records, and the top-level
-quarantine directory are excluded. Native-engine effect custody in
+service state, temporary files, live instance records, provider-owned
+`engine-profiles/`, and the top-level quarantine directory are excluded.
+Native-engine effect custody in
 `service/engine-effects/` stays with the current home across update rollback and is also
 excluded from backups. Re-acquirable `media-tools/` downloads and
 pinned `engines/` installs are also excluded; a restored home requires host

@@ -1,0 +1,11 @@
+{
+  "revision": "04349dac9fa25702d2bd5c984a1fa9902a9d169f",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked pages citing ChatMessageList (chat-composer, ai-ui-bridge-expansion, placement): only chat-composer describes the transcript's reading behaviour and states the new reader-away rule; form submission and placement claims unaffected by the list reporting where its reader is.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked pages citing ChatMessageList (chat-composer, ai-ui-bridge-expansion, placement): only chat-composer describes the transcript's reading behaviour and states the new reader-away rule; form submission and placement claims unaffected by the list reporting where its reader is.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked pages citing ChatMessageList (chat-composer, ai-ui-bridge-expansion, placement): only chat-composer describes the transcript's reading behaviour and states the new reader-away rule; form submission and placement claims unaffected by the list reporting where its reader is.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

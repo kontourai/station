@@ -14,12 +14,16 @@ import {
   stationControlToolListable,
   stationControlToolPolicy,
 } from '../../tools/station-control-policy.js';
-import { registerActiveWorkTool } from '../../tools/station-control-work-discovery-tools.js';
+import {
+  registerActiveWorkTool,
+  registerConversationWorkSearchTool,
+} from '../../tools/station-control-work-discovery-tools.js';
 import type { ProjectService } from '../projects/project-service.js';
 import {
   type createOutsideActiveWorkReader,
   MAX_OUTSIDE_ACTIVE_WORK_CURSOR,
 } from './active-work.js';
+import type { createOutsideConversationSearchReader } from './conversation-search.js';
 import type { Records } from './oauth-records.js';
 
 export interface OutsideAgentCaller {
@@ -54,11 +58,15 @@ export function createOutsideMcpDispatch(input: {
   current(): Records['grant'];
   projects: Pick<ProjectService, 'listProjects' | 'getProject'>;
   listActiveWork?: ReturnType<typeof createOutsideActiveWorkReader>;
+  searchConversations?: ReturnType<
+    typeof createOutsideConversationSearchReader
+  >;
   reserveCall(): () => void;
 }) {
   const catalog = new Set(['list_projects', 'get_project']);
-  const { listActiveWork } = input;
+  const { listActiveWork, searchConversations } = input;
   if (listActiveWork) catalog.add('list_active_work');
+  if (searchConversations) catalog.add('search_conversations');
   const admitted = (name: string, grant: Records['grant']): boolean => {
     const policy = stationControlToolPolicy(name);
     return (
@@ -164,6 +172,18 @@ export function createOutsideMcpDispatch(input: {
           caller('list_active_work');
         }),
       MAX_OUTSIDE_ACTIVE_WORK_CURSOR,
+    );
+  }
+  if (searchConversations) {
+    registerConversationWorkSearchTool(registry, (args, signal) =>
+      searchConversations(
+        caller('search_conversations'),
+        args,
+        () => {
+          caller('search_conversations');
+        },
+        signal,
+      ),
     );
   }
   const server = new Server(

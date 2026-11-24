@@ -587,6 +587,42 @@ export function createToolRoutes(
     }
   });
 
+  app.post('/:id/events/discover', async (c) => {
+    const authorizeOperator = mcpUiCallDeps.authorizeOperator;
+    if (!authorizeOperator) return c.notFound();
+    c.header('Cache-Control', 'private, no-store');
+    const authorized = async () => {
+      try {
+        await authorizeOperator(c);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const forbidden = () =>
+      c.json(
+        {
+          success: false,
+          error: 'Only the Station operator can check events.',
+        },
+        403,
+      );
+    if (!(await authorized())) return forbidden();
+    const data = await mcpService
+      .discoverMCPEvents(param(c, 'id'))
+      .catch(() => undefined);
+    if (!(await authorized())) return forbidden();
+    return data
+      ? c.json({ success: true, data })
+      : c.json(
+          {
+            success: false,
+            error: 'Could not read events from this tool server.',
+          },
+          502,
+        );
+  });
+
   app.get('/:serverId/ui-tools', async (c) => {
     const catalog = await mcpService.getOpenMCPUIToolCatalog(
       param(c, 'serverId'),

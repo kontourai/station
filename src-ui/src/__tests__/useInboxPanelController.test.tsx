@@ -113,7 +113,7 @@ function Harness({
   return (
     <>
       <button ref={triggerRef} type="button" onClick={() => setOpen(true)}>
-        Inbox
+        Chats
       </button>
       <button
         type="button"
@@ -200,7 +200,7 @@ test('mobile search focuses when mounted and never steals a later keyboard selec
     frames.push(callback);
     return frames.length;
   });
-  fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Search chats' }));
   const search = screen.getByRole('searchbox');
   expect(document.activeElement).toBe(search);
   const row = screen.getByRole('button', {
@@ -233,7 +233,7 @@ test("following the project page keeps another Station's same-slug project out",
   ).toBeNull();
 });
 
-test('mobile restores focus when the host closes Inbox while opening its reader', async () => {
+test('mobile restores focus when the host closes Chats while opening its reader', async () => {
   mount(
     'mobile',
     vi.fn<Open>(async () => true),
@@ -241,12 +241,12 @@ test('mobile restores focus when the host closes Inbox while opening its reader'
     false,
     true,
   );
-  const trigger = screen.getByRole('button', { name: 'Inbox' });
+  const trigger = screen.getByRole('button', { name: 'Chats' });
   trigger.focus();
   const user = userEvent.setup();
   await user.click(screen.getByRole('button', { name: /^Second selection\b/ }));
   await waitFor(() => expect(document.activeElement).toBe(trigger));
-  expect(screen.queryByRole('region', { name: 'Inbox' })).toBeNull();
+  expect(screen.queryByRole('region', { name: 'Chats' })).toBeNull();
 });
 
 for (const layout of ['desktop', 'mobile'] as const) {
@@ -341,7 +341,7 @@ for (const layout of ['desktop', 'mobile'] as const) {
       mount(layout, async () => true);
       const user = userEvent.setup();
       if (layout === 'mobile')
-        await user.click(screen.getByRole('button', { name: 'Search inbox' }));
+        await user.click(screen.getByRole('button', { name: 'Search chats' }));
       await user.type(screen.getByRole('searchbox'), 'second');
       expect(
         screen.queryByRole('button', {
@@ -464,12 +464,14 @@ for (const layout of ['desktop', 'mobile'] as const) {
           screen.getByRole('button', { name: /^First selection\b/ }),
         );
         await user.click(screen.getByRole('button', { name: 'Details' }));
-        await user.click(await screen.findByRole('button', { name: '1 hour' }));
+        await user.click(
+          await screen.findByRole('button', { name: /^In 1 hour,/ }),
+        );
       } else {
         await user.click(
-          screen.getByRole('button', { name: 'Snooze First selection' }),
+          screen.getByRole('button', { name: 'Actions for First selection' }),
         );
-        await user.click(screen.getByRole('menuitem', { name: '1 hour' }));
+        await user.click(screen.getByRole('menuitem', { name: /^In 1 hour,/ }));
       }
       expect(readSnoozes(NOW, 'principal-a').first).toBe(NOW + 3600000);
       expect(readSnoozes(NOW, 'principal-b')).toEqual({});
@@ -480,12 +482,14 @@ for (const layout of ['desktop', 'mobile'] as const) {
         );
         await user.click(screen.getByRole('button', { name: 'Details' }));
         await user.click(
-          await screen.findByRole('button', { name: 'Unsnooze' }),
+          await screen.findByRole('button', { name: 'Wake now' }),
         );
-      } else
+      } else {
         await user.click(
-          screen.getByRole('button', { name: 'Unsnooze First selection' }),
+          screen.getByRole('button', { name: 'Actions for First selection' }),
         );
+        await user.click(screen.getByRole('menuitem', { name: 'Wake now' }));
+      }
       expect(readSnoozes(NOW, 'principal-a')).toEqual({});
       if (layout === 'mobile') {
         fireEvent.contextMenu(
@@ -493,14 +497,14 @@ for (const layout of ['desktop', 'mobile'] as const) {
         );
         await user.click(screen.getByRole('button', { name: 'Details' }));
         await user.click(
-          await screen.findByRole('button', { name: 'Dismiss from inbox' }),
+          await screen.findByRole('button', { name: 'Mark done' }),
         );
-      } else
+      } else {
         await user.click(
-          screen.getByRole('button', {
-            name: 'Dismiss First selection from inbox',
-          }),
+          screen.getByRole('button', { name: 'Actions for First selection' }),
         );
+        await user.click(screen.getByRole('menuitem', { name: 'Mark done' }));
+      }
       expect(Object.keys(readInboxDismissals('principal-a'))).toHaveLength(1);
       expect(readInboxDismissals('principal-b')).toEqual({});
       await user.click(screen.getByRole('button', { name: 'Undo dismissal' }));
@@ -607,9 +611,9 @@ for (const remote of [false, true]) {
       );
       const mounted = renderWithIsolatedConnections(view(draft));
       fireEvent.click(
-        screen.getByRole('button', { name: 'Snooze Promoted chat' }),
+        screen.getByRole('button', { name: 'Actions for Promoted chat' }),
       );
-      fireEvent.click(screen.getByRole('menuitem', { name: '1 hour' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: /^In 1 hour,/ }));
       expect(readSnoozes(NOW, 'principal-a')[draft.id]).toBe(NOW + 3600000);
       const durable = {
         ...draft,

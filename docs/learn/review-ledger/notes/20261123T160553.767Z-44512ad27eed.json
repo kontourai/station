@@ -1,0 +1,7 @@
+{
+  "revision": "2b7e91cfd2d2d9198b2a11fdced73b1ced9bd30b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Hold paragraph reviewed against ChatMessageList: the hold now ends when the reader's message appears in the transcript (a send, or a queued follow-up delivered) or a request opens; queueing alone, an earlier message switching to the server's copy and earlier history loading do not; content growth under the held row is never scrolling away. Rest of the page unchanged by this edit.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

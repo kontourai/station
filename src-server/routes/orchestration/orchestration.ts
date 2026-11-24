@@ -653,7 +653,7 @@ const respondToRequestCommandSchema = z.object({
   // offered the scope honours it (the adapter's grant computation): `server`
   // for an authentic Station browser call, `rule` for a Claude Bash ask with
   // suggested command prefixes.
-  sessionGrantScope: z.enum(['server', 'rule']).optional(),
+  sessionGrantScope: z.enum(['server', 'rule', 'all']).optional(),
   // docs/design/event-content-spill.md: proof the client loaded a spilled
   // request's full content before allowing it. Checked by the service.
   viewedContentDigest: z

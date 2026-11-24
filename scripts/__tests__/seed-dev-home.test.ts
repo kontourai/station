@@ -82,6 +82,7 @@ function buildSourceHome() {
   write(home, 'security/paired-devices.json', '[]');
   write(home, 'browser/profiles/default/Cookies', 'cookies');
   write(home, 'app-homes/claude/.credentials.json', '{}');
+  write(home, 'engine-profiles/antigravity/conversation.db', 'provider data');
   sqlite(
     join(home, 'authentication/application-sessions.sqlite'),
     "CREATE TABLE sessions(id TEXT); INSERT INTO sessions VALUES ('s1');",
@@ -189,6 +190,7 @@ describe('seedDevHome', () => {
       'security',
       'browser',
       'app-homes',
+      'engine-profiles',
       'authentication',
       'runtime',
       'scheduler',
@@ -212,6 +214,7 @@ describe('seedDevHome', () => {
       expect.arrayContaining([
         'security',
         'authentication',
+        'engine-profiles',
         'config/providers.json',
       ]),
     );

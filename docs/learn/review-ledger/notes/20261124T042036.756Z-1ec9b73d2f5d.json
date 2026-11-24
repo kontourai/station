@@ -1,0 +1,7 @@
+{
+  "revision": "f6e9882e9f12e7eae84ac1a6d6fe138ded33670e",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Reviewed the combined process fixture after the main merge. It asserts MCP identity in both frame sequences and binds the gateway diagnostic and terminal error to the exact prompt turn. The complete server test typecheck and 50 focused tests passed.","inputs":["src-server/providers/__tests__/acp-session-answers.process.test.ts"]}
+  ]
+}

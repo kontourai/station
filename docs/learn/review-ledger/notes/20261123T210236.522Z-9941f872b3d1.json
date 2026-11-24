@@ -1,0 +1,7 @@
+{
+  "revision": "567736a2c654794fba6d2c0f7b1d54bdd5888e0f",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Rechecked after the window-blur fix: cites ChatMessageList for form-block submission only; unaffected.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}
