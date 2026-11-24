@@ -1,0 +1,15 @@
+{
+  "revision": "3121681174fa5a1d10b7ed2edbc5b267a0d31f04",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Traced the dedicated profile opt-in through the effective launch environment and explicit native directory flags. The process fixture requires both flags and proves an opted-in launch with a missing profile refuses before ACP initialization. Native CLI 1.5.16 initialized and created its database under the explicit directory in a standalone probe.","inputs":["docs/guides/acp.md","src-server/providers/__tests__/acp-session-answers.process.test.ts","src-server/services/acp/acp-process.ts","src-server/services/acp/antigravity-prompt-outcome.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the effective native argv and connection probe and chat callers. Antigravity adds the dedicated flags only for its built-in opted-in launch. Other programs and managed launch replacements keep their own invocations.","inputs":["src-server/services/acp/acp-process.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed the effective native argv and connection probe and chat callers. Antigravity adds the dedicated flags only for its built-in opted-in launch. Other programs and managed launch replacements keep their own invocations.","inputs":["src-server/services/acp/acp-process.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked terminal login construction and the person-owned sign-in flow. The selected dedicated Antigravity terminal method receives the same native profile flags as the ACP process.","inputs":["src-server/services/acp/engine-sign-in.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"The archived chat design still links to the current guide. Its historical ACP connection summary makes no claim about native Antigravity profile launch arguments.","inputs":["docs/guides/acp.md"]}
+  ]
+}
