@@ -15,13 +15,15 @@ import { useDecisionSurface } from '../../lib/custom-appearance/decision-surface
  * #3390: the renderer for a `decision` body — an approval's choices. It reads
  * the options' effect and scope, never a source. Answering one is a grant,
  * so it hands the choice to the approval's own authority path
- * (`onApprove`'s `once` / `trust` / `trust-server` / `trust-rule` / `deny`).
+ * (`onApprove`'s `once` / `trust` / `trust-server` / `trust-rule` /
+ * `trust-all` / `deny`).
  */
 export type ApprovalAction =
   | 'once'
   | 'trust'
   | 'trust-server'
   | 'trust-rule'
+  | 'trust-all'
   | 'deny';
 
 function approvalActionForOption(
@@ -33,7 +35,9 @@ function approvalActionForOption(
       ? 'trust-server'
       : option.sessionGrantScope === 'rule'
         ? 'trust-rule'
-        : 'trust'
+        : option.sessionGrantScope === 'all'
+          ? 'trust-all'
+          : 'trust'
     : 'once';
 }
 

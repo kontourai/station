@@ -286,6 +286,8 @@ export interface ChatMessage {
     approvalServerGrant?: ToolRequestServerGrant;
     /** See `MessagePart.approvalRuleGrant`. */
     approvalRuleGrant?: ToolRequestRuleGrant;
+    /** See `MessagePart.approvalAllGrant`. */
+    approvalAllGrant?: true;
     /**
      * #3390: an open form request (a harness question or a tool server's
      * elicitation), answered on the pending-requests card.

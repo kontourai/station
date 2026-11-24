@@ -13291,8 +13291,25 @@ export class OrchestrationService {
           // #4518: under a managed ceiling below Auto the answer would switch
           // the engine to acceptEdits past the ceiling, so it is downgraded
           // to the one-call accept too.
+          // An `all` answer is the widest session choice. An adapter that
+          // does not declare it takes the plain per-tool grant, which is
+          // narrower: the scope is dropped before anything reads the answer,
+          // so it is judged (an edit-mode answer included) exactly as an
+          // unscoped session answer.
+          const allElsewhere =
+            command.sessionGrantScope === 'all' &&
+            !adapter.metadata.sessionGrantScopes?.includes('all');
+          const requestedScope = allElsewhere
+            ? undefined
+            : command.sessionGrantScope;
           const editModeAnswer = this.isEditModeSessionAnswer(
-            command,
+            allElsewhere
+              ? {
+                  threadId: command.threadId,
+                  requestId: command.requestId,
+                  decision: command.decision,
+                }
+              : command,
             adapter.provider,
           )
             ? context?.approvalModeAuthority === true &&
@@ -13317,9 +13334,16 @@ export class OrchestrationService {
           // old `/tool-approval` path did. Passed only when there is one, so
           // an adapter never sees a context it cannot use.
           const grantScope =
-            decision === 'acceptForSession'
-              ? command.sessionGrantScope
-              : undefined;
+            decision === 'acceptForSession' ? requestedScope : undefined;
+          if (
+            grantScope === 'all' &&
+            contentRequest &&
+            contentRequest.payload?.sessionGrantAll !== true
+          )
+            throw new RequestEventGuardError(
+              'request_verification_unavailable',
+              'This request does not offer Allow everything for this session.',
+            );
           const requestContext =
             inputForm || context?.clientOrigin || grantScope
               ? {
@@ -15258,6 +15282,11 @@ export class OrchestrationService {
             );
             continue;
           }
+          event = withoutUndeclaredAllGrant(
+            adapter,
+            event,
+            this.options.logger,
+          );
           event = await this.captureUsagePricingSnapshot(event);
           lastThreadId = event.threadId;
           const adapterEvent = event;
@@ -19647,4 +19676,33 @@ function adoptionConfinement(grant: unknown): AdoptionConfinement {
   assertAttributedFullAccessGrant(grant);
   const grantor = fullAccessGrantor(grant);
   return grantor ? { stamp: 'host', grantor } : { stamp: 'workspace' };
+}
+
+/**
+ * `sessionGrantAll` on a request offers "Allow everything for this session".
+ * Only an adapter that honours `sessionGrantScope: 'all'` may set it; from
+ * any other (whose payload may carry an engine's raw params) it is removed
+ * before the event is stored, so no surface offers a grant the adapter would
+ * narrow to the per-tool one.
+ */
+function withoutUndeclaredAllGrant(
+  adapter: ProviderAdapterShape,
+  event: CanonicalRuntimeEvent,
+  logger: { warn(message: string, meta?: Record<string, unknown>): void },
+): CanonicalRuntimeEvent {
+  if (event.method !== 'request.opened') return event;
+  const offered = event.payload;
+  if (
+    !offered ||
+    !Object.hasOwn(offered, 'sessionGrantAll') ||
+    adapter.metadata.sessionGrantScopes?.includes('all')
+  )
+    return event;
+  const payload = { ...offered };
+  delete payload.sessionGrantAll;
+  logger.warn('Ignored a session-wide grant offer from an adapter without it', {
+    provider: adapter.provider,
+    threadId: event.threadId,
+  });
+  return { ...event, payload };
 }

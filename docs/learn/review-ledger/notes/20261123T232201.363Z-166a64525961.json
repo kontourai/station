@@ -1,0 +1,41 @@
+{
+  "revision": "643da8d1dafb78a5df102c0ccafe06a25dee4a42",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Traced Antigravity's call_mcp_tool from the negotiated ACP peer through tool start and status updates into the transcript. The selected name and arguments come from the matched proxy invocation, and the existing bounded projection and permission path still own their behavior. The process fixture covers arguments sent on either frame and a different peer with the same payload. This is fixture evidence without a live Google turn.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter-events.ts","src-server/providers/adapters/acp-adapter.ts","src-server/providers/adapters/acp-tool-update-supervisor.ts","src-server/providers/__tests__/acp-session-answers.process.test.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Traced the live ACP initialize identity into the existing session-update mapper. The new use only names reported Antigravity proxy calls. Session start and resume, command and tool delivery, permissions, and connection contracts described by these pages use the same paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Traced the live ACP initialize identity into the existing session-update mapper. The new use only names reported Antigravity proxy calls. Session start and resume, command and tool delivery, permissions, and connection contracts described by these pages use the same paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Traced the live ACP initialize identity into the existing session-update mapper. The new use only names reported Antigravity proxy calls. Session start and resume, command and tool delivery, permissions, and connection contracts described by these pages use the same paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Traced the live ACP initialize identity into the existing session-update mapper. The new use only names reported Antigravity proxy calls. Session start and resume, command and tool delivery, permissions, and connection contracts described by these pages use the same paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Traced the live ACP initialize identity into the existing session-update mapper. The new use only names reported Antigravity proxy calls. Session start and resume, command and tool delivery, permissions, and connection contracts described by these pages use the same paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Traced the live ACP initialize identity into the existing session-update mapper. The new use only names reported Antigravity proxy calls. Session start and resume, command and tool delivery, permissions, and connection contracts described by these pages use the same paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Traced the live ACP initialize identity into the existing session-update mapper. The new use only names reported Antigravity proxy calls. Session start and resume, command and tool delivery, permissions, and connection contracts described by these pages use the same paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Traced the live ACP initialize identity into the existing session-update mapper. The new use only names reported Antigravity proxy calls. Session start and resume, command and tool delivery, permissions, and connection contracts described by these pages use the same paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Traced the live ACP initialize identity into the existing session-update mapper. The new use only names reported Antigravity proxy calls. Session start and resume, command and tool delivery, permissions, and connection contracts described by these pages use the same paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Traced the live ACP initialize identity into the existing session-update mapper. The new use only names reported Antigravity proxy calls. Session start and resume, command and tool delivery, permissions, and connection contracts described by these pages use the same paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Traced the live ACP initialize identity into the existing session-update mapper. The new use only names reported Antigravity proxy calls. Session start and resume, command and tool delivery, permissions, and connection contracts described by these pages use the same paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Traced the live ACP initialize identity into the existing session-update mapper. The new use only names reported Antigravity proxy calls. Session start and resume, command and tool delivery, permissions, and connection contracts described by these pages use the same paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Traced the live ACP initialize identity into the existing session-update mapper. The new use only names reported Antigravity proxy calls. Session start and resume, command and tool delivery, permissions, and connection contracts described by these pages use the same paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked Antigravity proxy naming against the existing tool lifecycle and consumers. The session-update mapper forwards the peer identity with the wire fields. The tool supervisor retains the bounded display projection and existing event vocabulary. No cited canonical event or extension binding changed.","inputs":["src-server/providers/adapters/acp-adapter-events.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked Antigravity proxy naming against the existing tool lifecycle and consumers. The session-update mapper forwards the peer identity with the wire fields. The tool supervisor retains the bounded display projection and existing event vocabulary. No cited canonical event or extension binding changed.","inputs":["src-server/providers/adapters/acp-adapter-events.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked Antigravity proxy naming against the existing tool lifecycle and consumers. The session-update mapper forwards the peer identity with the wire fields. The tool supervisor retains the bounded display projection and existing event vocabulary. No cited canonical event or extension binding changed.","inputs":["src-server/providers/adapters/acp-adapter-events.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked Antigravity proxy naming against the existing tool lifecycle and consumers. The session-update mapper forwards the peer identity with the wire fields. The tool supervisor retains the bounded display projection and existing event vocabulary. No cited canonical event or extension binding changed.","inputs":["src-server/providers/adapters/acp-adapter-events.ts"]}
+  ]
+}

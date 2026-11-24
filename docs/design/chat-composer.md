@@ -715,8 +715,9 @@ alike; a failed check keeps the request. While a reconnect replays missed
 events, the sheet and the pill hold what they showed (at most five seconds),
 so requests opened and resolved in the gap do not run the count up and down.
 With two or more permissions waiting, the sheet's pinned actions offer
-**Allow all (N)** and, in its menu, **Allow all for this session**; each
-answer is its own authority check, and one refusal does not stop the rest.
+**Allow all (N)** and, in its menu, **Allow these tools for this session**
+(each listed request's own per-tool grant, not "Allow everything for this
+session"); each answer is its own authority check, and one refusal does not stop the rest.
 An in-flight decision shows on its chosen button (Allowing…, Denying…) with no
 status sentence. Background work keeps the pill visible after the
 main turn ends, using the server count and oldest reported start. Failed history or
@@ -1599,7 +1600,7 @@ orchestration command union is broader than the public `/commands` schema:
 | Start/send through an authored Agent, including an external-engine binding | `POST /api/orchestration/chat` with `target` and `message` |
 | Continue an existing conversation | `POST /api/orchestration/chat/:conversationId/continue` with `message`; the persisted binding owns execution identity |
 | Request model/options for a turn | `target.model.override` / `target.model.options` on `/chat`, or a `model` object on `/continue`; support is engine-specific |
-| Respond to permission request | `POST /api/orchestration/commands` with `type:'respondToRequest'`, `threadId`, `requestId`, and `decision` (an `acceptForSession` may add the typed `sessionGrantScope:'server'` for the Station browser or `'rule'` for suggested Bash command prefixes; allowing a request whose content was stored out of line also needs `viewedContentDigest`, see [Session API](../reference/session-api.md)) |
+| Respond to permission request | `POST /api/orchestration/commands` with `type:'respondToRequest'`, `threadId`, `requestId`, and `decision` (an `acceptForSession` may add the typed `sessionGrantScope:'server'` for the Station browser, `'rule'` for suggested Bash command prefixes, or `'all'` for every later request in the session; allowing a request whose content was stored out of line also needs `viewedContentDigest`, see [Session API](../reference/session-api.md)) |
 
 The [Session API](../reference/session-api.md) owns request details and refusal
 behavior. `POST /api/agents/:id/chat` is the Station-engine route; an

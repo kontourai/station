@@ -1071,6 +1071,8 @@ and the scripted profile
 - **Station's tools.** Without `--process-per-session` the engine declares no
   `mcpCapabilities`, and Station's HTTP tool servers are skipped. With it, it
   declares `http` and called a client HTTP MCP server with its headers.
+  When Antigravity uses `call_mcp_tool`, the transcript shows the server and
+  tool named in the call along with the tool's arguments.
 - **Questions** arrive as core `elicitation/create` forms (a `oneOf` choice
   and a free-text `q1_other`) because Station announces `elicitation`.
   Without it the engine prints the question as text and takes the next
@@ -1217,6 +1219,8 @@ The ACP `kind` the runtime reports (`read`, `edit`, `execute`, `search`, …) ri
 ### Tool Approval (Runtime → User)
 
 When the runtime needs permission before running a tool, it calls back via `requestPermission`. Station's staged policy, the Agent's `autoApprove` patterns and a session grant can answer a plain call first; none of them, an approval-guardian allow included, answers a plan exit ([delivery boundary](../conformance/tool-policy-delivery.md)). Otherwise the adapter emits a `request.opened` canonical event (`requestType: 'approval'`, carrying the call's `toolCallId`, `rawInput` and ACP `toolKind`), the UI shows the approval prompt, and the resolved decision is sent back to the runtime via `respondToRequest` on the adapter, mapped to the offered ACP option: `allow_once`, `allow_always` for the session grant, or `reject_once`. When the runtime reports the call's programmatic `name`, the request carries it as `toolName`, Station records its session grant under that name (every later call of that tool is allowed without asking), and the button names it ("Allow all write calls for this session"). Without a name Station records no grant of its own: the decision is the runtime's `allow_always` rule, and the button says only "Allow for this session". The exception is a file edit on an OpenCode session Station governs (#3924): OpenCode's own "always" for an edit covers every later edit, so Station sends allow-once and keeps the grant itself, and the grant never covers an edit that must go to a person ([what the modes cannot govern](#what-ask-and-auto-cannot-govern-on-opencode)).
+
+A request that is not addressed to a person and has an allow-once option also offers "Allow everything for this session" (`sessionGrantScope: 'all'`, marked `sessionGrantAll: true` on the request). An `all` answer without an allow-once option is rejected and the request stays open. The answered request is sent the agent's allow-once option, never allow-always, and Station keeps no tool grant for it; Station then answers every later request in the session with allow-once (a request offering only allow-always goes to a person), after the staged policy, `autoApprove` and the mode, and never answers a plan exit, a question, an OpenCode configuration edit that must go to a person, or a request in a delegated child that may not grant approvals. It is for a session that cannot run at full access, such as a confined automation task: it changes neither the session's confinement nor its approval mode, and a change of approval mode drops it.
 
 #### Which side decides which calls ask
 

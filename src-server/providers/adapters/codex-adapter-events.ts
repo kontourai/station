@@ -243,6 +243,7 @@ const STATION_SET_PAYLOAD_FIELDS = [
   'inputRequest',
   'mcpElicitation',
   'questionnaire',
+  'sessionGrantAll',
 ] as const;
 
 function withoutStationFields(

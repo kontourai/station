@@ -839,6 +839,56 @@ describe('#2316 inline approval card', () => {
     });
   });
 
+  describe('the session-wide grant', () => {
+    const LABEL = 'Allow everything for this session';
+
+    /** The Bash card, with its request marked the way an adapter that honours `all` marks it. */
+    function useMarkedRequest(marked: boolean) {
+      windowEvents.current = claudeBashAwaitingApproval().map((entry) => {
+        const event = entry.event as Record<string, unknown>;
+        if (event.method !== 'request.opened') return entry;
+        return {
+          ...entry,
+          event: {
+            ...event,
+            payload: {
+              ...(event.payload as Record<string, unknown>),
+              ...(marked ? { sessionGrantAll: true } : {}),
+            },
+          },
+        };
+      });
+    }
+
+    test('a marked request offers it last, and choosing it sends the typed scope', async () => {
+      const calls = stubFetch(() => Response.json({ success: true, data: {} }));
+      useMarkedRequest(true);
+      renderCard();
+      expect(await grantLabels()).toEqual([
+        'Allow all Bash commands for this session',
+        LABEL,
+      ]);
+      await pickGrant(LABEL);
+      await waitFor(() => expect(calls).toHaveLength(1));
+      expect(calls[0].body).toMatchObject({
+        type: 'respondToRequest',
+        decision: 'acceptForSession',
+        sessionGrantScope: 'all',
+      });
+    });
+
+    test('an unmarked request does not offer it', async () => {
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      useMarkedRequest(false);
+      renderCard();
+      await screen.findByRole('button', { name: 'Allow once' });
+      expect(await grantLabels()).toEqual([
+        'Allow all Bash commands for this session',
+      ]);
+      expect(screen.queryByText(LABEL)).toBeNull();
+    });
+  });
+
   test('#2916: a plan exit card offers no session grant', async () => {
     stubFetch(() => Response.json({ success: true, data: {} }));
     windowEvents.current = claudeBashAwaitingApproval().map((entry) => {

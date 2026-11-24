@@ -21,6 +21,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
 import {
+  check,
   describeFailure,
   INERT_INSTALL_TIMEOUT_ENV,
   inertInstallTimeout,
@@ -316,6 +317,47 @@ function executeCapturedPtyChild({
 }
 
 describe('dependency lifecycle policy', () => {
+  it.each([false, true])(
+    'warns from the bootstrap check within 14 UTC days (GitHub Actions: %s)',
+    (githubActions) => {
+      const allowlist = structuredClone(policy);
+      for (const entry of allowlist.entries) entry.expiresAt = '2030-02-01';
+      const [lastDay, boundary, outside] = allowlist.entries;
+      lastDay.expiresAt = '2030-01-01';
+      boundary.expiresAt = '2030-01-15';
+      outside.expiresAt = '2030-01-16';
+
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2030-01-01T23:59:59.000Z'));
+      vi.stubEnv('GITHUB_ACTIONS', githubActions ? 'true' : undefined);
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const prefix = githubActions
+        ? '::warning title=Dependency lifecycle approval expiring::'
+        : '[dependency-lifecycle] WARN: ';
+      try {
+        expect(check({ cwd: root, bootstrap: true, allowlist })).toBe(
+          allowlist,
+        );
+        expect(warn.mock.calls).toEqual(
+          [lastDay, boundary].map(({ path, purl, owner, expiresAt }) => [
+            `${prefix}${path} (${purl}, owner: ${owner}) is approved through ${expiresAt} UTC. Review this approval before it expires.`,
+          ]),
+        );
+
+        vi.setSystemTime(new Date('2030-01-02T00:00:00.000Z'));
+        warn.mockClear();
+        expect(() => check({ cwd: root, bootstrap: true, allowlist })).toThrow(
+          'approval has expired',
+        );
+        expect(warn).not.toHaveBeenCalled();
+      } finally {
+        warn.mockRestore();
+        vi.unstubAllEnvs();
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it('requires the PTY marker and a natural zero exit', () => {
     expect(() => assertPtyHandshakeOutcome('')).toThrow('no parseable outcome');
     expect(() =>

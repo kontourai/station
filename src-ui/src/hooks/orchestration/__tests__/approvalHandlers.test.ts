@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import type { toastStore } from '../../../contexts/ToastContext';
 
-type ApprovalToastOptions = {
-  toolName: string;
-  toolPreview?: string;
-  actions: Array<{ label: string; variant?: string; onClick: () => void }>;
-};
+type ApprovalToastOptions = Parameters<typeof toastStore.showToolApproval>[0];
 
 const showToolApproval = vi.fn((_options: ApprovalToastOptions) => 'toast-1');
 const showToast = vi.fn();
@@ -548,6 +545,62 @@ describe('the Station browser server grant on the toast', () => {
     expect(
       vi.mocked(resolveOrchestrationRequest).mock.calls[0][0],
     ).not.toHaveProperty('sessionGrantScope');
+  });
+});
+
+describe('the session-wide grant on the toast', () => {
+  const LABEL = 'Allow everything for this session';
+  const shellPayload = { toolName: 'shell', rawInput: { action: 'shell' } };
+
+  beforeEach(() => {
+    showToolApproval.mockClear();
+    vi.mocked(resolveOrchestrationRequest).mockClear();
+    getChatForExecutionSession.mockReturnValue({
+      title: 'Conversation',
+      agentName: 'OpenCode',
+      pendingApprovals: [],
+    });
+  });
+
+  test('is offered only where the adapter marked the request', () => {
+    handleRequestOpenedEvent('http://localhost:1', requestOpened(shellPayload));
+    expect(
+      approvalToast()
+        .actions.filter((action) => action.inMenu)
+        .map((action) => action.label),
+    ).toEqual(['Allow all shell calls for this session']);
+    showToolApproval.mockClear();
+    handleRequestOpenedEvent('http://localhost:1', {
+      ...requestOpened({ ...shellPayload, sessionGrantAll: true }),
+      requestId: 'req-2',
+    });
+    expect(
+      approvalToast()
+        .actions.filter((action) => action.inMenu)
+        .map((action) => action.label),
+    ).toEqual(['Allow all shell calls for this session', LABEL]);
+  });
+
+  test('choosing it sends acceptForSession with the typed all scope', async () => {
+    handleRequestOpenedEvent(
+      'http://localhost:1',
+      requestOpened({ ...shellPayload, sessionGrantAll: true }),
+    );
+    approvalToast()
+      .actions.find((action) => action.label === LABEL)
+      ?.onClick();
+    await vi.waitFor(() =>
+      expect(resolveOrchestrationRequest).toHaveBeenCalled(),
+    );
+    expect(resolveOrchestrationRequest).toHaveBeenCalledWith({
+      apiBase: 'http://localhost:1',
+      threadId: 'thread-1',
+      requestId: 'req-1',
+      expectedRequestEventId: 'evt-1',
+      decision: 'acceptForSession',
+      sessionGrantScope: 'all',
+      timeoutMs: 15_000,
+    });
   });
 });
 

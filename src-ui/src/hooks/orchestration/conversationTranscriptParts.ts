@@ -67,6 +67,7 @@ export function conversationPartToContentParts(
     approvalSessionGrant: part.approvalSessionGrant,
     approvalServerGrant: part.approvalServerGrant,
     approvalRuleGrant: part.approvalRuleGrant,
+    ...(part.approvalAllGrant ? { approvalAllGrant: true as const } : {}),
     approvalStatus: part.approvalStatus,
     ...(part.inputRequestRecord
       ? { inputRequestRecord: { ...part.inputRequestRecord } }

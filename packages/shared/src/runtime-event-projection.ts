@@ -43,6 +43,7 @@ import {
   inputRequestUrlFromRequestEvent,
 } from './input-request.js';
 import {
+  toolRequestAllGrantFromPayload,
   toolRequestDisplayName,
   toolRequestFromPayload,
   toolRequestRuleGrantFromPayload,
@@ -1600,6 +1601,9 @@ function createRuntimeMessageProjection(
           const ruleGrant = toolRequestRuleGrantFromPayload(ev.payload);
           if (ruleGrant) target.approvalRuleGrant = ruleGrant;
           else delete target.approvalRuleGrant;
+          if (toolRequestAllGrantFromPayload(ev.payload))
+            target.approvalAllGrant = true;
+          else delete target.approvalAllGrant;
           // docs/design/event-content-spill.md: what a surface must load
           // whole before it offers Allow.
           if (!standingUnresolved) {

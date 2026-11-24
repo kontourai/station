@@ -50,6 +50,20 @@ describe('codex-adapter-events', () => {
     });
   });
 
+  test("drops an engine param named like Station's session-wide grant offer", () => {
+    const event = mapServerRequestToEvent(
+      'thread-1',
+      'request-1',
+      'item/commandExecution/requestApproval',
+      { command: 'rm -rf tmp', sessionGrantAll: true },
+      '2026-01-01T00:00:00.000Z',
+    );
+    expect(event).toMatchObject({ payload: { command: 'rm -rf tmp' } });
+    expect(
+      (event as { payload?: Record<string, unknown> }).payload,
+    ).not.toHaveProperty('sessionGrantAll');
+  });
+
   test('builds approval results and resolution statuses', () => {
     expect(
       buildApprovalResult(

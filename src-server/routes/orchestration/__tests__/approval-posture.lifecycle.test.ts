@@ -883,7 +883,15 @@ describe('approval posture probe table under server order (#2436)', () => {
         );
       });
 
-      test.each([['tool'], ['Rule'], ['prefix'], [''], [1]])(
+      test.each([
+        ['tool'],
+        ['Rule'],
+        ['prefix'],
+        ['All'],
+        ['everything'],
+        [''],
+        [1],
+      ])(
         'a scope other than the typed values (%j) is refused at the route',
         async (sessionGrantScope) => {
           const h = await harness();
@@ -937,6 +945,136 @@ describe('approval posture probe table under server order (#2436)', () => {
         expect(h.adapter.answerContexts.at(-1)?.sessionGrantScope).toBe(
           undefined,
         );
+      });
+
+      test("the session-wide scope 'all' reaches the adapter that offered it", async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        Object.defineProperty(h.adapter, 'metadata', {
+          value: { ...h.adapter.metadata, sessionGrantScopes: ['rule', 'all'] },
+        });
+        const threadId = await h.openRequest('req-browser', {
+          toolName: 'Bash',
+          toolInput: { command: 'npm ls react' },
+          sessionGrantAll: true,
+        });
+        const response = await post(h, threadId, {
+          decision: 'acceptForSession',
+          sessionGrantScope: 'all',
+        });
+        expect(response.status, await response.text()).toBe(200);
+        expect(h.adapter.answers.at(-1)?.decision).toBe('acceptForSession');
+        expect(h.adapter.answerContexts.at(-1)).toMatchObject({
+          sessionGrantScope: 'all',
+        });
+      });
+
+      test("an unoffered 'all' answer stays open without reaching a supporting adapter", async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        Object.defineProperty(h.adapter, 'metadata', {
+          value: { ...h.adapter.metadata, sessionGrantScopes: ['rule', 'all'] },
+        });
+        const threadId = await h.openRequest('req-browser', {
+          toolName: 'Bash',
+          toolInput: { command: 'npm ls react' },
+        });
+        const refused = await post(h, threadId, {
+          decision: 'acceptForSession',
+          sessionGrantScope: 'all',
+        });
+        const refusal = await refused.text();
+        expect(refused.status, refusal).toBe(409);
+        expect(refusal).toContain(
+          'This request does not offer Allow everything for this session.',
+        );
+        expect(h.adapter.answers).toEqual([]);
+
+        const denied = await post(h, threadId, { decision: 'decline' });
+        expect(denied.status, await denied.text()).toBe(200);
+        expect(h.adapter.answers).toEqual([
+          { requestId: 'req-browser', decision: 'decline' },
+        ]);
+      });
+
+      test("an 'all' answer to an engine that does not declare it is the plain per-tool grant", async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        expect(h.adapter.metadata.sessionGrantScopes).not.toContain('all');
+        const threadId = await h.openRequest('req-browser', {
+          toolName: 'Bash',
+          toolInput: { command: 'npm ls react' },
+        });
+        const response = await post(h, threadId, {
+          decision: 'acceptForSession',
+          sessionGrantScope: 'all',
+        });
+        expect(response.status, await response.text()).toBe(200);
+        // Narrower than what was asked, so still a session grant, unscoped.
+        expect(h.adapter.answers.at(-1)?.decision).toBe('acceptForSession');
+        expect(h.adapter.answerContexts.at(-1)?.sessionGrantScope).toBe(
+          undefined,
+        );
+      });
+
+      /** The stored request.opened payload, as the surfaces read it. */
+      const storedPayload = (h: Harness, threadId: string, requestId: string) =>
+        (
+          h.store.readCurrentRequestEvent(threadId, requestId) as {
+            event: { payload: { payload?: Record<string, unknown> } };
+          }
+        ).event.payload.payload;
+
+      test('a session-wide grant offer from an engine that does not declare it is not stored', async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        expect(h.adapter.metadata.sessionGrantScopes).not.toContain('all');
+        const threadId = await h.openRequest('req-spoof', {
+          toolName: 'Bash',
+          toolInput: { command: 'npm ls react' },
+          sessionGrantAll: true,
+        });
+        const payload = storedPayload(h, threadId, 'req-spoof');
+        expect(payload).toMatchObject({ toolName: 'Bash' });
+        expect(payload).not.toHaveProperty('sessionGrantAll');
+      });
+
+      test('an engine that declares the session-wide grant keeps its offer', async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        Object.defineProperty(h.adapter, 'metadata', {
+          value: { ...h.adapter.metadata, sessionGrantScopes: ['rule', 'all'] },
+        });
+        const threadId = await h.openRequest('req-offer', {
+          toolName: 'Bash',
+          toolInput: { command: 'npm ls react' },
+          sessionGrantAll: true,
+        });
+        expect(storedPayload(h, threadId, 'req-offer')).toMatchObject({
+          sessionGrantAll: true,
+        });
+      });
+
+      test("an 'all' answer to an edit request on an engine without it is judged as the plain session answer", async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        const threadId = await h.openRequest('req-browser', {
+          toolName: 'Edit',
+          toolInput: { file_path: '/work/a/x.ts' },
+          suggestions: [
+            { type: 'setMode', mode: 'acceptEdits', destination: 'session' },
+          ],
+        });
+        const response = await post(h, threadId, {
+          decision: 'acceptForSession',
+          sessionGrantScope: 'all',
+        });
+        expect(response.status, await response.text()).toBe(200);
+        expect(h.adapter.answerContexts.at(-1)?.sessionGrantScope).toBe(
+          undefined,
+        );
+        // The edit-mode answer's own rule applies: it records Auto.
+        expect(h.decisions().at(-1)).toBe('auto');
       });
 
       test('a scoped answer to an edit request records no Auto posture', async () => {
