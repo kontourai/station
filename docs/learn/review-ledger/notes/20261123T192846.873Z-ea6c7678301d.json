@@ -1,0 +1,27 @@
+{
+  "revision": "2c78b9e4c0f5509b8ce04659fc501b264e1f3c64",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the shared-client and documentation references. The added Events catalog entry uses the existing negotiation and does not change the App frame or its authority.","inputs":["docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the shared-client and documentation references. The added Events catalog entry uses the existing negotiation and does not change the App frame or its authority.","inputs":["docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed the shared-client and documentation references. The added Events catalog entry uses the existing negotiation and does not change the App frame or its authority.","inputs":["docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the shared-client and documentation references. The added Events catalog entry uses the existing negotiation and does not change the App frame or its authority.","inputs":["docs/design/mcp-ui-host.md"]},
+
+    {"path":"docs/design/terminal.md","note":"Verified that the added operator Events catalog leaf leaves existing API and terminal contracts intact.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Verified that the added operator Events catalog leaf leaves existing API and terminal contracts intact.","inputs":["docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Verified the added scoped Events catalog hook alongside existing SDK and onboarding guidance. Existing SDK surfaces retain their contract.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Verified the added scoped Events catalog hook alongside existing SDK and onboarding guidance. Existing SDK surfaces retain their contract.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"The saved tool server’s event catalog uses its existing OAuth account. It does not change the machine, Station peer, relay or Project relationship types in this guide.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the catalog control after the shared dialog and editor spacing changes. The same explicit operator action requests the catalog, and the modal keeps the tool editor in place.","inputs":["src-ui/src/views/integrations/IntegrationEventsSection.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the catalog control after the shared dialog and editor spacing changes. The same explicit operator action requests the catalog, and the modal keeps the tool editor in place.","inputs":["src-ui/src/views/integrations/IntegrationEventsSection.tsx"]}
+  ]
+}

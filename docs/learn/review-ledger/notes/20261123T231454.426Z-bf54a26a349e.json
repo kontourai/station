@@ -1,0 +1,55 @@
+{
+  "revision": "28cd9d5ae9b735be79a3868824f153fbaecfee20",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Reviewed Mac Store staging inputs, Stable identity, sandbox signing, opt-in release workflow, TestFlight package and receipt boundaries, and separate public review against the production staging code and native rehearsal.","inputs":["docs/guides/native-releases.md",".github/workflows/release.yml","packages/shared/src/process-identity.mjs","scripts/app-store-connect-receipt.mjs"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/android-build.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/releasing.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"src-desktop/icons/README.md","note":"Reviewed the optional Apple Silicon Mac Store job against the release, package, channel, signing and publication claims. It runs after the tagged advisory and qualification gates. Direct-download, container, mobile and draft assembly use their existing jobs and inputs.","inputs":[".github/workflows/release.yml"]},
+
+    {"path":"docs/design/instance-registry.md","note":"Reviewed the optional birth probe beside bundled macOS Node. It returns the same UTC start-time value used by the existing process owner checks. A missing or invalid fingerprint fails admission. The signed sandbox rehearsal exercised sidecar startup with this probe.","inputs":["packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed the optional birth probe beside bundled macOS Node. It returns the same UTC start-time value used by the existing process owner checks. A missing or invalid fingerprint fails admission. The signed sandbox rehearsal exercised sidecar startup with this probe.","inputs":["packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed the optional birth probe beside bundled macOS Node. It returns the same UTC start-time value used by the existing process owner checks. A missing or invalid fingerprint fails admission. The signed sandbox rehearsal exercised sidecar startup with this probe.","inputs":["packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed the optional birth probe beside bundled macOS Node. It returns the same UTC start-time value used by the existing process owner checks. A missing or invalid fingerprint fails admission. The signed sandbox rehearsal exercised sidecar startup with this probe.","inputs":["packages/shared/src/process-identity.mjs"]},
+
+    {"path":"docs/guides/mobile-release.md","note":"Reviewed Apple build lookup for TestFlight and its consuming workflows. The platform filter keeps existing iOS reads scoped to iOS and permits a separate macOS build with the same number. Platform-specific reconciliation tests and a live Apple API comparison passed.","inputs":["scripts/app-store-connect-receipt.mjs"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Reviewed Apple build lookup for TestFlight and its consuming workflows. The platform filter keeps existing iOS reads scoped to iOS and permits a separate macOS build with the same number. Platform-specific reconciliation tests and a live Apple API comparison passed.","inputs":["scripts/app-store-connect-receipt.mjs"]},
+
+    {"path":"docs/guides/nightly.md","note":"Reviewed Apple build lookup for TestFlight and its consuming workflows. The platform filter keeps existing iOS reads scoped to iOS and permits a separate macOS build with the same number. Platform-specific reconciliation tests and a live Apple API comparison passed.","inputs":["scripts/app-store-connect-receipt.mjs"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Reviewed Apple build lookup for TestFlight and its consuming workflows. The platform filter keeps existing iOS reads scoped to iOS and permits a separate macOS build with the same number. Platform-specific reconciliation tests and a live Apple API comparison passed.","inputs":["scripts/app-store-connect-receipt.mjs"]},
+
+    {"path":"docs/guides/store-entry.md","note":"Reviewed Apple build lookup for TestFlight and its consuming workflows. The platform filter keeps existing iOS reads scoped to iOS and permits a separate macOS build with the same number. Platform-specific reconciliation tests and a live Apple API comparison passed.","inputs":["scripts/app-store-connect-receipt.mjs"]},
+
+    {"path":"docs/guides/store-listing.md","note":"Reviewed Apple build lookup for TestFlight and its consuming workflows. The platform filter keeps existing iOS reads scoped to iOS and permits a separate macOS build with the same number. Platform-specific reconciliation tests and a live Apple API comparison passed.","inputs":["scripts/app-store-connect-receipt.mjs"]}
+  ]
+}

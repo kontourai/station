@@ -1,0 +1,11 @@
+{
+  "revision": "24293f3f277f91160785e07d45836c116694fdb5",
+
+  "notes": [
+    {"path":"docs/design/motion.md","note":"Checked the Gallery change against the motion coverage, targeted capture instructions and telemetry scenes. The Delete automation alert dialog now opens through its Actions menu. Only this screen changed. Its targeted Chromium capture, fixture policy and E2E typecheck passed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/testing.md","note":"Checked the Gallery change against the motion coverage, targeted capture instructions and telemetry scenes. The Delete automation alert dialog now opens through its Actions menu. Only this screen changed. Its targeted Chromium capture, fixture policy and E2E typecheck passed.","inputs":["tests/screenshots.spec.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Checked the Gallery change against the motion coverage, targeted capture instructions and telemetry scenes. The Delete automation alert dialog now opens through its Actions menu. Only this screen changed. Its targeted Chromium capture, fixture policy and E2E typecheck passed.","inputs":["tests/screenshots.spec.ts"]}
+  ]
+}

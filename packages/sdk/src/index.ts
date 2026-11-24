@@ -1074,6 +1074,7 @@ export {
   useDiffCommentsQuery,
   useDisconnectIntegrationAccountMutation,
   useDisconnectSshEnvironmentMutation,
+  useDiscoverIntegrationEventsMutation,
   useDismissNotificationMutation,
   useDismissPersonNotificationMutation,
   useDismissPluginLifecycleProposalMutation,

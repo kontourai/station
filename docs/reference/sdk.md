@@ -424,6 +424,12 @@ identifies installation provenance, not a trust or approval verdict. Local
 registry origin is bound to the saved execution definition; changed definitions
 withhold stale provenance.
 
+Call `useDiscoverIntegrationEventsMutation().mutateAsync({id, requestScope})`
+to check a saved Streamable HTTP tool server’s event catalog as the Station
+operator. The result carries `supported` and, when supported, bounded event
+names with optional titles and descriptions. The captured scope binds the
+request to the current Station and authority. Older hosts return HTTP 404.
+
 `useIntegrationAccountQuery(id, projectSlug?, requestScope?)` reads the account
 summary. Pass the captured `ApiRequestScope` to partition account state by
 Station and principal authority and refuse a request after that authority changes.

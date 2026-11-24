@@ -1,0 +1,11 @@
+{
+  "revision": "41d1d916a6e120546d73aa7009525d1950120c20",
+
+  "notes": [
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"Recaptured the desktop tool editor with a local OAuth fixture after the HTTP label and Events placement changed. The captured Scopes field and fully visible Sign in button were checked in the active editor. The event control follows account setup.","inputs":["docs/learn/media/oauth-mcp-sign-in-comparison.png","src-ui/src/views/integrations/IntegrationEditorPanel.tsx"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Verified the catalog dialog after moving the control below account setup and restoring focus explicitly. Chrome exercised open, Escape, retry and dismiss in both themes at 390px and 1440px.","inputs":["src-ui/src/views/integrations/IntegrationEventsSection.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Verified the catalog dialog after moving the control below account setup and restoring focus explicitly. Chrome exercised open, Escape, retry and dismiss in both themes at 390px and 1440px.","inputs":["src-ui/src/views/integrations/IntegrationEventsSection.tsx"]}
+  ]
+}
