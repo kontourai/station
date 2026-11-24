@@ -105,6 +105,13 @@ that metadata describes this fixture, not an upstream model or entitlement.
 The fixture supplies synthetic Messages/Responses replies and never calls a
 real model provider.
 
+The container also has an explicit brokered launcher. It requires the relay
+callback to have been mounted when the worker started and configures the
+single Station delegation server for the selected native CLI. The scoped bridge
+key stays in the child environment. Fixed-text launch keeps its original
+configuration even when a broker callback is mounted. This launcher remains
+unwired to serving callers and supplies no parent grant or provider reservation.
+
 ### Create-only lifecycle controls
 
 Use the captured executable and Unix endpoint above, and select an existing

@@ -13,7 +13,10 @@ import {
   type NativeModelChannelRequest,
   NativeModelStdioChannel,
 } from './native-model-stdio-channel.js';
-import type { NativeModelRequest } from './native-model-stdio-protocol.js';
+import {
+  NATIVE_DELEGATION_RPC_PATH,
+  type NativeModelRequest,
+} from './native-model-stdio-protocol.js';
 
 const label = 'station.native-model-owner';
 const digest = /^sha256:[a-f0-9]{64}$/;
@@ -75,6 +78,15 @@ export interface NativeModelContainerOptions {
   ): NativeModelChannelRequest;
 }
 
+type NativeTextLaunchInput = Readonly<{
+  engine: 'claude' | 'codex';
+  modelId: string;
+  /** Server-owned catalog inside the immutable image, never inferred entitlement. */
+  modelCatalogPath?: string;
+  signal: AbortSignal;
+  writePrompt(stdin: Writable): Promise<void>;
+}>;
+
 interface OwnedNativeTextRun {
   /** Native program result. A later cleanup failure cannot overwrite it. */
   readonly result: Promise<
@@ -103,6 +115,7 @@ export class NativeModelContainer {
   #id: string | undefined;
   #daemon: string | undefined;
   #channel: NativeModelStdioChannel | undefined;
+  #delegationRpcMounted = false;
   #ready: { port: number; uid: number | null } | undefined;
   #engaged = false;
   #removed = false;
@@ -290,6 +303,7 @@ export class NativeModelContainer {
           ? (input, signal) => this.#admitRequest(delegationRpc, input, signal)
           : undefined,
       );
+      this.#delegationRpcMounted = Boolean(delegationRpc);
       let timer: ReturnType<typeof setTimeout> | undefined;
       try {
         this.#ready = await Promise.race([
@@ -385,15 +399,22 @@ export class NativeModelContainer {
 
   /** One fixed native text client in the owned namespace. Prompt bytes travel
    * through stdin under the source owner's delivery port, never argv/env. */
-  async startText(
-    input: Readonly<{
-      engine: 'claude' | 'codex';
-      modelId: string;
-      /** Server-owned catalog inside the immutable image, never inferred entitlement. */
-      modelCatalogPath?: string;
-      signal: AbortSignal;
-      writePrompt(stdin: Writable): Promise<void>;
-    }>,
+  async startText(input: NativeTextLaunchInput): Promise<OwnedNativeTextRun> {
+    return this.#startText(input, false);
+  }
+
+  /** Explicit relay configuration. The mounted callback still owns effect admission. */
+  async startBrokeredText(
+    input: NativeTextLaunchInput,
+  ): Promise<OwnedNativeTextRun> {
+    if (!this.#delegationRpcMounted)
+      throw new Error('native_delegation_rpc_unavailable');
+    return this.#startText(input, true);
+  }
+
+  async #startText(
+    input: NativeTextLaunchInput,
+    brokered: boolean,
   ): Promise<OwnedNativeTextRun> {
     input = Object.freeze({ ...input });
     if (
@@ -418,8 +439,18 @@ export class NativeModelContainer {
     if (this.#retiring || !this.#engaged || this.#textSubmitted || !this.#id)
       throw new Error('native_text_admission_closed');
     const connection = this.connection();
-    const environment =
-      input.engine === 'claude'
+    const brokerArgs = [
+      '/station/native-model-worker.mjs',
+      '--delegation-rpc-client',
+    ];
+    const environment = {
+      ...(brokered
+        ? {
+            STATION_NATIVE_RPC_URL: `${connection.baseUrl}${NATIVE_DELEGATION_RPC_PATH}`,
+            STATION_NATIVE_RPC_KEY: connection.token,
+          }
+        : {}),
+      ...(input.engine === 'claude'
         ? {
             ANTHROPIC_BASE_URL: connection.baseUrl,
             ANTHROPIC_AUTH_TOKEN: connection.token,
@@ -432,7 +463,8 @@ export class NativeModelContainer {
         : {
             STATION_ENGINE_PROXY_KEY: connection.token,
             CODEX_HOME: '/home/native',
-          };
+          }),
+    };
     const args =
       input.engine === 'claude'
         ? [
@@ -448,7 +480,24 @@ export class NativeModelContainer {
             '--setting-sources',
             '',
             '--max-turns',
-            '1',
+            brokered ? '64' : '1',
+            ...(brokered
+              ? [
+                  '--strict-mcp-config',
+                  '--mcp-config',
+                  JSON.stringify({
+                    mcpServers: {
+                      station_delegation: {
+                        type: 'stdio',
+                        command: '/usr/local/bin/node',
+                        args: brokerArgs,
+                      },
+                    },
+                  }),
+                  '--allowedTools',
+                  'mcp__station_delegation__*',
+                ]
+              : []),
           ]
         : [
             'exec',
@@ -463,6 +512,12 @@ export class NativeModelContainer {
             'features.multi_agent=false',
             '-c',
             'features.goals=false',
+            ...(brokered
+              ? [
+                  '-c',
+                  `mcp_servers.station_delegation={command="/usr/local/bin/node",args=${JSON.stringify(brokerArgs)},env_vars=["STATION_NATIVE_RPC_URL","STATION_NATIVE_RPC_KEY"],required=true}`,
+                ]
+              : []),
             '-c',
             'features.view_image=false',
             '-c',
