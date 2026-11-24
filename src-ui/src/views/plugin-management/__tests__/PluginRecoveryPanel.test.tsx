@@ -282,7 +282,7 @@ test('#1521: the recovery review shows the recovery preview’s receipt, not the
   );
   await reviewLoaded();
   const region = await screen.findByRole('region', {
-    name: 'Registry verification',
+    name: 'Source verification',
   });
   expect(region.textContent).toContain(digest('1'));
   expect(region.textContent).toContain(digest('2'));

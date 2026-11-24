@@ -1559,8 +1559,8 @@ Apps › Library shows when an update check was unavailable or incomplete and of
 a retry. A partial check keeps any updates it found. The view confirms that
 it found no updates only after the eligible sources complete.
 
-When reviewing installation or recovery, inspect the registry verification
-for each dependency to see the claim and pin bound to that
+When reviewing installation or recovery, inspect the Source verification
+section for each dependency to see the claim and pin bound to that
 dependency's consent. The installed view shows the selected plugin's recorded
 receipt.
 

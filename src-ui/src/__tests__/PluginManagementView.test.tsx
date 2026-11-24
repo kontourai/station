@@ -673,7 +673,7 @@ describe('registry verification on the plugin detail (#1521)', () => {
     });
     render(<PluginManagementView />);
     const region = screen.getByRole('region', {
-      name: 'Registry verification',
+      name: 'Source verification',
     });
     expect(region.textContent).toContain(`Fingerprint ${digest('e')}`);
     expect(region.textContent).toContain(digest('f'));
@@ -696,8 +696,8 @@ describe('registry verification on the plugin detail (#1521)', () => {
     });
     render(<PluginManagementView />);
     expect(
-      screen.getByRole('region', { name: 'Registry verification' }).textContent,
-    ).toContain('No verified registry claim.');
+      screen.getByRole('region', { name: 'Source verification' }).textContent,
+    ).toContain('No verified source claim.');
   });
 });
 
