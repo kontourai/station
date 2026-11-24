@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-24T13:00:13Z | nightly-desktop | 0.2.0-nightly.20261124.1 | `d64a21a` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45387969449) |
+| 2026-11-24T13:00:13Z | nightly-android | 0.2.0-nightly.20261124.1 | `d64a21a` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45387969449) |
+| 2026-11-24T12:06:16Z | nightly-npm | 0.12.0-nightly.20261124.45387969449 | `d64a21a` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45387969449) |
 | 2026-11-24T05:50:41Z | nightly-desktop | 0.2.0-nightly.20261124 | `be18487` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45329566332) |
 | 2026-11-24T05:50:41Z | nightly-android | 0.2.0-nightly.20261124 | `be18487` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45329566332) |
 | 2026-11-24T05:05:17Z | nightly-npm | 0.12.0-nightly.20261124.45329566332 | `be18487` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45329566332) |
@@ -552,6 +555,54 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-24T13:00:13Z · nightly-desktop · 0.2.0-nightly.20261124.1
+
+- Ship SHA: `d64a21a522c67affa19d89600386a8a5f594103c`
+- Artifact built at: `2026-11-24T12:11:29.582Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 45387969449)
+
+### Changelog
+
+Commits since `be18487` ([full sha](https://github.com/kontourai/station/commit/be184871bda9c10be48057051d5c39414b1dbe14)):
+
+**Fixes**
+
+- [#5555](https://github.com/kontourai/station/pull/5555) fix(chat): keep a scrolled-up reader's place when a follow-up is delivered or a turn ends
+- [#5546](https://github.com/kontourai/station/pull/5546) fix(acp): report recorded Antigravity upstream failures
+
+## 2026-11-24T13:00:13Z · nightly-android · 0.2.0-nightly.20261124.1
+
+- Ship SHA: `d64a21a522c67affa19d89600386a8a5f594103c`
+- Artifact built at: `2026-11-24T12:04:47.079Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 45387969449)
+
+### Changelog
+
+Commits since `be18487` ([full sha](https://github.com/kontourai/station/commit/be184871bda9c10be48057051d5c39414b1dbe14)):
+
+**Fixes**
+
+- [#5555](https://github.com/kontourai/station/pull/5555) fix(chat): keep a scrolled-up reader's place when a follow-up is delivered or a turn ends
+- [#5546](https://github.com/kontourai/station/pull/5546) fix(acp): report recorded Antigravity upstream failures
+
+## 2026-11-24T12:06:16Z · nightly-npm · 0.12.0-nightly.20261124.45387969449
+
+- Ship SHA: `d64a21a522c67affa19d89600386a8a5f594103c`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261124.45387969449 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `be18487` ([full sha](https://github.com/kontourai/station/commit/be184871bda9c10be48057051d5c39414b1dbe14)):
+
+**Fixes**
+
+- [#5555](https://github.com/kontourai/station/pull/5555) fix(chat): keep a scrolled-up reader's place when a follow-up is delivered or a turn ends
+- [#5546](https://github.com/kontourai/station/pull/5546) fix(acp): report recorded Antigravity upstream failures
 
 ## 2026-11-24T05:50:41Z · nightly-desktop · 0.2.0-nightly.20261124
 

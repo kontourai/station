@@ -1,5 +1,95 @@
 [
   {
+    "timestampUtc": "2026-11-24T13:00:13Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261124.1",
+    "sha": "d64a21a522c67affa19d89600386a8a5f594103c",
+    "artifactBuiltAt": "2026-11-24T12:11:29.582Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45387969449",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45387969449)"
+    ],
+    "changelog": {
+      "previousSha": "be184871bda9c10be48057051d5c39414b1dbe14",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5555](https://github.com/kontourai/station/pull/5555) fix(chat): keep a scrolled-up reader's place when a follow-up is delivered or a turn ends",
+          "[#5546](https://github.com/kontourai/station/pull/5546) fix(acp): report recorded Antigravity upstream failures"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
+    "timestampUtc": "2026-11-24T13:00:13Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261124.1",
+    "sha": "d64a21a522c67affa19d89600386a8a5f594103c",
+    "artifactBuiltAt": "2026-11-24T12:04:47.079Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45387969449",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45387969449)"
+    ],
+    "changelog": {
+      "previousSha": "be184871bda9c10be48057051d5c39414b1dbe14",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5555](https://github.com/kontourai/station/pull/5555) fix(chat): keep a scrolled-up reader's place when a follow-up is delivered or a turn ends",
+          "[#5546](https://github.com/kontourai/station/pull/5546) fix(acp): report recorded Antigravity upstream failures"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
+    "timestampUtc": "2026-11-24T12:06:16Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261124.45387969449",
+    "sha": "d64a21a522c67affa19d89600386a8a5f594103c",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45387969449",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261124.45387969449 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "be184871bda9c10be48057051d5c39414b1dbe14",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5555](https://github.com/kontourai/station/pull/5555) fix(chat): keep a scrolled-up reader's place when a follow-up is delivered or a turn ends",
+          "[#5546](https://github.com/kontourai/station/pull/5546) fix(acp): report recorded Antigravity upstream failures"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-11-24T05:50:41Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261124",
