@@ -1080,7 +1080,7 @@ and the scripted profile
   for this Station instance. Sign in through Station with that environment.
   Station passes the dedicated directory to Antigravity's native CLI
   arguments for chat and sign-in. An opted-in launch requires a private
-  profile directory.
+  profile directory and a managed launch policy that allows these arguments.
   Station excludes the provider-owned profile from home backups and update
   snapshots. During update rollback the profile stays in place.
   Station checks a bounded interval in the active CLI session's SQLite log

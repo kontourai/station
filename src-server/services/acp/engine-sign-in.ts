@@ -17,6 +17,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
+import { basename } from 'node:path';
 import type {
   AuthMethod,
   AuthMethodTerminal,
@@ -33,6 +34,7 @@ import {
   resolveAugmentedPath,
   runCliCommand,
 } from '../../providers/auth/cli-auth.js';
+import { managedEngineLaunch } from '../../security/managed-engine-limits.js';
 import { sanitizeConnectionEnvMap } from '../connections/connection-env.js';
 import { ensureEngineSpawnTmpDir } from '../infra/engine-spawn-tmpdir.js';
 import {
@@ -553,17 +555,38 @@ export class EngineSignInService {
       PATH: path,
       ...registryLaunchEnvFor(config),
       ...engineCredentialEnvFor(config),
-      // The protocol: method variables override the launch configuration.
-      ...sanitizeConnectionEnvMap(method.env),
     };
-    const profile =
-      !reviewedCliLogin && extra.length === 1 && extra[0] === '--login'
-        ? antigravityOutcomeProfile({
-            command: program,
-            args: config.args ?? [],
-            geminiHome: process.env.GEMINI_HOME,
-          })
-        : undefined;
+    const configuredArgs = config.args ?? [];
+    // The protocol: method variables override the launch configuration.
+    const methodEnv = sanitizeConnectionEnvMap(method.env);
+    let profile: ReturnType<typeof antigravityOutcomeProfile>;
+    if (
+      !reviewedCliLogin &&
+      basename(program) === 'agy' &&
+      extra.length === 1 &&
+      extra[0] === '--login'
+    ) {
+      const launch = managedEngineLaunch(
+        'acp',
+        {
+          command: config.command,
+          args: configuredArgs,
+          env: { ...process.env, ...env },
+        },
+        'user',
+      );
+      const geminiHome = launch.env.GEMINI_HOME;
+      try {
+        profile = antigravityOutcomeProfile({
+          command: config.command,
+          args: configuredArgs,
+          geminiHome,
+        });
+      } catch (error) {
+        throw new EngineSignInError(errorText(error), 409);
+      }
+      if (geminiHome !== undefined) methodEnv.GEMINI_HOME = geminiHome;
+    }
     const view: EngineSignInAttempt = {
       id: randomUUID(),
       methodId,
@@ -597,8 +620,8 @@ export class EngineSignInService {
           file: program,
           args: reviewedCliLogin
             ? extra
-            : [...(config.args ?? []), ...(profile?.args ?? []), ...extra],
-          env,
+            : [...configuredArgs, ...(profile?.args ?? []), ...extra],
+          env: { ...env, ...methodEnv },
         },
       });
       terminalId = opened.terminalId;

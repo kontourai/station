@@ -7,7 +7,7 @@
  * The engine is Node running a script that exits at once: the spawn happens,
  * `initialize` is never answered, and no shebang is needed on any platform.
  */
-import { writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   parseManagedPolicyDocument,
@@ -25,11 +25,24 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
-function installAcpPin(environment: Record<string, string>) {
+function installAcpPin(
+  environment: Record<string, string>,
+  launchArgs?: string[],
+) {
   const parsed = parseManagedPolicyDocument({
     schemaVersion: 1,
     organization: 'Acme',
-    limits: { engines: { instances: { acp: { locked: true, environment } } } },
+    limits: {
+      engines: {
+        instances: {
+          acp: {
+            locked: true,
+            environment,
+            ...(launchArgs ? { launchArgs } : {}),
+          },
+        },
+      },
+    },
   });
   if (!parsed.ok) throw new Error(JSON.stringify(parsed.problems));
   installManagedEngineLimits({
@@ -81,4 +94,34 @@ describe('ACPProcess.spawnedEnvHas', () => {
     });
     expect(acp.spawnedEnvHas('GEMINI_API_KEY')).toBe(false);
   });
+
+  test.skipIf(process.platform === 'win32')(
+    'a locked argument pin keeps the opted-in profile from adding arguments',
+    async () => {
+      const home = makeTempDir('station-acp-pinned-profile-');
+      const profile = join(home, 'engine-profiles', 'antigravity');
+      mkdirSync(profile, { recursive: true, mode: 0o700 });
+      vi.stubEnv('STATION_HOME', home);
+      vi.stubEnv('GEMINI_HOME', profile);
+      const args = ['acp', '--process-per-session'];
+      installAcpPin({}, args);
+      const createClient = vi.fn(() => ({}) as never);
+      const acp = new ACPProcess({
+        command: 'agy',
+        args,
+        cwd: home,
+        createClient,
+        logger: { debug() {}, info() {}, warn() {}, error() {} },
+        resolveCommand: async () => process.execPath,
+      });
+      try {
+        await expect(acp.start()).rejects.toThrow(
+          'Managed engine policy prevents launching the dedicated Antigravity profile.',
+        );
+        expect(createClient).not.toHaveBeenCalled();
+      } finally {
+        await acp.destroy();
+      }
+    },
+  );
 });

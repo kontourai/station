@@ -3,10 +3,20 @@
  * SDK's agent side) behind a stub program with the engine's name, so the
  * built-in descriptor for that engine applies exactly as in production.
  */
-import { chmodSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import {
+  chmodSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+  writeFileSync,
+} from 'node:fs';
+import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
+import {
+  parseManagedPolicyDocument,
+  summarizeManagedPolicy,
+} from '@kontourai/station-contracts/managed-policy';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { AcpAdapter } from '../../../providers/adapters/acp-adapter.js';
@@ -15,6 +25,7 @@ import {
   clearAll,
   registerACPConnectionRegistryProvider,
 } from '../../../providers/registries/registry.js';
+import { installManagedEngineLimits } from '../../../security/managed-engine-limits.js';
 import { ACPProbe } from '../acp-probe.js';
 import { ACPProcess } from '../acp-process.js';
 import {
@@ -59,6 +70,8 @@ afterEach(() => {
   clearAll();
   resetEngineAuthStatus();
   registerEngineCredentials(null);
+  installManagedEngineLimits(null);
+  vi.unstubAllEnvs();
 });
 
 /** A program named like the engine that runs the fake agent with a profile. */
@@ -187,6 +200,68 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
       { id: 'device-pairing', name: 'Pair this device', kind: 'agent' },
     ]);
   });
+
+  test.each([true, false])(
+    'Antigravity terminal sign-in follows the managed profile opt-in (%s)',
+    async (enabled) => {
+      const home = makeTempDir('station-agy-sign-in-home-');
+      const profile = join(home, 'engine-profiles', 'antigravity');
+      mkdirSync(profile, { recursive: true, mode: 0o700 });
+      vi.stubEnv('STATION_HOME', home);
+      vi.stubEnv('GEMINI_HOME', enabled ? '' : profile);
+      const geminiHome = enabled ? profile : '';
+      const policy = parseManagedPolicyDocument({
+        schemaVersion: 1,
+        organization: 'Acme',
+        limits: {
+          engines: {
+            instances: {
+              acp: { locked: true, environment: { GEMINI_HOME: geminiHome } },
+            },
+          },
+        },
+      });
+      if (!policy.ok) throw new Error(JSON.stringify(policy.problems));
+      installManagedEngineLimits({
+        document: policy.document,
+        summary: summarizeManagedPolicy(policy.document),
+      });
+      const data = JSON.parse(
+        readFileSync(join(PROFILES, 'antigravity.json'), 'utf8'),
+      );
+      data.initialize.authMethods = [
+        {
+          id: 'terminal-login',
+          name: 'Terminal login',
+          type: 'terminal',
+          args: ['--login'],
+        },
+      ];
+      const fixture = join(home, 'antigravity-fixture.json');
+      writeFileSync(fixture, JSON.stringify(data));
+      const agy = engineProgram('agy', relative(PROFILES, fixture));
+      const terminal = recordingTerminal();
+      const service = new EngineSignInService({ terminal: terminal.host });
+      const args = ['acp', '--process-per-session'];
+      await service.startTerminal(
+        { ...connection('antigravity', agy.command), args },
+        'terminal-login',
+      );
+      const [opened] = terminal.opened;
+      expect(opened.launch.args).toEqual([
+        ...args,
+        ...(enabled
+          ? [
+              `--gemini-dir=${realpathSync(profile)}`,
+              '--app-data-dir=antigravity-acp',
+            ]
+          : []),
+        '--login',
+      ]);
+      expect(opened.launch.env.GEMINI_HOME).toBe(geminiHome);
+      await terminal.exit(opened, 0);
+    },
+  );
 
   test('a terminal method runs the engine program with only the handshake args', async () => {
     const pi = engineProgram('pi-acp', 'pi-acp.json');

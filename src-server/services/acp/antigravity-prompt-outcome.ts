@@ -1,6 +1,7 @@
 import { lstatSync, realpathSync, type Stats } from 'node:fs';
 import { basename, isAbsolute, join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { managedEnginePin } from '../../security/managed-engine-limits.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import {
   type AcpIdentityHandshake,
@@ -71,6 +72,15 @@ export function antigravityOutcomeProfile(input: {
     resolve(input.geminiHome) !== join(home, 'engine-profiles', 'antigravity')
   )
     return undefined;
+  const pin = managedEnginePin('acp');
+  if (
+    pin?.locked &&
+    (pin.launchArgs !== undefined ||
+      (pin.binaryPath !== undefined && pin.binaryPath !== input.command))
+  )
+    throw new Error(
+      'Managed engine policy prevents launching the dedicated Antigravity profile.',
+    );
   try {
     const parent = join(realpathSync(home), 'engine-profiles');
     const profile = join(parent, 'antigravity');
