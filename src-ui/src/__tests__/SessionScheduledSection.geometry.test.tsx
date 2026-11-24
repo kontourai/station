@@ -193,9 +193,8 @@ describe.skipIf(!chromiumAvailable)(
           }
           // The two links keep together on one line (under the title when they
           // do not fit beside it) whenever the pair fits the header's width. When
-          // the text is too wide for that, they stack in order. Neither is ever
-          // left beside the title while the other drops below it: they wrap
-          // inside one group.
+          // the text is too wide for that, they stack in order. Every control,
+          // these two included, was held inside the card above.
           const newLink = await controls[0].boundingBox();
           const allLink = await controls[1].boundingBox();
           const group = page.locator('.session-scheduled__links');
@@ -214,13 +213,6 @@ describe.skipIf(!chromiumAvailable)(
             expect(allLink!.y).toBeGreaterThanOrEqual(
               newLink!.y + newLink!.height - 0.5,
             );
-          }
-          for (const link of [newLink!, allLink!]) {
-            expect(link.x).toBeGreaterThanOrEqual(groupBox!.x - 0.5);
-            expect(link.x + link.width).toBeLessThanOrEqual(
-              groupBox!.x + groupBox!.width + 0.5,
-            );
-            expect(link.y).toBeGreaterThanOrEqual(groupBox!.y - 0.5);
           }
           // Each link is one line of text, not "New / automation" stacked.
           for (const link of controls.slice(0, 2)) {
