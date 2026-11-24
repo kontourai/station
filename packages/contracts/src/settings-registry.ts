@@ -929,8 +929,9 @@ export const APP_SETTINGS_REGISTRY = [
     help: 'The agent a new chat starts with when nothing closer names one.',
     description:
       'The agent new chats on this Station start with, and whether Station chose the first engine signed in or a person chose it. Written only through POST /config/new-chat-default; absent means Station has not chosen one yet.',
-    // Shown and changed on Customize, not as a Settings row. The generic
-    // config write refuses it, so the "recorded once" rule cannot be skipped.
+    // Stored, and used when a new chat starts; no page shows or changes it
+    // yet, and it is not a Settings row. The generic config write refuses
+    // it, so the "recorded once" rule cannot be skipped.
     userFacing: false,
   }),
 ] as const satisfies readonly SettingDefinition[];
