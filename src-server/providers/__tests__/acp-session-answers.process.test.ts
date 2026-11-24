@@ -7,14 +7,15 @@
  * `session/resume`, a `thought_level` option and a prompt answer's `usage`.
  * What the engine received is read from the fake's own record.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import type { ACPConnectionConfig } from '@kontourai/station-contracts/acp';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { assembleTurnProvenanceEnvelopes } from '@kontourai/station-shared/turn-provenance-fold';
 import { foldUsageEvents } from '@kontourai/station-shared/usage-fold';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { AcpAdapter } from '../adapters/acp-adapter.js';
 import { quietLogger, waitFor } from './acp-engine-qualification-harness.js';
@@ -87,11 +88,13 @@ interface Engine {
 const engines: Engine[] = [];
 afterEach(async () => {
   await Promise.all(engines.splice(0).map((engine) => engine.stop()));
+  vi.unstubAllEnvs();
 });
 
 function launch(
   profile: Record<string, unknown>,
   promptSteps: unknown[],
+  antigravityCli = false,
 ): Engine {
   const dir = makeTempDir('station-acp-answers-');
   const profilePath = join(dir, 'profile.json');
@@ -100,19 +103,31 @@ function launch(
   writeFileSync(profilePath, JSON.stringify(profile));
   writeFileSync(recordPath, '');
   writeFileSync(stepsPath, JSON.stringify(promptSteps));
+  const args = [
+    FAKE_AGENT,
+    '--engine-profile',
+    profilePath,
+    '--record',
+    recordPath,
+    '--prompt-steps',
+    stepsPath,
+  ];
+  const command = antigravityCli ? join(dir, 'agy') : process.execPath;
+  if (antigravityCli) {
+    const shellArgs = [process.execPath, ...args]
+      .map((value) => "'" + value.replaceAll("'", "'\\''") + "'")
+      .join(' ');
+    writeFileSync(
+      command,
+      `#!/bin/sh\nif [ "$1" = "--version" ]; then printf '%s\\n' 1.5.14; exit; fi\nexec ${shellArgs}\n`,
+      { mode: 0o700 },
+    );
+  }
   const connection: ACPConnectionConfig = {
     id: CONNECTION_ID,
     name: 'Engine',
-    command: process.execPath,
-    args: [
-      FAKE_AGENT,
-      '--engine-profile',
-      profilePath,
-      '--record',
-      recordPath,
-      '--prompt-steps',
-      stepsPath,
-    ],
+    command,
+    args: antigravityCli ? ['acp', '--process-per-session'] : args,
     enabled: true,
   };
   const adapter = new AcpAdapter({
@@ -548,5 +563,175 @@ describe.skipIf(process.platform === 'win32')(
         value: { inputTokens: 10377, outputTokens: 48, totalTokens: 16595 },
       });
     });
+
+    test.each([
+      [
+        'NOT_FOUND (code 404): private provider detail',
+        'antigravity_upstream_not_found',
+      ],
+      [
+        'Error 502, Message: private provider detail, Status: 502 Bad Gateway',
+        'antigravity_upstream_bad_gateway',
+      ],
+      ['NOT_FOUND (code 404): error in a replaced file', null],
+    ])(
+      'only reports upstream failures attributable to the active prompt (%s)',
+      async (payload, code) => {
+        const home = makeTempDir('station-agy-outcome-');
+        const nativeHome = join(home, 'engine-profiles', 'antigravity');
+        const conversations = join(
+          nativeHome,
+          'antigravity-acp',
+          'conversations',
+        );
+        mkdirSync(conversations, { recursive: true, mode: 0o700 });
+        vi.stubEnv('STATION_HOME', home);
+        vi.stubEnv('GEMINI_HOME', nativeHome);
+        const gateway = code === 'antigravity_upstream_bad_gateway';
+        const engine = launch(
+          PROFILE,
+          [
+            {
+              kind: 'tool',
+              toolCall: { kind: 'execute', title: 'Run a command' },
+              options: [
+                { optionId: 'allow', name: 'Allow', kind: 'allow_once' },
+              ],
+            },
+            ...(gateway ? [{ kind: 'wait-ms', ms: 1200 }] : []),
+          ],
+          true,
+        );
+        const threadId = 'outcome';
+        const { resumeCursor } = await engine.start(threadId);
+        const { acpSessionId } = resumeCursor as { acpSessionId: string };
+        const databasePath = join(conversations, `${acpSessionId}.db`);
+        const openLog = () => {
+          const db = new DatabaseSync(databasePath);
+          db.exec(
+            'CREATE TABLE steps (idx INTEGER PRIMARY KEY, step_type INTEGER, step_payload BLOB)',
+          );
+          return db;
+        };
+        let db = gateway ? undefined : openLog();
+        const append = (database: DatabaseSync, type: number, value: string) =>
+          database
+            .prepare(
+              'INSERT INTO steps (step_type, step_payload) VALUES (?, ?)',
+            )
+            .run(type, Buffer.from(value));
+        let diagnosePendingPrompt: (() => void) | undefined;
+        const originalSetTimeout = globalThis.setTimeout;
+        const timerSpy = vi
+          .spyOn(globalThis, 'setTimeout')
+          .mockImplementation((callback, delay, ...args) => {
+            if (delay === 15 * 60_000)
+              diagnosePendingPrompt = () => callback(...args);
+            return originalSetTimeout(callback, delay, ...args);
+          });
+        try {
+          if (db) append(db, 17, 'NOT_FOUND (code 404): old failure');
+          const opened = (offset: number) =>
+            waitFor(
+              () =>
+                engine.events
+                  .slice(offset)
+                  .find((event) => event.method === 'request.opened'),
+              'the fake engine awaiting permission',
+            );
+
+          const id = await engine.send(threadId, 'Run once', {
+            approvalMode: 'ask',
+          });
+          const request = await opened(0);
+          if (code === null) {
+            db?.close();
+            renameSync(databasePath, `${databasePath}.replaced`);
+            db = openLog();
+            append(db, 17, 'NOT_FOUND (code 404): old failure');
+          }
+          db ??= openLog();
+          append(db, 14, 'current prompt');
+          append(db, 15, 'partial response');
+          append(db, 17, payload);
+          await engine.adapter.respondToRequest(
+            threadId,
+            request.requestId,
+            'accept',
+          );
+          if (code === null) {
+            await engine.completed(id);
+            expect(
+              engine.events.some(
+                (event) =>
+                  event.method === 'runtime.error' && event.turnId === id,
+              ),
+            ).toBe(false);
+            return;
+          }
+          if (gateway) {
+            expect(diagnosePendingPrompt).toBeTypeOf('function');
+            diagnosePendingPrompt?.();
+            const warning = await waitFor(
+              () =>
+                engine.events.find(
+                  (event) =>
+                    event.method === 'runtime.warning' && event.code === code,
+                ),
+              'a gateway diagnostic while the prompt is still open',
+            );
+            expect(warning.message).toContain(
+              'The engine has not closed the turn.',
+            );
+            expect(
+              engine.events.some(
+                (event) =>
+                  event.method === 'runtime.error' && event.turnId === id,
+              ),
+            ).toBe(false);
+          }
+          const error = await waitFor(
+            () =>
+              engine.events.find(
+                (event) =>
+                  event.method === 'runtime.error' && event.turnId === id,
+              ),
+            'current turn failure',
+          );
+          expect(error).toMatchObject({
+            code,
+            retryable: true,
+            failurePhase: 'failed',
+          });
+          expect(error.message).not.toContain('private provider detail');
+          expect(
+            engine
+              .record()
+              .filter((entry) => entry.method === 'session/prompt'),
+          ).toHaveLength(1);
+          expect(
+            engine.events.some(
+              (event) =>
+                event.method === 'turn.completed' && event.turnId === id,
+            ),
+          ).toBe(false);
+
+          const offset = engine.events.length;
+          const next = await engine.send(threadId, 'New message', {
+            approvalMode: 'ask',
+          });
+          const nextRequest = await opened(offset);
+          await engine.adapter.respondToRequest(
+            threadId,
+            nextRequest.requestId,
+            'accept',
+          );
+          await engine.completed(next);
+        } finally {
+          timerSpy.mockRestore();
+          db?.close();
+        }
+      },
+    );
   },
 );

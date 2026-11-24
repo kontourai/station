@@ -1071,6 +1071,18 @@ and the scripted profile
 - **Station's tools.** Without `--process-per-session` the engine declares no
   `mcpCapabilities`, and Station's HTTP tool servers are skipped. With it, it
   declares `http` and called a client HTTP MCP server with its headers.
+- **Upstream errors with a dedicated profile.** On macOS and Linux, set
+  `GEMINI_HOME` in the Station service environment to the absolute path
+  `<Station home>/engine-profiles/antigravity` to enable diagnostics for the
+  built-in launch. Create that directory with mode `0700` and use it only
+  for this Station instance. Sign in through Station with that environment.
+  Station checks a bounded interval in the active CLI session's SQLite log
+  for a 404 or 502 when Antigravity reports the turn ended. It shows a
+  fixed failure message and retains the reported token usage. If a prompt
+  still has no answer at 15 minutes and has a matching gateway error,
+  Station can show the diagnostic while the active turn remains open.
+  It does not replay the prompt or stop the engine for the warning.
+  Unavailable or ambiguous records leave the ordinary ACP outcome in place.
 - **Questions** arrive as core `elicitation/create` forms (a `oneOf` choice
   and a free-text `q1_other`) because Station announces `elicitation`.
   Without it the engine prints the question as text and takes the next
