@@ -437,6 +437,26 @@
   margin: 0 0 1rem;
 }
 
+/* Gives an empty state a way out instead of dead-ending. */
+.page__empty-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border: 1px solid var(--border-primary);
+  border-radius: 6px;
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.page__empty-action:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-active);
+}
+
 /* A tab strip that stays put while its catalog scrolls. Used inside a
    `PageFrame`, where the page header itself scrolls away and the tabs are
    what a reader needs to keep. `--bg-primary` matches `.main-content`'s
