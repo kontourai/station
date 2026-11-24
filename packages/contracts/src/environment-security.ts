@@ -1247,6 +1247,8 @@ export interface StationCapabilityFlags {
   conversationStationHandoff?: boolean;
   /** Child steering and its separately paged instruction history. */
   childWorkSteering?: boolean;
+  /** The personal Station supports the Session groups preview API. The operator controls whether it is enabled. */
+  cliSessionGroups?: boolean;
   /** Consented private terminal outcome reads. */
   privateOperationalOutcomes?: boolean;
   /**

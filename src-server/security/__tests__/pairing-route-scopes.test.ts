@@ -290,6 +290,40 @@ describe('pairing-route-scopes: source-derived coverage (station#1098 R2)', () =
     ).toBe('home:transfer');
   });
 
+  test.each([
+    ['POST', '/api/orchestration/session-groups', 'orchestration:operate'],
+    [
+      'GET',
+      '/api/orchestration/session-groups/group-one',
+      'orchestration:read',
+    ],
+    [
+      'POST',
+      '/api/orchestration/session-groups/group-one/run',
+      'orchestration:operate',
+    ],
+    [
+      'POST',
+      '/api/orchestration/session-groups/group-one/cancel',
+      'orchestration:operate',
+    ],
+  ] as const)('Session groups %s %s requires %s', (method, path, scope) => {
+    expect(requiredPairingScope(method, path)).toBe(scope);
+    expect(pairingScopeSatisfiesHttpRoute('', scope, { method, path })).toBe(
+      false,
+    );
+    expect(pairingScopeSatisfiesHttpRoute(scope, scope, { method, path })).toBe(
+      true,
+    );
+    if (scope === 'orchestration:operate')
+      expect(
+        pairingScopeSatisfiesHttpRoute('orchestration:read', scope, {
+          method,
+          path,
+        }),
+      ).toBe(false);
+  });
+
   // Retry check re-probes and registers an engine: the same operate tier as
   // reconnecting it, and its unregistered list reads like the installed one.
   test('the engine re-check needs operate and its unregistered list needs read', () => {

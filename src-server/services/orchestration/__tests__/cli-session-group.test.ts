@@ -31,6 +31,7 @@ function fixture() {
   };
   const host = {
     assertCurrent: vi.fn(),
+    assertStopCurrent: vi.fn(),
     dispatch: vi.fn<CliSessionGroupHost<string>['dispatch']>(
       async (_brief, admission) => {
         admission.assertCurrent();

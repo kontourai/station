@@ -2427,16 +2427,19 @@ ownership, or an implicit change to completed-session behavior.
 
 ## SessionCommandModule
 
-The dormant [CLI Session group owner](../../src-server/services/orchestration/cli-session-group.ts)
-captures create inputs before acquiring the storage lock and reserves each
-member start durably before calling its host adapter. Flow supplies dependency
-readiness and claims. A missing Session receipt leaves the reservation occupied.
-A zero dispatch allowance closes admission at creation. The allowance counts
-reserved member starts. Dollar, token, and physical-attempt caps are unavailable.
-Issue #91 tracks production composition with Station Session authority.
+The [CLI Session group owner](../../src-server/services/orchestration/cli-session-group.ts)
+is reachable through the personal Station's **Session groups** preview. It
+captures the plan before acquiring the storage lock and reserves each member
+start before invoking authorized Task dispatch. Flow owns dependency readiness
+and claims. Station checks the creating credential and exact reserved Session
+and first-turn IDs at the provider boundaries. A missing receipt leaves the
+reservation occupied. Cancel targets an accepted initial turn and checks
+authority again before interruption or escalation. A zero dispatch allowance
+closes admission at creation. The allowance counts reserved member starts.
+Dollar, token, and physical-attempt caps are unavailable in this preview.
 
 The [retained activation owner](../../src-server/services/orchestration/orchestration-service.ts)
-is also dormant. It admits one reserved turn in a persistent personal Claude
+remains dormant. It admits one reserved turn in a persistent personal Claude
 Session, waits for the previous process exit, and resumes the same native
 conversation with wildcard tool denial. The adapter qualifies the launched
 runtime before accepting the turn. The owner reads the exact terminal event

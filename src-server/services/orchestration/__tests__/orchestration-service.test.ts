@@ -10798,6 +10798,42 @@ describe('OrchestrationService', () => {
     }
   });
 
+  test('a guarded exact stop refuses deferred delivery when its provider Session is unavailable', async () => {
+    vi.useFakeTimers();
+    try {
+      const threadId = 'guarded-stop-before-session';
+      const turnId = 'reserved-initial-turn';
+      await expect(
+        service.dispatchWithReceipt(
+          { type: 'interruptTurn', threadId, turnId },
+          undefined,
+          { beforeProviderInterrupt: vi.fn() },
+        ),
+      ).rejects.toThrow(
+        'Exact delegated turn cancellation requires a current provider Session.',
+      );
+
+      await service.dispatch({
+        type: 'startSession',
+        input: { threadId, provider: 'claude' },
+      });
+      claude.events.push({
+        eventId: 'guarded-stop-before-session-started',
+        provider: 'claude',
+        threadId,
+        turnId,
+        createdAt: new Date().toISOString(),
+        method: 'turn.started',
+        prompt: 'Accepted initial turn',
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(claude.interruptTurn).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   // UX audit T1 review (MEDIUM): keyed on the thread alone, a cancel whose
   // intended turn never started stayed armed for the whole TTL and would
   // interrupt whatever turn started next. Correlated by the dispatch key, it

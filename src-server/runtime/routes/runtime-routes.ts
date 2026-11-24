@@ -410,6 +410,7 @@ import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import {
+  servesCliSessionGroups,
   servesCoordinatorSession,
   servesProjectRoomCoordinator,
 } from '../../capabilities/station-capability-flags.js';
@@ -7866,6 +7867,19 @@ export function configureRuntimeRoutes(
   context.app.route(
     '/api/orchestration',
     createOrchestrationRoutes(context.orchestrationService, {
+      ...(servesCliSessionGroups({ hosted: !isPersonalHost })
+        ? {
+            cliSessionGroups: {
+              home: context.configLoader.getProjectHomeDir(),
+              preview: context.featurePreviews.bind({
+                id: 'cli-session-groups',
+                label: 'Session groups',
+                description:
+                  'Create, run and inspect groups of Tasks for local external engines. Running a group can spend provider credits.',
+              }),
+            },
+          }
+        : {}),
       eventBus: context.eventBus,
       reopenSettledConversation: (c, id) =>
         reopenSettledConversation(

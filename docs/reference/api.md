@@ -1568,6 +1568,43 @@ open through the existing chat inbox resolver, independently of dispatch Session
 identity. See [Task contracts](contracts.md#task-deliverable-and-work-chat-relationships)
 and [SDK Task mutations](sdk.md#task-mutations).
 
+## Personal Session-group preview
+
+The **Session groups** feature preview is off by default and is offered on
+personal Stations. The `cliSessionGroups` handshake flag indicates API support.
+The feature preview still governs each operation.
+When enabled, `POST /api/orchestration/session-groups`
+records a group of Tasks for local, explicitly bound external Engines.
+Creation records the plan without starting a Session. It accepts an operation
+ID, a deadline, up to 32 named members with dependency IDs, a concurrency
+limit, and an optional dispatch limit. A zero dispatch limit creates a closed
+group.
+
+The operation ID binds to the current verified credential and the captured
+plan. An unchanged request returns the existing group. A changed plan under
+the same operation ID conflicts. `GET /api/orchestration/session-groups/:groupId`
+reads the group projection for the creating credential. A disabled preview or
+unavailable group returns 404. A credential that becomes stale during creation
+cannot authorize the durable write. The projection contains group and member
+state without exposing the captured Task prompts.
+
+`POST /api/orchestration/session-groups/:groupId/run` runs ready members
+through local Task dispatch. Station checks the creating credential, the
+group deadline, and the reserved Session and first-turn IDs at dispatch.
+Running a group can spend provider credits. A completed dependency requires
+positive terminal evidence for that member's accepted initial turn.
+`POST /api/orchestration/session-groups/:groupId/cancel` closes further
+admission and requests stops for the group's confirmed initial turns.
+Station rechecks the live request before committing the cancellation.
+It retains one stop intent per accepted member and rechecks credential and
+preview authority before the provider interrupt and any escalation. Losing the
+run connection stops new admission for that run. Station can still request
+interruption for its confirmed initial turns while that credential remains
+current. Exact group stops require the current provider Session.
+Deferred interrupts and owned cascades use their separate Session owners.
+Missing acceptance or stop evidence remains unconfirmed. Paired callers need
+`orchestration:read` for inspection and `orchestration:operate` for mutations.
+
 ## Personal Task room agent requests
 
 `GET /api/tasks/:taskId/room/agent-requests` returns the authorized, versioned

@@ -745,6 +745,8 @@ interface OrchestrationDispatchInternalOptions {
   nativeMemoryReadAuthority?: SessionReadAuthority;
   sessionStartAdmission?: SessionCommandInternalOptions['sessionStartAdmission'];
   beforeProviderStart?: SessionCommandInternalOptions['beforeProviderStart'];
+  beforeProviderSend?: SessionCommandInternalOptions['beforeProviderSend'];
+  beforeProviderInterrupt?: SessionCommandInternalOptions['beforeProviderInterrupt'];
   /** Exact server-owned Task reservation scope; never read from public metadata. */
   roomExecutionBinding?: SessionCommandInternalOptions['roomExecutionBinding'];
   /** Epic #4003: see `SessionCommandInternalOptions.taskBrief`. */
@@ -11676,6 +11678,10 @@ export class OrchestrationService {
                               turnInput,
                               context,
                             );
+                            internal?.beforeProviderSend?.(
+                              turnInput.threadId,
+                              turnInput.clientTurnId,
+                            );
                             if (boundary.prepareIntent) {
                               const captured = captureTurnIntent(turnInput, {
                                 binding: this.preparedTurnBinding(
@@ -12304,6 +12310,12 @@ export class OrchestrationService {
           }
         }
         case 'interruptTurn': {
+          const assertInterruptCurrent = () =>
+            internal?.beforeProviderInterrupt?.(
+              command.threadId,
+              command.turnId,
+            );
+          assertInterruptCurrent();
           // A person's Stop (the route's person check) is recorded as such on
           // `session.stop-settled`, so an automation can tell it from its own
           // budget interrupt, which never reaches this command.
@@ -12325,6 +12337,10 @@ export class OrchestrationService {
           if (
             this.options.eventStore?.ownedStopTargets(command.threadId).length
           ) {
+            if (internal?.beforeProviderInterrupt)
+              throw new Error(
+                'Exact delegated turn cancellation cannot use the Session cascade.',
+              );
             const activeTurnId = this.activeTurnIdOfThread(command.threadId);
             if (command.turnId && command.turnId !== activeTurnId) {
               const result: InterruptTurnResult = {
@@ -12382,6 +12398,11 @@ export class OrchestrationService {
               adapters: this.options.adapterRegistry.list(),
             });
           } catch {
+            assertInterruptCurrent();
+            if (internal?.beforeProviderInterrupt)
+              throw new Error(
+                'Exact delegated turn cancellation requires a current provider Session.',
+              );
             // UX audit T1 (live verification): the engine session for this
             // thread does not exist YET. A dispatched turn takes 0.5-2.6s to
             // reach `turn.started`, and refusing the whole command inside that
@@ -12406,6 +12427,7 @@ export class OrchestrationService {
             };
             return { receipt, result: pending };
           }
+          assertInterruptCurrent();
           this.assertAdapterCurrent(adapter);
           // UX audit T1: the settlement this returns is the ONLY thing that
           // knows whether the engine acknowledged (session kept warm and
@@ -12420,6 +12442,9 @@ export class OrchestrationService {
               command.turnId,
               'user',
               byPerson,
+              internal?.beforeProviderInterrupt
+                ? assertInterruptCurrent
+                : undefined,
             );
           if (
             interrupted.outcome === 'cooperative' ||
