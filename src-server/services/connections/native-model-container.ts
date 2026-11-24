@@ -2,6 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstatSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
+import type { Writable } from 'node:stream';
 import { writeJsonFile } from '@kontourai/station-shared/json-file-storage';
 import { z } from 'zod/v3';
 import {
@@ -74,6 +75,23 @@ export interface NativeModelContainerOptions {
   ): NativeModelChannelRequest;
 }
 
+interface OwnedNativeTextRun {
+  /** Native program result. A later cleanup failure cannot overwrite it. */
+  readonly result: Promise<
+    Readonly<{
+      stdout: string;
+      stderr: string;
+      terminal: Readonly<{
+        code: number | null;
+        signal: NodeJS.Signals | null;
+      }>;
+    }>
+  >;
+  /** Owned exec-client/tree settlement, separate from container removal. */
+  readonly settled: Promise<void>;
+  close(): Promise<void>;
+}
+
 /** Owns only namespace/model-channel lifetime. It does not issue delegation authority. */
 export class NativeModelContainer {
   readonly #nonce = randomUUID();
@@ -93,6 +111,9 @@ export class NativeModelContainer {
   #starting: Promise<void> | undefined;
   #retiring = false;
   #createSubmitted = false;
+  #textSubmitted = false;
+  #textSettled = false;
+  #textRun: OwnedNativeTextRun | undefined;
 
   private constructor(private readonly options: NativeModelContainerOptions) {
     const endpoint = new URL(options.endpoint);
@@ -355,7 +376,220 @@ export class NativeModelContainer {
       removed: this.#removed,
       modelChannel: this.#channel?.inspect(),
       journalDirectory: this.#directory,
+      nativeText: {
+        submitted: this.#textSubmitted,
+        settled: this.#textSettled,
+      },
     };
+  }
+
+  /** One fixed native text client in the owned namespace. Prompt bytes travel
+   * through stdin under the source owner's delivery port, never argv/env. */
+  async startText(
+    input: Readonly<{
+      engine: 'claude' | 'codex';
+      modelId: string;
+      /** Server-owned catalog inside the immutable image, never inferred entitlement. */
+      modelCatalogPath?: string;
+      signal: AbortSignal;
+      writePrompt(stdin: Writable): Promise<void>;
+    }>,
+  ): Promise<OwnedNativeTextRun> {
+    input = Object.freeze({ ...input });
+    if (
+      input.modelCatalogPath !== undefined &&
+      (input.engine !== 'codex' ||
+        !/^\/station\/[A-Za-z0-9._/-]{1,240}\.json$/.test(
+          input.modelCatalogPath,
+        ) ||
+        input.modelCatalogPath.split('/').includes('..'))
+    )
+      throw new Error('native_text_catalog_invalid');
+    if (
+      !['claude', 'codex'].includes(input.engine) ||
+      !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(input.modelId)
+    )
+      throw new Error('native_text_selection_invalid');
+    input.signal.throwIfAborted();
+    if (this.#retiring || !this.#engaged || this.#textSubmitted)
+      throw new Error('native_text_admission_closed');
+    await this.#inspect(true);
+    input.signal.throwIfAborted();
+    if (this.#retiring || !this.#engaged || this.#textSubmitted || !this.#id)
+      throw new Error('native_text_admission_closed');
+    const connection = this.connection();
+    const environment =
+      input.engine === 'claude'
+        ? {
+            ANTHROPIC_BASE_URL: connection.baseUrl,
+            ANTHROPIC_AUTH_TOKEN: connection.token,
+            ANTHROPIC_API_KEY: '',
+            CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
+            CLAUDE_CODE_DISABLE_AUTO_MEMORY: '1',
+            DISABLE_TELEMETRY: '1',
+            DISABLE_ERROR_REPORTING: '1',
+          }
+        : {
+            STATION_ENGINE_PROXY_KEY: connection.token,
+            CODEX_HOME: '/home/native',
+          };
+    const args =
+      input.engine === 'claude'
+        ? [
+            '--print',
+            '--input-format',
+            'text',
+            '--output-format',
+            'json',
+            '--model',
+            input.modelId,
+            '--tools',
+            '',
+            '--setting-sources',
+            '',
+            '--max-turns',
+            '1',
+          ]
+        : [
+            'exec',
+            '--skip-git-repo-check',
+            '--ephemeral',
+            '--json',
+            '--sandbox',
+            'danger-full-access',
+            '-c',
+            'features.shell_tool=false',
+            '-c',
+            'features.multi_agent=false',
+            '-c',
+            'features.goals=false',
+            '-c',
+            'features.view_image=false',
+            '-c',
+            'web_search="disabled"',
+            '-m',
+            input.modelId,
+            ...(input.modelCatalogPath
+              ? [
+                  '-c',
+                  `model_catalog_json=${JSON.stringify(input.modelCatalogPath)}`,
+                ]
+              : []),
+            '-c',
+            'model_provider="station-channel"',
+            '-c',
+            `model_providers.station-channel={name="Confined model channel",base_url=${JSON.stringify(`${connection.baseUrl}/v1`)},wire_api="responses",env_key="STATION_ENGINE_PROXY_KEY"}`,
+            '-',
+          ];
+    this.#textSubmitted = true;
+    const child = spawnOwnedChild(
+      this.options.dockerExecutable,
+      this.#args([
+        'exec',
+        '--interactive',
+        '--user',
+        '10001:10001',
+        ...Object.keys(environment).flatMap((name) => ['--env', name]),
+        this.#id,
+        `/station/${input.engine}`,
+        ...args,
+      ]),
+      {
+        env: { ...this.#environment, ...environment },
+        registryDir: this.#registry,
+      },
+    );
+    let failure: unknown;
+    const completed = new Promise<{
+      code: number | null;
+      signal: NodeJS.Signals | null;
+    }>((resolve) => {
+      child.proc.once('error', (error) => {
+        failure ??= error;
+      });
+      child.proc.once('close', (code, signal) => resolve({ code, signal }));
+    });
+    let closing: Promise<void> | undefined;
+    const stop = () =>
+      (closing ??= (async () => {
+        child.proc.stdin?.destroy();
+        await terminateProcessTree(child.proc, {
+          graceMs: 1000,
+          killConfirmMs: 1000,
+        });
+        await completed;
+        child.release();
+        this.#textSettled = true;
+      })().catch((error) => {
+        closing = undefined;
+        throw error;
+      }));
+    const stdout: Buffer[] = [],
+      stderr: Buffer[] = [];
+    let bytes = 0;
+    for (const [stream, chunks] of [
+      [child.proc.stdout, stdout],
+      [child.proc.stderr, stderr],
+    ] as const)
+      stream?.on('data', (raw: Buffer) => {
+        bytes += raw.length;
+        if (bytes <= 1024 * 1024) chunks.push(Buffer.from(raw));
+        else {
+          failure ??= new Error('native_text_output_limit');
+          void stop().catch(() => {});
+        }
+      });
+    child.proc.stdin?.on('error', (error) => {
+      failure ??= error;
+    });
+    const abort = () => {
+      failure ??= new Error('native_text_aborted');
+      void stop().catch(() => {});
+    };
+    input.signal.addEventListener('abort', abort, { once: true });
+    const timer = setTimeout(() => {
+      failure ??= new Error('native_text_deadline');
+      void stop().catch(() => {});
+    }, 60_000);
+    const result = Promise.resolve().then(async () => {
+      try {
+        const stdin = child.proc.stdin;
+        if (!stdin) throw new Error('native_text_stdin_unavailable');
+        if (failure) throw failure;
+        input.signal.throwIfAborted();
+        await input.writePrompt(stdin);
+        if (failure) throw failure;
+        input.signal.throwIfAborted();
+        stdin.end();
+        const terminal = await completed;
+        if (failure) throw failure;
+        if (terminal.code !== 0 || terminal.signal)
+          throw new Error('native_text_failed');
+        const decode = (chunks: Buffer[]) =>
+          new TextDecoder('utf-8', { fatal: true }).decode(
+            Buffer.concat(chunks),
+          );
+        return Object.freeze({
+          stdout: decode(stdout),
+          stderr: decode(stderr),
+          terminal: Object.freeze(terminal),
+        });
+      } finally {
+        clearTimeout(timer);
+        input.signal.removeEventListener('abort', abort);
+      }
+    });
+    const settled = result.then(stop, stop);
+    void settled.catch(() => {});
+    this.#textRun = Object.freeze({
+      result,
+      settled,
+      close: () => {
+        failure ??= new Error('native_text_closed');
+        return stop();
+      },
+    });
+    return this.#textRun;
   }
 
   close(): Promise<void> {
@@ -363,30 +597,45 @@ export class NativeModelContainer {
     this.#engaged = false;
     if (!this.#closing)
       this.#closing = (async () => {
-        let failure: unknown;
-        if (this.#channel)
-          try {
-            await this.#channel.close();
-          } catch (error) {
-            failure = error;
-          }
-        else if (this.#id)
-          try {
-            await this.#remove();
-          } catch (error) {
-            failure = error;
-          }
+        const retirements: Promise<void>[] = [];
+        if (this.#channel) retirements.push(this.#channel.close());
+        else if (this.#id) retirements.push(this.#remove());
+        if (this.#textRun) retirements.push(this.#textRun.close());
+        const failures: unknown[] = [];
+        for (const outcome of await Promise.allSettled(retirements))
+          if (outcome.status === 'rejected') failures.push(outcome.reason);
         await this.#starting?.catch(() => {});
+        // Preserve ownership of pending source delivery even after its exec closes.
+        await this.#textRun?.result.catch(() => {});
         if (!this.#removed) {
-          if (!this.#createSubmitted) this.#removed = true;
-          else if (this.#id) await this.#remove();
-          else {
-            await this.#recoverCreatedIdentity();
-            await this.#remove();
+          try {
+            if (!this.#createSubmitted) this.#removed = true;
+            else if (this.#id) await this.#remove();
+            else {
+              await this.#recoverCreatedIdentity();
+              await this.#remove();
+            }
+          } catch (error) {
+            if (!failures.includes(error)) failures.push(error);
           }
         }
-        await this.#journal(failure ? 'removed-channel-failed' : 'removed');
-        if (failure) throw failure;
+        try {
+          await this.#journal(
+            !this.#removed
+              ? 'cleanup-unconfirmed'
+              : failures.length
+                ? 'removed-channel-failed'
+                : 'removed',
+          );
+        } catch (error) {
+          failures.push(error);
+        }
+        if (failures.length === 1) throw failures[0];
+        if (failures.length > 1)
+          throw new AggregateError(
+            failures,
+            'native_container_retirement_failed',
+          );
       })().catch((error) => {
         this.#closing = undefined;
         throw error;

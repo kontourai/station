@@ -1,0 +1,13 @@
+{
+  "revision": "7b92664af28c238d3ef3abc0453cd636f6130dc5",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed orientation, Project navigation, Live Work and workspace disclosure against their existing journeys. Shared section spacing replaces the extra margins. The combined Project header and spacing changes passed both themes at desktop and phone widths.","inputs":["src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Reviewed orientation, Project navigation, Live Work and workspace disclosure against their existing journeys. Shared section spacing replaces the extra margins. The combined Project header and spacing changes passed both themes at desktop and phone widths.","inputs":["src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed orientation, Project navigation, Live Work and workspace disclosure against their existing journeys. Shared section spacing replaces the extra margins. The combined Project header and spacing changes passed both themes at desktop and phone widths.","inputs":["src-ui/src/views/ProjectPage.css"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed orientation, Project navigation, Live Work and workspace disclosure against their existing journeys. Shared section spacing replaces the extra margins. The combined Project header and spacing changes passed both themes at desktop and phone widths.","inputs":["src-ui/src/views/ProjectPage.css"]}
+  ]
+}
