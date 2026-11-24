@@ -196,7 +196,7 @@ describe.skipIf(process.platform === 'win32')(
     ])(
       'projects a proxied MCP call from %s with arguments on %s',
       async (agentName, inputFrame, toolName, toolKind) => {
-        // Antigravity 1.5.12's call_mcp_tool wire shape (T3 Code #39474).
+        // Antigravity 1.5.12 reports the proxy call as an execute update.
         const args = { url: 'https://example.com' };
         const rawInput = {
           ServerName: 'chrome-devtools',
