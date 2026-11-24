@@ -7553,20 +7553,14 @@ const SCREENS: Screen[] = [
     let cleanups: (() => Promise<void>)[] = [];
     return {
       name: 'overlay-confirm-dialog',
-      title: 'Overlay — Destructive confirm (Delete Job)',
+      title: 'Overlay — Destructive confirm (Delete automation)',
       path: '/automations',
       viewport: DESKTOP,
       beforeGoto: async (page) => {
         cleanups = [
           await seedScheduleScreenshotApi(page),
-          // Override the empty-list default with one job so the table (and its
-          // per-row Delete action) renders. `lastRun`/`nextRun`/`successRate`
-          // are deliberately omitted — each renders live-relative-time text
-          // ('never'/'-'/'—') only when present, which is otherwise exactly
-          // the kind of two-runs-disagree noise this gallery's own settle
-          // guards exist to avoid. The cron's minute/hour are fully specified
-          // (no wildcards) so `cronToHuman`'s rendered clock time depends only
-          // on those digits, never on the capture's wall-clock moment.
+          // The fixture supplies one automation with a fixed schedule and no
+          // run timestamps, so its row renders consistently across captures.
           await withRoute(
             page,
             '**/scheduler/jobs',
@@ -7577,12 +7571,16 @@ const SCREENS: Screen[] = [
       afterGoto: async (page) => {
         try {
           await page
-            .getByRole('button', { name: 'Delete gallery-demo-job' })
+            .getByRole('button', { name: 'Actions for gallery-demo-job' })
+            .click();
+          await page
+            .getByRole('menu', { name: 'Actions for gallery-demo-job' })
+            .getByRole('menuitem', { name: 'Delete', exact: true })
             .click();
           // Deliberately never confirmed: this screen captures the OPEN confirm
           // dialog, not the deletion it would perform.
           await expect(
-            page.getByRole('heading', { name: 'Delete job' }),
+            page.getByRole('alertdialog', { name: 'Delete automation' }),
           ).toBeVisible({ timeout: 10_000 });
           await expect(page.locator('.station-dialog__overlay')).toBeVisible();
         } finally {
