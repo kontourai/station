@@ -511,4 +511,43 @@ describe('setup import routes', () => {
       receipt.items.map((item: { outcome: string }) => item.outcome),
     ).toEqual(['failed', 'failed']);
   });
+
+  // The test above meets the host's file system: on a Mac the variant's
+  // folder IS the existing one, so it fails there whatever the server
+  // decides. Here the existing skill's folder is gone while Station still
+  // knows the skill, so only the server's own name check can refuse the
+  // variant, on every host.
+  test('a case variant of a skill Station knows is refused even where its folder name is free', async () => {
+    const { codex, project, service, post, skillExists } =
+      await realImportApp();
+    await service.createLocalSkill(
+      { name: 'mine', description: 'Mine', body: 'The person’s own words.' },
+      project,
+    );
+    rmSync(join(project, 'skills', 'mine'), { recursive: true, force: true });
+    expect(service.hasSkill('mine')).toBe(true);
+    writeFileSync(join(codex, 'prompts', 'MINE.md'), 'Same name, other case.');
+    writeFileSync(join(codex, 'prompts', 'variant.md'), 'Case attempt.');
+
+    const preview = await post('/previews', { sourceId: 'codex-prompts' });
+    const byName = new Map(
+      preview.entries.map((entry: { name: string; collision: boolean }) => [
+        entry.name,
+        entry.collision,
+      ]),
+    );
+    // The dialog labels a row by this: a case variant is not a new skill.
+    expect(byName.get('MINE.md')).toBe(true);
+    expect(byName.get('variant.md')).toBe(false);
+
+    const receipt = await importWith(post, (entry) =>
+      entry.name === 'variant.md' ? 'Mine' : undefined,
+    );
+    expect(
+      receipt.items
+        .filter((item: { outcome: string }) => item.outcome !== 'skipped')
+        .map((item: { outcome: string }) => item.outcome),
+    ).toEqual(['failed']);
+    expect(skillExists('Mine')).toBe(false);
+  });
 });

@@ -620,7 +620,7 @@ export class ExistingAgentSetupImportModule {
         ino: entry.identity.ino,
         mtimeMs: entry.identity.mtimeMs,
         skillName,
-        collision: this.skillService.hasSkill(skillName),
+        collision: this.skillService.hasSkillNamedLike(skillName),
       });
     }
     await revalidateGuardedDirectories(root, rootChain);
@@ -756,8 +756,8 @@ export class ExistingAgentSetupImportModule {
       // (two prompts that both derive one name, the second renamed) is not
       // such a change.
       const sourceNamePresent =
-        this.skillService.hasSkill(binding.skillName) &&
-        !createdThisRun.has(binding.skillName);
+        this.skillService.hasSkillNamedLike(binding.skillName) &&
+        !createdThisRun.has(binding.skillName.normalize('NFC').toLowerCase());
       if (sourceNamePresent !== binding.collision) {
         await this.failEffect(
           receipt.id,
@@ -781,7 +781,9 @@ export class ExistingAgentSetupImportModule {
       if (
         (currentTargetRevision ?? null) !== targetRevision ||
         targetRevision !== null ||
-        this.skillService.hasSkill(name)
+        // A case variant of an existing skill is the same folder on a Mac
+        // and a different one on Linux; refuse it on every host.
+        this.skillService.hasSkillNamedLike(name)
       ) {
         await this.failEffect(receipt.id, binding.id, 'target-not-absent', {
           targetRevision: currentTargetRevision ?? null,
@@ -805,7 +807,7 @@ export class ExistingAgentSetupImportModule {
           await this.failEffect(receipt.id, binding.id, 'target-conflict');
           continue;
         }
-        createdThisRun.add(name);
+        createdThisRun.add(name.normalize('NFC').toLowerCase());
         const target = {
           name,
           digest: await this.skillService.localSkillRevision(
