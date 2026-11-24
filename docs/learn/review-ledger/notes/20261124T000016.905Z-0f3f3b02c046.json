@@ -1,0 +1,7 @@
+{
+  "revision": "07fcacce10e601e029a3822bf37ede0a6a1e1bbc",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the Agent configuration guide and completed identity inventory against the editor, provider, and composer InfoTip callers. The shared button uses the shell touch floor while its marker remains compact. Chromium measured 44 CSS pixels on the narrow controls and verified keyboard dismissal and focus restoration. Identity, engine selection, and approval behavior follow their documented owners.","inputs":["src-ui/src/components/InfoTip.css"]}
+  ]
+}
