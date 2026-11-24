@@ -1,0 +1,7 @@
+{
+  "revision": "7f82b03fa48a87e34eae4d5385efbada4186d285",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Confirmed Grok exposes logout through the shared reviewed CLI actions; Kiro uses the same route and checks, with a separate Google device method.","inputs":["docs/guides/connections.md","src-server/routes/connections/acp-sign-in.ts","src-server/services/acp/engine-auth-status.ts","src-server/services/acp/engine-sign-in.ts","src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx"]}
+  ]
+}

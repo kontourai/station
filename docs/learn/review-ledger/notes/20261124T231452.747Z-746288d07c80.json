@@ -1,0 +1,111 @@
+{
+  "revision": "c33d1db11af140f5044b733901480f0c3a8c512f",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Verified opt-in CLI sign-out, live status checks, device-link transport and result display against the changed routes, service and UI.","inputs":["docs/guides/connections.md","src-server/routes/connections/acp-sign-in.ts","src-server/services/acp/engine-auth-status.ts","src-server/services/acp/engine-sign-in.ts","src-ui/src/components/engine-sign-in/EngineSignInPanel.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Verified optional account-action responses use the same method-ID endpoint, with opt-in for old-client compatibility.","inputs":["docs/reference/sdk.md","src-server/runtime/routes/runtime-routes.ts","packages/sdk/src/engine-sign-in.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"The account switch uses the existing host and paired-device boundaries. Connection ownership and environment relationships are unchanged.","inputs":["docs/guides/connections.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"The sign-in example and request scope remain compatible. Account actions add a method operation to an opt-in projection.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The sign-in example and request scope remain compatible. Account actions add a method operation to an opt-in projection.","inputs":["docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked the cited sign-in schema. The sign-out operation is optional and distinguishes a new reviewed command on the existing route.","inputs":["packages/contracts/src/engine-sign-in.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/project-membership.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/design/terminal.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/glossary.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/pull-request-guides.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]},
+
+    {"path":"examples/station-sessions-mcp/README.md","note":"The diff wires an off-by-default personal-host engine account preview and scoped terminal-journal link read into the existing ACP sign-in service. It leaves bootstrap, device step-up, routing and terminal access checks unchanged; the operator capture paths still apply.","inputs":["src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

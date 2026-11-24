@@ -1,0 +1,7 @@
+{
+  "revision": "7f82b03fa48a87e34eae4d5385efbada4186d285",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Shared CLI account actions retain the existing host and paired-device connection boundaries.","inputs":["docs/guides/connections.md"]}
+  ]
+}
