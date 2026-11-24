@@ -118,7 +118,8 @@ export function getLegacyPathRedirect(path: string): string | null {
   if (
     pathname === '/apps/' ||
     pathname === '/apps/discover/' ||
-    pathname === '/apps/library/'
+    pathname === '/apps/library/' ||
+    pathname === '/customize/'
   ) {
     return preserveSearch(pathname.slice(0, -1));
   }

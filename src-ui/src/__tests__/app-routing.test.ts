@@ -97,6 +97,8 @@ const LEGACY_PATH_CASES = [
   ['/manage/plugins/', '/apps/library'],
   ['/apps/', '/apps'],
   ['/apps/discover/', '/apps/discover'],
+  ['/customize/', '/customize'],
+  ['/customize/?dock=open', '/customize?dock=open'],
   ['/manage/integrations', '/customize/tools'],
   ['/manage/integrations/example', '/customize/tools/example'],
   ['/manage/providers', '/customize/providers'],
