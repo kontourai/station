@@ -51,7 +51,7 @@ function sameEntry(before: Stats, after: Stats): boolean {
   return before.dev === after.dev && before.ino === after.ino;
 }
 
-/** Bind an explicit Station profile opt-in to the native CLI launch. */
+/** Pass the opted-in Antigravity directory to the native CLI. */
 export function antigravityOutcomeProfile(input: {
   command: string;
   args: readonly string[];
