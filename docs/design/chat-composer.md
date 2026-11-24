@@ -687,7 +687,13 @@ browser clamping the position, a restore) neither counts as leaving the end nor
 as returning to it. When the view gets shorter (the keyboard, the pending list)
 the held row's header is brought back into it, moved no further than that,
 unless the reader has scrolled away. Their rows stay where they are as it
-appears. Scroll-button hover changes its background
+appears. A reader away from the end (scrolled up, or holding a row with the
+end out of view) keeps the rows they are reading through whatever arrives: the
+transcript's window, which otherwise returns to its newest turns on each
+reload, keeps everything it holds while they are away, so a delivery, a turn
+ending or a new turn never drops the turns above them. Back at the end, the
+next reload returns it to its bounded size. Kept for a reader away, it holds
+at most 200 turns, trimmed only above the turn they are reading. Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide chat list /
 Show chat list directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 

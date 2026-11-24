@@ -21,6 +21,7 @@ import {
   useStreamCatchingUp,
 } from '../../hooks/orchestration/heldDuringCatchUp';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
+import type { ReaderPlace } from '../../hooks/orchestration/readerPlace';
 import { useSendMessage } from '../../hooks/useActiveChatSessions';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useCopyToClipboardToast } from '../../hooks/useCopyToClipboardToast';
@@ -176,6 +177,12 @@ interface ChatMessageListProps {
   progressSilenceShownElsewhere?: boolean;
   onLoadOlder?: () => Promise<void>;
   onLoadTurn?: (turnId: string, signal?: AbortSignal) => Promise<boolean>;
+  /**
+   * Told where the reader is: away from the end (scrolled up, or holding a
+   * row with the end out of view) and the turn of the first row they see, so
+   * the transcript's window keeps those rows while they read.
+   */
+  onReaderPlaceChange?: (place: ReaderPlace) => void;
   /**
    * archive#1301: when provided, the background-tasks banner below
    * becomes a real tap target opening the Background tasks sheet instead of
@@ -398,6 +405,7 @@ function ChatMessageListComponent({
   progressSilenceShownElsewhere,
   onLoadOlder,
   onLoadTurn,
+  onReaderPlaceChange,
   onOpenBackgroundTasks,
   liveStatusUnavailable = false,
   owner,
@@ -919,6 +927,32 @@ function ChatMessageListComponent({
   );
   const transcriptRowsRef = useRef(transcriptRows);
   transcriptRowsRef.current = transcriptRows;
+  // Where the reader is, for the window that feeds these rows.
+  const readerAway = isUserScrolledUp || readerHeld;
+  useEffect(() => {
+    void scrollAnchorVersion;
+    if (!onReaderPlaceChange) return;
+    const element = messagesContainerRef.current;
+    let turnId: string | undefined;
+    if (readerAway && element) {
+      const anchor = captureChatScrollAnchor(element);
+      const rows = transcriptRowsRef.current;
+      const first = anchor
+        ? rows.findIndex((row) => row.id === anchor.key)
+        : -1;
+      for (let index = first; first >= 0 && index < rows.length; index += 1) {
+        const row = rows[index]!;
+        turnId = row.kind === 'subagent' ? undefined : row.message.turnId;
+        if (turnId) break;
+      }
+    }
+    onReaderPlaceChange({ away: readerAway, ...(turnId ? { turnId } : {}) });
+  }, [
+    readerAway,
+    scrollAnchorVersion,
+    onReaderPlaceChange,
+    messagesContainerRef,
+  ]);
   // #342: the user turns, from the whole row model — a virtualized transcript
   // mounts only the rows near the reader. Kept by identity while no turn's
   // summary changes, so streaming text does not re-render the rail.

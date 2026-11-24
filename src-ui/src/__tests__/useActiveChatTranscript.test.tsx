@@ -4775,6 +4775,111 @@ describe('useActiveChatTranscript', () => {
       expect(fetchWindow).toHaveBeenCalledTimes(3);
     });
 
+    // The counterpart: a reader away from the end keeps what is held across
+    // reloads, so the rows they read never leave the window; back at the
+    // end, the next reload returns it to the bounded page.
+    test('a reader away from the end keeps what is held until they are back at the end', async () => {
+      const starts = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_, offset) =>
+          event(`e${from + offset}`, 'turn.started', {
+            turnId: `turn-${from + offset}`,
+            prompt: `Q${from + offset}`,
+          }),
+        );
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 10,
+          hasMore: true,
+          nextCursor: 'below-6',
+          events: starts(6, 10),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'below-8',
+          events: starts(8, 12),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: true,
+          nextCursor: 'below-10',
+          events: starts(10, 14),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://reader-away.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([6, 7, 8, 9, 10]),
+      );
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'turn-6' }),
+      );
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 7, 8, 9, 10, 11, 12,
+        ]),
+      );
+      act(() => result.current.setReaderPlace({ away: false }));
+      rerender({ revision: 2 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([10, 11, 12, 13, 14]),
+      );
+      expect(result.current.hasMore).toBe(true);
+    });
+
+    // Away for hours, the kept window is bounded by turns, and trimmed only
+    // above the turn the reader is reading.
+    test('a window kept for a reader away is capped above the turn they read', async () => {
+      const starts = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_, offset) =>
+          event(`e${from + offset}`, 'turn.started', {
+            turnId: `turn-${from + offset}`,
+            prompt: `Q${from + offset}`,
+          }),
+        );
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 200,
+          hasMore: true,
+          nextCursor: 'below-1',
+          events: starts(1, 200),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 210,
+          hasMore: true,
+          nextCursor: 'below-195',
+          events: starts(195, 210),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://reader-away-cap.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.events).toHaveLength(200));
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'turn-150' }),
+      );
+      rerender({ revision: 1 });
+      // 210 turns held: the oldest 10 go, all far above turn 150.
+      await waitFor(() => expect(sequences(result.current.events)[0]).toBe(11));
+      expect(result.current.events).toHaveLength(200);
+      expect(sequences(result.current.events).at(-1)).toBe(210);
+    });
+
     // A finished turn is followed by a turnless `session.state-changed`, and a
     // steer re-announces the turn mid-way: neither may hide where it started.
     test('a finished, steered turn still reads whole', async () => {

@@ -21,6 +21,11 @@ import { activeChatsStore } from '../../contexts/active-chats-store';
 import { useWorkObservation } from '../../contexts/work-observation';
 import { saveOfflineReading } from '../../lib/offlineReading';
 import {
+  awayTrimSequence,
+  type ReaderPlace,
+  reloadKeepsHeld,
+} from './readerPlace';
+import {
   publishHistoryForCapture,
   removeHistoryForCapture,
 } from './replay/capture-tap';
@@ -32,6 +37,8 @@ import {
   transcriptWindowCacheKey,
   writeTranscriptWindow,
 } from './transcriptWindowCache';
+
+export type { ReaderPlace } from './readerPlace';
 
 function eventKey(item: OrchestrationSequencedEvent): string {
   return item.event.eventId || `sequence:${item.sequence}`;
@@ -74,6 +81,11 @@ interface SessionEventWindowReader {
   loadOlder: () => Promise<void>;
   loadTurn: (turnId: string, signal?: AbortSignal) => Promise<boolean>;
   reload: () => Promise<void>;
+  /**
+   * The transcript reports where its reader is: while they are away from the
+   * end, a reload keeps what is held instead of replacing it.
+   */
+  setReaderPlace: (place: ReaderPlace) => void;
   upgradeRequired: boolean;
   loading: boolean;
   /**
@@ -411,6 +423,15 @@ export function useSessionEventWindow(
   const cursorRef = useRef<string | undefined>(undefined);
   const watermarkRef = useRef(0);
   const olderLoadedRef = useRef(false);
+  // Where the reader is, as the transcript reports it: away from the end
+  // (scrolled up, or holding a row with the end out of view) and the turn of
+  // the first row they see.
+  const readerPlaceRef = useRef<ReaderPlace>({ away: false });
+  // The last reload kept what was held because the reader was away.
+  const keptAwayRef = useRef(false);
+  const setReaderPlace = useCallback((place: ReaderPlace) => {
+    readerPlaceRef.current = place;
+  }, []);
   const requestSerialRef = useRef(0);
   const reconcileRevisionRef = useRef(reconcileRevision);
   const requestControllerRef = useRef<AbortController | undefined>(undefined);
@@ -554,10 +575,18 @@ export function useSessionEventWindow(
       setMemoryContinuation(page.memoryContinuation);
       // Held pages merge with the new one, so a key change since leaves a
       // mixed window that belongs under neither key.
+      // A reader away from the end keeps what is held as well: replacing it
+      // drops the oldest turns from the front, and with them the rows they
+      // are reading. Back at the end, the next reload replaces again.
+      const keep = reloadKeepsHeld({
+        olderLoaded: olderLoadedRef.current,
+        readerAway: readerPlaceRef.current.away,
+        holding: eventsRef.current.length > 0,
+      });
+      const awayKeep = keep && !olderLoadedRef.current;
+      keptAwayRef.current = awayKeep;
       windowStampRef.current =
-        olderLoadedRef.current && windowStampRef.current?.key !== stamp.key
-          ? undefined
-          : stamp;
+        keep && windowStampRef.current?.key !== stamp.key ? undefined : stamp;
       const next = page.events;
       if (namespace && (!bound || station?.binding.affinity.kind === 'host')) {
         void saveOfflineReading(
@@ -576,7 +605,7 @@ export function useSessionEventWindow(
       // start, so that turn reads whole. Its cursor reads the gap first.
       // A fill a later read cut short still owes its gap, so its floor holds
       // until some fill reaches it.
-      const floor = olderLoadedRef.current
+      const floor = keep
         ? lowest(
             eventsRef.current.at(-1)?.sequence,
             pendingFloorRef.current,
@@ -591,11 +620,22 @@ export function useSessionEventWindow(
         fill = { cursor: page.nextCursor, floor };
       // Once older pages are loaded, the events already held are kept: stored
       // events never change, and the new page wins where the two overlap.
-      setEvents((current) =>
-        mergePages(olderLoadedRef.current ? current : [], next),
-      );
+      // Kept while away, the window is bounded by turns, trimmed only above
+      // the turn the reader is reading.
+      const cut = awayKeep
+        ? awayTrimSequence(
+            mergePages(eventsRef.current, next),
+            readerPlaceRef.current.turnId,
+          )
+        : undefined;
+      setEvents((current) => {
+        const merged = mergePages(keep ? current : [], next);
+        return cut === undefined
+          ? merged
+          : merged.filter((item) => item.sequence >= cut);
+      });
       // A page that replaces what is held starts the record over.
-      if (!olderLoadedRef.current) {
+      if (!keep) {
         partialRef.current = new Set();
         closedRef.current = new Set();
         heldGapsRef.current = [];
@@ -607,7 +647,7 @@ export function useSessionEventWindow(
       const anchor = page.turnStartDetached
         ? next[0]?.event.eventId
         : undefined;
-      if (fill && olderLoadedRef.current) {
+      if (fill && keep) {
         const anchors = new Set(anchor ? [anchor] : []);
         heldGapsRef.current.push({ ...fill, anchors });
         if (heldGapsRef.current.length > 128) {
@@ -626,7 +666,10 @@ export function useSessionEventWindow(
       for (const gap of heldGapsRef.current)
         for (const id of gap.anchors) partialRef.current.add(id);
       setPartialTurnStartEventIds(new Set(partialRef.current));
-      if (!olderLoadedRef.current) setCursor(page.nextCursor);
+      // A cursor reads below the oldest event held; trimmed, that is gone
+      // until the reader is back at the end and a reload replaces the window.
+      if (!keep) setCursor(page.nextCursor);
+      else if (cut !== undefined) setCursor(undefined);
       setWatermark(page.watermark);
       watermarkRef.current = page.watermark;
       setError(undefined);
@@ -865,7 +908,7 @@ export function useSessionEventWindow(
   // resumes where it stopped. Bounded: past that, Load older reads on.
   const fillToFloor = useCallback(
     async (cursor: string, floor: number) => {
-      const adoptCursor = !olderLoadedRef.current;
+      const adoptCursor = !olderLoadedRef.current && !keptAwayRef.current;
       // Only held history can owe a gap: without older pages, the next reload
       // replaces this page and finds its own floor.
       pendingFloorRef.current = adoptCursor ? undefined : floor;
@@ -901,6 +944,7 @@ export function useSessionEventWindow(
     unsettledReloadRef.current = undefined;
     reloadOwedRef.current = false;
     olderLoadedRef.current = false;
+    keptAwayRef.current = false;
     pendingFloorRef.current = undefined;
     partialRef.current = new Set();
     closedRef.current = new Set();
@@ -1096,6 +1140,7 @@ export function useSessionEventWindow(
     loadOlder,
     loadTurn,
     reload,
+    setReaderPlace,
     upgradeRequired: currentReader && upgradeRequired,
     loading: currentReader ? loading : Boolean(threadId),
     settled: currentReader && settled,

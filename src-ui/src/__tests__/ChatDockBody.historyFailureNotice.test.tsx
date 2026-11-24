@@ -53,6 +53,7 @@ const transcriptStateMock = vi.hoisted(() => ({
     error: null as Error | null,
     loadOlder: vi.fn(async () => {}),
     reload: vi.fn(async () => {}),
+    setReaderPlace: vi.fn(),
   },
 }));
 
@@ -287,6 +288,7 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
       error: null,
       loadOlder: vi.fn(async () => {}),
       reload: vi.fn(async () => {}),
+      setReaderPlace: vi.fn(),
     };
   });
 

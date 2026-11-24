@@ -18,6 +18,9 @@
  *   streaming answer grows.
  * - `window.__sendUser(text)` appends the reader's own message;
  *   `window.__answer(text)` appends a new answer (no message of theirs).
+ * - `window.__reload(turns?)` reloads the window as the app's does: the
+ *   oldest turns leave the front unless the window keeps what it holds for a
+ *   reader away from the end (`reloadKeepsHeld`, from what the list reported).
  * - `window.__switchSession()` shows another chat (one turn fewer) in the
  *   same list; `window.__switchToQueued(text)` shows one with a turn running
  *   and a follow-up queued at its end.
@@ -120,6 +123,7 @@ export async function tailFixture(
     import {createRoot} from 'react-dom/client';
     import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
     import {ChatMessageList} from './src-ui/src/components/chat/ChatMessageList';
+    import {reloadKeepsHeld} from './src-ui/src/hooks/orchestration/readerPlace';
     import {ChatInputArea} from './src-ui/src/components/chat/ChatInputArea';
     import {ConversationOpenRecoveryNotice} from './src-ui/src/components/chat-dock/ConversationOpenRecoveryNotice';
     import {ChatStatusPill} from './src-ui/src/components/status/ChatStatusPill';
@@ -185,6 +189,13 @@ export async function tailFixture(
         window.__answer=text=>setSession(current=>({...current,messages:[...current.messages,
           {id:'a-sent-'+current.messages.length,role:'assistant',turnId:'turn-sent-'+current.messages.length,content:text,timestamp:9000+current.messages.length}]}));
         window.__switchSession=()=>setSession(()=>({...base,id:'tail-session-2',messages:makeMessages().slice(2)}));
+        // A window reload, as the app's bounded window makes one: the newest
+        // page replaces what is held, dropping the oldest \`turns\` from the
+        // front, unless the window keeps what it holds (the reader away from
+        // the end, as the list last reported).
+        window.__reload=(turns=2)=>setSession(current=>reloadKeepsHeld({olderLoaded:false,readerAway:Boolean(window.__readerPlace?.away),holding:true})
+          ?{...current,messages:[...current.messages]}
+          :{...current,messages:current.messages.slice(turns*2)});
         // Another chat with a turn running and, last, a follow-up the reader
         // queued there, as the send path shows it (its id is its client id).
         window.__switchToQueued=text=>setSession(()=>({...base,id:'tail-session-3',orchestrationSessionStarted:true,orchestrationTurnOpen:true,messages:[...makeMessages().slice(2),
@@ -261,7 +272,7 @@ export async function tailFixture(
       },[]);
       return <QueryClientProvider client={client}>
         <div className="chat-dock__body" style={{height:${dockHeight ? `${dockHeight}` : "'100vh'"},flex:'none',display:'flex',flexDirection:'column'}}>
-          <ChatMessageList activeSession={session} fontSize={14} showReasoning={false} showToolDetails scrollControlsTarget={activity}
+          <ChatMessageList activeSession={session} fontSize={14} showReasoning={false} showToolDetails scrollControlsTarget={activity} onReaderPlaceChange={place=>{window.__readerPlace=place;}}
             approvalEvents={request?requestEvents(request):[]} approvalEventsSettled/>
           <Notice kind={notice}/>
           <ChatInputArea agentSlug="dev-agent" sessionId="tail-session" input="" textareaRef={textareaRef} attachments={[]} disabled={false} turnInFlight={false} modelSupportsAttachments={true} fontSize={14} dockHeight={${dockHeight ?? viewport.height}} apiBase="http://station.test" canModelSelect={true}
