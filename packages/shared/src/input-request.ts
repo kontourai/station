@@ -1048,17 +1048,20 @@ export function inputRequestAnswerTexts(
  * (`toolRequestGrantLabel`), or undefined where none is offered. The optional
  * server label is supplied only after the adapter authenticated a Station browser call.
  * The optional rule label (`toolRequestRuleGrant`) offers the narrower
- * command-prefix choice, placed before the whole-tool one.
+ * command-prefix choice, placed before the whole-tool one. The optional
+ * all label (`toolRequestAllGrantFromPayload`) offers the widest choice,
+ * every later ask in the session, placed last of the session choices.
  */
 export function approvalDecisionBody(
   sessionGrantLabel: string | undefined,
   serverGrantLabel?: string,
   ruleGrantLabel?: string,
+  allGrantLabel?: string,
 ): InputRequestDecisionBody {
   return {
     kind: 'decision',
     options: [
-      { id: 'allow-once', label: 'Allow Once', effect: 'allow', scope: 'once' },
+      { id: 'allow-once', label: 'Allow once', effect: 'allow', scope: 'once' },
       ...(ruleGrantLabel
         ? [
             {
@@ -1091,8 +1094,51 @@ export function approvalDecisionBody(
             },
           ]
         : []),
+      ...(allGrantLabel
+        ? [
+            {
+              id: 'allow-all-session',
+              label: allGrantLabel,
+              effect: 'allow' as const,
+              scope: 'session' as const,
+              sessionGrantScope: 'all' as const,
+            },
+          ]
+        : []),
       { id: 'deny', label: 'Deny', effect: 'deny', scope: 'once' },
     ],
+  };
+}
+
+/**
+ * The name of the one menu that holds every session grant an approval offers.
+ * Every grant in it lasts until the adapter session ends, never longer, so the
+ * menu is not called "Always allow".
+ */
+export const APPROVAL_SESSION_GRANTS_MENU_LABEL = 'Allow for this session';
+
+/**
+ * Where an approval's choices sit, shared by every surface that answers one
+ * (the inline card, the request sheet, the toast) so they cannot drift: Allow
+ * once and Deny are the two labelled buttons, and every session grant the
+ * request offered goes in one menu ({@link APPROVAL_SESSION_GRANTS_MENU_LABEL}).
+ * A grant the body does not carry is never added here.
+ */
+export function approvalDecisionLayout(body: InputRequestDecisionBody): {
+  once: InputRequestDecisionOption | undefined;
+  deny: InputRequestDecisionOption | undefined;
+  sessionGrants: InputRequestDecisionOption[];
+} {
+  const once = body.options.find(
+    (option) => option.effect === 'allow' && option.scope === 'once',
+  );
+  const deny = body.options.find((option) => option.effect === 'deny');
+  return {
+    once,
+    deny,
+    sessionGrants: body.options.filter(
+      (option) => option !== once && option !== deny,
+    ),
   };
 }
 

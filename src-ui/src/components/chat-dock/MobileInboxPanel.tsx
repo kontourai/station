@@ -142,14 +142,7 @@ export function MobileInboxPanel({
     onAcknowledgeConversation,
     onActivated: onClose,
   });
-  const {
-    now,
-    scope,
-    query,
-    setQuery,
-    groups: scopeGroups,
-    openChatIds: openMembership,
-  } = controller;
+  const { now, scope, query, setQuery, groups: scopeGroups } = controller;
 
   const selectionKey = JSON.stringify([
     controller.stateKey,
@@ -316,7 +309,7 @@ export function MobileInboxPanel({
     <section
       ref={panelRef}
       className="mobile-inbox"
-      aria-label="Inbox"
+      aria-label="Chats"
       hidden={!open}
       tabIndex={-1}
       data-no-dock-drag=""
@@ -459,7 +452,6 @@ export function MobileInboxPanel({
             onConsumeDetails={() => setRequestedDetails(null)}
             idPrefix="mobile-task-switcher"
             activeChatSessionId={activeChatSessionId}
-            openChatIds={openMembership}
             now={now}
             agents={agents}
             workFacts={workFacts}
@@ -492,7 +484,7 @@ export function MobileInboxPanel({
       </div>
       {open && refresh && (
         <ListRefreshStatus
-          activity="Refreshing inbox…"
+          activity="Refreshing chats…"
           phase={refresh.phase}
           updating={updating && (hasVisibleItems || !pending)}
         />
@@ -509,6 +501,7 @@ export function MobileInboxPanel({
           }
           snooze={controller.rowActions.onSnoozeWake}
           dismiss={controller.dismissSelected}
+          restore={controller.restore}
           details={(item) => {
             setRequestedDetails(item.id);
             setSelected(null);

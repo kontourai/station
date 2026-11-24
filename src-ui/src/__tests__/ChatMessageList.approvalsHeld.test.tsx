@@ -71,7 +71,7 @@ import { useActiveChatTranscript } from '../hooks/orchestration/useActiveChatTra
 import type { ChatSession } from '../types';
 
 const API_BASE = 'http://localhost:3242';
-const ALLOW = { name: 'Allow Once' };
+const ALLOW = { name: 'Allow once' };
 
 function chatSession(overrides: Partial<ChatSession> = {}): ChatSession {
   return {

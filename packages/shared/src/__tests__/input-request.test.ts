@@ -372,11 +372,32 @@ describe('decisions and outcomes', () => {
         decisionOptionResponse(option),
       ]),
     ).toEqual([
-      ['Allow Once', 'allow', 'once', 'accept'],
+      ['Allow once', 'allow', 'once', 'accept'],
       ['Allow Bash for this session', 'allow', 'session', 'acceptForSession'],
       ['Deny', 'deny', 'once', 'decline'],
     ]);
     expect(approvalDecisionBody(undefined).options).toHaveLength(2);
+  });
+
+  test('the session-wide choice is the last session option and carries its typed scope', () => {
+    const body = approvalDecisionBody(
+      'Allow all shell calls for this session',
+      undefined,
+      undefined,
+      'Allow everything for this session',
+    );
+    expect(
+      body.options.map((option) => [
+        option.label,
+        decisionOptionResponse(option),
+        option.sessionGrantScope,
+      ]),
+    ).toEqual([
+      ['Allow once', 'accept', undefined],
+      ['Allow all shell calls for this session', 'acceptForSession', undefined],
+      ['Allow everything for this session', 'acceptForSession', 'all'],
+      ['Deny', 'decline', undefined],
+    ]);
   });
 
   test('a resolution status reads as the outcome its kind names', () => {

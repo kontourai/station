@@ -1,0 +1,7 @@
+{
+  "revision": "59c24b6fcfb264f9897e1aa934a54e4d10d4eb75",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Added two sentences: an answered slash command is not kept as a draft, and New chat text left without starting comes back next time. Checked the Home start and dock hand-off passages: Home keeping its composer beside an empty dock contradicts none of them.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/chat-dock/useChatDockOverlays.ts","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

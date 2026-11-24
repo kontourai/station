@@ -192,7 +192,7 @@ function baseApproval(
     createdAt: now,
     updatedAt: now,
     source: { notificationId: 'notif-1', notificationSource: 'approval-inbox' },
-    actions: [{ id: 'accept', label: 'Allow Once', variant: 'primary' }],
+    actions: [{ id: 'accept', label: 'Allow once', variant: 'primary' }],
     ...overrides,
   };
 }
@@ -211,7 +211,7 @@ describe('AttentionCard — approval kind', () => {
     expect(screen.queryByRole('link', { name: 'Open session' })).toBeNull();
     // Title/body/actions still render normally.
     expect(screen.getByText('Approval needed')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Allow Once' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Allow once' })).toBeTruthy();
   });
 });
 
@@ -219,7 +219,7 @@ describe('AttentionCard — dismiss affordance', () => {
   test('a genuinely-pending approval (live actions + resolvable session) shows a visually secondary dismiss, not the plain ghost one', () => {
     renderCard(baseApproval({ openHref: '/projects/demo?chat=thread-1' }));
 
-    const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
+    const dismissButton = screen.getByRole('button', { name: 'Mark done' });
     expect(dismissButton.className).toContain('attention-dismiss-link');
     expect(dismissButton.className).not.toContain('notice-action--ghost');
 
@@ -232,7 +232,7 @@ describe('AttentionCard — dismiss affordance', () => {
     // pending — live actions alone must trigger the guard (archive#750).
     renderCard(baseApproval());
 
-    const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
+    const dismissButton = screen.getByRole('button', { name: 'Mark done' });
     expect(dismissButton.className).toContain('attention-dismiss-link');
     expect(dismissButton.className).not.toContain('notice-action--ghost');
 
@@ -245,7 +245,7 @@ describe('AttentionCard — dismiss affordance', () => {
       baseApproval({ actions: [], openHref: '/projects/demo?chat=thread-1' }),
     );
 
-    const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
+    const dismissButton = screen.getByRole('button', { name: 'Mark done' });
     expect(dismissButton.className).toContain('notice-action--ghost');
   });
 
@@ -280,7 +280,7 @@ describe('AttentionCard — dismiss affordance', () => {
   test("a failed session's Dismiss acknowledges the item by id, not a notification", () => {
     renderCard(baseFailure());
 
-    const dismissButton = screen.getByRole('button', { name: 'Dismiss' });
+    const dismissButton = screen.getByRole('button', { name: 'Mark done' });
     dismissButton.click();
     expect(acknowledge).toHaveBeenCalledWith('session-failed:thread-boom');
     // The OTHER dismiss path (notification delete) must not fire for this kind.
@@ -681,7 +681,7 @@ describe('AttentionCard — device pairing kind (#765 D5)', () => {
   test('keeps the acknowledge-dismiss affordance', () => {
     renderCard(basePairing());
 
-    screen.getByRole('button', { name: 'Dismiss' }).click();
+    screen.getByRole('button', { name: 'Mark done' }).click();
     expect(acknowledge).toHaveBeenCalledWith('device-pairing:pair-req-1');
     expect(acknowledgeApiBases).toContain('http://station.test');
     expect(dismiss).not.toHaveBeenCalled();
@@ -781,7 +781,7 @@ describe('AttentionCard — setup incomplete (#1536 D8)', () => {
   test('cannot be dismissed — it clears when the requirement is met, not when it is hidden', () => {
     renderCard(setupIncomplete());
 
-    expect(screen.queryByRole('button', { name: 'Dismiss' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Mark done' })).toBeNull();
   });
 });
 

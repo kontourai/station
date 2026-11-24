@@ -1,0 +1,7 @@
+{
+  "revision": "9ef9244119d916718ece7ccfdb63c0148a24333b",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Rechecked after the list gained an unmount-only reader-place report: the page's claims about ChatMessageList providing UIBlockActionsContext and form re-entry through the send path are unchanged.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

@@ -381,6 +381,43 @@ describe('model.rerouted transcript marker', () => {
   });
 });
 
+describe('model.rerouted marker part (chat-24)', () => {
+  const partOf = (event: Record<string, unknown>) =>
+    projectRuntimeEventsToMessages(
+      [
+        ev('r', {
+          method: 'model.rerouted',
+          fromModel: 'gpt-b',
+          toModel: 'gpt-a',
+          trigger: 'availability',
+          ...event,
+        }),
+      ],
+      { stableIds: true },
+    )[0]?.parts[0];
+
+  it('a session-scope reroute names its session, turn and scope', () => {
+    expect(partOf({ scope: 'session', turnId: 't2' })?.modelReroute).toEqual({
+      sessionId: 'external:codex:native-session',
+      turnId: 't2',
+      scope: 'session',
+    });
+  });
+
+  it('a turn-scope reroute naming no turn still names its session', () => {
+    expect(partOf({ scope: 'turn' })?.modelReroute).toEqual({
+      sessionId: 'external:codex:native-session',
+      scope: 'turn',
+    });
+  });
+
+  it('a subagent’s reroute carries no stamp: it says nothing about this chat’s turns', () => {
+    const part = partOf({ scope: 'session', childWorkId: 'sub-1' });
+    expect(part?.text).toContain('A subagent’s model');
+    expect(part).not.toHaveProperty('modelReroute');
+  });
+});
+
 describe('in-place engine rewind marker', () => {
   const turn = (n: number) => [
     ev(`s${n}`, {

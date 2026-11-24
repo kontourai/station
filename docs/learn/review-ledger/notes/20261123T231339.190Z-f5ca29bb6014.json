@@ -1,0 +1,11 @@
+{
+  "revision": "d06522ce8a6a8f34d35aee39ba241b56c9ebae33",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Re-reviewed after its cited document changed for the session-wide approval grant (sessionGrantScope 'all' added to SessionGrantScope and described for OpenCode/ACP engines). This document makes no claim about session grant scopes or approval answers; its statements stay accurate. No prose change.","inputs":["docs/glossary.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Re-reviewed after its cited document changed for the session-wide approval grant (sessionGrantScope 'all' added to SessionGrantScope and described for OpenCode/ACP engines). This document makes no claim about session grant scopes or approval answers; its statements stay accurate. No prose change.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/guides/agent-configuration.md"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"Re-reviewed after its cited document changed for the session-wide approval grant (sessionGrantScope 'all' added to SessionGrantScope and described for OpenCode/ACP engines). This document makes no claim about session grant scopes or approval answers; its statements stay accurate. No prose change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

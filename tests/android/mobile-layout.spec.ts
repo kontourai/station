@@ -411,13 +411,53 @@ test.describe('Android — Mobile Layout', () => {
       return {
         candidates: visible.length,
         tooSmall: visible
-          .filter((el) => {
-            const rect = el.getBoundingClientRect();
-            return rect.width < minimumTarget || rect.height < minimumTarget;
-          })
           .map((el) => {
             const rect = el.getBoundingClientRect();
-            return `${el.tagName}.${el.className.toString().slice(0, 50)} ${rect.width.toFixed(3)}x${rect.height.toFixed(3)}`;
+            // The touch target is the region that answers a tap, not the
+            // border box: compact controls may extend a centred hit area past
+            // the drawn box (InfoTip.css, the compact brief-choice input —
+            // "a 44px press area centred on the Npx box"). Real hit tests
+            // measure it: walk outward from the box centre symmetrically and
+            // stop where taps stop resolving to the control, so an overlay,
+            // a one-sided pad or a plain undersized box earns no credit.
+            const cx = rect.left + rect.width / 2;
+            const cy = rect.top + rect.height / 2;
+            const resolves = (x: number, y: number) => {
+              const hit = document.elementFromPoint(x, y);
+              return hit !== null && (hit === el || el.contains(hit));
+            };
+            const extent = (axis: 'x' | 'y') => {
+              const half = axis === 'x' ? rect.width / 2 : rect.height / 2;
+              let reach = half;
+              for (let d = Math.ceil(half); d < minimumTarget; d += 1) {
+                const px = axis === 'x' ? cx + d : cx;
+                const py = axis === 'y' ? cy + d : cy;
+                if (
+                  px < 0 ||
+                  py < 0 ||
+                  px >= window.innerWidth ||
+                  py >= window.innerHeight
+                )
+                  break;
+                if (!resolves(px, py) || !resolves(2 * cx - px, 2 * cy - py))
+                  break;
+                reach = d;
+              }
+              return 2 * reach;
+            };
+            return {
+              el,
+              rect,
+              width: Math.max(rect.width, extent('x')),
+              height: Math.max(rect.height, extent('y')),
+            };
+          })
+          .filter(
+            ({ width, height }) =>
+              width < minimumTarget || height < minimumTarget,
+          )
+          .map(({ el, rect, width, height }) => {
+            return `${el.tagName}.${el.className.toString().slice(0, 50)} box ${rect.width.toFixed(3)}x${rect.height.toFixed(3)} target ${width.toFixed(0)}x${height.toFixed(0)}`;
           })
           .slice(0, 20),
       };

@@ -1,7 +1,7 @@
 import { execFile, execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
-import { win32 } from 'node:path';
+import { dirname, join, win32 } from 'node:path';
 import {
   windowsPowerShell7Path,
   windowsSystemUtilityPath,
@@ -544,7 +544,26 @@ export function describeProcessBirthProbe(
     }
   }
   if (platform === 'linux') return '/proc/<pid>/stat probe';
+  if (bundledMacProcessBirthProbe(platform))
+    return 'bundled macOS process birth probe';
   return '`ps -o lstart=` probe';
+}
+
+function bundledMacProcessBirthProbe(platform) {
+  if (
+    platform !== 'darwin' ||
+    !process.execPath.endsWith('.app/Contents/MacOS/station-node')
+  )
+    return null;
+  const path = join(dirname(process.execPath), 'station-process-birth');
+  return existsSync(path) ? path : null;
+}
+
+function posixBirthInvocation(pid, platform) {
+  const bundledProbe = bundledMacProcessBirthProbe(platform);
+  return bundledProbe
+    ? [bundledProbe, [String(pid)]]
+    : ['ps', ['-o', 'lstart=', '-p', String(pid)]];
 }
 
 /**
@@ -639,8 +658,9 @@ export function lookupProcessBirthFingerprint(pid, dependencies = {}) {
       if (!/^\d+$/.test(startTime ?? '') || !bootId) return null;
       return `linux:${bootId}:${startTime}`;
     }
+    const [command, args] = posixBirthInvocation(pid, platform);
     return (
-      exec('ps', ['-o', 'lstart=', '-p', String(pid)], {
+      exec(command, args, {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'ignore'],
         windowsHide: true,
@@ -709,7 +729,8 @@ export async function lookupProcessBirthFingerprintAsync(
     if (platform === 'linux') {
       return lookupProcessBirthFingerprint(pid, { platform, readFile });
     }
-    const stdout = await exec('ps', ['-o', 'lstart=', '-p', String(pid)], {
+    const [command, args] = posixBirthInvocation(pid, platform);
+    const stdout = await exec(command, args, {
       encoding: 'utf8',
       windowsHide: true,
       timeout: PROCESS_BIRTH_FINGERPRINT_TIMEOUT_MS,

@@ -358,7 +358,7 @@ describe('NotificationContainer', () => {
         timestamp: Date.now(),
         dismissed: false,
         actions: [
-          { label: 'Allow Once', variant: 'primary', onClick: allowOnce },
+          { label: 'Allow once', variant: 'primary', onClick: allowOnce },
           { label: 'Deny', variant: 'danger', onClick: deny },
         ],
       },
@@ -391,7 +391,7 @@ describe('NotificationContainer', () => {
     expect(queuePanel.className).toContain('is-open');
     expect(screen.getByText('Codex wants to use shell exec')).toBeTruthy();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Allow once' }));
     expect(allowOnce).toHaveBeenCalledOnce();
     expect(dismissToast).toHaveBeenCalledWith('approval-1');
   });
@@ -408,7 +408,7 @@ describe('NotificationContainer', () => {
         timestamp: Date.now(),
         dismissed: false,
         actions: [
-          { label: 'Allow Once', variant: 'primary', onClick: vi.fn() },
+          { label: 'Allow once', variant: 'primary', onClick: vi.fn() },
           {
             label: 'Allow Bash for this session',
             variant: 'secondary',
@@ -450,7 +450,7 @@ describe('NotificationContainer', () => {
         timestamp: Date.now(),
         dismissed: false,
         actions: [
-          { label: 'Allow Once', variant: 'primary', onClick: vi.fn() },
+          { label: 'Allow once', variant: 'primary', onClick: vi.fn() },
           { label: 'Deny', variant: 'danger', onClick: vi.fn() },
         ],
       },
@@ -480,7 +480,7 @@ describe('NotificationContainer', () => {
         timestamp: Date.now(),
         dismissed: false,
         actions: [
-          { label: 'Allow Once', variant: 'primary', onClick: vi.fn() },
+          { label: 'Allow once', variant: 'primary', onClick: vi.fn() },
         ],
       },
     ];
@@ -511,7 +511,7 @@ describe('NotificationContainer', () => {
           }}
         >
           <button type="button" className="tool-call__approve-btn">
-            Allow Once
+            Allow once
           </button>
         </div>
         <NotificationContainer />
@@ -522,7 +522,7 @@ describe('NotificationContainer', () => {
     fireEvent.click(pill);
 
     expect(scrollIntoView).toHaveBeenCalledTimes(1);
-    expect(document.activeElement?.textContent).toBe('Allow Once');
+    expect(document.activeElement?.textContent).toBe('Allow once');
     expect(pill.getAttribute('aria-expanded')).toBe('false');
   });
 
@@ -569,7 +569,7 @@ describe('NotificationContainer', () => {
           }}
         >
           <button type="button" className="tool-call__approve-btn">
-            Allow Once
+            Allow once
           </button>
         </div>
         <NotificationContainer />
@@ -601,7 +601,7 @@ describe('NotificationContainer', () => {
           data-approval-id="req-7"
         >
           <button type="button" className="tool-call__approve-btn">
-            Allow Once
+            Allow once
           </button>
         </div>
         <NotificationContainer />
@@ -737,7 +737,7 @@ describe('NotificationContainer', () => {
         timestamp: Date.now(),
         dismissed: false,
         actions: [
-          { label: 'Allow Once', variant: 'primary', onClick: allowOnce },
+          { label: 'Allow once', variant: 'primary', onClick: allowOnce },
         ],
       },
       {
@@ -756,7 +756,7 @@ describe('NotificationContainer', () => {
     queueTrigger.focus();
     fireEvent.click(queueTrigger);
 
-    const allow = screen.getByRole('button', { name: 'Allow Once' });
+    const allow = screen.getByRole('button', { name: 'Allow once' });
     allow.focus();
     fireEvent.click(allow);
     expect(dismissToast).toHaveBeenCalledWith('approval-1');

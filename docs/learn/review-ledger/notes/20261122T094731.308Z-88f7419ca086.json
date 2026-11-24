@@ -1,0 +1,7 @@
+{
+  "revision": "3e119df23ae0f56b6e15972f3a27e5bffa9a73d6",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Slice 4.10: the approval toast now shows Allow once and Deny as buttons and the session grants in one menu (NotificationContainer inMenu actions, ToastContext actionsMenuLabel); the inbox card label is 'Allow once'. The page's claims about toast decisions opening the conversation and native push carrying no approval buttons still hold. No prose change.","inputs":["docs/design/notification-delivery.md","src-server/services/approvals/approval-inbox.ts","src-ui/src/components/notifications/NotificationContainer.tsx","src-ui/src/contexts/ToastContext.tsx"]}
+  ]
+}

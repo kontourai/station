@@ -119,6 +119,60 @@ function enableReadOnlyInitialResult(
 }
 
 describe('Tool Routes', () => {
+  const makeTempDir = trackTempDirs();
+  test('refuses event discovery before calling upstream and after operator access is lost', async () => {
+    let operator = false;
+    function deferred<T>() {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((finish) => {
+        resolve = finish;
+      });
+      return { promise, resolve };
+    }
+    const catalog = deferred<{
+      supported: true;
+      events: Array<{ name: string }>;
+    }>();
+    const started = deferred<void>();
+    const service = new MCPService(
+      new ConfigLoader({ projectHomeDir: makeTempDir('events-routes-') }),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      { warn: vi.fn() },
+    );
+    const discoverMCPEvents = vi
+      .spyOn(service, 'discoverMCPEvents')
+      .mockImplementation(() => {
+        started.resolve();
+        return catalog.promise;
+      });
+    const app = createToolRoutes(service, vi.fn(), {
+      async authorizeOperator() {
+        if (!operator) throw new Error('Operator required');
+      },
+    });
+    const check = () =>
+      app.request('/mcp-1/events/discover', { method: 'POST' });
+
+    expect((await check()).status).toBe(403);
+    expect(discoverMCPEvents).not.toHaveBeenCalled();
+
+    operator = true;
+    const pending = check();
+    await started.promise;
+    operator = false;
+    catalog.resolve({ supported: true, events: [{ name: 'private-work' }] });
+    const response = await pending;
+    expect(response.status).toBe(403);
+    expect(await response.json()).toEqual({
+      success: false,
+      error: 'Only the Station operator can check events.',
+    });
+  });
+
   test('serves only a resolver-approved local icon with private caching and nosniff', async () => {
     const asset = {
       body: Buffer.from('png'),
