@@ -615,7 +615,8 @@ export class ACPProcess extends EventEmitter {
     // THIS Station dies without ever running its own cleanup (SIGKILL, crash,
     // ENOSPC). The graceful destroy path below calls `release()` to drop the
     // record; the sweep is the fallback for the case where destroy never runs.
-    const { proc, release } = spawnOwnedChild(bin, [...pinned.args], {
+    const args = [...pinned.args, ...(this.outcomeProfile?.args ?? [])];
+    const { proc, release } = spawnOwnedChild(bin, args, {
       cwd: this.opts.cwd,
       env,
       stdio: ['pipe', 'pipe', this.opts.onStderr ? 'pipe' : 'inherit'],

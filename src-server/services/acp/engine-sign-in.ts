@@ -42,6 +42,7 @@ import {
 import { createAcpInboundExtensionRequestHandler } from './acp-inbound-extension-policy.js';
 import { createProbeClient } from './acp-probe.js';
 import { ACPProcess, type ACPProcessOptions } from './acp-process.js';
+import { antigravityOutcomeProfile } from './antigravity-prompt-outcome.js';
 import {
   engineSignInStatus,
   forgetEngineAuthStatus,
@@ -555,6 +556,14 @@ export class EngineSignInService {
       // The protocol: method variables override the launch configuration.
       ...sanitizeConnectionEnvMap(method.env),
     };
+    const profile =
+      !reviewedCliLogin && extra.length === 1 && extra[0] === '--login'
+        ? antigravityOutcomeProfile({
+            command: program,
+            args: config.args ?? [],
+            geminiHome: process.env.GEMINI_HOME,
+          })
+        : undefined;
     const view: EngineSignInAttempt = {
       id: randomUUID(),
       methodId,
@@ -586,7 +595,9 @@ export class EngineSignInService {
         rows: 30,
         launch: {
           file: program,
-          args: reviewedCliLogin ? extra : [...(config.args ?? []), ...extra],
+          args: reviewedCliLogin
+            ? extra
+            : [...(config.args ?? []), ...(profile?.args ?? []), ...extra],
           env,
         },
       });

@@ -12,6 +12,7 @@ const MODEL_RESPONSE = 15;
 const ERROR_MESSAGE = 17;
 const MAX_NEW_STEPS = 4096;
 const MAX_ERROR_BYTES = 16_384;
+const ACP_PROFILE_DATA_DIR = 'antigravity-acp';
 
 export class AntigravityPromptFailure extends Error {
   constructor(
@@ -50,12 +51,12 @@ function sameEntry(before: Stats, after: Stats): boolean {
   return before.dev === after.dev && before.ino === after.ino;
 }
 
-/** Admit only the dedicated profile explicitly used by the spawned CLI. */
+/** Bind an explicit Station profile opt-in to the native CLI launch. */
 export function antigravityOutcomeProfile(input: {
   command: string;
   args: readonly string[];
   geminiHome: string | undefined;
-}): { path: string; identity: Stats } | undefined {
+}): { path: string; identity: Stats; args: readonly string[] } | undefined {
   if (
     !input.geminiHome ||
     !isAbsolute(input.geminiHome) ||
@@ -65,21 +66,30 @@ export function antigravityOutcomeProfile(input: {
     input.args[1] !== '--process-per-session'
   )
     return undefined;
+  const home = resolveHomeDir();
+  if (
+    resolve(input.geminiHome) !== join(home, 'engine-profiles', 'antigravity')
+  )
+    return undefined;
   try {
-    const home = resolveHomeDir();
-    if (
-      resolve(input.geminiHome) !== join(home, 'engine-profiles', 'antigravity')
-    )
-      return undefined;
     const parent = join(realpathSync(home), 'engine-profiles');
     const profile = join(parent, 'antigravity');
     const stat = privateEntry(profile, true);
     if (privateEntry(parent, true) && stat && (stat.mode & 0o077) === 0)
-      return { path: profile, identity: stat };
+      return {
+        path: profile,
+        identity: stat,
+        args: [
+          `--gemini-dir=${profile}`,
+          `--app-data-dir=${ACP_PROFILE_DATA_DIR}`,
+        ],
+      };
   } catch {
-    // A profile diagnostic is optional and must not prevent the engine launch.
+    // The opted-in launch must stay in the dedicated profile.
   }
-  return undefined;
+  throw new Error(
+    'The dedicated Antigravity profile must be an owner-only directory in this Station home.',
+  );
 }
 
 function readDatabase<T>(
@@ -199,7 +209,7 @@ export function watchAntigravityPrompt(
     !/^[a-zA-Z0-9_-]{1,128}$/u.test(sessionId)
   )
     return undefined;
-  const engine = join(profile.path, 'antigravity-acp');
+  const engine = join(profile.path, ACP_PROFILE_DATA_DIR);
   const conversations = join(engine, 'conversations');
   const file = join(conversations, `${sessionId}.db`);
   const flight = active.get(file) ?? { count: 0, ambiguous: false };

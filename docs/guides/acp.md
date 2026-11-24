@@ -1078,6 +1078,9 @@ and the scripted profile
   `<Station home>/engine-profiles/antigravity` to enable diagnostics for the
   built-in launch. Create that directory with mode `0700` and use it only
   for this Station instance. Sign in through Station with that environment.
+  Station passes the dedicated directory to Antigravity's native CLI
+  arguments for chat and sign-in. An opted-in launch requires a private
+  profile directory.
   Station excludes the provider-owned profile from home backups and update
   snapshots. During update rollback the profile stays in place.
   Station checks a bounded interval in the active CLI session's SQLite log
