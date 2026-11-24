@@ -49,9 +49,32 @@ const allowlistPath = resolve(
   'config/dependency-lifecycle-allowlist.json',
 );
 const LIFECYCLE_HOOKS = ['preinstall', 'install', 'postinstall'];
+const MILLISECONDS_PER_DAY = 86_400_000;
+const EXPIRY_WARNING_DAYS = 14;
 
 function loadPolicy() {
   return JSON.parse(readFileSync(allowlistPath, 'utf8'));
+}
+
+function warnAboutExpiringApprovals(allowlist) {
+  const today = Math.floor(Date.now() / MILLISECONDS_PER_DAY);
+  for (const { path, purl, owner, expiresAt } of allowlist.entries) {
+    const expiryDay =
+      Date.parse(`${expiresAt}T00:00:00.000Z`) / MILLISECONDS_PER_DAY;
+    if (expiryDay < today || expiryDay - today > EXPIRY_WARNING_DAYS) continue;
+    const message = `${path} (${purl}, owner: ${owner}) is approved through ${expiresAt} UTC. Review this approval before it expires.`;
+    if (process.env.GITHUB_ACTIONS === 'true') {
+      const escaped = message
+        .replaceAll('%', '%25')
+        .replaceAll('\r', '%0D')
+        .replaceAll('\n', '%0A');
+      console.warn(
+        `::warning title=Dependency lifecycle approval expiring::${escaped}`,
+      );
+    } else {
+      console.warn(`[dependency-lifecycle] WARN: ${message}`);
+    }
+  }
 }
 
 /**
@@ -97,6 +120,7 @@ export function check({
   // flip together; any mixed state either verifies a file staging never
   // wrote or skips verifying the file the loader actually uses.
   assertNodePtyPrebuildConsistency(allowlist, readNodePtyPrebuildManifest(cwd));
+  if (bootstrap) warnAboutExpiringApprovals(allowlist);
   return allowlist;
 }
 

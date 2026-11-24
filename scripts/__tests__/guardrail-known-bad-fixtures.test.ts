@@ -83,8 +83,8 @@ import {
   sourceFiles,
 } from '../lib/package-dist-freshness.mjs';
 import {
+  LITERAL_COPY_FILES as NOUN_LITERAL_COPY_FILES,
   PINNED_SCOPE_INVENTORY as NOUN_PINNED_SCOPE_INVENTORY,
-  PLACE_COPY_MODULES as NOUN_PLACE_COPY_MODULES,
 } from '../noun-consistency-gate.mjs';
 import {
   baselineDeferrals,
@@ -386,12 +386,70 @@ describe('noun-consistency:gate rejects its known-bad tree', {
         files[pinned] = fixture(GATE, 'clean-view.tsx.fixture');
       }
     }
-    // The `.ts` copy modules the gate reads for retired place phrases.
-    for (const module of NOUN_PLACE_COPY_MODULES) {
-      files[module] = fixture(GATE, 'place-copy-module.ts.fixture');
-    }
+    // The plain modules scanned for retired phrases in their string literals.
+    for (const file of NOUN_LITERAL_COPY_FILES)
+      files[file] = fixture(GATE, 'literal-copy.ts.fixture');
     return files;
   }
+
+  // A retired inbox phrase in each place copy actually lives: a label in a
+  // plain module, a notice in a template literal, a `{'…'}` JSX child and a
+  // JSX text node. Each must fail the gate; the clean tree passes.
+  const ACTIONS = 'src-ui/src/components/inbox-row/inbox-row-actions.ts';
+  it.each([
+    [
+      'a label in a plain module',
+      ACTIONS,
+      "export const LABELS = { done: 'Settle conversation' };\n",
+      'Settle conversation',
+    ],
+    [
+      "the dock list toggle's own label module",
+      'src-ui/src/components/chat-dock/inbox-toggle-label.ts',
+      "export const label = (open: boolean) => (open ? 'Hide inbox' : 'Show chats');\n",
+      'Hide inbox',
+    ],
+    [
+      'a notice in a template literal',
+      'src-ui/src/views/NoticeView.tsx',
+      "export const fail = (e: string) => `Couldn't unsnooze: ${e}`;\n",
+      "Couldn't unsnooze:",
+    ],
+    [
+      'a string literal in JSX braces',
+      'src-ui/src/views/BraceView.tsx',
+      "export const V = () => <button>{'Dismiss from inbox'}</button>;\n",
+      'Dismiss from inbox',
+    ],
+    [
+      'a JSX text node',
+      'src-ui/src/views/TextView.tsx',
+      'export const V = () => <button>Restore to inbox</button>;\n',
+      'Restore to inbox',
+    ],
+  ])(
+    'rejects a retired inbox phrase in %s',
+    (_where, file, source, snippet) => {
+      const dir = scratchRepo({
+        script: SCRIPT,
+        libs: LIBS,
+        files: { ...cleanFiles(), [file]: source },
+      });
+      const result = runGuardrail(dir, SCRIPT);
+      expect(result.status).toBe(1);
+      expect(result.output).toContain(file);
+      expect(result.output).toContain(snippet);
+    },
+  );
+
+  it('fails closed when a listed plain copy module has left the tree', () => {
+    const files = cleanFiles();
+    delete (files as Record<string, string>)[ACTIONS];
+    const dir = scratchRepo({ script: SCRIPT, libs: LIBS, files });
+    const result = runGuardrail(dir, SCRIPT);
+    expect(result.status).not.toBe(0);
+    expect(result.output).toContain('inbox-row-actions.ts');
+  });
 
   it('accepts the clean tree — the negative control', () => {
     const dir = scratchRepo({
@@ -462,7 +520,9 @@ describe('noun-consistency:gate rejects its known-bad tree', {
   });
 
   it('rejects a retired place phrase in a .ts copy module', () => {
-    const [module] = NOUN_PLACE_COPY_MODULES;
+    const module = NOUN_LITERAL_COPY_FILES.find((file) =>
+      file.endsWith('registryCatalogModel.ts'),
+    )!;
     const dir = scratchRepo({
       script: SCRIPT,
       libs: LIBS,

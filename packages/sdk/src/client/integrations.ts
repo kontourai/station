@@ -14,7 +14,9 @@
  * family; station-control's raw-forwarding call sites need their own adapter
  * when migrated, Wave 2B.
  */
+import type { ToolServerEventCatalog } from '@kontourai/station-contracts/tool';
 import {
+  type ApiRequestScope,
   type ClientRequestOptions,
   getJson,
   mutateJson,
@@ -41,6 +43,20 @@ export async function getIntegration(
     opts,
   );
   return readEnvelopeOrThrow(response);
+}
+
+export async function discoverIntegrationEvents(
+  id: string,
+  requestScope: ApiRequestScope,
+): Promise<ToolServerEventCatalog> {
+  const response = await mutateJson(
+    `${requestScope.apiBase}/integrations/${encodeURIComponent(id)}/events/discover`,
+    'POST',
+    { requestScope, readOnly: true },
+  );
+  const catalog = await readEnvelopeOrThrow<ToolServerEventCatalog>(response);
+  if (!catalog) throw new Error('Event catalog missing from response');
+  return catalog;
 }
 
 /** `POST /integrations` — create an integration. */

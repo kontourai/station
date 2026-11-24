@@ -177,7 +177,6 @@ function renderRow(
         item={item}
         isCurrent={false}
         isSnoozed={false}
-        isOpenChat={false}
         now={NOW}
         onActivate={vi.fn()}
         gitLocation={
@@ -608,7 +607,6 @@ it('a receiver row never reads or renders host detail data for a colliding conve
         facts={{ hostDetails: false }}
         isCurrent={false}
         isSnoozed={false}
-        isOpenChat
         now={NOW}
         onActivate={() => {}}
         gitLocation={{ projectSlug: 'station', workingDir: '/host/private' }}

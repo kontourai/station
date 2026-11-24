@@ -14,6 +14,7 @@ import type {
   IntegrationTrustReviewDecision,
   ToolDef,
   ToolMetadata,
+  ToolServerEventCatalog,
 } from '@kontourai/station-contracts/tool';
 import {
   type MCPConnection,
@@ -30,6 +31,7 @@ import type {
   Prompt,
   Transport,
 } from '@modelcontextprotocol/client';
+import { z } from 'zod';
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import { markIntegrationEnabledExplicit } from '../../domain/config-loader-storage.js';
@@ -188,6 +190,18 @@ export interface ToolInfo {
   ui?: { resourceUri: string };
   resource?: { uri: string };
 }
+
+const mcpEventListResult = z.object({
+  events: z
+    .array(
+      z.object({
+        name: z.string().min(1).max(256),
+        title: z.string().max(256).optional(),
+        description: z.string().max(2048).optional(),
+      }),
+    )
+    .max(512),
+});
 
 export class MCPServerDisabledError extends StationOwnedToolServerError {}
 export class MCPToolDisabledError extends StationOwnedToolServerError {}
@@ -1502,15 +1516,17 @@ export class MCPService {
   }
 
   /**
-   * Run an MCP Apps operation through Station's protocol-owning connection.
-   * Agent-attached integrations reuse their live connection so tools and Apps
-   * observe the same negotiated server. Installed integrations that are not
-   * attached to a live agent use a short-lived connection that is always
-   * closed after the operation.
+   * Reuse the protocol-owning connection or acquire a short-lived connection
+   * under the same integration custody fence.
    */
-  private async withMcpUiConnection<T>(
+  private async withMcpConnection<T>(
     serverId: string,
-    operation: 'connect' | 'resource-read' | 'tool-call' | 'prompt-read',
+    operation:
+      | 'connect'
+      | 'resource-read'
+      | 'tool-call'
+      | 'prompt-read'
+      | 'event-read',
     fn: (conn: MCPConnection) => Promise<T>,
     openOnly = false,
   ): Promise<T> {
@@ -1524,11 +1540,18 @@ export class MCPService {
           `MCP server '${serverId}' is disabled`,
         );
       }
-      // #3279: an Apps request carries no turn principal to choose a person's
-      // credential with, and must not borrow the shared one.
+      // These requests have no turn principal to select a connected account.
+      // They may not borrow an instance credential.
       if (def.credentialOwnership)
         throw new StationOwnedToolServerError(
-          "MCP Apps are not available yet for integrations that use each person's own account.",
+          operation === 'event-read'
+            ? 'Event discovery requires a shared account.'
+            : "MCP Apps are not available yet for integrations that use each person's own account.",
+        );
+
+      if (operation === 'event-read' && def.transport !== 'streamable-http')
+        throw new StationOwnedToolServerError(
+          'Event discovery requires a Streamable HTTP connection.',
         );
 
       const active = this.mcpConfigs.get(serverId);
@@ -1641,7 +1664,7 @@ export class MCPService {
   ): Promise<MCPUIToolCatalogResult> {
     if (openOnly) return this.getOpenMCPUIToolCatalog(serverId);
     try {
-      const tools = await this.withMcpUiConnection(
+      const tools = await this.withMcpConnection(
         serverId,
         'connect',
         async (conn) => {
@@ -1705,7 +1728,7 @@ export class MCPService {
         throw new StationOwnedToolServerError('MCP App resource unavailable');
       return { ...resource, ui: extractMCPAppsResourceMetadata(resource) };
     }
-    return this.withMcpUiConnection(
+    return this.withMcpConnection(
       serverId,
       'resource-read',
       async (conn) => {
@@ -1765,7 +1788,7 @@ export class MCPService {
     truncated?: boolean;
   }> {
     await this.assertMcpUiToolEnabled(serverId, toolName);
-    return this.withMcpUiConnection(serverId, 'tool-call', async (conn) => {
+    return this.withMcpConnection(serverId, 'tool-call', async (conn) => {
       const result = await conn.client.callTool({
         name: toolName,
         arguments: {},
@@ -1808,7 +1831,7 @@ export class MCPService {
     args: Record<string, unknown> = {},
   ): Promise<unknown> {
     await this.assertMcpUiToolEnabled(serverId, toolName);
-    return this.withMcpUiConnection(serverId, 'tool-call', async (conn) => {
+    return this.withMcpConnection(serverId, 'tool-call', async (conn) => {
       const tool = conn.tools.find(
         (candidate) => candidate.originalName === toolName,
       );
@@ -1834,7 +1857,7 @@ export class MCPService {
    * capability offers none (an empty list, not an error).
    */
   async listMCPPrompts(serverId: string): Promise<Prompt[]> {
-    return this.withMcpUiConnection(serverId, 'prompt-read', async (conn) => {
+    return this.withMcpConnection(serverId, 'prompt-read', async (conn) => {
       if (!conn.negotiation.serverCapabilities?.prompts) return [];
       const prompts: Prompt[] = [];
       let cursor: string | undefined;
@@ -1859,9 +1882,31 @@ export class MCPService {
     name: string,
     args: Record<string, string>,
   ): Promise<GetPromptResult> {
-    return this.withMcpUiConnection(serverId, 'prompt-read', (conn) =>
+    return this.withMcpConnection(serverId, 'prompt-read', (conn) =>
       conn.client.getPrompt({ name, arguments: args }),
     );
+  }
+
+  async discoverMCPEvents(serverId: string): Promise<ToolServerEventCatalog> {
+    return this.withMcpConnection(serverId, 'event-read', async (conn) => {
+      if (
+        conn.negotiation.era !== 'modern' ||
+        !conn.negotiation.extensionIds.includes(
+          'io.modelcontextprotocol/events',
+        )
+      )
+        return { supported: false };
+      const { events } = await conn.client.request(
+        { method: 'events/list', params: {} },
+        mcpEventListResult,
+        { timeout: 10_000 },
+      );
+      if (new Set(events.map(({ name }) => name)).size !== events.length)
+        throw new StationOwnedToolServerError(
+          'The event catalog has duplicate names.',
+        );
+      return { supported: true, events };
+    });
   }
 
   private async assertMcpUiToolEnabled(

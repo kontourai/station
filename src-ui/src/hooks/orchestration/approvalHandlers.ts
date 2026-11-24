@@ -1,6 +1,9 @@
+import type { InputRequestDecisionOption } from '@kontourai/station-contracts/input-request';
 import { requestBoundCallIds } from '@kontourai/station-contracts/runtime-event-content';
 import {
+  APPROVAL_SESSION_GRANTS_MENU_LABEL,
   approvalDecisionBody,
+  approvalDecisionLayout,
   decisionOptionResponse,
   inputRequestFromRequestEvent,
   inputRequestOutcome,
@@ -11,7 +14,9 @@ import {
 } from '@kontourai/station-shared/input-request';
 import { requestIdsSettledByTurnAbort } from '@kontourai/station-shared/request-settlement';
 import {
+  SESSION_ALL_GRANT_LABEL,
   STATION_BROWSER_SERVER_GRANT_LABEL,
+  toolRequestAllGrantFromPayload,
   toolRequestDisplayName,
   toolRequestFromPayload,
   toolRequestGrantLabel,
@@ -228,6 +233,9 @@ export function raiseRequestOpenedToast(
         ? { serverGrantLabel: STATION_BROWSER_SERVER_GRANT_LABEL }
         : {}),
       ...ruleGrantLabelView(event.payload),
+      ...(toolRequestAllGrantFromPayload(event.payload)
+        ? { allGrantLabel: SESSION_ALL_GRANT_LABEL }
+        : {}),
     },
     station,
   );
@@ -243,6 +251,8 @@ type ApprovalToastView = {
   serverGrantLabel?: string;
   /** Set only when the request offers the command-prefix grant. */
   ruleGrantLabel?: string;
+  /** Set only when the request offers the session-wide grant. */
+  allGrantLabel?: string;
 };
 
 function ruleGrantLabelView(payload: Record<string, unknown> | undefined): {
@@ -265,7 +275,7 @@ function showApprovalToast(
   const needsContentLoad = requestNeedsContentLoad(event, station);
   const answer = (
     decision: 'accept' | 'acceptForSession' | 'decline',
-    sessionGrantScope?: 'server' | 'rule',
+    sessionGrantScope?: 'server' | 'rule' | 'all',
   ) => {
     const chat = chatStore.getChatForExecutionSession(event.threadId);
     if (
@@ -289,6 +299,23 @@ function showApprovalToast(
       station,
     );
   };
+  const toastDecision = (
+    option: InputRequestDecisionOption,
+    variant: 'primary' | 'secondary' | 'danger' | 'danger-outline',
+  ) => ({
+    label: option.label,
+    variant,
+    onClick: () =>
+      answer(decisionOptionResponse(option), option.sessionGrantScope),
+  });
+  const layout = approvalDecisionLayout(
+    approvalDecisionBody(
+      view.grantLabel,
+      view.serverGrantLabel,
+      view.ruleGrantLabel,
+      view.allGrantLabel,
+    ),
+  );
   const toastId = toastStore.showToolApproval({
     sessionId:
       chatStore.getChatKeyForExecutionSession(event.threadId) ?? event.threadId,
@@ -298,51 +325,47 @@ function showApprovalToast(
     agentName: view.agentName,
     conversationTitle: view.conversationTitle,
     // #3390: the approval's decision body, the same options the inline card
-    // and the sheet render. The session option's label says what the grant
-    // covers: "Allow for Session" reads as a grant for this one call, and it
-    // is a standing grant for every later call to the same tool.
+    // and the sheet render, placed the same way (chat-14,
+    // `approvalDecisionLayout`): Deny and Allow once are the two buttons, and
+    // every session grant the request offered sits in one menu. Each grant's
+    // label says what it covers: "Allow for Session" read as a grant for this
+    // one call, and it is a standing grant for every later call to the same
+    // tool until the session ends.
     // docs/design/event-content-spill.md: a request whose content was
     // stored out of line is allowed only from its card, after the card has
     // loaded all of it. The toast offers the way there, and Deny.
-    actions: [
-      ...(needsContentLoad
-        ? [
-            {
-              label: 'Review',
-              variant: 'primary' as const,
-              onClick: () => {
-                const chat = chatStore.getChatForExecutionSession(
-                  event.threadId,
-                );
-                navigationStore.navigate('/', {
-                  chat: chat?.conversationId ?? event.threadId,
-                  dock: 'open',
-                });
-              },
+    actionsMenuLabel: APPROVAL_SESSION_GRANTS_MENU_LABEL,
+    actions: needsContentLoad
+      ? [
+          // Secondary then primary, as on every approval row: Deny, then
+          // Review (open the card), which stands in for Allow once.
+          ...approvalDecisionBody(undefined)
+            .options.filter((option) => option.effect === 'deny')
+            .map((option) => toastDecision(option, 'danger-outline')),
+          {
+            label: 'Review',
+            variant: 'primary' as const,
+            onClick: () => {
+              const chat = chatStore.getChatForExecutionSession(event.threadId);
+              navigationStore.navigate('/', {
+                chat: chat?.conversationId ?? event.threadId,
+                dock: 'open',
+              });
             },
-          ]
-        : []),
-      ...(needsContentLoad
-        ? approvalDecisionBody(undefined).options.filter(
-            (option) => option.effect === 'deny',
-          )
-        : approvalDecisionBody(
-            view.grantLabel,
-            view.serverGrantLabel,
-            view.ruleGrantLabel,
-          ).options
-      ).map((option) => ({
-        label: option.label,
-        variant:
-          option.effect === 'deny'
-            ? ('danger' as const)
-            : option.scope === 'session'
-              ? ('secondary' as const)
-              : ('primary' as const),
-        onClick: () =>
-          answer(decisionOptionResponse(option), option.sessionGrantScope),
-      })),
-    ],
+          },
+        ]
+      : [
+          // Deny, Allow once, then the menu: the order and tones of the
+          // card's and the sheet's ActionRow (secondary, primary, overflow).
+          ...(layout.deny
+            ? [toastDecision(layout.deny, 'danger-outline')]
+            : []),
+          ...(layout.once ? [toastDecision(layout.once, 'primary')] : []),
+          ...layout.sessionGrants.map((option) => ({
+            ...toastDecision(option, 'secondary'),
+            inMenu: true,
+          })),
+        ],
   });
 
   const chat = chatStore.getChatForExecutionSession(event.threadId);
@@ -411,7 +434,7 @@ async function answerFromToast(
   event: Extract<OrchestrationEvent, { method: 'request.opened' }>,
   view: ApprovalToastView,
   decision: 'accept' | 'acceptForSession' | 'decline',
-  sessionGrantScope?: 'server' | 'rule',
+  sessionGrantScope?: 'server' | 'rule' | 'all',
   station?: StationStateScope,
 ) {
   const chatStore = activeChatsStore.forStation(station);

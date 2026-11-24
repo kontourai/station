@@ -1,0 +1,7 @@
+{
+  "revision": "3751d1907760c395de2218029c10ea5ae96c8e5d",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Sources this page is bound to here (MessageBubble.tsx, conversationTranscriptParts.ts, conversation-message.ts) are byte-identical to slice 4.6's head 2140664bbd0, where its chat-24 review notes checked them. Re-recorded only because the branch history now also carries unsquashed Phase 0 commits through slice 4.13, which the freshness rule counts as later edits; no claim on this page changed.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/hooks/orchestration/conversationTranscriptParts.ts"]}
+  ]
+}

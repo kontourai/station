@@ -499,6 +499,15 @@ describe('noun-consistency-gate', () => {
       'Connections as a place': 'Configure in Connections',
       'Registry as a place': 'Browse Registry Skills',
       'Plugins as a place': 'Open in Plugins',
+      'Settle conversation': 'Settle conversation',
+      'Dismiss from inbox': 'Dismiss from inbox',
+      'Hide from inbox': 'Hide from inbox',
+      'Restore to inbox': 'Restore to inbox',
+      'Discard unsent draft': 'Discard unsent draft',
+      Unsnooze: 'Unsnooze',
+      'Show inbox': 'Show inbox',
+      'Show chats': 'Show chats',
+      'Inbox chats': 'Inbox chats',
     };
     // Plural and lowercase forms of the same terms.
     const VARIANTS: Record<string, string> = {
@@ -526,7 +535,31 @@ describe('noun-consistency-gate', () => {
       'Connections as a place': 'Open Connections › Models, then retry',
       'Registry as a place': 'Install one from the Registry › Integrations tab',
       'Plugins as a place': 'Review its request under plugins.',
+      'Settle conversation': 'settle conversations',
+      'Dismiss from inbox': 'dismiss from the inbox',
+      'Hide from inbox': 'hide from the inbox',
+      'Restore to inbox': 'restore to the inbox',
+      'Discard unsent draft': 'discard unsent drafts',
+      Unsnooze: 'Unsnoozing…',
+      'Show inbox': 'Hide inbox, 2 need you',
+      'Show chats': 'Hide chats, 2 working',
+      'Inbox chats': 'inbox chats',
     };
+    /** Retired by a slice that removed every use, so enforced now. */
+    const ACTIVE = [
+      'Connections as a place',
+      'Registry as a place',
+      'Plugins as a place',
+      'Settle conversation',
+      'Dismiss from inbox',
+      'Hide from inbox',
+      'Restore to inbox',
+      'Discard unsent draft',
+      'Unsnooze',
+      'Show inbox',
+      'Show chats',
+      'Inbox chats',
+    ];
 
     it('pins the retired terms, independently of the script', () => {
       expect(RETIRED_USER_TERMS.map(({ term }) => term)).toEqual(
@@ -537,24 +570,12 @@ describe('noun-consistency-gate', () => {
     it('keeps every entry pending until the copy lanes merge, except those already enforced', () => {
       // Flip-on is deleting `pending`; when that happens this expectation
       // changes with it, deliberately.
-      const ENFORCED = [
-        'Connections as a place',
-        'Registry as a place',
-        'Plugins as a place',
-      ];
-      expect(
-        RETIRED_USER_TERMS.filter(({ pending }) => !pending).map(
-          ({ term }) => term,
-        ),
-      ).toEqual(ENFORCED);
-      expect(ACTIVE_RETIRED_USER_TERMS.map(({ term }) => term)).toEqual(
-        ENFORCED,
-      );
+      expect(ACTIVE_RETIRED_USER_TERMS.map(({ term }) => term)).toEqual(ACTIVE);
       for (const [term, text] of Object.entries(VIOLATIONS)) {
         expect(
           scanFileContent('Pending.tsx', `<p>${text}</p>`),
           text,
-        ).toHaveLength(ENFORCED.includes(term) ? 1 : 0);
+        ).toHaveLength(ACTIVE.includes(term) ? 1 : 0);
       }
     });
 
@@ -656,6 +677,11 @@ describe('noun-consistency-gate', () => {
         '<p>Install it from the npm registry.</p>',
         '<p>Reload plugins</p>',
         '<p>Plugins can declare settings.</p>',
+        '<p>Mark done</p>',
+        '<p>Reopen</p>',
+        '<p>Wake now</p>',
+        '<p>Discard draft</p>',
+        'const unsnoozeAttention = useUnsnoozeAttentionItemMutation(); const x = <p>Saved</p>;',
       ]) {
         expect(scanFileContent('Clean.tsx', source, all), source).toEqual([]);
       }

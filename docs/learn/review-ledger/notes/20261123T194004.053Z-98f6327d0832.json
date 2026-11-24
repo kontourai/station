@@ -1,0 +1,7 @@
+{
+  "revision": "1b1f42a6c7b9854525fb66d301b1e370394668ce",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Cites ChatMessageList for form-block submission only; the hold and scroll changes do not touch that path, claims unchanged.","inputs":["docs/design/ai-ui-bridge-expansion.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

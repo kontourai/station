@@ -2,11 +2,11 @@
 
 Status: implementation plan for [#5386](https://github.com/kontourai/station/issues/5386). GitHub owns live delivery state.
 
-This plan delivers [the first-release design](../design/first-release.md) as 104 slices in six phases. Each slice is one issue. Each phase lands as one pull request that carries its slices, so the phase's changes are reviewed and merged together. Every numbered change in the design belongs to exactly one slice, or is listed under [Not in the first release](#not-in-the-first-release).
+This plan delivers [the first-release design](../design/first-release.md) as 105 slices in six phases. Each slice is one issue. A phase lands in parts: slices that have been reviewed and verified merge as soon as the phase's branch holds a coherent set of them, several slices to a pull request. Every numbered change in the design belongs to exactly one slice, or is listed under [Not in the first release](#not-in-the-first-release).
 
 ## Rules
 
-- A slice cites the screens and change numbers it delivers. Its phase's pull request shows a running build beside the agreed render for each screen, at 1440px and 390px.
+- A slice cites the screens and change numbers it delivers. The pull request that lands it shows a running build beside the agreed render for each of its screens, at 1440px and 390px.
 - A change marked "backend check first" is settled before the slice builds. If the answer changes the design, the design record is amended in the same pull request with the reason.
 - A slice that changes a recorded decision, a glossary term or another design record amends that record in the same pull request.
 - A slice lands only after the slices it depends on. Sizes: S is a sitting, M a day or two, L is large and kept whole for a stated reason.
@@ -139,6 +139,7 @@ Done when: A person answers "what does it run on, what did it use, what did it d
 | 4.20 | #5491 | Keep answered slash commands out of drafts, and keep New chat text | follow-up of 0.5 | S | 0.5 |
 | 4.21 | #5493 | Stop chat dock layouts hiding or clipping content | follow-up of 0.14 and 0.18 | S | 0.14 |
 | 4.22 | #5497 | Close the Station agent usage gaps: the tree root, when counting started, and Strands reuse | follow-up of 0.4 | M | 0.4, 4.2 |
+| 4.23 | #5506 | Switching agent after a fresh context starts its own session, and a refused switch leaves no switch in the transcript | follow-up of 4.6 | M | 4.6 |
 
 ## Phase 5 · Agents, Skills, Tools, Apps, Automations, Settings and previews
 

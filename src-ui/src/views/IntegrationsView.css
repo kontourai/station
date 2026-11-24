@@ -8,6 +8,10 @@
   cursor: pointer;
 }
 
+.integration-event-catalog {
+  overflow-wrap: anywhere;
+}
+
 .integration-trust-history {
   padding-inline-start: var(--k-space-5);
   font-size: var(--k-text-md);
@@ -62,19 +66,6 @@
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  /* Form / Raw JSON toggle: full-width, equal halves, 44px tap targets.
-     Desktop keeps the compact fit-content pill from editor-layout.css. */
-  .integration__mode-tabs {
-    width: 100%;
-    max-width: 100%;
-  }
-
-  .integration__mode-tab {
-    flex: 1;
-    min-width: 0;
-    min-height: 44px;
-  }
-
   /* Keep the raw mcp.json editor inside the viewport (no horizontal scroll). */
   .integration__raw-editor {
     width: 100%;

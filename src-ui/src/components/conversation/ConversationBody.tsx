@@ -2215,6 +2215,9 @@ function LiveConversationBody({
               ),
               onLoadOlder: transcript.loadOlder,
               onLoadTurn: transcript.loadTurn,
+              onReaderPlaceChange: transcript.enabled
+                ? transcript.setReaderPlace
+                : undefined,
               onOpenBackgroundTasks,
               liveStatusUnavailable: activeSession.replay
                 ? observationUnavailable

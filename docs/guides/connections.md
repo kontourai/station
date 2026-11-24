@@ -2182,6 +2182,15 @@ operating-system level is tracked in
 [#4860](https://github.com/kontourai/station/issues/4860); see the
 [coverage notes](../design/mcp-subregistry-curation.md#coverage-and-gaps).
 
+## Check a tool server’s event types
+
+Open a saved, enabled HTTP tool server in **Customize → Tools** and choose
+**Check events**. The Station operator can use this action on a connection
+with a shared account. Station checks the server using that connection and
+lists the event types it advertises. For OAuth, use a server that requests
+authorization during connection setup and sign in first. Subscriptions and
+delivery use separate protocol operations.
+
 ## Connect an OAuth MCP server to an Agent
 
 Obtain the outside-agent MCP endpoint from the remote workspace's connection

@@ -1,0 +1,11 @@
+{
+  "revision": "5f513443d064340b09e3706bbb88f137563dac27",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked every page citing ChatMessageList: chat-composer describes the hold and is updated in this change; ai-ui-bridge-expansion cites form-block submission only and placement makes no hold or scroll claim, both unaffected by ending the hold when its row goes away and resetting names on a chat switch.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked every page citing ChatMessageList: chat-composer describes the hold and is updated in this change; ai-ui-bridge-expansion cites form-block submission only and placement makes no hold or scroll claim, both unaffected by ending the hold when its row goes away and resetting names on a chat switch.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked every page citing ChatMessageList: chat-composer describes the hold and is updated in this change; ai-ui-bridge-expansion cites form-block submission only and placement makes no hold or scroll claim, both unaffected by ending the hold when its row goes away and resetting names on a chat switch.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

@@ -608,9 +608,11 @@
   white-space: nowrap;
 }
 
+/* Centred by offset, not a transform: a transform would make this slot the
+ * containing block of the row menu's fixed-position list, placing it off
+ * screen. */
 .inbox-row--slim .inbox-row__actions {
-  top: 50%;
-  transform: translateY(-50%);
+  top: calc(50% - var(--inbox-row-action-size) / 2);
 }
 
 /* A slim row is 30px tall, so the hit area is the row's own height: staying
@@ -864,7 +866,7 @@
 .inbox-row__swipe-actions > button::after {
   content: none;
 }
-.inbox-row__swipe-actions > .inbox-row__swipe-dismiss {
+.inbox-row__swipe-actions > .inbox-row__swipe-done {
   color: var(--k-action);
   background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel-raised));
 }

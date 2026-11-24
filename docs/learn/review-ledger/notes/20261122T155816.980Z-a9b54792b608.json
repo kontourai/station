@@ -1,0 +1,7 @@
+{
+  "revision": "924e83502041bb2bf6f64e2534b76e6e9a46b8cd",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Slice 4.10 hardening: ActionOverflowMenu's Escape now also calls preventDefault. Hosts behind the menu's capture-phase stopPropagation never saw the event; a same-node capture listener checking defaultPrevented now leaves it to the menu. The page's overflow-menu and focus-return claims still hold. No prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ActionOverflowMenu.tsx"]}
+  ]
+}

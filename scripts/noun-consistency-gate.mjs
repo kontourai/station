@@ -50,7 +50,7 @@
 //      rather than guessed at. This trades a few missed edge cases for
 //      zero false positives, which matters more for a zero-tolerance gate
 //      than exhaustive coverage.
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   assertScopeIsHonest,
@@ -91,21 +91,6 @@ export const COPY_SOURCE_FILES = [
 ];
 
 /**
- * `.ts` modules under `src-ui` whose string literals are user-facing copy
- * (catalogue page copy, skill source labels, plugin messages). They are
- * scanned like every `.tsx` file's string literals: for the retired place
- * phrases only (`scanPlaceLiterals`), because the other families above match
- * code identifiers these modules legitimately contain.
- */
-export const PLACE_COPY_MODULES = [
-  'src-ui/src/components/registry/registryCatalogModel.ts',
-  'src-ui/src/views/skills/skill-view-utils.ts',
-  'src-ui/src/views/plugin-management/view-utils.ts',
-  'src-ui/src/views/plugin-management/usePluginManagementViewModel.ts',
-  'src-ui/src/workspace-panes/workspacePaneAvailabilityPresentation.ts',
-];
-
-/**
  * The object-literal factory whose blocks carry a file's user-facing copy.
  * `scanCopySourceContent` reads copy only from inside these blocks, because
  * the same field identifiers appear in each file's own `interface`
@@ -117,6 +102,31 @@ export const PLACE_COPY_MODULES = [
  * scanned with the wrong one reports zero blocks, which is a hard failure
  * rather than a quiet clean scan.
  */
+/**
+ * Plain TypeScript modules that hold user-facing words as string literals
+ * (row action labels, notice text) rather than JSX. The JSX scanners never
+ * read them, so a retired phrase written as `label: 'Settle conversation'`
+ * passed the gate. They are scanned for the retired user terms only, in
+ * every string and template literal: the older noun families have code
+ * senses (`agent`, `prompt`) a literal scan cannot tell from copy.
+ */
+export const LITERAL_COPY_FILES = [
+  // Catalogue page copy, skill source labels and plugin messages: the
+  // retired place phrases (Registry, Plugins, Connections) reach the screen
+  // from these modules.
+  'src-ui/src/components/registry/registryCatalogModel.ts',
+  'src-ui/src/views/skills/skill-view-utils.ts',
+  'src-ui/src/views/plugin-management/view-utils.ts',
+  'src-ui/src/views/plugin-management/usePluginManagementViewModel.ts',
+  'src-ui/src/workspace-panes/workspacePaneAvailabilityPresentation.ts',
+  // Chat dock and inbox row copy.
+  'src-ui/src/components/inbox-row/inbox-row-actions.ts',
+  'src-ui/src/components/inbox-row/snooze-presets.ts',
+  'src-ui/src/components/chat-dock/mobile-activity-groups.ts',
+  'src-ui/src/components/chat-dock/useInboxGroups.ts',
+  'src-ui/src/components/chat-dock/inbox-toggle-label.ts',
+];
+
 export const COPY_SOURCE_OPENERS = {
   'packages/contracts/src/device-settings.ts': 'defineDeviceSetting(',
 };
@@ -363,6 +373,59 @@ export const RETIRED_USER_TERMS = Object.freeze([
     use: 'Apps, Apps › Library or Apps › Discover',
     pattern:
       /\b(?:(?:open|in|under) plugins\b(?![-\w]|\.\w)|plugins\s*[›→>]\s*\w|plugins (?:page|tab)s?\b)/i,
+  },
+  // Inbox (first-release-automations-inbox.md, automations-inbox-13): one
+  // verb, Mark done, and Reopen undoes it; one snooze list with Wake now.
+  // Enforced: the inbox slice removed their last uses.
+  {
+    term: 'Settle conversation',
+    use: 'Mark done',
+    pattern: /\bsettle conversations?\b/i,
+  },
+  {
+    term: 'Dismiss from inbox',
+    use: 'Mark done',
+    pattern: /\bdismiss from (?:the )?inbox\b/i,
+  },
+  {
+    term: 'Hide from inbox',
+    use: 'Mark done',
+    pattern: /\bhide from (?:the )?inbox\b/i,
+  },
+  {
+    term: 'Restore to inbox',
+    use: 'Reopen',
+    pattern: /\brestore to (?:the )?inbox\b/i,
+  },
+  {
+    term: 'Discard unsent draft',
+    use: 'Discard draft',
+    pattern: /\bdiscard unsent drafts?\b/i,
+  },
+  {
+    term: 'Unsnooze',
+    use: 'Wake now',
+    pattern: /\bunsnooz(?:e|ed|ing)\b/i,
+  },
+  // The dock's list reads Chats; Inbox becomes the attention page's word.
+  // Only phrases that can name nothing but the dock list are listed: "Search
+  // inbox" or "Refresh inbox" could be the page's own once it is the Inbox.
+  {
+    term: 'Show inbox',
+    use: 'Show chat list',
+    pattern: /\b(?:show|hide) inbox\b/i,
+  },
+  // Beside the dock's own "Show chat"/"Hide chat", the list's control names
+  // the list, not one letter more of the same word.
+  {
+    term: 'Show chats',
+    use: 'Show chat list',
+    pattern: /\b(?:show|hide) chats\b/i,
+  },
+  {
+    term: 'Inbox chats',
+    use: 'Chats',
+    pattern: /\binbox chats\b/i,
   },
 ]);
 
@@ -851,6 +914,40 @@ export function scanObjectLiteralCopy(
  * surfaces (JSX attribute values, JSX text nodes, object-literal copy
  * fields). Returns an array of findings: { file, line, snippet }.
  */
+// A string or template literal on one line, or a template across lines.
+const STRING_LITERAL_PATTERN =
+  /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g;
+
+/**
+ * Every string and template literal in `rawContent` that carries a retired
+ * user term. Template interpolations are blanked first, so `${title}` cannot
+ * hide or fake a phrase. Only the retired user terms are checked; see
+ * `LITERAL_COPY_FILES`.
+ */
+export function scanStringLiterals(file, rawContent, retiredTerms) {
+  const content = stripComments(rawContent);
+  const findings = [];
+  if (retiredTerms.length === 0) return findings;
+  for (const match of content.matchAll(STRING_LITERAL_PATTERN)) {
+    const literal = match[0].startsWith('`')
+      ? maskTemplateLiteral(match[0])
+      : match[0].slice(1, -1);
+    const normalized = normalizeSnippet(literal);
+    if (
+      !retiredTerms.some(({ pattern }) =>
+        new RegExp(pattern.source, 'i').test(normalized),
+      )
+    )
+      continue;
+    findings.push({
+      file,
+      line: lineNumberAt(content, match.index),
+      snippet: normalized,
+    });
+  }
+  return findings;
+}
+
 export function scanFileContent(
   file,
   rawContent,
@@ -859,6 +956,14 @@ export function scanFileContent(
   const content = stripComments(rawContent);
   const findings = [];
   findings.push(...scanObjectLiteralCopy(file, content, retiredTerms));
+  // Notice text, labels in object literals and `{'…'}` children: any string
+  // literal in a scanned component, for the retired user terms. A literal
+  // the attribute scanners already reported is not reported twice. Test
+  // sources are skipped: their titles and fixtures name retired places on
+  // purpose ("the Registry tab redirects"), and they never reach the screen.
+  const literals = isTestSource(file)
+    ? []
+    : scanStringLiterals(file, rawContent, retiredTerms);
 
   function collectAttr(pattern) {
     pattern.lastIndex = 0;
@@ -927,51 +1032,13 @@ export function scanFileContent(
     );
   }
 
+  const reported = new Set(findings.map(allowlistKey));
+  for (const finding of literals)
+    if (!reported.has(allowlistKey(finding))) findings.push(finding);
   return findings;
 }
 
-/** One-line string and template literals: quoted copy in any position. */
-const STRING_LITERAL_PATTERN =
-  /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g;
-
-/**
- * The retired place phrases in every string literal of a file, whatever
- * position it sits in: a ternary branch, a function argument, a returned
- * label. Only the place terms are applied: the noun families above match
- * identifiers that string literals legitimately carry.
- */
-export function scanPlaceLiterals(
-  file,
-  rawContent,
-  retiredTerms = ACTIVE_RETIRED_USER_TERMS,
-) {
-  const placeTerms = retiredTerms.filter(({ term }) =>
-    / as a place$/.test(term),
-  );
-  if (placeTerms.length === 0) return [];
-  const content = stripComments(rawContent);
-  const findings = [];
-  STRING_LITERAL_PATTERN.lastIndex = 0;
-  for (const match of content.matchAll(STRING_LITERAL_PATTERN)) {
-    const text = normalizeSnippet(
-      match[0].slice(1, -1).replace(/\$\{[^}]*\}/g, ' '),
-    );
-    if (
-      text &&
-      placeTerms.some(({ pattern }) =>
-        new RegExp(pattern.source, 'i').test(text),
-      )
-    )
-      findings.push({
-        file,
-        line: lineNumberAt(content, match.index),
-        snippet: text,
-      });
-  }
-  return findings;
-}
-
-/** Test sources name places in test titles and fixtures, not as copy. */
+/** Test sources name retired words in titles and fixtures, not as copy. */
 function isTestSource(file) {
   return /(^|\/)__tests__\/|\.test\.[jt]sx?$/.test(file);
 }
@@ -1125,22 +1192,25 @@ export function runGate({
   readFile,
   allowlist,
   copySourceFiles = [],
-  placeCopyModules = [],
+  literalCopyFiles = [],
   retiredTerms = ACTIVE_RETIRED_USER_TERMS,
 }) {
-  const findings = [];
+  const scanned = [];
   for (const file of files) {
     const content = readFile(file);
-    findings.push(...scanFileContent(file, content, retiredTerms));
-    if (!isTestSource(file)) {
-      // A place phrase the JSX scanners already reported is not repeated.
-      const seen = new Set(findings.map(allowlistKey));
-      for (const finding of scanPlaceLiterals(file, content, retiredTerms))
-        if (!seen.has(allowlistKey(finding))) findings.push(finding);
-    }
+    scanned.push(...scanFileContent(file, content, retiredTerms));
   }
-  for (const file of placeCopyModules)
-    findings.push(...scanPlaceLiterals(file, readFile(file), retiredTerms));
+  for (const file of literalCopyFiles)
+    scanned.push(...scanStringLiterals(file, readFile(file), retiredTerms));
+  // One finding per place: a label can match both a JSX scanner and the
+  // literal scan.
+  const seen = new Set();
+  const findings = scanned.filter((finding) => {
+    const key = allowlistKey(finding);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   const unscannable = [];
   for (const file of copySourceFiles) {
@@ -1181,15 +1251,21 @@ function main() {
     roots: SCAN_ROOTS,
     extensions: SCAN_EXTENSIONS,
     pinned: PINNED_SCOPE_INVENTORY,
-    files: [...files, ...COPY_SOURCE_FILES, ...PLACE_COPY_MODULES],
+    files: [...files, ...COPY_SOURCE_FILES, ...LITERAL_COPY_FILES],
   });
+  // A listed literal source that no longer exists is a scope that shrank.
+  for (const file of LITERAL_COPY_FILES)
+    if (!existsSync(file))
+      throw new Error(
+        `noun-consistency gate: literal copy source ${file} is missing; update LITERAL_COPY_FILES.`,
+      );
 
   const { unallowlisted, staleEntries, unscannable } = runGate({
     files,
     readFile: (file) => readFileSync(file, 'utf8'),
     allowlist,
     copySourceFiles: COPY_SOURCE_FILES,
-    placeCopyModules: PLACE_COPY_MODULES,
+    literalCopyFiles: LITERAL_COPY_FILES,
   });
 
   console.log(
@@ -1253,16 +1329,15 @@ function main() {
       roots: SCAN_ROOTS,
       extensions: SCAN_EXTENSIONS,
       files,
-      extraFiles: COPY_SOURCE_FILES,
+      extraFiles: [...COPY_SOURCE_FILES, ...LITERAL_COPY_FILES],
     });
     const allowlistNote =
       allowlist.length === 0
         ? 'no allowlist entries'
         : `${allowlist.length} allowlist entries, all still live`;
     console.log(
-      `OK: no un-allowlisted stale-noun matches. Scanned ${scope} + ` +
-        `${PLACE_COPY_MODULES.length} copy module(s) for place phrases — ` +
-        `${files.length + COPY_SOURCE_FILES.length + PLACE_COPY_MODULES.length} files total, ` +
+      `OK: no un-allowlisted stale-noun matches. Scanned ${scope} — ` +
+        `${files.length + COPY_SOURCE_FILES.length + LITERAL_COPY_FILES.length} files total, ` +
         `${allowlistNote}.`,
     );
     process.exit(0);

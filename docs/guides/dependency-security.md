@@ -424,6 +424,12 @@ refresh/removal/advisory trigger. The release SBOM context carries the exact
 allowlist digest and purls. Windows native proof remains a platform receipt,
 not something inferred from Linux or macOS.
 
+The managed installer warns when a lifecycle approval has 14 UTC calendar
+days or fewer before its expiry date. The warning names the locked path,
+package, owner, and last approved date. GitHub Actions shows the warning as
+an annotation, including on the scheduled dependency advisory audit. The
+installer still rejects an approval on the first UTC day after its expiry.
+
 The exact node-pty 1.2.0-beta.18 approval includes upstream Windows handle-table
 locking and startup cancellation fixes (#4626). Its reviewed Windows artifacts
 are the ConPTY addon, console-list addon, bundled DLL and OpenConsole executable;

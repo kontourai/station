@@ -103,7 +103,7 @@ or approval. Those checks remain with the execution owners. A completed chat
 also does not establish a passed gate. Failed catalog reads hide the prior setup
 until a retry succeeds; no tools are installed or configured from this view.
 
-The Inbox presents a Task with its authorized work chats underneath, including
+The Chats list presents a Task with its authorized work chats underneath, including
 independent Agent requests from the Task Room. Selecting the Task reveals
 Overview; selecting a work chat opens that conversation. A conversation linked
 to multiple Tasks stays separate. Running counts reflect actual chats, so an
@@ -222,6 +222,6 @@ metadata remains a compatibility fallback. GitHub labels omit `github.com/`;
 other hosts remain visible. Tooltips retain the full remote and folder.
 These labels do not match Projects across Stations or change delegation by slug.
 
-An unchosen Inbox scope follows the current Project page and uses its display
+An unchosen Chat list scope follows the current Project page and uses its display
 name. Outside Project pages it includes all work. Explicit scope choices,
 including **All work**, remain selected across navigation.

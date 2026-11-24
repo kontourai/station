@@ -183,6 +183,7 @@ export {
   useDecideIntegrationTrustReviewMutation,
   useDeleteIntegrationMutation,
   useDisconnectIntegrationAccountMutation,
+  useDiscoverIntegrationEventsMutation,
   useFinishIntegrationOAuthMutation,
   useInstalledRegistryItemsQuery,
   useIntegrationAccountQuery,

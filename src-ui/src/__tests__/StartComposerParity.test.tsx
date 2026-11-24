@@ -31,6 +31,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { publishDockNewChatDraftOpen } from '../components/chat-dock/dockNewChatDraftPresence';
 import { StartComposer } from '../components/chat-start/StartComposer';
 import { displayableProjectIcon } from '../components/icons/ProjectIcon';
 import { projectAccents } from '../components/project-sidebar/projectAccent';
@@ -80,6 +81,8 @@ const state = vi.hoisted(() => ({
   /** App config as `useConfig` serves it; absent unless a test sets it. */
   config: undefined as Record<string, unknown> | undefined,
   dockOpen: false,
+  /** The chat the dock shows (`?chat=`), or null for an empty dock. */
+  activeChat: null as string | null,
   agents: [] as unknown[],
   projects: [] as unknown[],
   projectsLoading: false,
@@ -239,6 +242,7 @@ vi.mock('../components/session/SessionModelPicker', () => ({
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
     isDockOpen: state.dockOpen,
+    activeChat: state.activeChat,
     selectedProject: null,
     selectedProjectLayout: null,
     setDockState: vi.fn(),
@@ -293,6 +297,8 @@ beforeAll(() => {
 beforeEach(() => {
   state.config = undefined;
   state.dockOpen = false;
+  state.activeChat = null;
+  publishDockNewChatDraftOpen(false);
   resetStartChoicesForTests();
   localStorage.clear();
   sessionStorage.clear();
@@ -447,7 +453,8 @@ function HomeWithDockToggle() {
   );
 }
 
-test('Home yields its start surface to the open dock and restores the held draft', () => {
+test('Home yields its start surface to an open dock showing a chat and restores the held draft', () => {
+  state.activeChat = 'chat-1';
   render(<HomeWithDockToggle />);
   fireEvent.change(
     screen.getByRole('textbox', { name: 'What would you like done?' }),
@@ -465,6 +472,31 @@ test('Home yields its start surface to the open dock and restores the held draft
       }) as HTMLTextAreaElement
     ).value,
   ).toBe('Keep my Home draft');
+});
+
+// #5493: an open dock with no chat in it has no composer of its own, so Home
+// keeps its start surface rather than leaving the page with none.
+test('Home keeps its start surface beside an open dock with no chat in it', () => {
+  render(<HomeWithDockToggle />);
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle dock' }));
+  expect(state.dockOpen).toBe(true);
+  const box = screen.getByRole('textbox', {
+    name: 'What would you like done?',
+  });
+  expect(box.closest('[hidden]')).toBeNull();
+  expect(screen.getByRole('form', { name: 'Start work' })).toBeTruthy();
+});
+
+// …and steps aside again for the dock's own New chat draft opened from that
+// empty dock, so the page never shows two start composers.
+test('Home yields to a New chat draft opened in an empty dock, and returns when it closes', () => {
+  render(<HomeWithDockToggle />);
+  fireEvent.click(screen.getByRole('button', { name: 'Toggle dock' }));
+  expect(screen.getByRole('form', { name: 'Start work' })).toBeTruthy();
+  act(() => publishDockNewChatDraftOpen(true));
+  expect(screen.queryByRole('form', { name: 'Start work' })).toBeNull();
+  act(() => publishDockNewChatDraftOpen(false));
+  expect(screen.getByRole('form', { name: 'Start work' })).toBeTruthy();
 });
 
 test('a draft can choose an unavailable profile to configure another execution Station', async () => {

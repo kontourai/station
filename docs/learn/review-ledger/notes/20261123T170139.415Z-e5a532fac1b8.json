@@ -1,0 +1,7 @@
+{
+  "revision": "f86288c415a21320529747042e11987edf241066",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"AttentionCard.tsx changed only in two comments (the label is Mark done, read from the shared action model); the session API and acknowledgement semantics this page documents are unchanged.","inputs":["docs/reference/session-api.md","src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

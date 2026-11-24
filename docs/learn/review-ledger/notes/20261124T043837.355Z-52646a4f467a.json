@@ -1,0 +1,7 @@
+{
+  "revision": "9ef9244119d916718ece7ccfdb63c0148a24333b",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Rechecked after the window hook began replacing a window read from another event log and resetting the reader's place on a conversation switch: the page's outbound-queue and transcript window cache claims are unchanged.","inputs":["docs/design/offline-outbound-queue.md","src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]}
+  ]
+}

@@ -145,6 +145,8 @@ type OAuthFixture = {
   protectedRequestAuthorizations: Array<string | undefined>;
   protectedResponses: Array<{ method: string; status: number; body: string }>;
   protectedErrors: string[];
+  failEventDiscovery: () => void;
+  onlyAdvertiseEvents: (enabled: boolean) => void;
 };
 
 async function startOAuthFixture(): Promise<OAuthFixture> {
@@ -156,12 +158,19 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
     body: string;
   }> = [];
   const protectedErrors: string[] = [];
+  let eventCatalogAvailable = true;
+  let eventsOnly = false;
   const mcpHandler = createMcpHandler(
     () => {
-      const server = new McpServer({
-        name: 'oauth-runtime-proof',
-        version: '1.0.0',
-      });
+      const server = new McpServer(
+        { name: 'oauth-runtime-proof', version: '1.0.0' },
+        {
+          capabilities: {
+            extensions: { 'io.modelcontextprotocol/events': {} },
+          },
+        },
+      );
+      if (eventsOnly) return server;
       server.registerTool(
         'proof',
         {
@@ -244,6 +253,39 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
             },
           });
         }
+        if (request.headers.get('mcp-method') === 'events/list') {
+          const body = await request.json();
+          const { id } = z.object({ id: z.number() }).parse(body);
+          expect(body).toMatchObject({
+            method: 'events/list',
+            params: {
+              _meta: {
+                'io.modelcontextprotocol/clientCapabilities': {
+                  extensions: { 'io.modelcontextprotocol/events': {} },
+                },
+              },
+            },
+          });
+          return Response.json({
+            jsonrpc: '2.0',
+            id,
+            ...(eventCatalogAvailable
+              ? {
+                  result: {
+                    resultType: 'complete',
+                    events: [
+                      {
+                        name: 'work.settled',
+                        title: 'Work settled',
+                        inputSchema: { type: 'object' },
+                        payloadSchema: { type: 'object' },
+                      },
+                    ],
+                  },
+                }
+              : { error: { code: -32000, message: 'private remote error' } }),
+          });
+        }
         let result: Response;
         try {
           result = await mcpHandler.fetch(request);
@@ -283,6 +325,12 @@ async function startOAuthFixture(): Promise<OAuthFixture> {
   );
   return {
     close: () => mcpHandler.close(),
+    onlyAdvertiseEvents: (enabled) => {
+      eventsOnly = enabled;
+    },
+    failEventDiscovery: () => {
+      eventCatalogAvailable = false;
+    },
     endpointBRequestAuthorizations,
     origin,
     protectedRequestAuthorizations,
@@ -468,6 +516,38 @@ test('real secured stack: authenticated paste-back reaches the runtime and no pu
     expect(await replayResponse.text()).toContain('No OAuth consent flow');
 
     await service.setEnabled('oauth-proof', true);
+
+    const eventPath = '/integrations/oauth-proof/events/discover';
+    expect(
+      await app.request(eventPath, { method: 'POST' }, loopbackEnv()),
+    ).toHaveProperty('status', 401);
+    fixture.onlyAdvertiseEvents(true);
+    const catalog = await app.request(
+      eventPath,
+      { method: 'POST', headers: operatorHeaders(false) },
+      loopbackEnv(),
+    );
+    expect(catalog.status).toBe(200);
+    expect(await catalog.json()).toEqual({
+      success: true,
+      data: {
+        supported: true,
+        events: [{ name: 'work.settled', title: 'Work settled' }],
+      },
+    });
+
+    fixture.onlyAdvertiseEvents(false);
+    fixture.failEventDiscovery();
+    const unavailable = await app.request(
+      eventPath,
+      { method: 'POST', headers: operatorHeaders(false) },
+      loopbackEnv(),
+    );
+    expect(unavailable.status).toBe(502);
+    expect(await unavailable.json()).toEqual({
+      success: false,
+      error: 'Could not read events from this tool server.',
+    });
     const resolveEngine = createEngineMcpOAuthResolver({
       homeDir: () => home,
       port: () => 43141,

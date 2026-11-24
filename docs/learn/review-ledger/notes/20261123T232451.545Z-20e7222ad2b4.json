@@ -1,0 +1,7 @@
+{
+  "revision": "cd9ced39a25a77313db29d070f76d1c00ce988d0",
+
+  "notes": [
+    {"path":"docs/guides/native-releases.md","note":"Reviewed Apple's installer validation feedback, the macOS 12 compile and bundle settings, and the readable embedded provisioning profile against the Store workflow and package signer.","inputs":["docs/guides/native-releases.md",".github/workflows/macos-store-delivery.yml","ops/release/macos-store-stage.mjs"]}
+  ]
+}

@@ -446,7 +446,7 @@ test('a UI milestone remains the same mounted node while an adjacent batch toggl
   expect(screen.getByText('Milestone reached')).toBe(milestone);
 });
 
-test('a collapsed run still surfaces Allow Once under the summary', async () => {
+test('a collapsed run still surfaces Allow once under the summary', async () => {
   const onToolApproval = vi.fn();
   render(
     <MessageContent
@@ -480,13 +480,13 @@ test('a collapsed run still surfaces Allow Once under the summary', async () => 
   expect(
     await screen.findByRole('button', { name: /1 file read, 1 file edit/ }),
   ).toBeTruthy();
-  expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: 'Allow once' })).toHaveLength(1);
   fireEvent.click(
     screen.getByRole('button', { name: /1 file read, 1 file edit/ }),
   );
   expect(await screen.findByText('Edit secrets.env')).toBeTruthy();
-  expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(1);
-  fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
+  expect(screen.getAllByRole('button', { name: 'Allow once' })).toHaveLength(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Allow once' }));
   expect(onToolApproval).toHaveBeenCalled();
 });
 

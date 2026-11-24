@@ -154,7 +154,7 @@ export function AttentionHistoryItem({
             >
               {formatNotificationTime(item.updatedAt)}
             </time>
-            <RowMenu items={[...menuItems, ...dismissItem]} />
+            <RowMenu items={[...dismissItem, ...menuItems]} />
           </span>
         </div>
         <div className="notification-history__item-title">{item.title}</div>

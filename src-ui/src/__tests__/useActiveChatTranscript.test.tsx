@@ -4775,6 +4775,351 @@ describe('useActiveChatTranscript', () => {
       expect(fetchWindow).toHaveBeenCalledTimes(3);
     });
 
+    // The counterpart: a reader away from the end keeps what is held across
+    // reloads, so the rows they read never leave the window; back at the
+    // end, the next reload returns it to the bounded page.
+    test('a reader away from the end keeps what is held until they are back at the end', async () => {
+      const starts = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_, offset) =>
+          event(`e${from + offset}`, 'turn.started', {
+            turnId: `turn-${from + offset}`,
+            prompt: `Q${from + offset}`,
+          }),
+        );
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 10,
+          hasMore: true,
+          nextCursor: 'below-6',
+          events: starts(6, 10),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 12,
+          hasMore: true,
+          nextCursor: 'below-8',
+          events: starts(8, 12),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 14,
+          hasMore: true,
+          nextCursor: 'below-10',
+          events: starts(10, 14),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://reader-away.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([6, 7, 8, 9, 10]),
+      );
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'turn-6' }),
+      );
+      rerender({ revision: 1 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([
+          6, 7, 8, 9, 10, 11, 12,
+        ]),
+      );
+      act(() => result.current.setReaderPlace({ away: false }));
+      rerender({ revision: 2 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([10, 11, 12, 13, 14]),
+      );
+      expect(result.current.hasMore).toBe(true);
+    });
+
+    // Away for hours, the kept window is bounded by turns, and trimmed only
+    // above the turn the reader is reading.
+    test('a window kept for a reader away is capped above the turn they read', async () => {
+      const starts = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_, offset) =>
+          event(`e${from + offset}`, 'turn.started', {
+            turnId: `turn-${from + offset}`,
+            prompt: `Q${from + offset}`,
+          }),
+        );
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 200,
+          hasMore: true,
+          nextCursor: 'below-1',
+          events: starts(1, 200),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 210,
+          hasMore: true,
+          nextCursor: 'below-195',
+          events: starts(195, 210),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://reader-away-cap.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.events).toHaveLength(200));
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'turn-150' }),
+      );
+      rerender({ revision: 1 });
+      // 210 turns held: the oldest 10 go, all far above turn 150.
+      await waitFor(() => expect(sequences(result.current.events)[0]).toBe(11));
+      expect(result.current.events).toHaveLength(200);
+      expect(sequences(result.current.events).at(-1)).toBe(210);
+    });
+
+    // The cap never reaches the turn being read, nor the five turns above it.
+    test('a trim at the cap keeps the five turns above the turn being read', async () => {
+      const starts = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_, offset) =>
+          event(`e${from + offset}`, 'turn.started', {
+            turnId: `turn-${from + offset}`,
+            prompt: `Q${from + offset}`,
+          }),
+        );
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 200,
+          hasMore: true,
+          nextCursor: 'below-1',
+          events: starts(1, 200),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 210,
+          hasMore: true,
+          nextCursor: 'below-195',
+          events: starts(195, 210),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://reader-away-margin.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.events).toHaveLength(200));
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'turn-8' }),
+      );
+      rerender({ revision: 1 });
+      // 210 turns held, 10 over the cap, but only turns 1 and 2 lie more than
+      // five above turn 8: the window keeps turns 3 to 210.
+      await waitFor(() => expect(sequences(result.current.events)[0]).toBe(3));
+      expect(sequences(result.current.events)).toEqual(
+        Array.from({ length: 208 }, (_, offset) => offset + 3),
+      );
+    });
+
+    // A Station whose event log was replaced answers with a log the held
+    // events are not in: a reader away from the end keeps none of them.
+    const storeEvents = (store: string, from: number, to: number) =>
+      Array.from({ length: to - from + 1 }, (_, offset) =>
+        event(`${store}-e${from + offset}`, 'turn.started', {
+          turnId: `${store}-turn-${from + offset}`,
+          prompt: `${store} Q${from + offset}`,
+        }),
+      );
+    const eventIds = (events: readonly { event: { eventId?: string } }[]) =>
+      events.map((item) => item.event.eventId);
+
+    test('a replaced event log replaces what a reader away from the end holds', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 50,
+          hasMore: true,
+          nextCursor: 'below-46',
+          events: storeEvents('old', 46, 50),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 3,
+          hasMore: false,
+          events: storeEvents('new', 1, 3),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://replaced-log-away.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.events).toHaveLength(5));
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'old-turn-46' }),
+      );
+      rerender({ revision: 1 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(eventIds(result.current.events)).toEqual([
+          'new-e1',
+          'new-e2',
+          'new-e3',
+        ]),
+      );
+      expect(result.current.hasMore).toBe(false);
+    });
+
+    // A replaced log whose head has passed what is held still numbers a
+    // shared event differently.
+    test('a shared event at another sequence replaces what a reader away holds', async () => {
+      const renumbered = storeEvents('old', 49, 50).map((item, offset) => ({
+        ...item,
+        sequence: 61 + offset,
+      }));
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 50,
+          hasMore: true,
+          nextCursor: 'below-46',
+          events: storeEvents('old', 46, 50),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 62,
+          hasMore: true,
+          nextCursor: 'below-61',
+          events: renumbered,
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://replaced-log-renumbered.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.events).toHaveLength(5));
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'old-turn-46' }),
+      );
+      rerender({ revision: 1 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([61, 62]),
+      );
+    });
+
+    test('a replaced event log replaces the older pages a reader loaded', async () => {
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 50,
+          hasMore: true,
+          nextCursor: 'below-46',
+          events: storeEvents('old', 46, 50),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 50,
+          hasMore: false,
+          events: storeEvents('old', 41, 45),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 3,
+          hasMore: false,
+          events: storeEvents('new', 1, 3),
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://replaced-log-older.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.events).toHaveLength(5));
+      await act(async () => {
+        await result.current.loadOlder();
+      });
+      await waitFor(() => expect(result.current.events).toHaveLength(10));
+      rerender({ revision: 1 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(3));
+      await waitFor(() =>
+        expect(eventIds(result.current.events)).toEqual([
+          'new-e1',
+          'new-e2',
+          'new-e3',
+        ]),
+      );
+    });
+
+    // The reader's place is the last conversation's list's; a switch leaves
+    // the next conversation's window bounded.
+    test('a switch to another conversation forgets that the reader was away', async () => {
+      const starts = (from: number, to: number) =>
+        Array.from({ length: to - from + 1 }, (_, offset) =>
+          event(`e${from + offset}`, 'turn.started', {
+            turnId: `turn-${from + offset}`,
+            prompt: `Q${from + offset}`,
+          }),
+        );
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 10,
+          hasMore: true,
+          nextCursor: 'below-6',
+          events: starts(6, 10),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 5,
+          hasMore: true,
+          nextCursor: 'below-1',
+          events: starts(1, 5),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 7,
+          hasMore: true,
+          nextCursor: 'below-3',
+          events: starts(3, 7),
+        });
+      const { result, rerender } = renderHook(
+        ({ id, revision }) =>
+          useActiveChatTranscript('http://reader-away-switch.test', {
+            ...baseSession,
+            id,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { id: 'thread-1', revision: 0 } },
+      );
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([6, 7, 8, 9, 10]),
+      );
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'turn-6' }),
+      );
+      rerender({ id: 'thread-2', revision: 0 });
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([1, 2, 3, 4, 5]),
+      );
+      rerender({ id: 'thread-2', revision: 1 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(3));
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([3, 4, 5, 6, 7]),
+      );
+    });
+
     // A finished turn is followed by a turnless `session.state-changed`, and a
     // steer re-announces the turn mid-way: neither may hide where it started.
     test('a finished, steered turn still reads whole', async () => {

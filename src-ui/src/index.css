@@ -7165,6 +7165,10 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     > :is([data-region="left"], [data-region="right"]).is-maximized
   ) {
     grid-template-columns: minmax(0, 1fr);
+    /* The bottom shell is hidden too, but its track kept its size, so an open
+       Bottom region left an empty band under the maximized side dock (#5493).
+       Drop that row, as a maximized bottom dock does below. */
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .app__main:has(

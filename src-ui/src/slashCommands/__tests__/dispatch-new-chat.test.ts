@@ -178,5 +178,41 @@ describe('/new and /clear', () => {
       role: 'system',
       content: '/clear isn’t a Station command. Use /new for a new chat.',
     });
+    // Not a command that ran: the line stays in the composer (#5491).
+    expect(updateChat).not.toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({ input: '' }),
+    );
+  });
+
+  test("an Agent's own command refused before it runs keeps its line", async () => {
+    const { result, addEphemeralMessage, updateChat } = run(
+      '/deploy',
+      undefined,
+      'ollama',
+      {
+        agents: [
+          {
+            slug: 'station',
+            name: 'Station',
+            commands: {
+              deploy: {
+                prompt: 'Deploy to {{env}}',
+                params: [{ name: 'env', required: true }],
+              },
+            },
+          },
+        ],
+      },
+    );
+    await expect(result).resolves.toBe(true);
+    expect(addEphemeralMessage).toHaveBeenCalledWith('session-1', {
+      role: 'system',
+      content: '/deploy didn’t run. Enter a value for env',
+    });
+    expect(updateChat).not.toHaveBeenCalledWith(
+      'session-1',
+      expect.objectContaining({ input: '' }),
+    );
   });
 });
