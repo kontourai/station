@@ -414,7 +414,7 @@ test('approval review binds selected Project/expiry/supersession and client meta
     base,
   );
   const global = await create(h, { ...action, project: { kind: 'global' } });
-  expect(global.html).toContain('All Projects (global)');
+  expect(global.html).toContain('Work outside Projects');
   const target = JSON.parse(base);
   expect(target).toMatchObject({
     clientId: h.client.id,

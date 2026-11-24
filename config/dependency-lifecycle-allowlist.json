@@ -15,8 +15,8 @@
       "platform": { "os": [], "cpu": [] },
       "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
       "purl": "pkg:npm/esbuild@0.25.12",
-      "reviewedAt": "2026-08-25",
-      "expiresAt": "2026-11-23",
+      "reviewedAt": "2026-11-24",
+      "expiresAt": "2027-02-22",
       "recheck": "dependency refresh, advisory, or platform build change",
       "triggers": [
         "dependency refresh",
@@ -38,8 +38,8 @@
       "platform": { "os": [], "cpu": [] },
       "artifact": { "path": "bin/esbuild", "proof": "esbuild-version" },
       "purl": "pkg:npm/esbuild@0.25.12",
-      "reviewedAt": "2026-08-25",
-      "expiresAt": "2026-11-23",
+      "reviewedAt": "2026-11-24",
+      "expiresAt": "2027-02-22",
       "recheck": "dependency refresh, advisory, or platform build change",
       "triggers": [
         "dependency refresh",
@@ -70,8 +70,8 @@
         "proof": "no-build-fallback"
       },
       "purl": "pkg:npm/cpu-features@0.0.10",
-      "reviewedAt": "2026-08-25",
-      "expiresAt": "2026-11-23",
+      "reviewedAt": "2026-11-24",
+      "expiresAt": "2027-02-22",
       "recheck": "dependency refresh, advisory, or platform build change",
       "triggers": [
         "dependency refresh",
@@ -116,8 +116,8 @@
       "platform": { "os": ["darwin"], "cpu": [] },
       "artifact": { "path": "fsevents.node", "proof": "fsevents-watch" },
       "purl": "pkg:npm/fsevents@2.3.3",
-      "reviewedAt": "2026-08-25",
-      "expiresAt": "2026-11-23",
+      "reviewedAt": "2026-11-24",
+      "expiresAt": "2027-02-22",
       "recheck": "dependency refresh, advisory, or platform build change",
       "triggers": [
         "dependency refresh",
@@ -177,8 +177,8 @@
         "proof": "no-build-fallback"
       },
       "purl": "pkg:npm/libxmljs2@0.37.0",
-      "reviewedAt": "2026-08-25",
-      "expiresAt": "2026-11-23",
+      "reviewedAt": "2026-11-24",
+      "expiresAt": "2027-02-22",
       "recheck": "dependency refresh, advisory, or platform build change",
       "triggers": [
         "dependency refresh",
@@ -236,8 +236,8 @@
         "proof": "node-pty-smoke"
       },
       "purl": "pkg:npm/node-pty@1.2.0-beta.18",
-      "reviewedAt": "2026-11-05",
-      "expiresAt": "2026-11-23",
+      "reviewedAt": "2026-11-24",
+      "expiresAt": "2026-12-12",
       "recheck": "dependency refresh, advisory, or platform build change",
       "triggers": [
         "dependency refresh",
@@ -266,8 +266,8 @@
         "proof": "no-build-fallback"
       },
       "purl": "pkg:npm/protobufjs@7.6.5",
-      "reviewedAt": "2026-08-25",
-      "expiresAt": "2026-11-23",
+      "reviewedAt": "2026-11-24",
+      "expiresAt": "2027-02-22",
       "recheck": "dependency refresh, advisory, or platform build change",
       "triggers": [
         "dependency refresh",
@@ -293,8 +293,8 @@
         "proof": "no-build-fallback"
       },
       "purl": "pkg:npm/ssh2@1.17.0",
-      "reviewedAt": "2026-08-25",
-      "expiresAt": "2026-11-23",
+      "reviewedAt": "2026-11-24",
+      "expiresAt": "2027-02-22",
       "recheck": "dependency refresh, advisory, or platform build change",
       "triggers": [
         "dependency refresh",

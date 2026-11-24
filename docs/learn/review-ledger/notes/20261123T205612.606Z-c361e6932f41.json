@@ -1,0 +1,9 @@
+{
+  "revision": "1eb2cd05204aaa44040420f1f7b1bd0becae0d69",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed the literal type for the streaming request used by the revocation regression. The runtime fixture bytes and checks remain the same.","inputs":["src-server/routes/outside-agent/__tests__/mcp-routes.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the literal type for the streaming request used by the revocation regression. The runtime fixture bytes and checks remain the same.","inputs":["src-server/routes/outside-agent/__tests__/mcp-routes.test.ts"]}
+  ]
+}
