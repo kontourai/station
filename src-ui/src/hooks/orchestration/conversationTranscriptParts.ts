@@ -43,6 +43,7 @@ export function conversationPartToContentParts(
       ? { stationControlRefusal: part.stationControlRefusal }
       : {}),
     ...(part.outputTruncated ? { outputTruncated: true } : {}),
+    ...(part.modelReroute ? { modelReroute: part.modelReroute } : {}),
     error: part.error,
     cancelled: part.cancelled,
     state: part.state,

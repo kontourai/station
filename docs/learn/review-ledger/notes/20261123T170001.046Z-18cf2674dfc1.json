@@ -1,0 +1,7 @@
+{
+  "revision": "f86288c415a21320529747042e11987edf241066",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"The only change to tool-request-preview.ts is a code comment now spelling the approval label Allow once; the compaction and delivery behaviour this page states is unchanged.","inputs":["docs/conformance/tool-policy-delivery.md","packages/shared/src/tool-request-preview.ts"]}
+  ]
+}

@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  *
- * #2316: the inline approval card (Allow Once / Always Allow / Deny) must
+ * #2316: the inline approval card (Allow once / Always Allow / Deny) must
  * answer an orchestration session's request through orchestration
  * `respondToRequest` — on the session that opened the request — and must say
  * so when the answer does not land.
@@ -212,7 +212,7 @@ function stubFetch(
   return calls;
 }
 
-const MORE = 'More ways to allow this request';
+const MORE = 'Allow for this session';
 
 /**
  * The session choices live behind the row's overflow menu (#3045): opens the
@@ -330,7 +330,7 @@ describe('#2316 inline approval card', () => {
       }),
     );
     const first = renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow once' }));
     // The chosen button carries the in-flight state; no sentence repeats it.
     await screen.findByRole('button', { name: 'Check status' });
     expect(screen.getByRole('button', { name: 'Allowing…' })).toBeTruthy();
@@ -365,7 +365,7 @@ describe('#2316 inline approval card', () => {
     ];
     second.rerender();
     await waitFor(() =>
-      expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull(),
+      expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull(),
     );
   });
 
@@ -387,12 +387,12 @@ describe('#2316 inline approval card', () => {
           }),
     );
     const first = renderCard();
-    fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow once' }));
     await screen.findByText(/Delivery is not confirmed/);
     first.unmount();
     renderCard();
     expect(
-      (await screen.findByRole('button', { name: 'Allow Once' })).hasAttribute(
+      (await screen.findByRole('button', { name: 'Allow once' })).hasAttribute(
         'disabled',
       ),
     ).toBe(true);
@@ -404,7 +404,7 @@ describe('#2316 inline approval card', () => {
   });
 
   test.each([
-    ['Allow Once', 'accept'],
+    ['Allow once', 'accept'],
     // #2316 review: the same words as the toast for the same grant — every
     // later Bash call in this session, not "always".
     ['Allow all Bash commands for this session', 'acceptForSession'],
@@ -470,7 +470,7 @@ describe('#2316 inline approval card', () => {
     stubFetch(failure);
     renderCard();
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow once' }));
 
     // The card's own alert (the transcript may carry unrelated ones, e.g.
     // a lazy Task action that did not load in this environment).
@@ -483,7 +483,7 @@ describe('#2316 inline approval card', () => {
     if (_case !== 'the network fails')
       expect(alert.closest('[role="alert"]')?.textContent).toMatch(reason);
     // The request is still open: the card must not pretend it is settled.
-    for (const name of ['Allow Once', 'Deny']) {
+    for (const name of ['Allow once', 'Deny']) {
       expect(
         (screen.getByRole('button', { name }) as HTMLButtonElement).disabled,
       ).toBe(_case === 'the network fails');
@@ -541,7 +541,7 @@ describe('#2316 inline approval card', () => {
       </QueryClientProvider>,
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Allow once' }));
 
     const alert = await screen.findByText(/Your decision was not delivered/);
     expect(alert.closest('[role="alert"]')).not.toBeNull();
@@ -632,7 +632,7 @@ describe('#2316 inline approval card', () => {
         return entry;
       });
       renderCard();
-      await screen.findByRole('button', { name: 'Allow Once' });
+      await screen.findByRole('button', { name: 'Allow once' });
       expect((await grantLabels())[0]).toBe(label);
     },
   );
@@ -671,7 +671,7 @@ describe('#2316 inline approval card', () => {
       const calls = stubFetch(() => Response.json({ success: true, data: {} }));
       withClaudeBash([rule('npm ls *')]);
       renderCard();
-      await screen.findByRole('button', { name: 'Allow Once' });
+      await screen.findByRole('button', { name: 'Allow once' });
       expect(await grantLabels()).toEqual([PREFIX, WHOLE]);
       await pickGrant(PREFIX);
       await waitFor(() => expect(calls).toHaveLength(1));
@@ -681,6 +681,22 @@ describe('#2316 inline approval card', () => {
         decision: 'acceptForSession',
         sessionGrantScope: 'rule',
       });
+    });
+
+    test('chat-14: Allow once and Deny are the only labelled buttons, and the grants sit in one menu', async () => {
+      stubFetch(() => Response.json({ success: true, data: {} }));
+      withClaudeBash([rule('npm ls *')]);
+      renderCard();
+      const allow = await screen.findByRole('button', { name: 'Allow once' });
+      const row = allow.closest<HTMLElement>('.approval-decision-row');
+      if (!row) throw new Error('no approval row');
+      const labelled = within(row)
+        .getAllByRole('button')
+        .filter((button) => button.getAttribute('aria-haspopup') !== 'menu')
+        .map((button) => button.textContent);
+      expect(labelled).toEqual(['Deny', 'Allow once']);
+      expect(within(row).getByRole('button', { name: MORE })).toBeTruthy();
+      expect(await grantLabels()).toEqual([PREFIX, WHOLE]);
     });
 
     test('the whole-tool choice sends no scope', async () => {
@@ -700,7 +716,7 @@ describe('#2316 inline approval card', () => {
       stubFetch(() => Response.json({ success: true, data: {} }));
       withClaudeBash(suggestions);
       renderCard();
-      await screen.findByRole('button', { name: 'Allow Once' });
+      await screen.findByRole('button', { name: 'Allow once' });
       expect(await grantLabels()).toEqual([WHOLE]);
     });
 
@@ -723,7 +739,7 @@ describe('#2316 inline approval card', () => {
         };
       });
       renderCard();
-      await screen.findByRole('button', { name: 'Allow Once' });
+      await screen.findByRole('button', { name: 'Allow once' });
       expect(await grantLabels()).toEqual([WHOLE]);
     });
   });
@@ -805,7 +821,7 @@ describe('#2316 inline approval card', () => {
       stubFetch(() => Response.json({ success: true, data: {} }));
       useBrowserCall(false);
       renderCard();
-      await screen.findByRole('button', { name: 'Allow Once' });
+      await screen.findByRole('button', { name: 'Allow once' });
       expect(await grantLabels()).toEqual([
         'Allow all station-browser.browser_click calls for this session',
       ]);
@@ -815,7 +831,7 @@ describe('#2316 inline approval card', () => {
     test('an ordinary tool card never shows it', async () => {
       stubFetch(() => Response.json({ success: true, data: {} }));
       renderCard();
-      await screen.findByRole('button', { name: 'Allow Once' });
+      await screen.findByRole('button', { name: 'Allow once' });
       expect(await grantLabels()).toEqual([
         'Allow all Bash commands for this session',
       ]);
@@ -865,7 +881,7 @@ describe('#2316 inline approval card', () => {
       stubFetch(() => Response.json({ success: true, data: {} }));
       useMarkedRequest(false);
       renderCard();
-      await screen.findByRole('button', { name: 'Allow Once' });
+      await screen.findByRole('button', { name: 'Allow once' });
       expect(await grantLabels()).toEqual([
         'Allow all Bash commands for this session',
       ]);
@@ -904,7 +920,7 @@ describe('#2316 inline approval card', () => {
       return entry;
     });
     renderCard();
-    await screen.findByRole('button', { name: 'Allow Once' });
+    await screen.findByRole('button', { name: 'Allow once' });
     expect(screen.getByRole('button', { name: 'Deny' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: MORE })).toBeNull();
   });
@@ -942,7 +958,7 @@ describe('#2316 inline approval card', () => {
       renderCard();
 
       fireEvent.click(
-        await screen.findByRole('button', { name: 'Allow Once' }),
+        await screen.findByRole('button', { name: 'Allow once' }),
       );
 
       const status = await screen.findByText('Already answered.');
@@ -976,7 +992,7 @@ describe('#2316 inline approval card', () => {
       renderCard();
 
       fireEvent.click(
-        await screen.findByRole('button', { name: 'Allow Once' }),
+        await screen.findByRole('button', { name: 'Allow once' }),
       );
 
       const alert = await screen.findByText(/Your decision was not delivered/);
@@ -1004,7 +1020,7 @@ describe('#2316 inline approval card', () => {
       renderCard();
 
       fireEvent.click(
-        await screen.findByRole('button', { name: 'Allow Once' }),
+        await screen.findByRole('button', { name: 'Allow once' }),
       );
 
       const alert = await screen.findByText(/Your decision was not delivered/);
@@ -1081,11 +1097,11 @@ describe('#2316 inline approval card', () => {
       name: 'Approvals waiting on you',
     });
     // Exactly one card offers buttons: the strip's.
-    expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(
+    expect(screen.getAllByRole('button', { name: 'Allow once' })).toHaveLength(
       1,
     );
     expect(
-      within(strip).getByRole('button', { name: 'Allow Once' }),
+      within(strip).getByRole('button', { name: 'Allow once' }),
     ).toBeTruthy();
   });
 
@@ -1168,7 +1184,7 @@ describe('#2316 inline approval card', () => {
         stubFetch(() => Response.json({ success: true, data: {} }));
         renderCard();
         await screen.findByText(/Review the plugin with a subagent/);
-        expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
         expect(
           screen.queryByRole('region', { name: 'Approvals waiting on you' }),
         ).toBeNull();
@@ -1234,7 +1250,7 @@ describe('#2316 inline approval card', () => {
         name: 'Approvals waiting on you',
       });
       expect(
-        within(strip).getByRole('button', { name: 'Allow Once' }),
+        within(strip).getByRole('button', { name: 'Allow once' }),
       ).toBeTruthy();
       // Not a message row: no message anchor holds it, and no transcript row
       // was invented for it.
@@ -1500,7 +1516,7 @@ describe('#2316 inline approval card', () => {
     expect(
       screen.queryByRole('region', { name: 'Approvals waiting on you' }),
     ).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Allow once' }));
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]?.body).toMatchObject({
       requestId: 'req-claude-b',
@@ -1538,7 +1554,7 @@ describe('#2316 inline approval card', () => {
       renderCard();
 
       await screen.findByText('Later work');
-      expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
       expect(
         screen.queryByRole('region', { name: 'Approvals waiting on you' }),
       ).toBeNull();
@@ -1562,7 +1578,7 @@ describe('#2316 inline approval card', () => {
     renderCard();
     expect(await screen.findByText('Cancelled')).toBeTruthy();
     expect(screen.queryByText('No result recorded')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
   });
 
   test('a request on the turn the live streaming shell holds is answerable from the strip', async () => {
@@ -1580,7 +1596,7 @@ describe('#2316 inline approval card', () => {
     const strip = await screen.findByRole('region', {
       name: 'Approvals waiting on you',
     });
-    fireEvent.click(within(strip).getByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(within(strip).getByRole('button', { name: 'Allow once' }));
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]?.body).toMatchObject({
       threadId: 'claude-child-b',

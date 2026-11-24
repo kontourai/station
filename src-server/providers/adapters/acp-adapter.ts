@@ -3756,37 +3756,28 @@ export class AcpAdapter implements ProviderAdapterShape {
     } else if (context?.inputContent !== undefined)
       throw new Error('This request does not accept question answers.');
 
+    const allScoped =
+      decision === 'acceptForSession' && context?.sessionGrantScope === 'all';
+    const allGrant = allScoped && pending.allOffered === true;
+    if (
+      allScoped &&
+      !allGrant &&
+      !pending.options.some(({ kind }) => kind === 'allow_once')
+    ) {
+      // The usual accept mapping falls back to allow-always. Leave this
+      // request open so the person can choose an option the engine offered.
+      throw new Error('This ACP request does not offer Allow once.');
+    }
     record.pendingRequests.delete(requestId);
     // #2933: a plan exit is answered for this call only: no session grant is
     // minted, and the agent is sent its allow-once option, not allow-always.
     const effective =
-      decision === 'acceptForSession' && pending.needsPerson
+      decision === 'acceptForSession' &&
+      (pending.needsPerson || (allScoped && !allGrant))
         ? 'accept'
         : decision;
-    // `all` is Station's own session-wide grant and nothing else: the agent
-    // is sent its allow-once option (an engine that cached allow-always
-    // would stop asking, past later policy and mode changes), and no tool or
-    // edit grant is minted, so an approval-mode change ends all of it. Only
-    // where the request offered it: an `all` answer to any other request is
-    // a one-call accept that grants nothing.
-    const allScoped =
-      effective === 'acceptForSession' && context?.sessionGrantScope === 'all';
-    const allGrant = allScoped && pending.allOffered === true;
-    if (allScoped && !allGrant) {
-      pending.resolve('accept', content);
-      this.publish({
-        eventId: crypto.randomUUID(),
-        provider: this.provider,
-        threadId,
-        createdAt: new Date().toISOString(),
-        ...pending.origin,
-        requestId,
-        method: 'request.resolved',
-        status: mapAcpDecisionToApprovalStatus(decision),
-        acknowledgement: this.metadata.approvalAcknowledgement,
-      });
-      return;
-    }
+    // Station owns the all-tools grant. Sending allow-once keeps the engine
+    // from caching a permission across later approval-mode changes.
     if (allGrant) {
       record.allApproved = true;
     } else if (effective === 'acceptForSession' && pending.governedEdit) {

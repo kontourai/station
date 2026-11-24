@@ -2,6 +2,10 @@ import type {
   InputRequestDecisionBody,
   InputRequestDecisionOption,
 } from '@kontourai/station-contracts/input-request';
+import {
+  APPROVAL_SESSION_GRANTS_MENU_LABEL,
+  approvalDecisionLayout,
+} from '@kontourai/station-shared/input-request';
 import { ActionRow } from '../ActionRow';
 import { Button } from '../Button';
 import './InputRequestDecision.css';
@@ -37,7 +41,7 @@ function approvalActionForOption(
     : 'once';
 }
 
-/** Desktop: keep the one-call decision visible and standing grants in the overflow. */
+/** Desktop: keep the one-call decision visible and the session grants in the menu. */
 export function DecisionButtons({
   body,
   busy,
@@ -59,14 +63,15 @@ export function DecisionButtons({
       inFlight={inFlight}
       chosen={chosen}
       onChoose={onChoose}
-      overflowLabel="More ways to allow this request"
     />
   );
 }
 
 /**
- * The request sheet's pinned actions (#3331): deny is the secondary action,
- * the one-call allow the primary, and a session allow sits in the overflow.
+ * The approval's actions (chat-14), on the inline card and pinned in the
+ * request sheet (#3331): Deny is the secondary action, Allow once the primary,
+ * and every session grant the request offered sits in one menu named
+ * "Allow for this session" (`approvalDecisionLayout`).
  */
 export function DecisionActionRow({
   body,
@@ -74,27 +79,19 @@ export function DecisionActionRow({
   inFlight,
   chosen,
   onChoose,
-  overflowLabel = 'More approval options',
 }: {
   body: InputRequestDecisionBody;
   busy: boolean;
   inFlight: boolean;
   chosen?: ApprovalAction;
-  overflowLabel?: string;
   onChoose: (action: ApprovalAction) => void;
 }) {
   useDecisionSurface('tool-approval-decision');
-  const deny = body.options.find((option) => option.effect === 'deny');
-  const once = body.options.find(
-    (option) => option.effect === 'allow' && option.scope === 'once',
-  );
-  const rest = body.options.filter(
-    (option) => option !== deny && option !== once,
-  );
+  const { once, deny, sessionGrants } = approvalDecisionLayout(body);
   return (
     <ActionRow
       className="approval-decision-row"
-      overflowLabel={overflowLabel}
+      overflowLabel={APPROVAL_SESSION_GRANTS_MENU_LABEL}
       secondary={
         deny ? (
           <Button
@@ -123,7 +120,7 @@ export function DecisionActionRow({
           </Button>
         ) : undefined
       }
-      overflow={rest.map((option) => ({
+      overflow={sessionGrants.map((option) => ({
         key: option.id,
         label: option.label,
         disabled: busy,

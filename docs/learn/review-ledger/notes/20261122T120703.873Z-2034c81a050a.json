@@ -1,0 +1,7 @@
+{
+  "revision": "01a97e852e404f8815d5734534fb12104f8aea1e",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Slice 4.10 fix round: the approval toast now orders Deny (outline tone), Allow once, then the 'Allow for this session' menu, matching the card and sheet; decisions and typed scopes are unchanged (approvalHandlers sends the same decisionOptionResponse and sessionGrantScope per option). The session-grant section's claims still hold. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts","src-ui/src/hooks/orchestration/approvalHandlers.ts"]}
+  ]
+}

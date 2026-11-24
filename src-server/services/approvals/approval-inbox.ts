@@ -657,7 +657,7 @@ export function wireApprovalInboxNotifications(
           : needsLoad
             ? [{ id: 'decline', label: 'Deny', variant: 'danger' }]
             : [
-                { id: 'accept', label: 'Allow Once', variant: 'primary' },
+                { id: 'accept', label: 'Allow once', variant: 'primary' },
                 ...(ruleGrant
                   ? [
                       {
@@ -766,7 +766,7 @@ export function wireApprovalInboxNotifications(
             body: formatRegistryApprovalBody(message.data),
             priority: 'high',
             actions: [
-              { id: 'accept', label: 'Allow Once', variant: 'primary' },
+              { id: 'accept', label: 'Allow once', variant: 'primary' },
               { id: 'decline', label: 'Deny', variant: 'danger' },
             ],
             dedupeTag:

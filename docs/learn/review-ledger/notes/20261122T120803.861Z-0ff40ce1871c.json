@@ -1,0 +1,7 @@
+{
+  "revision": "01a97e852e404f8815d5734534fb12104f8aea1e",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Slice 4.10 fix round: ToastAction gains a typed danger-outline tone and the approval queue closes an open toast menu when its requests change (NotificationContainer queueKey). Toast decisions still open the conversation; native push still carries no approval buttons. No prose change.","inputs":["docs/design/notification-delivery.md","src-ui/src/components/notifications/NotificationContainer.tsx","src-ui/src/contexts/ToastContext.tsx"]}
+  ]
+}

@@ -18,6 +18,16 @@ vi.mock('../slashCommands/builtins', async (importOriginal) => {
   return importOriginal();
 });
 
+// The dispatcher itself loads on demand too; when it fails, the handler says
+// so and keeps the typed line (#5491).
+const dispatcher = vi.hoisted(() => ({ fail: false }));
+
+vi.mock('../slashCommands/dispatch', async (importOriginal) => {
+  if (dispatcher.fail)
+    throw new Error('Failed to fetch dynamically imported module');
+  return importOriginal();
+});
+
 const mocks = vi.hoisted(() => ({
   chatState: {
     agentSlug: 'station',
@@ -82,6 +92,23 @@ beforeEach(() => {
   });
 });
 
+describe('when the command dispatcher fails to load', () => {
+  test('sends nothing, says so and keeps the typed line', async () => {
+    dispatcher.fail = true;
+    const run = mountHandler();
+    await expect(run('/chat')).resolves.toBe(true);
+    const message = mocks.addEphemeralMessage.mock.calls.at(-1)?.[1]?.content;
+    expect(message).toContain("Could not load Station's commands");
+    expect(message).toContain('/chat was not sent');
+    expect(mocks.updateChat).not.toHaveBeenCalledWith('session-1', {
+      input: '',
+    });
+    dispatcher.fail = false;
+    mocks.addEphemeralMessage.mockClear();
+    mocks.updateChat.mockClear();
+  });
+});
+
 describe('when the built-in commands chunk fails to load', () => {
   test('sends nothing and says so, then a later dispatch loads the commands', async () => {
     chunk.fail = true;
@@ -99,6 +126,10 @@ describe('when the built-in commands chunk fails to load', () => {
     expect(message).toContain("Could not load Station's built-in commands");
     expect(message).toContain('/chat was not sent');
     expect(message).toContain('Try again');
+    // Not sent: the line stays in the composer to send again (#5491).
+    expect(mocks.updateChat).not.toHaveBeenCalledWith('session-1', {
+      input: '',
+    });
 
     chunk.fail = false;
     mocks.addEphemeralMessage.mockClear();

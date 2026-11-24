@@ -259,6 +259,8 @@ export interface ChatMessage {
     htmlReply?: import('@kontourai/station-contracts/html-reply').HtmlReplyReference;
     claudeArtifact?: import('@kontourai/station-contracts/claude-artifact').ClaudeArtifactLink;
     stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
+    /** chat-24: see `MessagePart.modelReroute`. */
+    modelReroute?: import('@kontourai/station-shared/conversation-message').MessagePart['modelReroute'];
     appearanceProposal?: import('@kontourai/station-contracts/custom-appearance').CustomAppearanceProposalReference;
     error?: string;
     errorText?: string;

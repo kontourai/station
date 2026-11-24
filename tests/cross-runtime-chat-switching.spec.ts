@@ -1011,7 +1011,7 @@ function dockComposer(page: Page) {
 /** Opens the inline draft through the inbox's New chat action. */
 async function openNewChatDraft(page: Page) {
   await page
-    .getByRole('complementary', { name: 'Inbox chats' })
+    .getByRole('complementary', { name: 'Chats' })
     .getByRole('button', { name: 'New chat', exact: true })
     .click();
   const draft = page.getByRole('region', { name: 'New chat', exact: true });
@@ -1043,7 +1043,7 @@ async function selectProductPath(page: Page, path: ProductPath) {
     runtimeName: path.runtimeName,
     project: path.project,
   });
-  const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
+  const chatList = page.getByRole('complementary', { name: 'Chats' });
   const activeChat = chatList.locator('button[aria-current="true"]');
   const projectContext = activeChat.locator('.inbox-row__project');
   await expect(activeChat).toBeVisible();
@@ -1104,10 +1104,10 @@ async function selectInventoryConversation(
     project,
   }: { title: string; runtimeName: string; project?: string },
 ) {
-  const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
+  const chatList = page.getByRole('complementary', { name: 'Chats' });
   // This journey reads conversations across Projects; the Inbox otherwise follows the page.
   await chatList
-    .getByRole('combobox', { name: 'Inbox scope' })
+    .getByRole('combobox', { name: 'Chat list scope' })
     .selectOption({ label: 'All work' });
   await openConversationHistoryFromInbox(chatList);
   await page
@@ -1127,9 +1127,11 @@ async function expectChatProject(page: Page, project: string) {
   // Whichever one this width presents, once it has rendered.
   await expect(card.or(chip).or(mobile).first()).toBeVisible();
   if (await mobile.isVisible()) {
-    const inbox = page.getByRole('region', { name: 'Inbox', exact: true });
+    const inbox = page.getByRole('region', { name: 'Chats', exact: true });
     if (!(await inbox.isVisible()))
-      await mobile.getByRole('button', { name: 'Inbox', exact: true }).click();
+      await mobile
+        .getByRole('button', { name: 'Chat list', exact: true })
+        .click();
     const current = inbox.locator('button[aria-current="true"]');
     const expectedProject = PROJECTS.find((entry) => entry.name === project);
     expect(expectedProject).toBeDefined();
@@ -1448,7 +1450,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
 
     await page.goto('/projects/alpha?dock=open&chat=conv-managed-alpha');
 
-    const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
+    const chatList = page.getByRole('complementary', { name: 'Chats' });
     await expandOpenShelf(chatList);
     await expect(
       chatList
@@ -1605,7 +1607,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       runtimeName: 'Claude Code',
       project: 'Alpha Project',
     });
-    const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
+    const chatList = page.getByRole('complementary', { name: 'Chats' });
     await expandOpenShelf(chatList);
     const textarea = page.locator('textarea[placeholder*="Type a message"]');
     const send = page.getByRole('button', { name: 'Send', exact: true });
@@ -1638,9 +1640,7 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
       runtimeName: 'Claude Code',
       project: 'Alpha Project',
     });
-    await expandOpenShelf(
-      page.getByRole('complementary', { name: 'Inbox chats' }),
-    );
+    await expandOpenShelf(page.getByRole('complementary', { name: 'Chats' }));
     await selectProductPath(page, path);
     const assistantRowsBefore = await assistantRows(page).count();
     const commandBinding = await submitExactTurn({
@@ -1667,12 +1667,10 @@ test.describe('P1-G5 cross-runtime chat switching proof', () => {
     await seedCrossRuntimeRoutes(page);
 
     await page.goto('/projects/alpha?dock=open&chat=conv-managed-alpha');
-    await expandOpenShelf(
-      page.getByRole('complementary', { name: 'Inbox chats' }),
-    );
+    await expandOpenShelf(page.getByRole('complementary', { name: 'Chats' }));
     await expect(
       page
-        .getByRole('complementary', { name: 'Inbox chats' })
+        .getByRole('complementary', { name: 'Chats' })
         .getByRole('button', { name: /^Station Chat/ })
         .and(page.locator('[aria-current="true"]')),
     ).toBeVisible({ timeout: 15_000 });
@@ -1700,7 +1698,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
     const executionRequests: ExecutionRequest[] = [];
     await seedCrossRuntimeRoutes(page, executionRequests);
     await page.goto('/projects/alpha?dock=open&chat=conv-managed-alpha');
-    const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
+    const chatList = page.getByRole('complementary', { name: 'Chats' });
     await expandOpenShelf(chatList);
     await expect(
       chatList
@@ -1719,7 +1717,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
     });
     await expect(page.locator('.chat-dock__project-badge')).toHaveCount(0);
     const openChatRows = chatList.getByRole('button', {
-      name: /^Dismiss .* from inbox$/,
+      name: /^Actions for /,
     });
     await expect(openChatRows).toHaveCount(6);
     const readOpenChats = () =>
@@ -1728,12 +1726,12 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
       );
     const sessionsBefore = await readOpenChats();
     expect(sessionsBefore).toEqual([
-      'Dismiss Claude Alpha Chat from inbox',
-      'Dismiss Codex Beta Chat from inbox',
-      'Dismiss Remember the exact token CEDAR-82. Reply only: CODEX_CONTEXT_OK from inbox',
-      'Dismiss Station Chat from inbox',
-      'Dismiss Unbound Station Chat from inbox',
-      'Dismiss kiro-cli Chat from inbox',
+      'Actions for Claude Alpha Chat',
+      'Actions for Codex Beta Chat',
+      'Actions for Remember the exact token CEDAR-82. Reply only: CODEX_CONTEXT_OK',
+      'Actions for Station Chat',
+      'Actions for Unbound Station Chat',
+      'Actions for kiro-cli Chat',
     ]);
     const activeBefore = new URL(page.url()).searchParams.get('chat');
     expect(activeBefore).toBeTruthy();
@@ -1845,7 +1843,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
         header.getByRole('button', { name: /^Switch project/ }),
       ).toHaveCount(0);
       const inboxToggle = header.getByRole('button', {
-        name: 'Inbox',
+        name: 'Chat list',
         exact: true,
       });
       const extent = header.getByRole('button', {
@@ -1875,7 +1873,7 @@ test.describe('chat-dock project selection (kontourai/station#793)', () => {
         contentType: 'image/png',
       });
       await inboxToggle.click();
-      const chats = page.getByRole('region', { name: 'Inbox', exact: true });
+      const chats = page.getByRole('region', { name: 'Chats', exact: true });
       await expect(chats).toBeVisible();
       await expect(chats.locator('.inbox-row__title').first()).toHaveCSS(
         'font-size',

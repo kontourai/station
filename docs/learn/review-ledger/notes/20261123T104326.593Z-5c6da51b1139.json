@@ -1,0 +1,7 @@
+{
+  "revision": "59c24b6fcfb264f9897e1aa934a54e4d10d4eb75",
+
+  "notes": [
+    {"path":"docs/glossary.md","note":"Checked Live lanes (SESSION_STATUS_WORDS) and composer-draft wording: the table no longer lists the delivery-unconfirmed word, which the glossary never named; an answered slash command no longer leaves a composer draft, consistent with the pencil marker definition.","inputs":["docs/glossary.md","packages/contracts/src/session-attention.ts"]}
+  ]
+}

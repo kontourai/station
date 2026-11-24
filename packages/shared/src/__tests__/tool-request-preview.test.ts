@@ -1584,7 +1584,7 @@ describe('the server-wide Station browser grant', () => {
   // Owner decision (2026-11-16): a person's session answer is offered on
   // every tool approval, escalations included. Captured from a real Claude
   // session at full access: Station's untrusted-content hook asked for a
-  // browser call after a page snapshot, and only Allow Once was offered.
+  // browser call after a page snapshot, and only Allow once was offered.
   test.each([
     [
       'a hook-forced ask (untrusted content read earlier in the turn)',

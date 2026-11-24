@@ -60,7 +60,7 @@ describe('the conversation approval sheet', () => {
       within(sheet).getByText(/^echo group-second\s+printf done$/),
     ).toBeTruthy();
     fireEvent.click(
-      within(sheet).getAllByRole('button', { name: 'Allow Once' })[1],
+      within(sheet).getAllByRole('button', { name: 'Allow once' })[1],
     );
     await waitFor(() =>
       expect(approve).toHaveBeenCalledWith(requests[1], 'once'),
@@ -68,13 +68,13 @@ describe('the conversation approval sheet', () => {
     expect(approve).toHaveBeenCalledTimes(1);
     expect(
       within(sheet)
-        .getAllByRole('button', { name: 'Allow Once' })[0]
+        .getAllByRole('button', { name: 'Allow once' })[0]
         .hasAttribute('disabled'),
     ).toBe(false);
   });
 
   // A view whose stream missed a resolution still lists the settled request.
-  // Answering it got "no longer open" under live Deny / Allow Once buttons,
+  // Answering it got "no longer open" under live Deny / Allow once buttons,
   // and the sheet kept it as the request to answer while the one actually
   // blocking the turn was not on it.
   test('a request Station reports already settled leaves the sheet and its count, and the view catches up', async () => {
@@ -97,7 +97,7 @@ describe('the conversation approval sheet', () => {
       name: 'Needs approval (2)',
     });
     fireEvent.click(
-      within(sheet).getAllByRole('button', { name: 'Allow Once' })[0],
+      within(sheet).getAllByRole('button', { name: 'Allow once' })[0],
     );
     await waitFor(() => expect(settledElsewhere).toHaveBeenCalledWith(stale));
     const updated = await screen.findByRole('dialog', {
@@ -110,7 +110,7 @@ describe('the conversation approval sheet', () => {
     expect(within(updated).queryByText('Already answered.')).toBeNull();
     expect(
       within(updated)
-        .getByRole('button', { name: 'Allow Once' })
+        .getByRole('button', { name: 'Allow once' })
         .hasAttribute('disabled'),
     ).toBe(false);
   });
@@ -187,7 +187,7 @@ describe('the conversation approval sheet', () => {
       </ApprovalSheetProvider>,
     );
     const sheet = await screen.findByRole('dialog');
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Allow once' }));
     await waitFor(() => expect(approve).toHaveBeenCalledTimes(1));
     fireEvent.click(
       within(sheet).getByRole('button', { name: 'Close and answer later' }),
@@ -250,7 +250,7 @@ describe('the conversation approval sheet', () => {
       );
       const sheet = await screen.findByRole('dialog');
       fireEvent.click(
-        within(sheet).getByRole('button', { name: 'Allow Once' }),
+        within(sheet).getByRole('button', { name: 'Allow once' }),
       );
       await within(sheet).findByText(/Delivery is not confirmed/);
       fireEvent.click(
@@ -271,7 +271,7 @@ describe('the conversation approval sheet', () => {
       const reopened = await screen.findByRole('dialog');
       expect(
         within(reopened)
-          .getByRole('button', { name: 'Allow Once' })
+          .getByRole('button', { name: 'Allow once' })
           .hasAttribute('disabled'),
       ).toBe(state === 'resolved');
       if (state === 'resolved')
@@ -498,6 +498,97 @@ describe('the conversation approval sheet', () => {
     expect(check).toHaveBeenCalledTimes(1);
   });
 
+  describe('each choice in the sheet sends its own action', () => {
+    const PREFIX = 'Allow "echo *" for this session';
+    const WHOLE = 'Allow all Bash commands for this session';
+    const BROWSER_TOOL =
+      'Allow all station-browser.browser_click calls for this session';
+    const BROWSER_SERVER = 'Allow the Station browser for this session';
+    /** A Bash ask offering the prefix and whole-tool grants, as projected. */
+    const bashAsk = (): PendingApprovalRequest => ({
+      ...request('sheet-bash'),
+      approvalToolName: 'Bash',
+      approvalSessionGrant: 'tool',
+      approvalRuleGrant: { rules: ['echo *'], label: PREFIX },
+    });
+    /** An authentic Station browser call, as projected. */
+    const browserCall = (): PendingApprovalRequest => ({
+      ...request('sheet-browser'),
+      toolName: 'mcp__station-browser__browser_click',
+      args: { ref: 'e1' },
+      approvalToolName: 'mcp__station-browser__browser_click',
+      approvalSessionGrant: 'tool',
+      approvalServerGrant: 'server',
+    });
+
+    test.each([
+      ['Deny', 'deny', bashAsk],
+      ['Allow once', 'once', bashAsk],
+      [PREFIX, 'trust-rule', bashAsk],
+      [WHOLE, 'trust', bashAsk],
+      [BROWSER_TOOL, 'trust', browserCall],
+      [BROWSER_SERVER, 'trust-server', browserCall],
+    ] as const)('"%s" sends %s', async (label, action, make) => {
+      const pending = make();
+      const approve = vi.fn(async () => 'answered' as const);
+      render(
+        <ApprovalSheetProvider requests={[pending]} onApprove={approve}>
+          <span>Conversation</span>
+        </ApprovalSheetProvider>,
+      );
+      const sheet = await screen.findByRole('dialog');
+      const button = within(sheet).queryByRole('button', { name: label });
+      if (button) fireEvent.click(button);
+      else {
+        fireEvent.click(
+          within(sheet).getByRole('button', { name: 'Allow for this session' }),
+        );
+        fireEvent.click(await screen.findByRole('menuitem', { name: label }));
+      }
+      await waitFor(() => expect(approve).toHaveBeenCalledTimes(1));
+      expect(approve).toHaveBeenCalledWith(pending, action);
+    });
+
+    test('Escape closes the grant menu only: the sheet stays open and focus returns to the trigger', async () => {
+      render(
+        <ApprovalSheetProvider
+          requests={[bashAsk()]}
+          onApprove={vi.fn(async () => 'answered' as const)}
+        >
+          <span>Conversation</span>
+        </ApprovalSheetProvider>,
+      );
+      const sheet = await screen.findByRole('dialog');
+      const trigger = within(sheet).getByRole('button', {
+        name: 'Allow for this session',
+      });
+      fireEvent.click(trigger);
+      const [first] = await screen.findAllByRole('menuitem');
+      first.focus();
+      fireEvent.keyDown(first, { key: 'Escape' });
+      expect(screen.queryAllByRole('menuitem')).toHaveLength(0);
+      expect(screen.getByRole('dialog')).toBe(sheet);
+      expect(document.activeElement).toBe(trigger);
+    });
+
+    test('a grant the request did not offer is not in the menu', async () => {
+      render(
+        <ApprovalSheetProvider
+          requests={[{ ...bashAsk(), approvalRuleGrant: undefined }]}
+          onApprove={vi.fn(async () => 'answered' as const)}
+        >
+          <span>Conversation</span>
+        </ApprovalSheetProvider>,
+      );
+      const sheet = await screen.findByRole('dialog');
+      fireEvent.click(
+        within(sheet).getByRole('button', { name: 'Allow for this session' }),
+      );
+      const items = await screen.findAllByRole('menuitem');
+      expect(items.map((item) => item.textContent)).toEqual([WHOLE]);
+    });
+  });
+
   test('leaves both decisions available after a transport failure with safe recovery copy', async () => {
     const approve = vi.fn(async () => {
       throw Object.assign(new Error('Station host could not be resolved.'), {
@@ -513,7 +604,7 @@ describe('the conversation approval sheet', () => {
       </ApprovalSheetProvider>,
     );
     const sheet = await screen.findByRole('dialog');
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Allow once' }));
     const error = await within(sheet).findByRole('alert');
     expect(error.textContent).toContain(
       'Could not reach Station. Check the connection, then try again.',
@@ -524,7 +615,7 @@ describe('the conversation approval sheet', () => {
     expect(within(error).queryByText('Details')).toBeNull();
     expect(
       within(sheet)
-        .getByRole('button', { name: 'Allow Once' })
+        .getByRole('button', { name: 'Allow once' })
         .hasAttribute('disabled'),
     ).toBe(false);
     expect(

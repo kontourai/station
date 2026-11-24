@@ -73,6 +73,16 @@ export interface MessagePart {
   /** A station-control refusal, whole (see `ToolCompletedEvent`). */
   stationControlRefusal?: import('@kontourai/station-contracts/station-control-refusal').StationControlRefusalView;
   appearanceProposal?: import('@kontourai/station-contracts/custom-appearance').CustomAppearanceProposalReference;
+  /**
+   * On a `model.rerouted` marker line: which turn the engine moved onto
+   * another model and how far. Readers use it to stop comparing models
+   * across that turn (chat-24). Absent for a subagent's reroute.
+   */
+  modelReroute?: {
+    sessionId: string;
+    turnId?: string;
+    scope: 'turn' | 'session';
+  };
   /** When the call's `tool.started` was created (ISO); a running row's elapsed time. */
   startedAt?: string;
   /** Engine output was deliberately narrowed before publication. */

@@ -9,57 +9,17 @@ import {
 import { useApiBase } from '../../contexts/ApiBaseContext';
 import { toastStore } from '../../contexts/ToastContext';
 import { errorText } from '../../utils/errorText';
+import { wakeTime } from '../../utils/relativeTime';
+import { snoozeChoices } from '../inbox-row/snooze-presets';
 import type { RowMenuItem } from './RowMenu';
 
 /** The server Feature Preview every snooze control is gated on. */
 export const ATTENTION_SNOOZE_PREVIEW = 'attention-snooze';
 
-export interface SnoozePreset {
-  label: string;
-  until: Date;
-}
-
-/**
- * The choices a snooze offers, in local time, nearest first. Each is a real
- * future instant within the server's 30-day bound, so a preset can never be
- * the one the server refuses; "This evening" only appears while there is
- * still an evening left to wait for.
- */
-export function snoozePresets(now = new Date()): SnoozePreset[] {
-  const at = (days: number, hour: number) => {
-    const date = new Date(now);
-    date.setDate(date.getDate() + days);
-    date.setHours(hour, 0, 0, 0);
-    return date;
-  };
-  const presets: SnoozePreset[] = [
-    { label: '1 hour', until: new Date(now.getTime() + 60 * 60 * 1000) },
-  ];
-  if (now.getHours() < 17)
-    presets.push({ label: 'This evening', until: at(0, 18) });
-  presets.push({ label: 'Tomorrow morning', until: at(1, 9) });
-  // Next Monday, a full week out when today is Monday.
-  const toMonday = (8 - now.getDay()) % 7 || 7;
-  presets.push({ label: 'Next week', until: at(toMonday, 9) });
-  return presets;
-}
-
-/** "6:00 PM", "tomorrow 9:00 AM", "Mon 9:00 AM", or a date — local time. */
+/** When a snooze ends, in the snooze list's own form (`wakeTime`). */
 export function formatSnoozeUntil(iso: string, now = new Date()): string {
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return 'later';
-  const time = date.toLocaleTimeString([], {
-    hour: 'numeric',
-    minute: '2-digit',
-  });
-  const day = (value: Date) =>
-    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
-  const days = Math.round((day(date) - day(now)) / 86_400_000);
-  if (days <= 0) return time;
-  if (days === 1) return `tomorrow ${time}`;
-  if (days < 7)
-    return `${date.toLocaleDateString([], { weekday: 'short' })} ${time}`;
-  return `${date.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
+  const at = Date.parse(iso);
+  return Number.isNaN(at) ? 'later' : wakeTime(at, now.getTime());
 }
 
 /**
@@ -128,7 +88,7 @@ export function useInboxSnooze() {
       unsnoozeAttention.mutate(item.id, {
         onError: (error) =>
           toastStore.show(
-            `Couldn't unsnooze: ${errorText(error)}`,
+            `Couldn't wake it: ${errorText(error)}`,
             undefined,
             6000,
             undefined,
@@ -163,12 +123,12 @@ export function snoozeMenuItems(
   onSnooze: (until: Date) => void,
   disabled = false,
 ): RowMenuItem[] {
-  return snoozePresets().map((preset) => ({
-    id: `snooze-${preset.label}`,
+  return snoozeChoices(Date.now()).map((choice) => ({
+    id: `snooze-${choice.label}`,
     group: 'Snooze until',
-    label: preset.label,
-    hint: formatSnoozeUntil(preset.until.toISOString()),
+    label: choice.label,
+    hint: choice.hint,
     disabled,
-    onSelect: () => onSnooze(preset.until),
+    onSelect: () => onSnooze(new Date(choice.wakeAt)),
   }));
 }

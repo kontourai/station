@@ -737,6 +737,7 @@ function createRuntimeMessageProjection(
   let heldMarkers: Array<{
     ev: { eventId?: string; createdAt?: string };
     text: { betweenTurns: string; duringTurn: string };
+    extra?: Pick<MessagePart, 'modelReroute'>;
   }> = [];
 
   /**
@@ -833,8 +834,8 @@ function createRuntimeMessageProjection(
     heldMarkers = [];
     openTurnSessionExited = false;
     if (releaseMarkers)
-      for (const { ev, text } of held)
-        pushTranscriptMarker(ev, text, true, closedTurnTimestamp);
+      for (const { ev, text, extra } of held)
+        pushTranscriptMarker(ev, text, true, closedTurnTimestamp, extra);
   };
 
   const stamp = (createdAt?: string) => {
@@ -909,6 +910,7 @@ function createRuntimeMessageProjection(
      * rather than inside it.
      */
     turnRowTimestamp?: number,
+    extra?: Pick<MessagePart, 'modelReroute'>,
   ) => {
     const timestamp =
       turnRowTimestamp ??
@@ -923,6 +925,7 @@ function createRuntimeMessageProjection(
         {
           type: EXTENSION_TRANSCRIPT_MARKER_PART_TYPE,
           text: duringTurn ? text.duringTurn : text.betweenTurns,
+          ...extra,
         },
       ],
       ...(Number.isNaN(timestamp) ? {} : { metadata: { timestamp } }),
@@ -938,10 +941,11 @@ function createRuntimeMessageProjection(
   const holdOrPushMarker = (
     ev: { eventId?: string; createdAt?: string },
     text: { betweenTurns: string; duringTurn: string },
+    extra?: Pick<MessagePart, 'modelReroute'>,
   ) => {
     if (standingUnresolved) return;
-    if (turnOpen) heldMarkers.push({ ev, text });
-    else pushTranscriptMarker(ev, text, false);
+    if (turnOpen) heldMarkers.push({ ev, text, extra });
+    else pushTranscriptMarker(ev, text, false, undefined, extra);
   };
 
   /**
@@ -1811,7 +1815,19 @@ function createRuntimeMessageProjection(
       case 'model.rerouted':
         // A quiet marker line, placed like an extension marker: after the
         // turn it happened in.
-        holdOrPushMarker(ev, modelReroutedMarkerText(ev));
+        holdOrPushMarker(
+          ev,
+          modelReroutedMarkerText(ev),
+          ev.childWorkId
+            ? undefined
+            : {
+                modelReroute: {
+                  sessionId: ev.threadId,
+                  ...(ev.turnId ? { turnId: ev.turnId } : {}),
+                  scope: ev.scope,
+                },
+              },
+        );
         break;
       case 'runtime.warning': {
         // An in-place engine rewind: a marker where it happened. The turns it

@@ -473,7 +473,8 @@ its request sheet's overflow item, #3331) and inbox card label it:
   the typed `sessionGrantScope: 'all'`. The adapter keeps one session-wide
   grant and nothing else (the answered request is sent allow-once and mints
   no tool grant) and answers every later request with allow-once only (an
-  ACP request offering allow-always alone goes to a person), after Station's
+  ACP request offering allow-always alone goes to a person, and an `all`
+  answer leaves it open), after Station's
   rejections and staged policy, never for a request addressed to a person,
   an OpenCode configuration edit Station gives a person, or a delegated
   child that may not grant approvals; a change of approval mode drops it.

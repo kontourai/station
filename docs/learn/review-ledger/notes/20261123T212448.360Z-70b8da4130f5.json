@@ -1,0 +1,7 @@
+{
+  "revision": "a566d600664453a0ace3752f2822f2aafdf4b606",
+
+  "notes": [
+    {"path":"docs/design/shell-plugins-distributions.md","note":"HomeView.test.tsx changed only in three Home row tests, which now act on a row through its Actions for menu and pick the snooze choice by the one snooze list's label (slice 4.13); no claim on this page about Home, its lanes or plugins changed.","inputs":["docs/design/shell-plugins-distributions.md","src-ui/src/__tests__/HomeView.test.tsx"]}
+  ]
+}

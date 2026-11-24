@@ -5033,7 +5033,7 @@ describe('AcpAdapter', () => {
     }
   });
 
-  test("a request offering allow-always alone is not offered 'all', and an 'all' answer to it grants nothing", async () => {
+  test("an allow-always-only request refuses 'all' and stays open for a valid answer", async () => {
     const { adapter, processes } = createAdapter({
       connectionOverrides: [
         { id: 'other', command: '/usr/bin/agy', args: ['acp'] },
@@ -5062,14 +5062,24 @@ describe('AcpAdapter', () => {
         (opened as { payload?: Record<string, unknown> }).payload
           ?.sessionGrantAll,
       ).toBeUndefined();
-      // Answered `all` anyway (an API caller): a one-call accept.
+      await expect(
+        adapter.respondToRequest(
+          threadId,
+          String(opened.requestId),
+          'acceptForSession',
+          {
+            sessionGrantScope: 'all',
+          },
+        ),
+      ).rejects.toThrow('This ACP request does not offer Allow once.');
       await adapter.respondToRequest(
         threadId,
         String(opened.requestId),
-        'acceptForSession',
-        { sessionGrantScope: 'all' },
+        'decline',
       );
-      await alwaysOnly;
+      await expect(alwaysOnly).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
       await nextEvent(events, 'request.resolved');
       // No session grant of any kind was minted: the same tool asks again,
       // and so does another one.

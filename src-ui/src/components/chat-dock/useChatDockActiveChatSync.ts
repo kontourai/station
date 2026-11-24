@@ -202,9 +202,14 @@ export function useChatDockActiveChatSync({
      * (archive#1284). A definitive missing record must skip this path: #1582
      * otherwise opened an unrequested region full of nonexistent-session
      * skeletons after reloading an unpromoted chat.
+     *
+     * Only `chat` is cleared here, never `dock`: a `dock: null` written beside
+     * the reveal closes the very region it reveals. From an open dock the
+     * reveal finds Chat already visible and writes nothing, then the region
+     * model's inbound sync applies the close, so Chat ended hidden.
      */
     const revealSessionInChat = () => {
-      clearDeadChatPointer();
+      updateParamsRef.current({ chat: null });
       showSurfaceRef.current('chat', { session: activeChat });
     };
     /**

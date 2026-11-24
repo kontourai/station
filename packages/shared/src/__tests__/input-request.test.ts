@@ -372,7 +372,7 @@ describe('decisions and outcomes', () => {
         decisionOptionResponse(option),
       ]),
     ).toEqual([
-      ['Allow Once', 'allow', 'once', 'accept'],
+      ['Allow once', 'allow', 'once', 'accept'],
       ['Allow Bash for this session', 'allow', 'session', 'acceptForSession'],
       ['Deny', 'deny', 'once', 'decline'],
     ]);
@@ -393,7 +393,7 @@ describe('decisions and outcomes', () => {
         option.sessionGrantScope,
       ]),
     ).toEqual([
-      ['Allow Once', 'accept', undefined],
+      ['Allow once', 'accept', undefined],
       ['Allow all shell calls for this session', 'acceptForSession', undefined],
       ['Allow everything for this session', 'acceptForSession', 'all'],
       ['Deny', 'decline', undefined],

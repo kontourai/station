@@ -67,7 +67,6 @@ function renderRows(ids: string[]) {
             item={item(id)}
             isCurrent={false}
             isSnoozed={false}
-            isOpenChat={false}
             now={NOW}
             onActivate={vi.fn()}
             hoverCard={false}

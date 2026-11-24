@@ -96,7 +96,6 @@ function renderRow(
       facts={rowFacts}
       isCurrent={false}
       isSnoozed={false}
-      isOpenChat={false}
       now={NOW}
       onActivate={vi.fn()}
     />
@@ -426,7 +425,6 @@ describe('the inbox row flag for an unconfirmed delivery (#5398)', () => {
         facts={facts}
         isCurrent={false}
         isSnoozed={false}
-        isOpenChat={false}
         now={NOW}
         onActivate={vi.fn()}
       />,
@@ -459,7 +457,6 @@ describe('the inbox row flag for an unconfirmed delivery (#5398)', () => {
             facts={rowFacts}
             isCurrent={false}
             isSnoozed={false}
-            isOpenChat={false}
             now={NOW}
             onActivate={vi.fn()}
           />
@@ -509,7 +506,6 @@ describe('the inbox row flag for an unconfirmed delivery (#5398)', () => {
         facts={facts}
         isCurrent={false}
         isSnoozed={false}
-        isOpenChat={false}
         now={NOW}
         onActivate={vi.fn()}
       />,

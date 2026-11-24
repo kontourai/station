@@ -1,0 +1,7 @@
+{
+  "revision": "15dc6708566d33eb81815f4afe75b4541e039e4f",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Re-checked after the chat-24 small round: the projection now adds a structured modelReroute field to model.rerouted marker parts (text unchanged), the UI carries it through conversationPartToContentParts, and ChatMessageList's live model pill uses only a started turn's model. This document makes no claim about reroute markers or transcript change rows; its claims are unaffected.","inputs":["docs/design/mcp-ui-host.md","src-ui/src/hooks/orchestration/conversationTranscriptParts.ts"]}
+  ]
+}

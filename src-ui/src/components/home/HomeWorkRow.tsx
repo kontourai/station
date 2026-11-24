@@ -130,7 +130,6 @@ export function renderHomeWorkRow({
               rowKey={task.stableId}
               isCurrent={false}
               isSnoozed={false}
-              isOpenChat={false}
               now={context.now}
               facts={context.workFacts?.get(task.id)}
               detailsOpen={context.detailsFor === task.id}
