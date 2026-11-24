@@ -4616,6 +4616,7 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'POST', path: '/integrations/:id/oauth/authorize' },
     { method: 'POST', path: '/integrations/:id/oauth/callback' },
     { method: 'POST', path: '/integrations/:id/reconnect' },
+    { method: 'POST', path: '/integrations/:id/events/discover' },
     // #3483: keeps or resets an integration's legacy trust settings in this
     // Station, like an integration edit; the handler requires the operator in
     // person and records a receipt.

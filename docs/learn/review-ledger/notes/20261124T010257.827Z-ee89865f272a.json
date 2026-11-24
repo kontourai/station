@@ -1,0 +1,21 @@
+{
+  "revision": "6d9c9c765ce28995436a43f0cb71baf2d9447fb3",
+
+  "notes": [
+    {"path":".veritas/README.md","note":"Traced the installer-bound documentation evidence to the bootstrap check. The new expiry notice is diagnostic output after validation, and does not change required evidence selection, any readiness verdict, or an owner approval.","inputs":[".veritas/README.md","scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"AGENTS.md","note":"Reviewed the managed dependency instructions against bootstrap. The installer still uses pinned pnpm, the frozen lock, exact approved hooks and repository hook installation. Nearby approval dates now produce a notice.","inputs":["AGENTS.md","scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Traced the accepted migration's two-phase install. The bootstrap validates approvals before displaying an expiry notice. Inert install, exact-hook execution and artifact verification retain their existing sequence.","inputs":["docs/design/pnpm-workspace-installation.md","scripts/__tests__/dependency-lifecycle.test.ts","scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"docs/guides/code-quality.md","note":"Checked the documented managed install against the changed bootstrap caller. Pinned pnpm still installs without dependency scripts and the runner admits only exact reviewed hooks. The notice adds information about when current approval ends.","inputs":["docs/guides/code-quality.md","scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Traced the 14 UTC day notice from managed install through validation and the scheduled dependency advisory workflow's dependencies:ci step. Focused tests verified the inclusive boundary, local and Actions output, and rejection after rollover. A real local install emitted the esbuild notice. GitHub annotation display and scheduled execution remain separate hosted evidence.","inputs":["docs/guides/dependency-security.md","scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed pinned runtime and install guidance against the bootstrap caller. A valid policy can print an expiry notice before the inert install. Rejecting expired approvals and provisioning worktree hooks remain part of managed installation.","inputs":["docs/guides/development.md","scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"docs/guides/testing.md","note":"Reviewed the install and interrupted-install claims. The warning follows bootstrap policy validation and does not change the install guard, dependency verification sequence or the distinction between focused and hosted evidence.","inputs":["docs/guides/testing.md","scripts/dependency-lifecycle.mjs"]},
+
+    {"path":"packaging/node-pty-prebuilds/README.md","note":"Reviewed the staging and prebuild assertions in the cited lifecycle test file. The new tests exercise expiry output and UTC rollover in the bootstrap caller. Existing prebuild provenance and platform proof retain their scope.","inputs":["packaging/node-pty-prebuilds/README.md","scripts/__tests__/dependency-lifecycle.test.ts"]}
+  ]
+}

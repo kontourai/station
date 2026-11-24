@@ -464,7 +464,9 @@
 
     "src-ui/src/views/project-page/ProjectWebMcp.tsx",
 
-    "src-ui/src/views/project-page/__tests__/ProjectWebMcp.test.tsx"
+    "src-ui/src/views/project-page/__tests__/ProjectWebMcp.test.tsx",
+
+    "src-ui/src/views/integrations/IntegrationEventsSection.tsx"
   ],
 
   "checks": [

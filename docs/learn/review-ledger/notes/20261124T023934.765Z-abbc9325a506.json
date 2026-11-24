@@ -1,0 +1,9 @@
+{
+  "revision": "04349dac9fa25702d2bd5c984a1fa9902a9d169f",
+
+  "notes": [
+    {"path":"docs/design/offline-outbound-queue.md","note":"Checked pages citing useSessionEventWindow: offline-outbound-queue (offline reload and queue) and user concepts (Retry rows) make no claim about the window's reload replacement; chat-composer now states the reader-away keep rule. Change: a reload keeps held events while the reader is away, bounded by 200 turns.","inputs":["src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked pages citing useSessionEventWindow: offline-outbound-queue (offline reload and queue) and user concepts (Retry rows) make no claim about the window's reload replacement; chat-composer now states the reader-away keep rule. Change: a reload keeps held events while the reader is away, bounded by 200 turns.","inputs":["src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]}
+  ]
+}

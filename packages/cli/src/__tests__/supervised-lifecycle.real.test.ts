@@ -224,7 +224,9 @@ function portFree(port: number): Promise<boolean> {
 /** A server port block (port..port+3) and a UI port, all free on loopback. */
 async function freePorts(): Promise<{ server: number; ui: number }> {
   for (let attempt = 0; attempt < 50; attempt += 1) {
-    const server = 41_000 + Math.floor(Math.random() * 18_000);
+    // Stay below the default ephemeral ranges so loopback clients cannot
+    // claim these ports between closing the probes and launching Station.
+    const server = 16_000 + Math.floor(Math.random() * 12_000);
     const ui = server + 10;
     const ports = [server, server + 1, server + 2, server + 3, ui];
     if (ports.includes(3141) || ports.includes(3000)) continue;

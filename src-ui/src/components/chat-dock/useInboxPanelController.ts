@@ -204,12 +204,12 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
     query,
     setQuery,
     groups,
-    openChatIds,
     hasVisibleItems: groups.some(
       (group) => group.items.length > 0 || Boolean(group.older?.length),
     ),
     notice: dismissals.notice,
     dismissSelected: dismissals.dismissSelected,
+    restore: dismissals.restore,
     rowActions: {
       onActivate: (item: HomeWorkItem) => {
         void activate(item);
@@ -232,12 +232,9 @@ export function useInboxPanelController(options: InboxPanelControllerOptions) {
         beforeRemoval(action);
         dismissals.restore(item);
       },
-      onCloseChat: onCloseChat
-        ? (id: string, action: HTMLButtonElement) => {
-            beforeRemoval(action);
-            onCloseChat(id);
-          }
-        : undefined,
+      // A settled row stays listed (under Settled) and keeps its focus.
+      onSettle: (conversationId: string, settled: boolean) =>
+        dismissals.settle(conversationId, settled),
       onDraftDiscarded: (item: HomeWorkItem, action: HTMLButtonElement) => {
         if (action.closest('.inbox-row')?.contains(document.activeElement))
           beforeRemoval(action);

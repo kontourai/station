@@ -1,0 +1,7 @@
+{
+  "revision": "ff50277a6d175697884db9f351a54eacf4bf0b96",
+
+  "notes": [
+    {"path":"docs/design/station-connection.md","note":"Kept New chat text stays in the dock's own state (per Project, per mounted dock) and the draft-open flag is a display fact; neither enters snapshots, outbox rows or query keys, so no Station identity claim changes.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]}
+  ]
+}

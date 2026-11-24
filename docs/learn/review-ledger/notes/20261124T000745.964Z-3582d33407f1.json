@@ -1,0 +1,39 @@
+{
+  "revision": "ee99883671bbc4a272c100f57cae036db8fe53ac",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Traced isolated Antigravity diagnostics from the effective process environment through the bounded native session log reader and exact active-turn error and warning paths. Checked the read-only SQLite snapshot, retained token usage, replaced-file refusal, Stop ownership, and the absence of automatic replay. Process fixtures cover compatibility; live Google account and Linux CLI behavior remain unverified.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts","src-server/services/acp/acp-process.ts","src-server/services/acp/antigravity-prompt-outcome.ts","src-server/providers/__tests__/acp-session-answers.process.test.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Reviewed the active-turn and prompt epoch guards for scoped Antigravity diagnostics against the cited orchestration, tool policy, connection, and extension claims. The new fixed-copy warning does not end a turn, and an attributable failure uses the ordinary exact-turn error path with reported usage already preserved.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the active-turn and prompt epoch guards for scoped Antigravity diagnostics against the cited orchestration, tool policy, connection, and extension claims. The new fixed-copy warning does not end a turn, and an attributable failure uses the ordinary exact-turn error path with reported usage already preserved.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed the active-turn and prompt epoch guards for scoped Antigravity diagnostics against the cited orchestration, tool policy, connection, and extension claims. The new fixed-copy warning does not end a turn, and an attributable failure uses the ordinary exact-turn error path with reported usage already preserved.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed the active-turn and prompt epoch guards for scoped Antigravity diagnostics against the cited orchestration, tool policy, connection, and extension claims. The new fixed-copy warning does not end a turn, and an attributable failure uses the ordinary exact-turn error path with reported usage already preserved.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the active-turn and prompt epoch guards for scoped Antigravity diagnostics against the cited orchestration, tool policy, connection, and extension claims. The new fixed-copy warning does not end a turn, and an attributable failure uses the ordinary exact-turn error path with reported usage already preserved.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the active-turn and prompt epoch guards for scoped Antigravity diagnostics against the cited orchestration, tool policy, connection, and extension claims. The new fixed-copy warning does not end a turn, and an attributable failure uses the ordinary exact-turn error path with reported usage already preserved.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the active-turn and prompt epoch guards for scoped Antigravity diagnostics against the cited orchestration, tool policy, connection, and extension claims. The new fixed-copy warning does not end a turn, and an attributable failure uses the ordinary exact-turn error path with reported usage already preserved.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the active-turn and prompt epoch guards for scoped Antigravity diagnostics against the cited orchestration, tool policy, connection, and extension claims. The new fixed-copy warning does not end a turn, and an attributable failure uses the ordinary exact-turn error path with reported usage already preserved.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the active-turn and prompt epoch guards for scoped Antigravity diagnostics against the cited orchestration, tool policy, connection, and extension claims. The new fixed-copy warning does not end a turn, and an attributable failure uses the ordinary exact-turn error path with reported usage already preserved.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the active-turn and prompt epoch guards for scoped Antigravity diagnostics against the cited orchestration, tool policy, connection, and extension claims. The new fixed-copy warning does not end a turn, and an attributable failure uses the ordinary exact-turn error path with reported usage already preserved.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the active-turn and prompt epoch guards for scoped Antigravity diagnostics against the cited orchestration, tool policy, connection, and extension claims. The new fixed-copy warning does not end a turn, and an attributable failure uses the ordinary exact-turn error path with reported usage already preserved.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the active-turn and prompt epoch guards for scoped Antigravity diagnostics against the cited orchestration, tool policy, connection, and extension claims. The new fixed-copy warning does not end a turn, and an attributable failure uses the ordinary exact-turn error path with reported usage already preserved.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the active-turn and prompt epoch guards for scoped Antigravity diagnostics against the cited orchestration, tool policy, connection, and extension claims. The new fixed-copy warning does not end a turn, and an attributable failure uses the ordinary exact-turn error path with reported usage already preserved.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Traced the dedicated profile check after the effective child environment and managed launcher selection are known. This change observes a bounded prompt log without changing the engine launch, setup, credential, or lifecycle contract.","inputs":["src-server/services/acp/acp-process.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Traced the dedicated profile check after the effective child environment and managed launcher selection are known. This change observes a bounded prompt log without changing the engine launch, setup, credential, or lifecycle contract.","inputs":["src-server/services/acp/acp-process.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed the archived chat design against the dedicated Antigravity diagnostics instructions. The historical design still directs readers to the current ACP guide and makes no claim about native provider outcome reporting.","inputs":["docs/guides/acp.md"]}
+  ]
+}

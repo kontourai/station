@@ -4,9 +4,11 @@ import {
   directoryPermissionUpdateKind,
   MAX_TOOL_REQUEST_PREVIEW_LENGTH,
   ruleGrantPermissionUpdates,
+  SESSION_ALL_GRANT_LABEL,
   STATION_BROWSER_SERVER_GRANT_LABEL,
   sessionGrantPermissionUpdates,
   TOOL_REQUEST_ARGS_FIELDS,
+  toolRequestAllGrantFromPayload,
   toolRequestChangesAuthority,
   toolRequestDisplayName,
   toolRequestEscalates,
@@ -1582,7 +1584,7 @@ describe('the server-wide Station browser grant', () => {
   // Owner decision (2026-11-16): a person's session answer is offered on
   // every tool approval, escalations included. Captured from a real Claude
   // session at full access: Station's untrusted-content hook asked for a
-  // browser call after a page snapshot, and only Allow Once was offered.
+  // browser call after a page snapshot, and only Allow once was offered.
   test.each([
     [
       'a hook-forced ask (untrusted content read earlier in the turn)',
@@ -1633,6 +1635,36 @@ describe('the server-wide Station browser grant', () => {
       }),
     ).toBe('none');
     expect(toolRequestServerGrantFromPayload(undefined)).toBe('none');
+  });
+});
+
+describe('the session-wide grant (`sessionGrantScope: all`)', () => {
+  const shell = { toolName: 'shell', rawInput: { action: 'shell' } };
+
+  test('is offered only where the adapter marked the request', () => {
+    expect(SESSION_ALL_GRANT_LABEL).toBe('Allow everything for this session');
+    expect(toolRequestAllGrantFromPayload(shell)).toBe(false);
+    expect(
+      toolRequestAllGrantFromPayload({ ...shell, sessionGrantAll: true }),
+    ).toBe(true);
+    expect(
+      toolRequestAllGrantFromPayload({ ...shell, sessionGrantAll: 'true' }),
+    ).toBe(false);
+    expect(toolRequestAllGrantFromPayload(undefined)).toBe(false);
+  });
+
+  test.each([
+    ['a plan exit', { toolName: 'ExitPlanMode' }],
+    ['an ACP mode switch', { toolName: 'exit', toolKind: 'switch_mode' }],
+    ['a question', { toolName: 'AskUserQuestion' }],
+    [
+      'a Station authority change',
+      { toolName: 'station-control_update_config' },
+    ],
+  ])('is never offered for %s, even when marked', (_label, payload) => {
+    expect(
+      toolRequestAllGrantFromPayload({ ...payload, sessionGrantAll: true }),
+    ).toBe(false);
   });
 });
 

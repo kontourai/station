@@ -1,0 +1,7 @@
+{
+  "revision": "59c24b6fcfb264f9897e1aa934a54e4d10d4eb75",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Checked the session-attention and status ladder rows: the removed SESSION_STATUS_WORDS entry was never computed and the reference does not list it; the changeset records the removal.","inputs":["docs/reference/contracts.md","packages/contracts/src/session-attention.ts"]}
+  ]
+}
