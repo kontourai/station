@@ -2301,6 +2301,16 @@ includes up to 200 `probe.tools` entries with raw `name`, optional `description`
 can return this metadata without persisting it to a local integration definition.
 Discovery metadata is a browsing snapshot, not execution authority.
 
+### Check an integration’s event catalog
+
+`POST /integrations/:id/events/discover` checks the current saved Streamable
+HTTP integration as the Station operator. Station uses the shared connection
+or acquires a short-lived connection. The response carries
+`{success: true, data: {supported: false}}` when the server has no Events
+capability, or `{success: true, data: {supported: true, events}}` for a
+successful catalog read. Each entry has `name` and optional `title` and
+`description`. A catalog read failure returns HTTP 502 with a Station error.
+
 ### Discover transcript App tools
 
 `GET /integrations/:serverId/ui-tools` returns `{success: true, data: string[]}`

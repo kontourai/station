@@ -199,9 +199,12 @@ export interface InputRequestDecisionBody {
  * makes when absent. `server`: the whole in-process Station browser server.
  * `rule`: only the Bash command prefixes the engine suggested (Claude).
  * Each is honoured only where the request offered it; otherwise the answer
- * is a one-call accept.
+ * is a one-call accept. `all`: every later ask in the session that a grant
+ * may answer (never one addressed to a person, or one Station gives a person
+ * itself), where the adapter offered it; an adapter that does not honour it
+ * takes the per-tool grant instead.
  */
-export type SessionGrantScope = 'server' | 'rule';
+export type SessionGrantScope = 'server' | 'rule' | 'all';
 
 export interface InputRequestDecisionOption {
   id: string;

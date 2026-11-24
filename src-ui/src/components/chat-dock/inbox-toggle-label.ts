@@ -22,7 +22,7 @@ export function inboxToggleLabel(
       : null,
     unread > 0 ? `${unread} unread` : null,
   ].filter(Boolean);
-  const verb = isInboxOpen ? 'Hide inbox' : 'Show inbox';
+  const verb = isInboxOpen ? 'Hide chat list' : 'Show chat list';
   return facts.length > 0 ? `${verb}, ${facts.join(', ')}` : verb;
 }
 

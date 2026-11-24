@@ -1,0 +1,7 @@
+{
+  "revision": "41d1d916a6e120546d73aa7009525d1950120c20",
+
+  "notes": [
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the referenced learning media index. Only the OAuth sign-in image and its matching capture evidence changed. Starter-work screenshots and their instructions remain accurate.","inputs":["docs/learn/media.json"]}
+  ]
+}

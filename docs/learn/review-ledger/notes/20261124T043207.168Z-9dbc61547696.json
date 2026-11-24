@@ -1,0 +1,39 @@
+{
+  "revision": "5856ace1c9bbec80349cd4dc25c2758030e29d21",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Traced the dedicated Antigravity profile from the effective CLI launch to its live home classification. Both archive kinds omit the provider profile and update rollback preserves later provider writes. The combined focused tests passed 92 cases, including an archive regression that failed before the classification.","inputs":["docs/guides/acp.md","packages/shared/src/station-home-store-registry.ts","packages/shared/src/__tests__/station-home-archive.test.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked the home backup exclusion against the live root predicate and the archive walk. The provider profile is excluded in full backups and update snapshots. Update rollback skips the live root; full restore still publishes the staged home under the existing maintenance boundary.","inputs":["docs/reference/cli.md","packages/shared/src/__tests__/station-home-archive.test.ts","packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"Checked the new provider-owned live root against the archive creation and rollback paths. The existing volatile roots, SQLite checkpoint plan, media download treatment, and release procedure remain accurate.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Checked the new provider-owned live root against the archive creation and rollback paths. The existing volatile roots, SQLite checkpoint plan, media download treatment, and release procedure remain accurate.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked the new provider-owned live root against the archive creation and rollback paths. The existing volatile roots, SQLite checkpoint plan, media download treatment, and release procedure remain accurate.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"Checked the new provider-owned live root against the archive creation and rollback paths. The existing volatile roots, SQLite checkpoint plan, media download treatment, and release procedure remain accurate.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Checked the new provider-owned live root against the archive creation and rollback paths. The existing volatile roots, SQLite checkpoint plan, media download treatment, and release procedure remain accurate.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Checked the new provider-owned live root against the archive creation and rollback paths. The existing volatile roots, SQLite checkpoint plan, media download treatment, and release procedure remain accurate.","inputs":["packages/shared/src/station-home-store-registry.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Verified the two real archive writers omit the provider profile at the configured entry cap and that actual update restore preserves post-snapshot provider bytes.","inputs":["packages/shared/src/__tests__/station-home-archive.test.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Verified the two real archive writers omit the provider profile at the configured entry cap and that actual update restore preserves post-snapshot provider bytes.","inputs":["packages/shared/src/__tests__/station-home-archive.test.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Verified the two real archive writers omit the provider profile at the configured entry cap and that actual update restore preserves post-snapshot provider bytes.","inputs":["packages/shared/src/__tests__/station-home-archive.test.ts"]},
+
+    {"path":"README.md","note":"Checked the revised home backup exclusion against the citing CLI and architecture material. The command, invocation, archive format, and recovery receipt contracts are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked the revised home backup exclusion against the citing CLI and architecture material. The command, invocation, archive format, and recovery receipt contracts are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/cli-triage.md","note":"Checked the revised home backup exclusion against the citing CLI and architecture material. The command, invocation, archive format, and recovery receipt contracts are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the revised home backup exclusion against the citing CLI and architecture material. The command, invocation, archive format, and recovery receipt contracts are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"packages/cli/README.md","note":"Checked the revised home backup exclusion against the citing CLI and architecture material. The command, invocation, archive format, and recovery receipt contracts are unchanged.","inputs":["docs/reference/cli.md"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"The archived chat design continues to direct readers to the current ACP guide and makes no claim about Station archive custody for provider-owned profiles.","inputs":["docs/guides/acp.md"]}
+  ]
+}

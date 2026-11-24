@@ -1,0 +1,7 @@
+{
+  "revision": "ff50277a6d175697884db9f351a54eacf4bf0b96",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"ChatDock changes do not affect the concepts described (Projects, Tasks, drafts as Session state); checked the draft and refusal passages.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

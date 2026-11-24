@@ -442,6 +442,8 @@ export function useActiveChatTranscript(apiBase: string, session: ChatSession) {
             loadOlder: () => requestReplayHistory(session.id),
             loadTurn: async () => false,
             reload: () => requestReplayHistory(session.id),
+            // A replay's tape is read whole; there is no window to keep.
+            setReaderPlace: serverWindow.setReaderPlace,
             // A replay's tape is never painted from the reopen cache.
             revalidating: false,
           }

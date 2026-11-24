@@ -24,7 +24,7 @@ import { useConversationWorkState } from './useConversationWorkState';
  * THE inbox's groups, from its live sources: the items with brief lifecycle
  * churn held (`useHeldLifecycles`) and the snooze map re-read on every
  * snooze write in this tab. The desktop inbox panel renders these, and the
- * inbox toggle's "Show inbox, 3 need you" counts the same Needs-you group,
+ * inbox toggle's "Show chat list, 3 need you" counts the same Needs-you group,
  * so snoozing a row and then hiding the inbox cannot leave the toggle
  * counting a row the panel no longer shows.
  */
@@ -80,7 +80,8 @@ export function useInboxGroups(
         ? [
             {
               id: 'dismissed' as const,
-              label: resolution ? 'Hidden' : 'Dismissed',
+              // Rows marked done on this device, or hidden on the host.
+              label: 'Marked done',
               items: dismissed,
             },
           ]

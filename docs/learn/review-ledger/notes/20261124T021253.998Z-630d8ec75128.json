@@ -1,0 +1,43 @@
+{
+  "revision": "49c7db2613240e30b63d336b6d68598a5731cb58",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Traced the typed scope through orchestration into both OpenCode transports and the ACP adapter. Verified the source contract for an unsupported allow-once answer, provider-side acknowledgement, mode changes, and eligibility metadata.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked offer, answer, persistence, and mode reset in native OpenCode and ACP against the documented distinction between per-tool and session-wide grants. An ACP request without allow-once stays open after an all answer is rejected.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Checked ACP request options and provider replies. Eligible session-wide answers select allow-once and Station alone keeps the grant. The API rejects the scope if allow-once is unavailable.","inputs":["docs/guides/acp.md","src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/adr/0013-bind-agent-extensions-to-the-declared-mechanism-not-method-names.md","note":"Reviewed the ACP request and answer delta against the cited claims. Station offers the session-wide answer only with allow-once, keeps an allow-always-only request open when that scope is submitted, and leaves launch configuration, earlier policy decisions, and person-only requests on their existing paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Reviewed the ACP request and answer delta against the cited claims. Station offers the session-wide answer only with allow-once, keeps an allow-always-only request open when that scope is submitted, and leaves launch configuration, earlier policy decisions, and person-only requests on their existing paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed the ACP request and answer delta against the cited claims. Station offers the session-wide answer only with allow-once, keeps an allow-always-only request open when that scope is submitted, and leaves launch configuration, earlier policy decisions, and person-only requests on their existing paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed the ACP request and answer delta against the cited claims. Station offers the session-wide answer only with allow-once, keeps an allow-always-only request open when that scope is submitted, and leaves launch configuration, earlier policy decisions, and person-only requests on their existing paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the ACP request and answer delta against the cited claims. Station offers the session-wide answer only with allow-once, keeps an allow-always-only request open when that scope is submitted, and leaves launch configuration, earlier policy decisions, and person-only requests on their existing paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the ACP request and answer delta against the cited claims. Station offers the session-wide answer only with allow-once, keeps an allow-always-only request open when that scope is submitted, and leaves launch configuration, earlier policy decisions, and person-only requests on their existing paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the ACP request and answer delta against the cited claims. Station offers the session-wide answer only with allow-once, keeps an allow-always-only request open when that scope is submitted, and leaves launch configuration, earlier policy decisions, and person-only requests on their existing paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the ACP request and answer delta against the cited claims. Station offers the session-wide answer only with allow-once, keeps an allow-always-only request open when that scope is submitted, and leaves launch configuration, earlier policy decisions, and person-only requests on their existing paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reviewed the ACP request and answer delta against the cited claims. Station offers the session-wide answer only with allow-once, keeps an allow-always-only request open when that scope is submitted, and leaves launch configuration, earlier policy decisions, and person-only requests on their existing paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the ACP request and answer delta against the cited claims. Station offers the session-wide answer only with allow-once, keeps an allow-always-only request open when that scope is submitted, and leaves launch configuration, earlier policy decisions, and person-only requests on their existing paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the ACP request and answer delta against the cited claims. Station offers the session-wide answer only with allow-once, keeps an allow-always-only request open when that scope is submitted, and leaves launch configuration, earlier policy decisions, and person-only requests on their existing paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the ACP request and answer delta against the cited claims. Station offers the session-wide answer only with allow-once, keeps an allow-always-only request open when that scope is submitted, and leaves launch configuration, earlier policy decisions, and person-only requests on their existing paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Reviewed the ACP request and answer delta against the cited claims. Station offers the session-wide answer only with allow-once, keeps an allow-always-only request open when that scope is submitted, and leaves launch configuration, earlier policy decisions, and person-only requests on their existing paths.","inputs":["src-server/providers/adapters/acp-adapter.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed the focused ACP fixture. It checks that a rejected wide answer leaves the original request open for denial and that later tool calls still ask. The fixture does not qualify a live engine.","inputs":["src-server/providers/__tests__/acp-adapter.test.ts"]},
+
+    {"path":"docs/adr/0010-route-managed-chat-through-orchestration-behind-a-flag.md","note":"Reviewed the Session API delta against the ACP adapter. The eligibility rule and refusal apply to the existing orchestration request route. The historical routing and storage claims remain accurate at their stated scope.","inputs":["docs/reference/session-api.md"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"Reviewed the ACP guide delta against requestPermission and respondToRequest. The optional session-wide choice requires allow-once and leaves the request open if the engine did not offer it.","inputs":["docs/guides/acp.md"]}
+  ]
+}

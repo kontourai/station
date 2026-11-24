@@ -124,6 +124,15 @@ describe('what the server answered decides what the reload shows', () => {
 
     await mountReload();
 
+    // Not on the `dock=open` seed: only once the reveal has cleared the
+    // pointer (after the bounded retry).
+    await waitFor(
+      () =>
+        expect(
+          new URLSearchParams(window.location.search).get('chat'),
+        ).toBeNull(),
+      { timeout: 4000 },
+    );
     await waitFor(
       () =>
         expect(model?.regions.bottom).toMatchObject({

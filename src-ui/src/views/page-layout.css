@@ -785,6 +785,11 @@
   .section-navigation__picker {
     display: none;
   }
+
+  .section-navigation__tools {
+    margin-block-end: var(--k-space-3);
+  }
+
   .section-nav.section-navigation__links {
     border-right: 0;
     padding-right: 0;

@@ -155,7 +155,7 @@ for (const width of [390, 1440])
       await page.goto('/?dock=open');
       const inbox =
         width === 390
-          ? page.getByRole('region', { name: 'Inbox', exact: true })
+          ? page.getByRole('region', { name: 'Chats', exact: true })
           : page.locator('.chat-dock-inbox');
       const row = inbox
         .getByTestId('inbox-row')

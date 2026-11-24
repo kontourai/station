@@ -168,10 +168,11 @@ On a phone: The same state in one column.
 
 On a phone: The same sheet.
 
-1. **The row menu: Open chat, Mark done, Snooze ▸, and Discard draft (only when a draft exists).** _(layout; slice 4.13)_
-2. **"Mark done" replaces Settle, Dismiss from inbox, Hide from inbox and notification Dismiss. Reopen undoes it.** Today there are seven verbs for "I'm done with this". _(copy; slice 4.13)_
+1. **The row menu: Open chat, Mark done, Snooze ▸, and Discard draft (only when a draft exists).** Amended while building: the snooze choices sit in the same menu under a "Snooze until" heading, as on the phone sheet, rather than in a second flyout, so the menu keeps one list that the arrow keys move through. An unstarted Draft's Discard draft stays a button beside ⋯: it deletes the conversation for every device after an eight-second countdown, and the person watches and stops that countdown on the button they pressed, which a menu that closes on selection cannot show; the unsent-text Discard draft, which only clears this device's text, is in the menu. _(layout; slice 4.13)_
+2. **"Mark done" replaces Settle, Dismiss from inbox, Hide from inbox and notification Dismiss. Reopen undoes it.** Today there are seven verbs for "I'm done with this". The word does not change what is recorded: Mark done settles where the person's settlement reaches the row (synced across their devices), hides a third-party Session on the host, and otherwise dismisses on this device, which is what happens while the Open and Settled preview is off and for work still running or waiting on the person, since settlement refuses those. _(copy; slice 4.13)_
 3. **One snooze list for every surface: In 1 hour, This evening, Tomorrow morning, Next week, each showing its real time.** Today there are two different snooze preset lists. _(copy; slice 4.13)_
 4. **Discard draft stays a danger item. "Discard unsent draft" and "Discard draft" become one label.** _(copy; slice 4.13)_
+5. **On the inbox page, Mark done leads the row menu (the page has no Open chat), then the snooze list, as in the dock.** Amended while building: Mark done there waits behind its Undo notice, and the "Needs attention" heading stops counting a row while it waits. The bell badge keeps the server's count until the write lands; the badge is slice 4.15's. _(layout, copy; slice 4.13)_
 
 ## Feature calls
 
@@ -244,7 +245,7 @@ On a phone: The same sheet.
 | One row per item (merge the failed-session attention with the failed-turn notification) | new screen state | Dedupe by conversation. |
 | Failure reason in plain words plus one step | copy | A map per failure code. |
 | "Last message may not have arrived" as a flag | new screen state | A change to the status lane. |
-| "Mark done" acts as Settle where that exists, and as Dismiss otherwise | new screen state |  |
+| "Mark done" acts as Settle where that exists, and as Dismiss otherwise | new screen state | A third-party Session is hidden on the host, as Hide did. |
 | One snooze preset list | copy |  |
 | Bell badge counts Needs you only | new screen state |  |
 | Settings › Notifications: two wording changes | copy | The subtitle becomes "What may interrupt you, and where. Everything lands in the inbox; the bell counts only what needs you." The Agent notifications hint adds "Failures include an automation pausing itself." |

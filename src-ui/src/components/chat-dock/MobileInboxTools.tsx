@@ -88,7 +88,7 @@ export function MobileInboxTools({
           <Button
             variant="ghost"
             className="app-toolbar__icon-btn mobile-inbox__direct-tool"
-            aria-label="Search inbox"
+            aria-label="Search chats"
             aria-expanded={searchOpen}
             onClick={onSearch}
           >
@@ -97,7 +97,7 @@ export function MobileInboxTools({
           <Button
             variant="ghost"
             className="app-toolbar__icon-btn mobile-inbox__direct-tool"
-            aria-label="Filter inbox"
+            aria-label="Filter chats"
             aria-haspopup="dialog"
             aria-expanded={filters}
             data-filtered={
@@ -112,15 +112,15 @@ export function MobileInboxTools({
         </>
       )}
       <ActionOverflowMenu
-        label="Inbox actions"
+        label="Chat list actions"
         triggerClassName="app-toolbar__icon-btn mobile-inbox__more"
         actions={[
-          { key: 'search', label: 'Search inbox', onSelect: onSearch },
-          { key: 'filters', label: 'Filter inbox', onSelect: openFilters },
+          { key: 'search', label: 'Search chats', onSelect: onSearch },
+          { key: 'filters', label: 'Filter chats', onSelect: openFilters },
           { key: 'select', label: 'Select conversations', onSelect: onSelect },
           { key: 'arrange', label: 'Arrange sections', onSelect: onArrange },
           ...(onRefresh
-            ? [{ key: 'refresh', label: 'Refresh inbox', onSelect: onRefresh }]
+            ? [{ key: 'refresh', label: 'Refresh chats', onSelect: onRefresh }]
             : []),
           ...(onBack
             ? [{ key: 'chat', label: 'Back to chat', onSelect: onBack }]
@@ -130,7 +130,7 @@ export function MobileInboxTools({
       {filters && (
         <ResponsiveDialogSurface
           layer="popover"
-          ariaLabel="Filter inbox"
+          ariaLabel="Filter chats"
           historyMode="entry"
           onClose={() => setFilters(false)}
           returnFocusTarget={trigger.current}
@@ -139,7 +139,7 @@ export function MobileInboxTools({
           panelClassName="composer-popover-panel mobile-inbox-filters"
         >
           <ResponsiveDialogHeader
-            title="Filter inbox"
+            title="Filter chats"
             closeLabel="Close filters"
             onClose={() => setFilters(false)}
           />

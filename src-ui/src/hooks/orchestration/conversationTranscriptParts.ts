@@ -43,6 +43,7 @@ export function conversationPartToContentParts(
       ? { stationControlRefusal: part.stationControlRefusal }
       : {}),
     ...(part.outputTruncated ? { outputTruncated: true } : {}),
+    ...(part.modelReroute ? { modelReroute: part.modelReroute } : {}),
     error: part.error,
     cancelled: part.cancelled,
     state: part.state,
@@ -66,6 +67,7 @@ export function conversationPartToContentParts(
     approvalSessionGrant: part.approvalSessionGrant,
     approvalServerGrant: part.approvalServerGrant,
     approvalRuleGrant: part.approvalRuleGrant,
+    ...(part.approvalAllGrant ? { approvalAllGrant: true as const } : {}),
     approvalStatus: part.approvalStatus,
     ...(part.inputRequestRecord
       ? { inputRequestRecord: { ...part.inputRequestRecord } }

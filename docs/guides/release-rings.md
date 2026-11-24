@@ -253,6 +253,7 @@ The injection boundary is the official producer, not a workflow-wide `env`:
 | Build path | Endpoint and channel |
 | --- | --- |
 | Tagged Stable RC/final desktop, macOS/Windows/Linux (`release.yml`) | Repo variable and `STATION_CHANNEL` only in desktop build steps; RC and final builds both use runtime channel `stable`. Tauri resource builds inherit both. |
+| Tagged Stable Mac App Store RC (`macos-store-delivery.yml`) | The build step reads the same repository variable when Release: Stage calls it for the matching RC tag. The bundled host reports `stable`. |
 | Nightly desktop, macOS/Windows (`nightly-native-stage.yml`, called by `nightly.yml`) | Repo variable only in build steps for official main Nightly runs; server build stamp records `nightly`. The Windows wrapper and nested resource builds inherit it. There is no Nightly Linux release producer. |
 | Five portable server archive targets, Stable/Nightly (`portable-server-archives.yml`) | Repo variable in both the initial server/UI build and the archive-packaging step, which rebuilds the server. Official tag or main Nightly callers must supply release inputs. Both builds use the selected runtime channel; staging reads it from packaged-release metadata. Direct dispatch and PR packaging proof get no endpoint. |
 | npm CLI stable/Nightly and portable CLI | No endpoint injection: the CLI has no author sink. It installs or connects to a separately distributed host, whose server stamp owns telemetry. CLI package versions remain independent from the product base. |
@@ -293,7 +294,10 @@ across a UTC day boundary with anonymous counts enabled, then inspect
 `station telemetry outbox --publisher kontour` for an acknowledged
 `station_daily` row with that version and channel. Read the exact version and
 channel breakdown in [private Insights](https://telemetry.kontourai.io/insights)
-for the corresponding receiver arrival day. Record the receiver evidence
+for the corresponding receiver arrival day. Check the Developer ID and Mac
+App Store builds independently. Exercise a paired mobile client against the
+qualified host to verify the delivery path. Repeat with Off and Do Not Track
+and confirm the outbox gains no new sent rows. Record the receiver evidence
 alongside the sender evidence. Public weekly estimates include privacy noise
 and may be published without reports.
 
