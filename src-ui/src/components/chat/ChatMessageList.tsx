@@ -953,6 +953,11 @@ function ChatMessageListComponent({
     onReaderPlaceChange,
     messagesContainerRef,
   ]);
+  // Gone, the list reads nothing: the window must not stay kept for it. Only
+  // on unmount, so a report that merely re-runs never reads as back at the end.
+  const readerPlaceChangeRef = useRef(onReaderPlaceChange);
+  readerPlaceChangeRef.current = onReaderPlaceChange;
+  useEffect(() => () => readerPlaceChangeRef.current?.({ away: false }), []);
   // #342: the user turns, from the whole row model — a virtualized transcript
   // mounts only the rows near the reader. Kept by identity while no turn's
   // summary changes, so streaming text does not re-render the rail.

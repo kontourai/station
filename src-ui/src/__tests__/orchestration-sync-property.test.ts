@@ -337,6 +337,37 @@ async function clientGraph(
   function unmountTranscript(): void {
     transcriptView.unmount();
   }
+  /**
+   * The whole conversation, read by a reader of its own that loads older
+   * pages until there are none: the oracle for what a kept window holds.
+   */
+  async function fullTranscript(): Promise<ChatMessage[]> {
+    const view = renderHook(
+      (session: ReturnType<typeof buildSession>) =>
+        useActiveChatTranscript(apiBase, session),
+      { initialProps: buildSession() },
+    );
+    const quiet = () =>
+      vi.waitFor(
+        () => {
+          expect(view.result.current.settled).toBe(true);
+          expect(view.result.current.loading).toBe(false);
+        },
+        { timeout: 5_000 },
+      );
+    try {
+      await quiet();
+      for (let pages = 0; view.result.current.hasMore; pages += 1) {
+        expect(pages, 'older pages to the beginning').toBeLessThan(200);
+        await view.result.current.loadOlder();
+        view.rerender(buildSession());
+        await quiet();
+      }
+      return view.result.current.messages;
+    } finally {
+      view.unmount();
+    }
+  }
   return {
     activeChatsStore,
     childWorkRegistrySnapshot,
@@ -349,6 +380,7 @@ async function clientGraph(
     settleTranscript,
     remountTranscript,
     unmountTranscript,
+    fullTranscript,
     setReaderPlace: (place: { away: boolean; turnId?: string }) =>
       transcriptView.result.current.setReaderPlace(place),
   };
@@ -1265,6 +1297,27 @@ async function seededConvergence(aAway: boolean) {
         turnDeltaText.get(turnId),
         `${seedLabel} oracle(B) ${turnId}`,
       );
+    }
+    // A's whole window against the whole conversation: every message from
+    // its oldest turn to the newest, each once and in order.
+    if (seed !== 50 && (seed % 20 === 19 || seed === 51)) {
+      const full = normalizeTranscript(await a.fullTranscript());
+      const held = normalizeTranscript(await a.settleTranscript());
+      expect(held.length, `${seedLabel} A within history`).toBeLessThan(
+        full.length + 1,
+      );
+      expect(held, `${seedLabel} A's whole window`).toEqual(
+        full.slice(full.length - held.length),
+      );
+    }
+    // Remounted, A has no reader state: its window is the bounded page B
+    // shows. Then its reader is away again.
+    if (seed === 100) {
+      a.remountTranscript();
+      const held = normalizeTranscript(await a.settleTranscript());
+      const bounded = normalizeTranscript(await b.settleTranscript());
+      expect(held, `${seedLabel} A remounted`).toEqual(bounded);
+      if (aAway) a.setReaderPlace({ away: true });
     }
     if (seed === 51) {
       // turn-50 closed just now (the late `turn.completed` published above)

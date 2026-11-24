@@ -53,6 +53,28 @@ function mergePages(
   );
 }
 
+/**
+ * Whether the held events cannot belong to the log a newest page was read
+ * from: one of them lies past the page's head (a log's head never moves back),
+ * or an event the two share sits at another sequence. The window read carries
+ * no store identity, so these are what tell a replaced log apart.
+ */
+function heldFromAnotherLog(
+  held: readonly OrchestrationSequencedEvent[],
+  page: Pick<OrchestrationConversationEventWindow, 'events' | 'watermark'>,
+): boolean {
+  const newestHeld = held.at(-1)?.sequence;
+  if (newestHeld !== undefined && newestHeld > page.watermark) return true;
+  if (!held.length) return false;
+  const heldSequences = new Map(
+    held.map((item) => [eventKey(item), item.sequence]),
+  );
+  return page.events.some((item) => {
+    const sequence = heldSequences.get(eventKey(item));
+    return sequence !== undefined && sequence !== item.sequence;
+  });
+}
+
 interface SessionEventWindowReader {
   events: OrchestrationSequencedEvent[];
   /**
@@ -576,11 +598,22 @@ export function useSessionEventWindow(
       // A reader away from the end keeps what is held as well: replacing it
       // drops the oldest turns from the front, and with them the rows they
       // are reading. Back at the end, the next reload replaces again.
-      const keep = reloadKeepsHeld({
-        olderLoaded: olderLoadedRef.current,
-        readerAway: readerPlaceRef.current.away,
-        holding: eventsRef.current.length > 0,
-      });
+      // A page from another store (Station's event log replaced since the
+      // held events were read) never merges with them: what is held is not
+      // in it any more, and its sequences number a different log.
+      const anotherLog = heldFromAnotherLog(eventsRef.current, page);
+      if (anotherLog) {
+        olderLoadedRef.current = false;
+        keptAwayRef.current = false;
+        pendingFloorRef.current = undefined;
+      }
+      const keep =
+        !anotherLog &&
+        reloadKeepsHeld({
+          olderLoaded: olderLoadedRef.current,
+          readerAway: readerPlaceRef.current.away,
+          holding: eventsRef.current.length > 0,
+        });
       const awayKeep = keep && !olderLoadedRef.current;
       keptAwayRef.current = awayKeep;
       windowStampRef.current =
@@ -943,6 +976,9 @@ export function useSessionEventWindow(
     reloadOwedRef.current = false;
     olderLoadedRef.current = false;
     keptAwayRef.current = false;
+    // The place belonged to the last conversation's list; this one's list
+    // reports its own.
+    readerPlaceRef.current = { away: false };
     pendingFloorRef.current = undefined;
     partialRef.current = new Set();
     closedRef.current = new Set();
