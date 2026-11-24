@@ -169,3 +169,24 @@ describe('tourStepIndexForId', () => {
     expect(tourStepIndexForId('activity')).toBe(0);
   });
 });
+
+describe('the Customize step', () => {
+  // The step speaks for the Customize page, so every kind it names must be
+  // one of that page's items; a kind the page dropped would send a new
+  // person looking for something Customize does not list.
+  test('names only kinds the Customize page lists', () => {
+    const step = FIRST_RUN_TOUR_STEPS.find(
+      (candidate) => candidate.anchor === 'customize',
+    );
+    const list = step?.body.match(/^Choose the (.+) that power your work\.$/);
+    expect(list, 'the step lists what Customize holds').toBeTruthy();
+    const named = list![1].split(/,\s*(?:and\s+)?|\s+and\s+/);
+    const items = new Set(
+      APP_DESTINATION_REGISTRY.getCustomizeNav().map((item) =>
+        item.label.toLowerCase(),
+      ),
+    );
+    expect(named.length).toBeGreaterThan(1);
+    for (const kind of named) expect(items).toContain(kind);
+  });
+});
