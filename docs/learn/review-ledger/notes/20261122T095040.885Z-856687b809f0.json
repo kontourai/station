@@ -1,0 +1,7 @@
+{
+  "revision": "3e119df23ae0f56b6e15972f3a27e5bffa9a73d6",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"Slice 4.10: 'Allow the Station browser for this session' keeps its words and typed server scope; it now sits in the approval's 'Allow for this session' menu, which this page does not describe otherwise. No prose change.","inputs":["docs/guides/browser-workspace.md","tests/inline-browser-activity.spec.ts"]}
+  ]
+}

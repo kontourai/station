@@ -185,6 +185,7 @@ export interface AcpMapperContext {
   provider: EngineId;
   session: ProviderSession;
   activeTurnId?: string;
+  handshake?: AcpIdentityHandshake | null;
   publish: (event: CanonicalRuntimeEvent) => void;
   state?: AcpMapperState;
   /** Required session-owned bounded authority for every ACP tool update. */
@@ -318,6 +319,7 @@ export function mapAcpSessionUpdate(
         kind: update.kind,
         rawInput: update.rawInput,
         rawOutput: update.rawOutput,
+        handshake: ctx.handshake,
         hasTitle: Object.hasOwn(update, 'title'),
         hasName: Object.hasOwn(update, 'name'),
         hasKind: Object.hasOwn(update, 'kind'),
@@ -338,6 +340,7 @@ export function mapAcpSessionUpdate(
         kind: update.kind,
         rawInput: update.rawInput,
         rawOutput: update.rawOutput,
+        handshake: ctx.handshake,
         content: update.content,
         status: update.status,
         hasTitle: Object.hasOwn(update, 'title'),

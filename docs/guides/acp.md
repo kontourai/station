@@ -1071,6 +1071,8 @@ and the scripted profile
 - **Station's tools.** Without `--process-per-session` the engine declares no
   `mcpCapabilities`, and Station's HTTP tool servers are skipped. With it, it
   declares `http` and called a client HTTP MCP server with its headers.
+  When Antigravity uses `call_mcp_tool`, the transcript shows the server and
+  tool named in the call along with the tool's arguments.
 - **Upstream errors with a dedicated profile.** On macOS and Linux, set
   `GEMINI_HOME` in the Station service environment to the absolute path
   `<Station home>/engine-profiles/antigravity` to enable diagnostics for the
@@ -1081,7 +1083,7 @@ and the scripted profile
   fixed failure message and retains the reported token usage. If a prompt
   still has no answer at 15 minutes and has a matching gateway error,
   Station can show the diagnostic while the active turn remains open.
-  It does not replay the prompt or stop the engine for the warning.
+  The warning leaves replay and Stop under the operator's control.
   Unavailable or ambiguous records leave the ordinary ACP outcome in place.
 - **Questions** arrive as core `elicitation/create` forms (a `oneOf` choice
   and a free-text `q1_other`) because Station announces `elicitation`.

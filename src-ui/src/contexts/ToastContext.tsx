@@ -40,7 +40,15 @@ export type ToastDismissReason = 'closed' | 'scope';
 type ToastAction = {
   label: string;
   onClick: () => unknown;
-  variant?: 'primary' | 'secondary' | 'danger';
+  /** `danger-outline` is an approval's Deny, drawn as the card draws it. */
+  variant?: 'primary' | 'secondary' | 'danger' | 'danger-outline';
+  /**
+   * Shown as an item of the card's one menu (named by
+   * `Toast.actionsMenuLabel`) instead of a labelled button, so a card never
+   * grows past two labelled buttons (#3045). An approval's session grants sit
+   * here.
+   */
+  inMenu?: boolean;
 };
 
 type ToastTone = 'info' | 'success' | 'warning' | 'error';
@@ -94,6 +102,8 @@ type Toast = {
   agentName?: string;
   conversationTitle?: string;
   actions?: ToastAction[];
+  /** Names the menu that holds the `inMenu` actions. */
+  actionsMenuLabel?: string;
   onNavigate?: () => void;
   /** Opaque metadata from server-side notifications (e.g. navigateTo for cross-project routing) */
   metadata?: Record<string, unknown>;
@@ -542,6 +552,8 @@ class ToastStore {
     agentName: string;
     conversationTitle?: string;
     actions: ToastAction[];
+    /** See `Toast.actionsMenuLabel`. */
+    actionsMenuLabel?: string;
     onNavigate?: () => void;
   }) {
     const id = `approval-${Date.now()}-${Math.random()}`;
@@ -566,6 +578,9 @@ class ToastStore {
       agentName: options.agentName,
       conversationTitle: conversationInfo,
       actions: options.actions,
+      ...(options.actionsMenuLabel
+        ? { actionsMenuLabel: options.actionsMenuLabel }
+        : {}),
       onNavigate: options.onNavigate,
       duration: 0, // No auto-dismiss for approvals
     };

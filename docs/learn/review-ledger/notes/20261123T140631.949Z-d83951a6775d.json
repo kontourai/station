@@ -1,0 +1,7 @@
+{
+  "revision": "ae4baa531b04a668824a11f0e3630bed2c09f42c",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only a test changed: the dock test now unmounts the ambient dock with its New chat draft open and checks the draft is published as closed; no module ownership claim changes.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "302371671783348999793bbadd25ffbb2a1590ab",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Rechecked the process fixture and its two proxy-frame sequences. The revised comment describes the native execute update; the protocol fixture, transcript assertions, and recorded behavioral evidence are the same.","inputs":["src-server/providers/__tests__/acp-session-answers.process.test.ts"]}
+  ]
+}

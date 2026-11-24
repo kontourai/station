@@ -726,7 +726,26 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
                 currentSessionId: handoffAccepted
                   ? HANDOFF_SESSION
                   : HANDOFF_CONVERSATION,
-                events: [],
+                // An accepted switch starts its catch-up turn in the new
+                // Session; the transcript draws the switch row only once a
+                // turn ran there (chat-24).
+                events: handoffAccepted
+                  ? [
+                      {
+                        sequence: 1,
+                        event: {
+                          eventId: 'dd-handoff-catch-up-start',
+                          provider: 'codex',
+                          threadId: HANDOFF_SESSION,
+                          turnId: 'dd-handoff-catch-up',
+                          createdAt: '2026-08-24T00:00:01.000Z',
+                          method: 'turn.started',
+                          prompt: 'Catch up.',
+                          metadata: { effectiveModel: 'gpt-5-codex' },
+                        },
+                      },
+                    ]
+                  : [],
                 handoffs: handoffAccepted
                   ? [
                       {
@@ -743,7 +762,7 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
                     ]
                   : [],
                 hasMore: false,
-                watermark: 0,
+                watermark: handoffAccepted ? 1 : 0,
               },
             }),
           });
@@ -804,9 +823,10 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
     });
     expect(handoffRequests[0]?.idempotencyKey).toEqual(expect.any(String));
 
-    const boundary = page.getByRole('region', {
-      name: /Continued with Codex Runtime/,
-    });
+    // chat-24: the switch row is plain text in reading order, not a region.
+    const boundary = page
+      .locator('.transcript-change--engine')
+      .filter({ hasText: /Switched to Codex Runtime/ });
     await expect(boundary).toBeVisible({ timeout: 10_000 });
     // The accepted target becomes current before focus restoration, so the
     // same control now carries its new Agent and may temporarily be unavailable

@@ -228,7 +228,13 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
 - **Persistence.** Collapsing the dock keeps the draft mounted but hidden, so
   text, files, chips and setup return survive and it never restarts itself.
   A plain New chat while a draft is open focuses it; a request carrying a
-  prompt, files, choices, a hand-off or a Task replaces it. Idle auto-hide
+  prompt, files, choices, a hand-off or a Task replaces it. Text a draft
+  held when it closed without starting opens the next plain New chat for the
+  same Project: the dock's Project when the draft closed (a Project
+  picked inside the draft does not move it), or none; a draft a sender opened hands
+  its text back to that sender instead. The text lives as long as the dock
+  does: switching Station or signing out remounts the dock and drops it, and
+  it is never sent by itself. Idle auto-hide
   waits while a draft is open.
 - **Covered chat.** It stays mounted, hidden and inert, takes no dropped files
   (the whole draft takes them), and does not count as on screen for turn
@@ -576,19 +582,20 @@ polite announcement. Waiting drafts are kept in the tab's session storage, so
 they survive a reload but not closing the tab.
 The desktop Inbox, embedded mobile Inbox, and start surface share their row anatomy. Touch
 cards allow two title lines while status and metadata keep predictable positions.
-Inbox dismissal is independent of an open tab: desktop keeps its hover-revealed
-clock and ×, while × hides any conversation without stopping work or deleting
-history. Undo restores it on this device; inbox search reveals dismissed work with Restore.
+Mark done is independent of an open tab: a desktop row reveals one ⋯ menu on
+hover or keyboard focus (Open chat, Mark done, the snooze list, Discard draft),
+and Mark done puts any conversation away without stopping work or deleting
+history. Undo reverses it; inbox search reveals work marked done with Reopen.
 A hold opens Details on touch Home rows. In the mobile Inbox it selects a conversation, with Details available for a single selection. One action definition supplies the desktop shortcuts, Details sheet and
 swipe tray, including availability, labels and pending state.
 With Sheet gestures preview enabled, mobile rows follow the finger on a left
 swipe and snap to reveal labelled actions. Only one row's tray stays open.
-Swiping only reveals; Snooze still opens its duration picker. Eligible
-conversations also offer Settle or Reopen when Open and Settled inbox is
-enabled. Dismiss from inbox hides work on this device; settling records the
-person's resolution across devices, and neither stops a running engine. With
-that preview on, owned conversations offer Settle and no Dismiss, and
-third-party Sessions offer Hide, kept per person on the host (see
+Swiping only reveals; Snooze still opens its duration picker. Mark done is one
+verb over three records: with Open and Settled inbox enabled it settles an
+eligible conversation (the person's resolution, across devices) and hides a
+third-party Session per person on the host; otherwise, and for work still
+running or waiting on the person, it dismisses on this device. None of them
+stops a running engine (see
 [Inbox shelves](#inbox-shelves-and-conversation-resolution)).
 The Details sheet retains the complete available action set, including actions
 also offered as shortcuts. Destructive draft discard stays outside the swipe
@@ -662,13 +669,27 @@ Scroll to bottom shows while the reader is scrolled up, and from the moment
 they open a row at the end that then grows past the view's end: that row stays
 where it is, and
 streaming text and new answers are not followed until the reader returns to the
-end by any means, closes that row, or switches chats. Their own message and a
-request opening end it too and bring the end into view, unless the reader has
-scrolled away from the held row: they stay where they are, as with no row
-held, and Scroll to bottom stays. Their rows stay where
-they are as it appears. Scroll-button hover changes its background
-without enlarging its target. The desktop header exposes Hide inbox /
-Show inbox directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
+end themselves (wheel, touch, a scroll key, End, a drag of the transcript's
+scrollbar, or Scroll to bottom), closes that row, or switches chats. It also
+ends when the row it protects goes away (a finished turn folding its tool
+rows, a row drawn again closed): a reader still at it then follows the end, and
+one who scrolled away stays where they are. It
+ends when a new message of the reader's appears in the transcript (a send, a
+steered message once Station's copy arrives, or a queued follow-up being
+delivered) and when a request opens, and those bring the end into view. Queueing
+a follow-up does not: its bubble, shown while a turn runs and withdrawn when
+Station queues it, belongs to no turn yet. Neither does an earlier message
+changing to the server's copy, a withdrawn bubble uncovering it again, or
+earlier history loading. A reader who scrolled away from the held row stays
+where they are, as with no row held, and Scroll to bottom stays. A scroll the
+reader did not make (content growing or shrinking under the held row, the
+browser clamping the position, a restore) neither counts as leaving the end nor
+as returning to it. When the view gets shorter (the keyboard, the pending list)
+the held row's header is brought back into it, moved no further than that,
+unless the reader has scrolled away. Their rows stay where they are as it
+appears. Scroll-button hover changes its background
+without enlarging its target. The desktop header exposes Hide chat list /
+Show chat list directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
 Pending tool permissions feed Needs approval; questions and forms feed Needs
 answer. Permission takes priority when both wait. The action opens the
@@ -1709,27 +1730,26 @@ the normal list. Third-party sessions can be hidden without stopping the
 external harness, and stay hidden through its status updates. Adoption into
 Station restores their normal status handling. A task row opens its Overview. Its work-chat disclosure expands the linked conversations. Browse all conversations
 sits at the end of the list and retains paginated history, rename and delete.
-The inbox has no overflow menu: a failed read offers Retry, disabled while the
-re-read runs. Full-size cards in the desktop and mobile Inbox share the title and project
+The inbox list has no list-level overflow menu (each row has its own ⋯): a
+failed read offers Retry, disabled while the re-read runs. Full-size cards in the desktop and mobile Inbox share the title and project
 column. Status and one time align on the right. Hover or keyboard focus exposes
-the desktop row actions. A touch row keeps the agent named beside its mark.
-Dismissal offers a
+the desktop row's ⋯ menu. A touch row keeps the agent named beside its mark.
+Mark done offers a
 transient Undo toast, which **Undo last action** (⌘Z / Ctrl+Z, rebindable)
 also reaches while the toast is shown. Native editor and terminal undo retain
 their keys.
 
-With the preview on, Settle is the one way to put an owned conversation away:
-its row offers no Dismiss. A third-party Session of this host offers **Hide**
-instead, kept on the host per person by Session thread id
+With the preview on, Mark done settles an owned conversation that settlement
+reaches. On a third-party Session of this host it hides the Session instead, kept on the host per person by Session thread id
 (`PUT /api/conversations/:id/inbox-hidden`, in `conversation-inbox-hidden.json`
 beside the settled records), so it is hidden on every device of that person.
 It stays hidden through its status updates and returns when the row is no
 longer third-party (adopted into Station), which also clears the record, or
 when the person restores it from search, where hidden rows are listed as
-Hidden. Hide and Restore share the dismissal Undo toast and **Undo last
+Marked done. Mark done and Reopen share one Undo toast and **Undo last
 action**. A host
 whose work-state read carries no `hidden` map, and a row from another Station,
-keep local Dismiss. Existing local third-party dismissals of this host move to
+keep the local dismissal under Mark done. Existing local third-party dismissals of this host move to
 the host when it first offers hiding and are then removed from the browser; a
 Session the host refuses as unreadable is dropped. Deleting a conversation
 removes every person's settled and hidden record for it, and each person keeps

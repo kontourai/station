@@ -1,0 +1,11 @@
+{
+  "revision": "567736a2c654794fba6d2c0f7b1d54bdd5888e0f",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Checked the three citing pages again after the window-blur fix; only chat-composer describes the hold.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the three citing pages again after the window-blur fix; only chat-composer describes the hold.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the three citing pages again after the window-blur fix; only chat-composer describes the hold.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "59c24b6fcfb264f9897e1aa934a54e4d10d4eb75",
+
+  "notes": [
+    {"path":"docs/learn/media/project-start-after.png","note":"HomeStartComposer change only affects Home without a fixed Project (it now hides only beside a dock showing a chat); this capture shows Project start controls, which pass a projectSlug and are unchanged. No recapture needed.","inputs":["docs/learn/media/project-start-after.png","src-ui/src/components/home/HomeStartComposer.tsx"]}
+  ]
+}

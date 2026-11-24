@@ -813,12 +813,12 @@ describe('ChatDockBody history-failure notice (station#3427)', () => {
     });
     const view = renderDock(session);
     await screen.findByText('Delegate the tests');
-    expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
 
     revalidating = false;
     view.rerenderSession({ ...session });
     expect(
-      await screen.findByRole('button', { name: 'Allow Once' }),
+      await screen.findByRole('button', { name: 'Allow once' }),
     ).toBeTruthy();
   });
 });

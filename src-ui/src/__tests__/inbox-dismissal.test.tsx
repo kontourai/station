@@ -104,13 +104,15 @@ function Harness({
 function dismissNoticeShown() {
   return toastStore
     .getSnapshot()
-    .some((toast) => toast.message === 'Conversation dismissed');
+    .some((toast) => toast.message === 'Marked done');
 }
 
+/** Mark done from the row's ⋯ menu. */
 function dismiss() {
   fireEvent.click(
-    screen.getByRole('button', { name: 'Dismiss Review the inbox from inbox' }),
+    screen.getByRole('button', { name: 'Actions for Review the inbox' }),
   );
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Mark done' }));
 }
 
 beforeEach(() => {
@@ -151,7 +153,7 @@ describe('inbox dismissal through the rendered panel', () => {
       expect(
         screen.queryByRole('button', { name: /^Review the inbox\b/ }),
       ).toBeNull();
-      expect(screen.getByText('Conversation dismissed')).toBeTruthy();
+      expect(screen.getByText('Marked done')).toBeTruthy();
       fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
       expect(
         screen.getByRole('button', { name: /^Review the inbox\b/ }),
@@ -167,16 +169,17 @@ describe('inbox dismissal through the rendered panel', () => {
     expect(
       screen.queryByRole('button', { name: /^Review the inbox\b/ }),
     ).toBeNull();
-    expect(screen.queryByRole('region', { name: /Dismissed/ })).toBeNull();
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
+    expect(screen.queryByRole('region', { name: /Marked done/ })).toBeNull();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search chats' }), {
       target: { value: 'Review' },
     });
-    const section = screen.getByRole('region', { name: /Dismissed/ });
+    const section = screen.getByRole('region', { name: /Marked done/ });
     fireEvent.click(
       within(section).getByRole('button', {
-        name: 'Restore Review the inbox to inbox',
+        name: 'Actions for Review the inbox',
       }),
     );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Reopen' }));
     expect(
       within(screen.getByRole('region', { name: 'Working' })).getByRole(
         'button',
@@ -199,13 +202,13 @@ describe('inbox dismissal through the rendered panel', () => {
         ]}
       />,
     );
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search chats' }), {
       target: { value: 'Review' },
     });
     await waitFor(() =>
-      expect(screen.getByRole('region', { name: /Dismissed/ })).toBeTruthy(),
+      expect(screen.getByRole('region', { name: /Marked done/ })).toBeTruthy(),
     );
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search inbox' }), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search chats' }), {
       target: { value: '' },
     });
     expect(screen.queryByText('Review the inbox')).toBeNull();
@@ -531,7 +534,7 @@ describe('inbox dismissal through the rendered panel', () => {
       dismiss();
       const notice = toastStore
         .getSnapshot()
-        .find((toast) => toast.message === 'Conversation dismissed');
+        .find((toast) => toast.message === 'Marked done');
       expect(notice).toBeTruthy();
       // The dismissal's notice goes away without Undo; the Board's stays.
       act(() => toastStore.dismiss(notice!.id));

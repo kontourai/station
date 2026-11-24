@@ -372,7 +372,7 @@ describe('decisions and outcomes', () => {
         decisionOptionResponse(option),
       ]),
     ).toEqual([
-      ['Allow Once', 'allow', 'once', 'accept'],
+      ['Allow once', 'allow', 'once', 'accept'],
       ['Allow Bash for this session', 'allow', 'session', 'acceptForSession'],
       ['Deny', 'deny', 'once', 'decline'],
     ]);

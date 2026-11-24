@@ -194,6 +194,89 @@ const TEXT_TURN = [{ kind: 'text', text: 'ok' }];
 describe.skipIf(process.platform === 'win32')(
   'ACP session and prompt answers (real process, recorded Antigravity 1.5.8 profile)',
   () => {
+    test.each([
+      [
+        'Antigravity ACP Server',
+        'start',
+        'chrome-devtools/navigate_page',
+        'other',
+      ],
+      [
+        'Antigravity ACP Server',
+        'update',
+        'chrome-devtools/navigate_page',
+        'other',
+      ],
+      ['Another ACP Engine', 'start', 'MCP Tool navigate_page', 'execute'],
+    ])(
+      'projects a proxied MCP call from %s with arguments on %s',
+      async (agentName, inputFrame, toolName, toolKind) => {
+        // Antigravity 1.5.12 reports the proxy call as an execute update.
+        const args = { url: 'https://example.com' };
+        const rawInput = {
+          ServerName: 'chrome-devtools',
+          ToolName: 'navigate_page',
+          Arguments: args,
+        };
+        const engine = launch(
+          {
+            ...PROFILE,
+            initialize: {
+              ...(PROFILE.initialize as Record<string, unknown>),
+              agentInfo: { name: agentName, version: '1.5.12' },
+            },
+          },
+          [
+            {
+              kind: 'session-update',
+              update: {
+                sessionUpdate: 'tool_call',
+                toolCallId: 'proxy-call',
+                kind: 'execute',
+                title: 'MCP Tool navigate_page',
+                status: 'in_progress',
+                ...(inputFrame === 'start' ? { rawInput } : {}),
+              },
+            },
+            {
+              kind: 'session-update',
+              update: {
+                sessionUpdate: 'tool_call_update',
+                toolCallId: 'proxy-call',
+                kind: 'execute',
+                status: 'completed',
+                ...(inputFrame === 'update' ? { rawInput } : {}),
+                rawOutput: 'Loaded page',
+              },
+            },
+          ],
+        );
+        await engine.start('proxy');
+        const turnId = await engine.send('proxy', 'Open the example page');
+        await engine.completed(turnId);
+
+        const started = engine.events
+          .filter((event) => event.method === 'tool.started')
+          .at(-1);
+        const completed = engine.events.find(
+          (event) => event.method === 'tool.completed',
+        );
+        expect(started).toMatchObject({
+          toolCallId: 'proxy-call',
+          toolName,
+          arguments: toolKind === 'execute' ? rawInput : args,
+        });
+        expect(completed).toMatchObject({
+          toolCallId: 'proxy-call',
+          toolName,
+          status: 'success',
+          output: 'Loaded page',
+        });
+        expect(started?.toolKind).toBe(toolKind);
+        expect(completed?.toolKind).toBe(toolKind);
+      },
+    );
+
     test('a reopened session gets its model and effort back when the engine resumes on its defaults', async () => {
       // The fake keeps options per process, so like Antigravity 1.5.8 (whose
       // reattached conversation came back on the account default model) a

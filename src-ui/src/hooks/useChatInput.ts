@@ -256,6 +256,27 @@ export function useChatInput({
   const currentAgent = connection ? undefined : hostAgent;
   const cancelMessage = useCancelMessage(apiBase, connection);
 
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingDraftRef = useRef<{ sessionId: string; text: string } | null>(
+    null,
+  );
+  /**
+   * Empties the TEXT of `sid`'s saved draft, including a keystroke of that
+   * chat not yet saved. Its quotes stay: they are the person's, not the
+   * command's. Another chat's pending save is left to land.
+   */
+  const dropSavedDraftText = useCallback(
+    (sid: string) => {
+      if (pendingDraftRef.current?.sessionId === sid) {
+        pendingDraftRef.current = null;
+        if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
+        draftTimerRef.current = null;
+      }
+      setDraft(sid, '');
+    },
+    [setDraft],
+  );
+
   // Slash commands
   const { commands: slashCommands } = useSlashCommands(
     agentSlug,
@@ -268,7 +289,7 @@ export function useChatInput({
   const slashCommandHandler = useCallback(
     async (sid: string, command: string) => {
       if (connection && connection.routeKind !== 'host') return false;
-      return handleSlashCommand(sid, command, {
+      const result = await handleSlashCommand(sid, command, {
         onInputCleared,
         availableModels,
         bindingStatus:
@@ -290,9 +311,20 @@ export function useChatInput({
           closeAll,
         },
       });
+      // A command that ran here empties the composer: its line is not unsent
+      // text, so the saved draft keeps none of it. One that did not run
+      // (unknown, refused, unreadable) leaves its line in the composer to be
+      // corrected, and saved with it.
+      if (
+        (result === true || result === 'CLEAR') &&
+        !activeChatsStore.getSnapshot()[sid]?.input
+      )
+        dropSavedDraftText(sid);
+      return result;
     },
     [
       handleSlashCommand,
+      dropSavedDraftText,
       connection,
       openModel,
       onOpenNewChat,
@@ -446,10 +478,6 @@ export function useChatInput({
       support.model_selection ||
       runtimeHasSessionOptions);
 
-  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const pendingDraftRef = useRef<{ sessionId: string; text: string } | null>(
-    null,
-  );
   const flushDraft = useCallback(() => {
     if (draftTimerRef.current) clearTimeout(draftTimerRef.current);
     draftTimerRef.current = null;

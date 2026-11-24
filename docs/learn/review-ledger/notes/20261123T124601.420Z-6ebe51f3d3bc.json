@@ -1,0 +1,7 @@
+{
+  "revision": "ff50277a6d175697884db9f351a54eacf4bf0b96",
+
+  "notes": [
+    {"path":"docs/guides/commands.md","note":"Added: a command that runs takes its line out of the composer and the saved draft (quotes kept); one that does not run (unknown, refused, unparseable, dispatcher not loaded) stays in the composer and saved. Checked /new with text and /clear passages agree.","inputs":["docs/guides/commands.md","src-ui/src/hooks/useSlashCommandHandler.ts","src-ui/src/slashCommands/dispatch.ts"]}
+  ]
+}
