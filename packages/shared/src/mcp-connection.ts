@@ -178,6 +178,7 @@ const NON_ELICITING_METHODS_2026: ReadonlySet<string> = new Set([
   'resources/templates/list',
   'ping',
   'completion/complete',
+  'events/list',
 ]);
 
 /** The JSON-RPC method each client helper sends. */
@@ -245,6 +246,7 @@ const MCP_APPS_MIME_TYPE = 'text/html;profile=mcp-app';
 export const STATION_MCP_CLIENT_CAPABILITIES = {
   elicitation: { form: {} },
   extensions: {
+    'io.modelcontextprotocol/events': {},
     [MCP_APPS_EXTENSION_ID]: {
       mimeTypes: [MCP_APPS_MIME_TYPE],
     },
@@ -506,9 +508,11 @@ export function prepareMCPConnection(
 
             // Discover tools
             assertCurrent();
-            const result = await rawClient.listTools();
+            const catalog = negotiation.serverCapabilities?.tools
+              ? (await rawClient.listTools()).tools
+              : [];
             assertCurrent();
-            const tools: MCPToolInfo[] = (result.tools || []).map((t) => ({
+            const tools: MCPToolInfo[] = catalog.map((t) => ({
               name: `${def.id}_${t.name}`,
               originalName: t.name,
               serverId: def.id,

@@ -210,10 +210,13 @@ function writeReceipt(path, receipt) {
   writeFileSync(path, `${JSON.stringify(receipt, null, 2)}\n`, { mode: 0o600 });
 }
 
-async function queryBuild({ appId, bundleVersion }, env) {
+async function queryBuild({ appId, bundleVersion, platform = 'IOS' }, env) {
+  if (!['IOS', 'MAC_OS'].includes(platform))
+    throw new Error('--platform must be IOS or MAC_OS');
   const query = new URLSearchParams({
     'filter[app]': appId,
     'filter[version]': bundleVersion,
+    'filter[preReleaseVersion.platform]': platform,
     limit: '2',
   });
   const payload = await appStoreConnectRequest(
@@ -394,6 +397,7 @@ export function assertCanonicalArtifactBuiltAt(value) {
 async function reconcileBuild(argv, env) {
   const appId = requiredOption(argv, '--app-id');
   const bundleVersion = requiredOption(argv, '--bundle-version');
+  const platform = valueAfter(argv, '--platform');
   const output = requiredOption(argv, '--output');
   const authorityRef = requiredOption(argv, '--authority-ref');
   const authoritySha = requiredOption(argv, '--authority-sha');
@@ -401,7 +405,7 @@ async function reconcileBuild(argv, env) {
     throw new Error(
       '--authority-sha must be exactly 40 lowercase hex characters',
     );
-  const build = await queryBuild({ appId, bundleVersion }, env);
+  const build = await queryBuild({ appId, bundleVersion, platform }, env);
   const processingState = build?.attributes?.processingState ?? 'ABSENT';
   if (!['ABSENT', 'PROCESSING', 'VALID'].includes(processingState)) {
     throw new Error(
@@ -431,6 +435,7 @@ async function reconcileBuild(argv, env) {
 async function waitForValidBuild(argv, env) {
   const appId = requiredOption(argv, '--app-id');
   const bundleVersion = requiredOption(argv, '--bundle-version');
+  const platform = valueAfter(argv, '--platform');
   const deadlineSeconds = Number(
     valueAfter(argv, '--deadline-seconds') ?? '1800',
   );
@@ -442,7 +447,7 @@ async function waitForValidBuild(argv, env) {
     throw new Error('--deadline-seconds must be an integer from 30 to 3600');
   const deadline = Date.now() + deadlineSeconds * 1000;
   for (;;) {
-    const build = await queryBuild({ appId, bundleVersion }, env);
+    const build = await queryBuild({ appId, bundleVersion, platform }, env);
     const state = build?.attributes?.processingState;
     if (state === 'VALID') return;
     if (state && state !== 'PROCESSING')

@@ -240,7 +240,7 @@ describe('approval inbox notifications', () => {
 
   test('a spilled bound call that arrives later turns the card into Deny only', async () => {
     await emit('orchestration:event', { event: fileChangeRequest });
-    expect(await cardLabels()).toContain('Allow Once');
+    expect(await cardLabels()).toContain('Allow once');
     const updates = updatedActionLabels();
     needsLoad();
     // A call this request does not gate changes nothing.
@@ -256,7 +256,7 @@ describe('approval inbox notifications', () => {
         spilledContent: { v: 1, count: 1, bytes: 40_000 },
       },
     });
-    expect(await cardLabels()).toContain('Allow Once');
+    expect(await cardLabels()).toContain('Allow once');
     await emit('orchestration:event', {
       event: {
         eventId: 'start-fc',
@@ -312,7 +312,7 @@ describe('approval inbox notifications', () => {
     await expect(
       notificationService.action(card!.id, 'accept'),
     ).rejects.toMatchObject({ code: 'request_event_changed' });
-    expect(await cardLabels()).toContain('Allow Once');
+    expect(await cardLabels()).toContain('Allow once');
   });
 
   test('a rewrite that races the request settling does not re-register the card', async () => {
@@ -392,7 +392,7 @@ describe('approval inbox notifications', () => {
     );
     const [card] = await notificationService.list();
     expect(card!.actions?.map((action) => action.label)).toEqual([
-      'Allow Once',
+      'Allow once',
       'Allow "npm ls *" for this session',
       'Allow all Bash commands for this session',
       'Deny',
@@ -405,6 +405,55 @@ describe('approval inbox notifications', () => {
       expectedRequestEventId: 'event-npm',
       decision: 'acceptForSession',
       sessionGrantScope: 'rule',
+    });
+  });
+
+  test('offers the session-wide grant only where the adapter marked the request, and sends the typed scope', async () => {
+    const openShell = (requestId: string, payload: Record<string, unknown>) =>
+      emit('orchestration:event', {
+        event: {
+          createdAt: new Date().toISOString(),
+          method: 'request.opened',
+          payload: {
+            toolName: 'shell',
+            rawInput: { action: 'shell' },
+            ...payload,
+          },
+          provider: 'opencode',
+          requestId,
+          eventId: `event-${requestId}`,
+          requestType: 'approval',
+          threadId: 'thread-all',
+          title: 'Allow shell',
+        },
+      });
+    await openShell('req-plain', {});
+    await openShell('req-all', { sessionGrantAll: true });
+    const cards = await notificationService.list();
+    const card = (requestId: string) =>
+      cards.find((entry) => entry.metadata?.requestId === requestId);
+    expect(card('req-plain')?.actions?.map((action) => action.id)).toEqual([
+      'accept',
+      'acceptForSession',
+      'decline',
+    ]);
+    expect(card('req-all')?.actions?.map((action) => action.label)).toEqual([
+      'Allow once',
+      'Allow all shell calls for this session',
+      'Allow everything for this session',
+      'Deny',
+    ]);
+    await notificationService.action(
+      card('req-all')!.id,
+      'acceptForSessionAll',
+    );
+    expect(orchestrationService.dispatch).toHaveBeenCalledWith({
+      type: 'respondToRequest',
+      threadId: 'thread-all',
+      requestId: 'req-all',
+      expectedRequestEventId: 'event-req-all',
+      decision: 'acceptForSession',
+      sessionGrantScope: 'all',
     });
   });
 
@@ -432,7 +481,7 @@ describe('approval inbox notifications', () => {
       await open({ ...browserCall, stationBrowserServer: true });
       const [card] = await notificationService.list();
       expect(card.actions?.map((action) => action.label)).toEqual([
-        'Allow Once',
+        'Allow once',
         'Allow all station-browser.browser_click calls for this session',
         'Allow the Station browser for this session',
         'Deny',
@@ -766,7 +815,7 @@ describe('approval inbox notifications', () => {
       // The other two labels are per-call and must stay as they are.
       expect(
         notifications[0].actions?.map((candidate) => candidate.label),
-      ).toEqual(['Allow Once', expected, 'Deny']);
+      ).toEqual(['Allow once', expected, 'Deny']);
     });
   });
 
@@ -778,7 +827,7 @@ describe('approval inbox notifications', () => {
         title: 'Persisted approval',
         priority: 'high',
         actions: [
-          { id: 'accept', label: 'Allow Once', variant: 'primary' },
+          { id: 'accept', label: 'Allow once', variant: 'primary' },
           { id: 'decline', label: 'Deny', variant: 'danger' },
         ],
         metadata: {
@@ -977,6 +1026,14 @@ describe('approval inbox notifications', () => {
         sessionKind: 'managed',
       }),
     );
+    // The registry card offers the one-call decision and Deny, in the same
+    // words as every other approval surface.
+    expect(
+      notification.actions?.map((action) => [action.id, action.label]),
+    ).toEqual([
+      ['accept', 'Allow once'],
+      ['decline', 'Deny'],
+    ]);
 
     await notificationService.action(notification.id, 'accept');
 
@@ -1169,7 +1226,7 @@ describe('approval inbox notifications', () => {
       title: 'Tool call awaiting approval: shell.exec',
       priority: 'high',
       actions: [
-        { id: 'accept', label: 'Allow Once', variant: 'primary' },
+        { id: 'accept', label: 'Allow once', variant: 'primary' },
         { id: 'decline', label: 'Deny', variant: 'danger' },
       ],
       dedupeTag: `orchestration:${threadId}:${requestId}`,

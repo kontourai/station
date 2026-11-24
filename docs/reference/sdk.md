@@ -424,6 +424,12 @@ identifies installation provenance, not a trust or approval verdict. Local
 registry origin is bound to the saved execution definition; changed definitions
 withhold stale provenance.
 
+Call `useDiscoverIntegrationEventsMutation().mutateAsync({id, requestScope})`
+to check a saved Streamable HTTP tool server’s event catalog as the Station
+operator. The result carries `supported` and, when supported, bounded event
+names with optional titles and descriptions. The captured scope binds the
+request to the current Station and authority. Older hosts return HTTP 404.
+
 `useIntegrationAccountQuery(id, projectSlug?, requestScope?)` reads the account
 summary. Pass the captured `ApiRequestScope` to partition account state by
 Station and principal authority and refuse a request after that authority changes.
@@ -6215,9 +6221,12 @@ await respondToRequest(requestScope.apiBase, {
 `decision: 'acceptForSession'`. `'server'` widens the grant to the built-in
 Station browser server; `'rule'` narrows it to the Bash command prefixes a
 Claude engine suggested. Each applies only where the request offered that
-choice; otherwise the answer is a one-call accept. Omit it for the per-tool
-grant. A Station that predates `'server'` ignores it; one that predates
-`'rule'` refuses the command.
+choice; otherwise the answer is a one-call accept. `'all'` widens the grant
+to every later request in the Session a grant may answer, where the request
+offered it (`sessionGrantAll: true` on its payload); an engine without it
+takes the per-tool grant. Omit it for the per-tool grant. A Station that
+predates `'server'` ignores it; one that predates `'rule'` or `'all'` refuses
+the command.
 The approval decision option carries the same optional `sessionGrantScope`;
 renderers must forward it separately from `acceptForSession` so a scoped
 choice cannot collapse into ordinary per-tool trust.

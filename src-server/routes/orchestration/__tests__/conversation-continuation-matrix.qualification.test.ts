@@ -19,6 +19,7 @@ import {
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
 } from '../../../services/execution-target/execution-target-execution.js';
+import { receiptBus } from '../../../services/infra/receipt-bus.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -76,12 +77,9 @@ const logger: Logger = {
 
 describe('fork and handoff deliver the transcript seed across engine families', () => {
   const makeTempDir = trackTempDirs();
-  const runtimes: { service: OrchestrationService; store: EventStore }[] = [];
+  const closeRuntimes: (() => Promise<void>)[] = [];
   afterEach(async () => {
-    for (const runtime of runtimes.splice(0)) {
-      await runtime.service.shutdown();
-      runtime.store.close();
-    }
+    for (const close of closeRuntimes.splice(0)) await close();
   });
 
   function harness() {
@@ -119,7 +117,13 @@ describe('fork and handoff deliver the transcript seed across engine families', 
         resolveSkillDir: async () => null,
       }),
     });
-    runtimes.push({ service, store });
+    const pendingTurnReceipts = new Set<() => void>();
+    closeRuntimes.push(async () => {
+      for (const unsubscribe of pendingTurnReceipts) unsubscribe();
+      pendingTurnReceipts.clear();
+      await service.shutdown();
+      store.close();
+    });
     const memory = new Map<string, FileMemoryAdapter>(
       [...ENGINES, FILE_SOURCE, 'default'].map((agent) => [
         agent,
@@ -241,17 +245,6 @@ describe('fork and handoff deliver the transcript seed across engine families', 
         return { turnId: receipt.result.turnId };
       },
     };
-    const idle = (conversationId: string) =>
-      vi.waitFor(async () =>
-        expect(
-          (
-            await service.readCurrentConversationSession(
-              conversationId,
-              authority,
-            )
-          )?.session.hasActiveTurn,
-        ).toBe(false),
-      );
     /** One completed turn on `engine`; resolves with the turn it answered. */
     const turn = async (
       agent: AgentName,
@@ -262,7 +255,23 @@ describe('fork and handoff deliver the transcript seed across engine families', 
       const engine = engineOf(agent);
       const adapter = adapters.get(engine)!;
       const before = adapter.turns.length;
-      await executeForegroundMessage(
+      const turnId = `${engine}-handoff-turn-${before + 1}`;
+      const projected = new Promise<void>((resolve) => {
+        const unsubscribe = receiptBus.subscribeForTest((receipt) => {
+          if (
+            receipt.kind === 'turn.event.projected' &&
+            receipt.reason === 'completed' &&
+            receipt.turnId === turnId &&
+            receipt.threadId === adapter.turns[before]?.threadId
+          ) {
+            unsubscribe();
+            pendingTurnReceipts.delete(unsubscribe);
+            resolve();
+          }
+        });
+        pendingTurnReceipts.add(unsubscribe);
+      });
+      const handle = await executeForegroundMessage(
         {
           target: { environment: { kind: 'current' }, agent: agentId(agent) },
           conversationId,
@@ -274,13 +283,12 @@ describe('fork and handoff deliver the transcript seed across engine families', 
         },
         deps,
       );
-      await vi.waitFor(() => expect(adapter.turns.length).toBe(before + 1));
-      await idle(conversationId);
+      expect(handle.providerTurnId).toBe(turnId);
+      await projected;
+      expect(adapter.turns).toHaveLength(before + 1);
       const sent = adapter.turns[before]!;
-      return {
-        sent,
-        turnId: `${engine}-handoff-turn-${before + 1}`,
-      };
+      expect(handle.sessionId).toBe(sent.threadId);
+      return { sent, turnId };
     };
     const fork = (
       source: string,

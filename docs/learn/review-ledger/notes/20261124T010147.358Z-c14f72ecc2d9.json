@@ -1,0 +1,7 @@
+{
+  "revision": "d0f65f52d514bb1fa84645fe16d9fbd9f08467e9",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Hold paragraph: the hold ends when the row it protects goes away (a finished turn folding its tool rows, a row drawn again closed); a reader still at it follows the end, one who scrolled away stays. A row closed in place keeps the existing rule under 'closes that row'. Matches ChatMessageList's content observer.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

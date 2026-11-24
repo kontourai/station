@@ -119,10 +119,12 @@ export interface RespondToRequestInput {
   decision: ApprovalDecision;
   /**
    * With `acceptForSession`: `server` grants the whole Station browser
-   * server; `rule` only the Bash command prefixes the engine suggested.
-   * Honoured only where the request offered that scope.
+   * server; `rule` only the Bash command prefixes the engine suggested;
+   * `all` every later request in the session a grant may answer.
+   * Honoured only where the request offered that scope (an engine without
+   * the session-wide grant takes the per-tool grant for `all`).
    */
-  sessionGrantScope?: 'server' | 'rule';
+  sessionGrantScope?: 'server' | 'rule' | 'all';
   /**
    * #3390: accepted content for a form input request, keyed by field name;
    * validated server-side against the exact opened event.

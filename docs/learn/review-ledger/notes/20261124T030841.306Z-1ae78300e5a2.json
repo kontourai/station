@@ -1,0 +1,7 @@
+{
+  "revision": "179b8c3f53e1d40fafef8d282baa587623e70bf1",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Checked the toast fixture against the ToastStore approval action type. The mock now reads the production signature, so its menu assertions typecheck. The existing eligibility and typed answer assertions still exercise the documented session grant.","inputs":["src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts"]}
+  ]
+}

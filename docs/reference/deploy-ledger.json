@@ -1,5 +1,245 @@
 [
   {
+    "timestampUtc": "2026-11-24T13:00:13Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261124.1",
+    "sha": "d64a21a522c67affa19d89600386a8a5f594103c",
+    "artifactBuiltAt": "2026-11-24T12:11:29.582Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45387969449",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45387969449)"
+    ],
+    "changelog": {
+      "previousSha": "be184871bda9c10be48057051d5c39414b1dbe14",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5555](https://github.com/kontourai/station/pull/5555) fix(chat): keep a scrolled-up reader's place when a follow-up is delivered or a turn ends",
+          "[#5546](https://github.com/kontourai/station/pull/5546) fix(acp): report recorded Antigravity upstream failures"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
+    "timestampUtc": "2026-11-24T13:00:13Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261124.1",
+    "sha": "d64a21a522c67affa19d89600386a8a5f594103c",
+    "artifactBuiltAt": "2026-11-24T12:04:47.079Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45387969449",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45387969449)"
+    ],
+    "changelog": {
+      "previousSha": "be184871bda9c10be48057051d5c39414b1dbe14",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5555](https://github.com/kontourai/station/pull/5555) fix(chat): keep a scrolled-up reader's place when a follow-up is delivered or a turn ends",
+          "[#5546](https://github.com/kontourai/station/pull/5546) fix(acp): report recorded Antigravity upstream failures"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
+    "timestampUtc": "2026-11-24T12:06:16Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261124.45387969449",
+    "sha": "d64a21a522c67affa19d89600386a8a5f594103c",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45387969449",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261124.45387969449 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "be184871bda9c10be48057051d5c39414b1dbe14",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5555](https://github.com/kontourai/station/pull/5555) fix(chat): keep a scrolled-up reader's place when a follow-up is delivered or a turn ends",
+          "[#5546](https://github.com/kontourai/station/pull/5546) fix(acp): report recorded Antigravity upstream failures"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
+    "timestampUtc": "2026-11-24T05:50:41Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261124",
+    "sha": "be184871bda9c10be48057051d5c39414b1dbe14",
+    "artifactBuiltAt": "2026-11-24T05:01:11.383Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45329566332",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45329566332)"
+    ],
+    "changelog": {
+      "previousSha": "cb9a1f73b4b4f1a4720b02387cde5d996a2bf99b",
+      "groups": {
+        "feat": [
+          "[#5524](https://github.com/kontourai/station/pull/5524) feat(mcp): discover event types in Connections",
+          "[#5542](https://github.com/kontourai/station/pull/5542) feat(release): stage Mac App Store candidates in TestFlight",
+          "[#5536](https://github.com/kontourai/station/pull/5536) feat: three-choice approvals, transcript markers, Mark done and chat dock fixes",
+          "[#5529](https://github.com/kontourai/station/pull/5529) feat(mcp): search grant-scoped native conversations",
+          "[#5521](https://github.com/kontourai/station/pull/5521) feat: own fixed native-text launch in the confined lab",
+          "[#5525](https://github.com/kontourai/station/pull/5525) feat: qualify the dormant retained Session activation owner",
+          "[#5516](https://github.com/kontourai/station/pull/5516) feat(mcp): scope outside-agent active-work discovery to its grant",
+          "[#5518](https://github.com/kontourai/station/pull/5518) feat: relay confined native delegation RPC over stdio"
+        ],
+        "fix": [
+          "[#5550](https://github.com/kontourai/station/pull/5550) fix(opencode): honor session-wide tool approval grants",
+          "[#5552](https://github.com/kontourai/station/pull/5552) fix(ci): warn before lifecycle approvals expire",
+          "[#5540](https://github.com/kontourai/station/pull/5540) fix(acp): show Antigravity proxy calls as MCP tools",
+          "[#5553](https://github.com/kontourai/station/pull/5553) fix(test): avoid ephemeral ports in CLI lifecycle fixtures",
+          "[#5551](https://github.com/kontourai/station/pull/5551) fix(ci): pin the transcript fixture's secret-scan exemptions to the squash commit on main",
+          "[#5549](https://github.com/kontourai/station/pull/5549) fix(chat): follow the reader's own message after a held row, and keep a held row still while an answer streams",
+          "[#5548](https://github.com/kontourai/station/pull/5548) fix(test): sweep real touch targets, not border boxes",
+          "[#5523](https://github.com/kontourai/station/pull/5523) fix(projects): align Project navigation and overview spacing",
+          "[#5520](https://github.com/kontourai/station/pull/5520) fix(test): stabilize conversation and Task qualification fixtures",
+          "[#5526](https://github.com/kontourai/station/pull/5526) fix(mcp): bound outside-agent request admission"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5554](https://github.com/kontourai/station/pull/5554) test(search): verify a ready worker gets a fresh read deadline",
+          "[#5547](https://github.com/kontourai/station/pull/5547) chore(deps): renew the install-script approvals that expired on 2026-11-23"
+        ]
+      },
+      "note": null,
+      "commitCount": 20
+    }
+  },
+  {
+    "timestampUtc": "2026-11-24T05:50:41Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261124",
+    "sha": "be184871bda9c10be48057051d5c39414b1dbe14",
+    "artifactBuiltAt": "2026-11-24T04:59:03.967Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45329566332",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45329566332)"
+    ],
+    "changelog": {
+      "previousSha": "cb9a1f73b4b4f1a4720b02387cde5d996a2bf99b",
+      "groups": {
+        "feat": [
+          "[#5524](https://github.com/kontourai/station/pull/5524) feat(mcp): discover event types in Connections",
+          "[#5542](https://github.com/kontourai/station/pull/5542) feat(release): stage Mac App Store candidates in TestFlight",
+          "[#5536](https://github.com/kontourai/station/pull/5536) feat: three-choice approvals, transcript markers, Mark done and chat dock fixes",
+          "[#5529](https://github.com/kontourai/station/pull/5529) feat(mcp): search grant-scoped native conversations",
+          "[#5521](https://github.com/kontourai/station/pull/5521) feat: own fixed native-text launch in the confined lab",
+          "[#5525](https://github.com/kontourai/station/pull/5525) feat: qualify the dormant retained Session activation owner",
+          "[#5516](https://github.com/kontourai/station/pull/5516) feat(mcp): scope outside-agent active-work discovery to its grant",
+          "[#5518](https://github.com/kontourai/station/pull/5518) feat: relay confined native delegation RPC over stdio"
+        ],
+        "fix": [
+          "[#5550](https://github.com/kontourai/station/pull/5550) fix(opencode): honor session-wide tool approval grants",
+          "[#5552](https://github.com/kontourai/station/pull/5552) fix(ci): warn before lifecycle approvals expire",
+          "[#5540](https://github.com/kontourai/station/pull/5540) fix(acp): show Antigravity proxy calls as MCP tools",
+          "[#5553](https://github.com/kontourai/station/pull/5553) fix(test): avoid ephemeral ports in CLI lifecycle fixtures",
+          "[#5551](https://github.com/kontourai/station/pull/5551) fix(ci): pin the transcript fixture's secret-scan exemptions to the squash commit on main",
+          "[#5549](https://github.com/kontourai/station/pull/5549) fix(chat): follow the reader's own message after a held row, and keep a held row still while an answer streams",
+          "[#5548](https://github.com/kontourai/station/pull/5548) fix(test): sweep real touch targets, not border boxes",
+          "[#5523](https://github.com/kontourai/station/pull/5523) fix(projects): align Project navigation and overview spacing",
+          "[#5520](https://github.com/kontourai/station/pull/5520) fix(test): stabilize conversation and Task qualification fixtures",
+          "[#5526](https://github.com/kontourai/station/pull/5526) fix(mcp): bound outside-agent request admission"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5554](https://github.com/kontourai/station/pull/5554) test(search): verify a ready worker gets a fresh read deadline",
+          "[#5547](https://github.com/kontourai/station/pull/5547) chore(deps): renew the install-script approvals that expired on 2026-11-23"
+        ]
+      },
+      "note": null,
+      "commitCount": 20
+    }
+  },
+  {
+    "timestampUtc": "2026-11-24T05:05:17Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261124.45329566332",
+    "sha": "be184871bda9c10be48057051d5c39414b1dbe14",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45329566332",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261124.45329566332 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "cb9a1f73b4b4f1a4720b02387cde5d996a2bf99b",
+      "groups": {
+        "feat": [
+          "[#5524](https://github.com/kontourai/station/pull/5524) feat(mcp): discover event types in Connections",
+          "[#5542](https://github.com/kontourai/station/pull/5542) feat(release): stage Mac App Store candidates in TestFlight",
+          "[#5536](https://github.com/kontourai/station/pull/5536) feat: three-choice approvals, transcript markers, Mark done and chat dock fixes",
+          "[#5529](https://github.com/kontourai/station/pull/5529) feat(mcp): search grant-scoped native conversations",
+          "[#5521](https://github.com/kontourai/station/pull/5521) feat: own fixed native-text launch in the confined lab",
+          "[#5525](https://github.com/kontourai/station/pull/5525) feat: qualify the dormant retained Session activation owner",
+          "[#5516](https://github.com/kontourai/station/pull/5516) feat(mcp): scope outside-agent active-work discovery to its grant",
+          "[#5518](https://github.com/kontourai/station/pull/5518) feat: relay confined native delegation RPC over stdio"
+        ],
+        "fix": [
+          "[#5550](https://github.com/kontourai/station/pull/5550) fix(opencode): honor session-wide tool approval grants",
+          "[#5552](https://github.com/kontourai/station/pull/5552) fix(ci): warn before lifecycle approvals expire",
+          "[#5540](https://github.com/kontourai/station/pull/5540) fix(acp): show Antigravity proxy calls as MCP tools",
+          "[#5553](https://github.com/kontourai/station/pull/5553) fix(test): avoid ephemeral ports in CLI lifecycle fixtures",
+          "[#5551](https://github.com/kontourai/station/pull/5551) fix(ci): pin the transcript fixture's secret-scan exemptions to the squash commit on main",
+          "[#5549](https://github.com/kontourai/station/pull/5549) fix(chat): follow the reader's own message after a held row, and keep a held row still while an answer streams",
+          "[#5548](https://github.com/kontourai/station/pull/5548) fix(test): sweep real touch targets, not border boxes",
+          "[#5523](https://github.com/kontourai/station/pull/5523) fix(projects): align Project navigation and overview spacing",
+          "[#5520](https://github.com/kontourai/station/pull/5520) fix(test): stabilize conversation and Task qualification fixtures",
+          "[#5526](https://github.com/kontourai/station/pull/5526) fix(mcp): bound outside-agent request admission"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#5554](https://github.com/kontourai/station/pull/5554) test(search): verify a ready worker gets a fresh read deadline",
+          "[#5547](https://github.com/kontourai/station/pull/5547) chore(deps): renew the install-script approvals that expired on 2026-11-23"
+        ]
+      },
+      "note": null,
+      "commitCount": 20
+    }
+  },
+  {
     "timestampUtc": "2026-11-23T21:49:58Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261123.3",

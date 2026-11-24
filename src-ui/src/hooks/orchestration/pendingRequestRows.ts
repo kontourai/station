@@ -16,6 +16,7 @@ import {
   isSubagentApprovalRequest,
 } from '@kontourai/station-shared/runtime-event-projection';
 import {
+  toolRequestAllGrantFromPayload,
   toolRequestFromPayload,
   toolRequestRuleGrantFromPayload,
   toolRequestServerGrantFromPayload,
@@ -203,6 +204,9 @@ export function unansweredApprovalRequests(
       approvalSessionGrant: toolRequestSessionGrantFromPayload(request.payload),
       approvalServerGrant: toolRequestServerGrantFromPayload(request.payload),
       approvalRuleGrant: toolRequestRuleGrantFromPayload(request.payload),
+      ...(toolRequestAllGrantFromPayload(request.payload)
+        ? { approvalAllGrant: true as const }
+        : {}),
     };
   });
 }

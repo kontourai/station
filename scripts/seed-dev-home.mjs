@@ -87,6 +87,7 @@ export const ROOT_DECISIONS = Object.freeze({
   security: 'credentials',
   'app-homes': 'credentials',
   'confined-homes': 'credentials',
+  'engine-profiles': 'credentials',
   'runtime-auth-health.json': 'credentials',
   'project-s3-sources.json': 'credentials',
   browser: 'credentials',

@@ -25,34 +25,58 @@ describe('ConversationContextBoundary', () => {
   test.each([
     [
       'continue-from-history',
-      'Context reset: continued from history',
-      'The agent rebuilt its context from this chat.',
+      'The agent started over and read recent messages from this chat.',
     ],
     [
       'empty-next-cold-start',
-      'Context reset: started fresh',
-      'The agent no longer sees messages above this line.',
+      'The agent forgot everything above. You still see it.',
     ],
     [
       'summary-next-cold-start',
-      'Context reset: continued from a summary',
-      'The agent sees a summary, without its tool state, approvals, attachments or earlier tool results. Messages above stay readable.',
+      'The agent kept only a summary. You still see everything above.',
     ],
     [
       'task-state-next-cold-start',
-      'Context reset: continued from a summary',
-      'The agent sees a summary, without its tool state, approvals, attachments or earlier tool results. Messages above stay readable.',
+      'The agent kept only a summary. You still see everything above.',
     ],
   ] as const)(
-    'marks a %s reset with its own heading and one-line body',
-    (policy, heading, body) => {
+    'marks a %s reset as a fresh context with its own line',
+    (policy, body) => {
       const { container } = render(
         <ConversationContextBoundary boundary={marker(policy)} />,
       );
-      expect(screen.getByText(heading).tagName).toBe('STRONG');
+      expect(screen.getByText('Fresh context')).toBeTruthy();
       expect(screen.getByText(body)).toBeTruthy();
-      // The heading names the section; no aria-label repeats it.
+      // Text in reading order: no landmark, no label repeating it.
       expect(container.querySelector('[aria-label]')).toBeNull();
     },
   );
+
+  test('names Station’s own engine as an engine, not the product', () => {
+    render(
+      <ConversationContextBoundary
+        boundary={marker('empty-next-cold-start')}
+        previousEngine={{ provider: 'station-agent' }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'Station’s engine forgot everything above. You still see it.',
+      ),
+    ).toBeTruthy();
+  });
+
+  test('names the engine the last recorded turn ran on', () => {
+    render(
+      <ConversationContextBoundary
+        boundary={marker('empty-next-cold-start')}
+        previousEngine={{ provider: 'claude' }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'Claude Code forgot everything above. You still see it.',
+      ),
+    ).toBeTruthy();
+  });
 });

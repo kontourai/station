@@ -723,7 +723,7 @@ test('phone first run recovers from no provider to a real streamed reply', async
     );
     // The mobile dock opens on Inbox without an active conversation.
     // Selecting the seeded chat reveals that conversation's actions.
-    const taskDialog = page.getByRole('region', { name: 'Inbox', exact: true });
+    const taskDialog = page.getByRole('region', { name: 'Chats', exact: true });
     await waitForLazySurface(
       page,
       {

@@ -1,0 +1,7 @@
+{
+  "revision": "59c24b6fcfb264f9897e1aa934a54e4d10d4eb75",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the session-attention passage (sessionLadderWord as the shared status word) and every chat dock and composer entry: removing the unused delivery-unconfirmed table entry changes no listed word or derivation; keeping answered slash commands out of the saved draft and keeping New chat text in the dock overlay hook change no module ownership described here.","inputs":["docs/architecture/module-map.md","packages/contracts/src/session-attention.ts","src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx","src-ui/src/components/chat-dock/useChatDockOverlays.ts","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

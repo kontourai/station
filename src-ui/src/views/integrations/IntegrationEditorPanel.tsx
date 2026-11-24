@@ -5,9 +5,16 @@ import { IntegrationGlyph } from '../../components/icons/IntegrationGlyph';
 import { LazyBoundary } from '../../components/LazyBoundary';
 import { useDecisionSurface } from '../../lib/custom-appearance/decision-surfaces';
 import { IntegrationAccountSection } from './IntegrationAccountSection';
+import { IntegrationEventsSection } from './IntegrationEventsSection';
 import { IntegrationTrustReview } from './IntegrationTrustReview';
 import { IntegrationTrustSection } from './IntegrationTrustSection';
 import { OAuthClientSection } from './OAuthClientSection';
+
+const transportLabels = {
+  stdio: 'Local command',
+  sse: 'SSE',
+  'streamable-http': 'HTTP',
+};
 
 const loadSecretBindingPicker = () =>
   import('./SecretBindingPicker').then((module) => ({
@@ -137,7 +144,10 @@ export function IntegrationEditorPanel({
           isBuiltin || isRuntimeManaged
             ? { label: 'Built in', variant: 'muted' as const }
             : editForm.transport
-              ? { label: editForm.transport, variant: 'muted' as const }
+              ? {
+                  label: transportLabels[editForm.transport],
+                  variant: 'muted' as const,
+                }
               : undefined
         }
         statusDot={
@@ -272,6 +282,14 @@ export function IntegrationEditorPanel({
             requireSave={secretBindingRequireSave}
             defaultScopes={editForm.oauthClient?.scopes}
           />
+        )}
+      {!isNew &&
+        !isRuntimeManaged &&
+        !secretBindingRequireSave &&
+        editForm.enabled !== false &&
+        editForm.transport === 'streamable-http' &&
+        !editForm.credentialOwnership && (
+          <IntegrationEventsSection integrationId={editForm.id} />
         )}
       {/* A legacy setting waiting for a person is shown even without the
           trust settings preview: until it is decided the server stays off. */}
@@ -558,9 +576,11 @@ export function IntegrationEditorPanel({
                       }))
                     }
                   >
-                    <option value="stdio">Local command</option>
-                    <option value="sse">SSE</option>
-                    <option value="streamable-http">HTTP</option>
+                    {Object.entries(transportLabels).map(([value, label]) => (
+                      <option key={value} value={value}>
+                        {label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 

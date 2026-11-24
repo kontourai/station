@@ -227,6 +227,8 @@ async function turn(
     approvalMode?: ApprovalMode;
     confinement?: 'host' | 'workspace';
     answer?: 'accept' | 'acceptForSession' | 'decline';
+    /** With `acceptForSession`: the answer's `sessionGrantScope`. */
+    scope?: 'all';
   } = {},
 ) {
   const from = h.events.length;
@@ -257,6 +259,7 @@ async function turn(
       threadId,
       request.requestId,
       options.answer,
+      ...(options.scope ? [{ sessionGrantScope: options.scope }] : []),
     );
   }
   if (request && !options.answer) {
@@ -1188,7 +1191,7 @@ describe.skipIf(process.platform === 'win32')(
         confinement: 'host',
       });
       expect(shell.asked).toBeUndefined();
-      expect(JSON.stringify(shell.completed)).toContain('bash ran');
+      expect(JSON.stringify(shell.started)).toContain('bash ran');
       expect(turnStarted(shell.started)?.metadata?.approvalMode).toBe('never');
 
       const edit = await turn(h, 'request-approvals', 'edit: blocked.ts', {
@@ -1275,6 +1278,29 @@ describe.skipIf(process.platform === 'win32')(
         expect(covered.asked).toBeUndefined();
         expect(existsSync(join(h.cwd, 'b.ts'))).toBe(true);
         const config = await turn(h, 'ask-grant', 'edit: opencode.json', {
+          answer: 'decline',
+        });
+        expect(config.asked).toBeDefined();
+        expect(existsSync(join(h.cwd, 'opencode.json'))).toBe(false);
+      });
+
+      test('Ask: allowing everything for the session answers a later shell ask, never a configuration edit', async () => {
+        h = harness('opencode');
+        await start(h, 'ask-grant-all', 'ask');
+        const first = await turn(h, 'ask-grant-all', 'edit: a.ts', {
+          answer: 'acceptForSession',
+          scope: 'all',
+        });
+        expect(first.asked).toMatchObject({
+          payload: { sessionGrantAll: true },
+        });
+        // A shell command is not an edit: only the session-wide grant
+        // answers it.
+        const shell = await turn(h, 'ask-grant-all', 'run: echo covered');
+        expect(shell.asked).toBeUndefined();
+        expect(JSON.stringify(shell.started)).toContain('bash ran');
+        expect(engineAlways(h)).toEqual([]);
+        const config = await turn(h, 'ask-grant-all', 'edit: opencode.json', {
           answer: 'decline',
         });
         expect(config.asked).toBeDefined();

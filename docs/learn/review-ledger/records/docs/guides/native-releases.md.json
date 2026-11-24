@@ -180,7 +180,11 @@
 
     "src-ui/src/components/CoreUpdateLaunchCheck.tsx",
 
-    "scripts/lib/windows-release-signing.mjs"
+    "scripts/lib/windows-release-signing.mjs",
+
+    ".github/workflows/macos-store-delivery.yml",
+
+    "ops/release/macos-store-stage.mjs"
   ],
 
   "checks": [

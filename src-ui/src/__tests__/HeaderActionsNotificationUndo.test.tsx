@@ -165,7 +165,7 @@ describe('HeaderActions + NotificationHistory — undo survives closing', () => 
     try {
       const { onClose, rerenderWith } = await openPanel();
 
-      chooseRowAction('Dismiss', {
+      chooseRowAction('Mark done', {
         within:
           document.querySelector<HTMLElement>('.notification-history') ??
           undefined,
@@ -199,7 +199,7 @@ describe('HeaderActions + NotificationHistory — undo survives closing', () => 
     try {
       const { rerenderWith } = await openPanel();
 
-      chooseRowAction('Dismiss', {
+      chooseRowAction('Mark done', {
         within:
           document.querySelector<HTMLElement>('.notification-history') ??
           undefined,

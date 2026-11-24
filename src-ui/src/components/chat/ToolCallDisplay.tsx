@@ -11,6 +11,7 @@ import {
 } from '@kontourai/station-shared/display-reveal';
 import { approvalDecisionBody } from '@kontourai/station-shared/input-request';
 import {
+  SESSION_ALL_GRANT_LABEL,
   STATION_BROWSER_SERVER_GRANT_LABEL,
   type ToolRequestRuleGrant,
   type ToolRequestServerGrant,
@@ -148,6 +149,7 @@ export interface ToolCallData {
   approvalSessionGrant?: ToolRequestSessionGrant;
   approvalServerGrant?: ToolRequestServerGrant;
   approvalRuleGrant?: ToolRequestRuleGrant;
+  approvalAllGrant?: true;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'
@@ -165,7 +167,13 @@ export interface ToolCallData {
 export type ToolApprovalOutcome = 'answered' | 'already-settled';
 
 type ToolApprovalHandler = (
-  action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
+  action:
+    | 'once'
+    | 'trust'
+    | 'trust-server'
+    | 'trust-rule'
+    | 'trust-all'
+    | 'deny',
 ) => undefined | Promise<ToolApprovalOutcome | undefined>;
 
 interface ToolCallDisplayProps {
@@ -556,6 +564,9 @@ function ToolCallRow({
                 ? toolCall.approvalRuleGrant
                 : (contentGate.ruleGrant ?? undefined)
             }
+            allGrant={
+              contentGate.allGrant ?? toolCall.approvalAllGrant === true
+            }
             sessionGrant={
               // Grants derive from the resolved request once it is loaded.
               // A registry-route part (no request binding) is judged by its
@@ -619,11 +630,13 @@ function gatedDecisionBody(
   grantLabel: string | undefined,
   serverGrant: ToolRequestServerGrant,
   ruleGrant: ToolRequestRuleGrant | undefined,
+  allGrant: boolean,
 ) {
   const body = approvalDecisionBody(
     grantLabel,
     serverGrant === 'server' ? STATION_BROWSER_SERVER_GRANT_LABEL : undefined,
     ruleGrant?.label,
+    allGrant ? SESSION_ALL_GRANT_LABEL : undefined,
   );
   return !gate || gate.allowable
     ? body
@@ -709,7 +722,7 @@ function useApprovalDecision(
     detail?: string;
   } | null>(null);
   const [localChosen, setChosen] = useState<
-    'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny'
+    'once' | 'trust' | 'trust-server' | 'trust-rule' | 'trust-all' | 'deny'
   >();
   const chosen = shared
     ? shared.decision === 'decline'
@@ -719,7 +732,9 @@ function useApprovalDecision(
           ? 'trust-server'
           : shared.sessionGrantScope === 'rule'
             ? 'trust-rule'
-            : 'trust'
+            : shared.sessionGrantScope === 'all'
+              ? 'trust-all'
+              : 'trust'
         : 'once'
     : localChosen;
   const failure =
@@ -731,7 +746,13 @@ function useApprovalDecision(
         }
       : null);
   const decide = (
-    action: 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny',
+    action:
+      | 'once'
+      | 'trust'
+      | 'trust-server'
+      | 'trust-rule'
+      | 'trust-all'
+      | 'deny',
   ) => {
     if (denied || phase !== 'idle' || admission.current) return;
     admission.current = true;
@@ -862,6 +883,8 @@ interface ToolApprovalControlProps {
   serverGrant: ToolRequestServerGrant;
   /** The command-prefix choice, where the request offers one. */
   ruleGrant?: ToolRequestRuleGrant;
+  /** Whether the request offers the session-wide grant. */
+  allGrant?: boolean;
   reference?: ApprovalAnswerReference;
   onCheck?: () => Promise<'pending' | 'already-settled'>;
   /** The request's reported tool name — never the row's display name. */
@@ -929,6 +952,7 @@ function ToolApprovalControls({
 function ToolApprovalSheet({
   serverGrant,
   ruleGrant,
+  allGrant = false,
   contentGate,
   reference,
   onApprove,
@@ -962,7 +986,13 @@ function ToolApprovalSheet({
   );
   const actions = (
     <DecisionActionRow
-      body={gatedDecisionBody(contentGate, grantLabel, serverGrant, ruleGrant)}
+      body={gatedDecisionBody(
+        contentGate,
+        grantLabel,
+        serverGrant,
+        ruleGrant,
+        allGrant,
+      )}
       busy={busy}
       inFlight={inFlight}
       chosen={chosen}
@@ -1012,6 +1042,7 @@ function ToolApprovalButtons({
   grantToolName,
   serverGrant,
   ruleGrant,
+  allGrant = false,
   sessionGrant,
 }: ToolApprovalControlProps) {
   const { phase, failure, decide, chosen, check, checking, busy } =
@@ -1031,6 +1062,7 @@ function ToolApprovalButtons({
           grantLabel,
           serverGrant,
           ruleGrant,
+          allGrant,
         )}
         busy={busy}
         inFlight={phase === 'sending' || phase === 'sent'}

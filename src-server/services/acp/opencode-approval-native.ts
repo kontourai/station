@@ -220,11 +220,10 @@ export function openCodeNativeStationRejects(
 }
 
 /**
- * Whether a session grant covers a request (ruling R4, scoped): the grant
- * holds the action and the patterns the person allowed (OpenCode's `save`
- * patterns for the ask, else its exact resources), and covers a later
- * request for the same action only when every resource it names matches one
- * of them.
+ * Whether a session grant covers a request (ruling R4): the grant holds an
+ * action and the patterns allowed for it (`*` for the native session's
+ * per-action grant), and covers a later request for the same action only
+ * when it names at least one resource and every one matches a pattern.
  */
 export function openCodeGrantCovers(
   grant: { readonly action: string; readonly patterns: readonly string[] },

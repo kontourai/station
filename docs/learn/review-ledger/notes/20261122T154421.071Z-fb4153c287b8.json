@@ -1,0 +1,7 @@
+{
+  "revision": "c7e61b00d032bf5c8528b28fd64f27c265d703ba",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Slice 4.10 fix round: ActionOverflowMenu gains an optional onOpenChange callback so a host with its own Escape handling can defer to an open menu. Callers that omit it are unchanged; the overflow-menu, focus-return and touch-target claims still hold. No prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ActionOverflowMenu.tsx"]}
+  ]
+}

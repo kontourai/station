@@ -6,6 +6,7 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const KEY = 'STATION_AUTHOR_TELEMETRY_ENDPOINT';
 const RELEASE =
   "github.repository == 'kontourai/station' && github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')";
+const MAC_STORE = `${RELEASE} && github.ref == format('refs/tags/{0}', inputs.tag) && github.workflow_ref == format('kontourai/station/.github/workflows/release.yml@{0}', github.ref)`;
 const NIGHTLY =
   "github.repository == 'kontourai/station' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.workflow_ref == 'kontourai/station/.github/workflows/nightly.yml@refs/heads/main'";
 const PORTABLE = `((${RELEASE}) || (${NIGHTLY} && inputs.ring == 'nightly')) && inputs.version != '' && inputs.ring != ''`;
@@ -21,6 +22,14 @@ const SCOPES = [
     RELEASE,
     'STATION_CHANNEL',
     `\${{ needs.preflight.outputs.channel }}`,
+  ],
+  [
+    'macos-store-delivery.yml',
+    'macos-testflight',
+    'Build the Stable Mac bundle without a desktop updater',
+    MAC_STORE,
+    'STATION_CHANNEL',
+    'stable',
   ],
   [
     'release.yml',
