@@ -344,6 +344,17 @@ export const BUILTIN_ACP_ENGINES: readonly BuiltinEngine[] = [
       // 1.0.77, live: "You are logged in with grok.com." / "You are not
       // authenticated."). Other output stays unknown.
       statusCommand: ['grok', 'models'],
+      terminalAccount: {
+        scope: 'grok-cli',
+        signOut: {
+          id: 'station:cli-sign-out',
+          name: 'Sign out',
+          args: ['logout'],
+          helpArgs: ['logout', '--help'],
+          requiredHelpText: 'Sign out and clear cached credentials',
+        },
+        signInMethods: [],
+      },
       terminalLogin: {
         id: 'station:device-login',
         name: 'Sign in with a device code',

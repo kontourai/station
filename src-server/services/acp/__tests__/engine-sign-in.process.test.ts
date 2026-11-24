@@ -8,6 +8,7 @@ import {
   mkdirSync,
   readFileSync,
   realpathSync,
+  rmSync,
   writeFileSync,
 } from 'node:fs';
 import { join, relative } from 'node:path';
@@ -159,10 +160,13 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
     const marker = join(grok.command, '..', 'signed-in');
     writeFileSync(
       grok.command,
-      `#!/bin/sh\nif [ "$1" = login ] && [ "$2" = --help ]; then printf '%s\\n' --device-auth; exit 0; fi\nif [ "$1" = models ]; then if [ -f "${marker}" ]; then printf 'You are logged in with grok.com.\\n'; else printf 'You are not authenticated.\\n'; fi; exit 0; fi\n${original.slice(original.indexOf('\n') + 1)}`,
+      `#!/bin/sh\nif [ "$1" = login ] && [ "$2" = --help ]; then printf '%s\\n' --device-auth; exit 0; fi\nif [ "$1" = logout ] && [ "$2" = --help ]; then echo 'Sign out and clear cached credentials'; exit 0; fi\nif [ "$1" = models ]; then if [ -f "${marker}" ]; then printf 'You are logged in with grok.com.\\n'; else printf 'You are not authenticated.\\n'; fi; exit 0; fi\n${original.slice(original.indexOf('\n') + 1)}`,
     );
     const terminal = recordingTerminal();
-    const service = new EngineSignInService({ terminal: terminal.host });
+    const service = new EngineSignInService({
+      terminal: terminal.host,
+      accountActionsEnabled: () => true,
+    });
     const config = {
       ...connection('grok-build', grok.command),
       args: ['agent', 'stdio'],
@@ -183,6 +187,14 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
     await expect
       .poll(() => service.attempt(config.id)?.state)
       .toBe('succeeded');
+    await service.startTerminal(config, 'station:cli-sign-out', true);
+    expect(terminal.opened[2].launch.args).toEqual(['logout']);
+    rmSync(marker);
+    await terminal.exit(terminal.opened[2], 0);
+    expect(await settle(service, config.id)).toMatchObject({
+      operation: 'sign-out',
+      state: 'succeeded',
+    });
     await service.dispose();
   });
 

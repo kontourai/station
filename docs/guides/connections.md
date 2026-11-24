@@ -1237,7 +1237,8 @@ the one login they share, and run with `KIRO_CLI_CLIENT_APPLICATION=station`.
 A saved `kiro` connection keeps its own arguments.
 
 With **Engine account management** enabled in Feature Previews, a supported
-Kiro CLI connection offers **Sign out**. This clears the shared CLI login for
+Kiro CLI or Grok Build connection offers **Sign out**. For Kiro, this clears
+the shared CLI login for
 Kiro CLI and Kiro (KAS) on the Station host. Station checks the engine's status
 after the command before it reports sign-out. Then choose **Sign in with
 Google** if the installed CLI offers social device sign-in. Open the link shown
