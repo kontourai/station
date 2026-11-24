@@ -1,0 +1,7 @@
+{
+  "revision": "04b593abb5aa35c09da849793a8f1c68ed65cfd6",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Checked that the ES2022-compatible fixture keeps the same held retirement and prompt controls. Its ChildProcess streams are simulated.","inputs":["src-server/services/connections/__tests__/native-model-container.test.ts"]}
+  ]
+}

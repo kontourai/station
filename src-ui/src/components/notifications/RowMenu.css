@@ -75,6 +75,15 @@
   background: var(--k-panel-raised);
 }
 
+.row-menu__item[data-danger] {
+  color: var(--k-negative);
+}
+
+.row-menu__item[data-danger]:hover:not(:disabled),
+.row-menu__item[data-danger]:focus-visible {
+  background: var(--k-negative-soft);
+}
+
 .row-menu__item:disabled {
   cursor: default;
   opacity: 0.5;

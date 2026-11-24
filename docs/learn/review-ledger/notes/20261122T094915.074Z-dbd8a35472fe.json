@@ -1,0 +1,7 @@
+{
+  "revision": "3e119df23ae0f56b6e15972f3a27e5bffa9a73d6",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Slice 4.10: tool-call-groups.ts changed a comment's 'Allow once' capitalisation and ToolCallBatch.test the button name. The bulk Allow all / Allow all for this session description is unchanged. No prose change.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ToolCallBatch.test.tsx","src-ui/src/components/chat/tool-call-groups.ts"]}
+  ]
+}

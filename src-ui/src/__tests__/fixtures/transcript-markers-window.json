@@ -1,0 +1,3487 @@
+{
+  "_note": "Event windows captured from a scripted-model Station instance (Station engine, scripted Ollama model); folder, device id, display name and time zone scrubbed. completed: a model change, a switch to a second Agent, then a fresh context. refused: a model change and a fresh context, then a switch the server refused (409) that still left a handoff record. resetThenSwitch: a fresh context reserved, then a switch that started from it.",
+  "completed": {
+    "protocolVersion": 1,
+    "conversationId": "station:1795421126966",
+    "currentSessionId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+    "sessionLineage": [
+      {
+        "sessionId": "station:1795421126966",
+        "provider": "station-agent",
+        "agentSlug": "station",
+        "agentDisplayName": "Station Assistant"
+      },
+      {
+        "sessionId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+        "provider": "station-agent",
+        "agentSlug": "reviewer",
+        "agentDisplayName": "Reviewer"
+      },
+      {
+        "sessionId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+        "provider": "station-agent",
+        "agentSlug": "reviewer",
+        "agentDisplayName": "Reviewer"
+      }
+    ],
+    "handoffs": [
+      {
+        "predecessorSessionId": "station:1795421126966",
+        "sessionId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+        "idempotencyKey": "3225dca0-a0c7-44e4-9409-05965902e8bc",
+        "targetAgentId": "reviewer",
+        "targetProvider": "station-agent",
+        "createdAt": "2026-11-23T08:07:23.163Z",
+        "carried": [
+          "authorizedTranscript",
+          "ownerTenantWorkspace",
+          "targetAgentModel"
+        ],
+        "reset": [
+          "providerNativeCursor",
+          "toolState",
+          "sessionApprovals",
+          "mcpAndEngineConfiguration",
+          "activeTurnsAndInterrupts",
+          "queuedRequests",
+          "sessionLocalGrants",
+          "taskWorkflowReferences"
+        ]
+      }
+    ],
+    "contextBoundaries": [
+      {
+        "boundaryId": "0c8fc11a-20c9-49bc-b610-040ff97713d0",
+        "successorSessionId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+        "policy": "empty-next-cold-start",
+        "priorTranscriptInjected": false,
+        "consumedAt": "2026-11-23T08:09:03.326Z"
+      }
+    ],
+    "session": {
+      "durability": {
+        "steerPlacement": {
+          "state": "emulated",
+          "boundary": "station-observed",
+          "detail": "Held until Station observes a post-tool boundary, otherwise the next turn boundary."
+        },
+        "crashContinuation": {
+          "state": "none",
+          "detail": "A running turn cannot continue after a Station restart."
+        },
+        "toolReplay": {
+          "state": "none",
+          "detail": "Interrupted tool calls are not automatically replayed."
+        },
+        "pendingApprovals": {
+          "state": "none",
+          "detail": "Pending approvals do not survive an engine restart."
+        },
+        "contextCarriage": {
+          "state": "emulated",
+          "history": "station-memory",
+          "detail": "Station supplies conversation history; mid-turn recovery and delivery acknowledgement are unavailable."
+        },
+        "fork": {
+          "state": "emulated",
+          "detail": "A new conversation receives replayed history rather than a native fork."
+        },
+        "compaction": {
+          "state": "none",
+          "owner": "station",
+          "detail": "Station owns context management, but compaction is not a crash-recovery checkpoint."
+        },
+        "partialOutput": {
+          "state": "emulated",
+          "detail": "Station keeps observed output; partial output is not a completed answer."
+        },
+        "usage": {
+          "state": "emulated",
+          "detail": "Usage is engine-reported when available; missing usage remains unknown."
+        }
+      },
+      "provider": "station-agent",
+      "threadId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+      "status": "ready",
+      "controlMode": "station-owned",
+      "answerability": {
+        "answerable": true
+      },
+      "cwd": "/workspace/chat",
+      "cwdManagedWorkspace": true,
+      "persistSession": true,
+      "createdAt": "2026-11-23T08:09:03.269Z",
+      "updatedAt": "2026-11-23T08:09:04.587Z",
+      "isLoaded": true,
+      "isPersisted": true,
+      "eventCount": 11,
+      "turnOrigin": {
+        "latest": {
+          "version": 1,
+          "actor": {
+            "kind": "device",
+            "deviceId": "00000000-0000-4000-8000-000000000001"
+          },
+          "reported": {
+            "version": 1,
+            "surface": "web",
+            "build": "0.2.0+219f0c2c604"
+          }
+        },
+        "hasOtherOrigins": false
+      },
+      "lifecycleState": "idle",
+      "previousLifecycleState": "running",
+      "lifecycleChangedAt": "2026-11-23T08:09:04.587Z",
+      "transitionReason": "turn_completed",
+      "transitionSource": "runtime",
+      "pendingReview": false,
+      "assignedAgentSlug": "reviewer",
+      "conversationId": "station:1795421126966",
+      "environmentId": "c52aa1f4-4338-495b-938b-59d343e5cee1",
+      "lastEventAt": "2026-11-23T08:09:04.587Z",
+      "lastEventMethod": "session.state-changed",
+      "conversationActivity": {
+        "conversationId": "station:1795421126966",
+        "currentThreadId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+        "asOfSequence": 150,
+        "lastActivityAt": "2026-11-23T08:09:04.587Z"
+      },
+      "displayTitle": "Add a health endpoint that checks the database.",
+      "modelLaunchPlan": {
+        "kind": "engine-selected",
+        "evidence": "adapter-declared"
+      },
+      "hasActiveTurn": false,
+      "draft": false
+    },
+    "events": [
+      {
+        "sequence": 87,
+        "event": {
+          "eventId": "77699542-cb19-4147-a14e-49d71a258711",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:04cfbf2daacd47ebaedb36cafef8a789370cc82c8c375c4fecae8d3d610d790f",
+          "invocationId": "931bd582-9c85-4ac0-a4a3-c85bb82a7f1e",
+          "createdAt": "2026-11-23T08:05:27.490Z",
+          "method": "turn.started",
+          "prompt": "Add a health endpoint that checks the database.",
+          "metadata": {
+            "effectiveModel": "scripted-echo",
+            "effectiveModelOptions": {}
+          },
+          "sessionState": "running",
+          "previousState": "running",
+          "transitionReason": "turn_started",
+          "transitionSource": "runtime",
+          "clientOrigin": {
+            "version": 1,
+            "actor": {
+              "kind": "device",
+              "deviceId": "00000000-0000-4000-8000-000000000001"
+            },
+            "reported": {
+              "version": 1,
+              "surface": "web",
+              "build": "0.2.0+219f0c2c604"
+            }
+          },
+          "principal": {
+            "id": "human:local:operator",
+            "kind": "human",
+            "display": "operator"
+          },
+          "clientTurnId": "cab403d4-a836-4370-8998-0c33986b0acc",
+          "dispatchOrigin": "interactive",
+          "authoredBy": "person"
+        }
+      },
+      {
+        "sequence": 88,
+        "event": {
+          "eventId": "e54f2e7d-cd67-4249-af32-c23302cee8e9",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:04cfbf2daacd47ebaedb36cafef8a789370cc82c8c375c4fecae8d3d610d790f",
+          "invocationId": "931bd582-9c85-4ac0-a4a3-c85bb82a7f1e",
+          "createdAt": "2026-11-23T08:05:27.706Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "You "
+        }
+      },
+      {
+        "sequence": 89,
+        "event": {
+          "eventId": "ea4b0214-492d-4cda-89c2-8b284d829f9d",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:04cfbf2daacd47ebaedb36cafef8a789370cc82c8c375c4fecae8d3d610d790f",
+          "invocationId": "931bd582-9c85-4ac0-a4a3-c85bb82a7f1e",
+          "createdAt": "2026-11-23T08:05:27.730Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "said: Add a "
+        }
+      },
+      {
+        "sequence": 90,
+        "event": {
+          "eventId": "d96cca4d-a4db-40db-89f5-58d0dadcef69",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:04cfbf2daacd47ebaedb36cafef8a789370cc82c8c375c4fecae8d3d610d790f",
+          "invocationId": "931bd582-9c85-4ac0-a4a3-c85bb82a7f1e",
+          "createdAt": "2026-11-23T08:05:27.804Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "health endpoint that "
+        }
+      },
+      {
+        "sequence": 91,
+        "event": {
+          "eventId": "c54ee2ed-3956-4e12-9df8-f155541c8dcd",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:04cfbf2daacd47ebaedb36cafef8a789370cc82c8c375c4fecae8d3d610d790f",
+          "invocationId": "931bd582-9c85-4ac0-a4a3-c85bb82a7f1e",
+          "createdAt": "2026-11-23T08:05:27.883Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "checks the database."
+        }
+      },
+      {
+        "sequence": 92,
+        "event": {
+          "eventId": "e756ca26-a1ea-48a4-809d-e21a756d1acd",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:04cfbf2daacd47ebaedb36cafef8a789370cc82c8c375c4fecae8d3d610d790f",
+          "invocationId": "931bd582-9c85-4ac0-a4a3-c85bb82a7f1e",
+          "createdAt": "2026-11-23T08:05:28.029Z",
+          "method": "turn.completed",
+          "finishReason": "stop",
+          "outputText": "You said: Add a health endpoint that checks the database.",
+          "metadata": {
+            "effectiveModel": "scripted-echo",
+            "effectiveModelOptions": {},
+            "contextInjection": {}
+          },
+          "sessionState": "idle",
+          "previousState": "running",
+          "transitionReason": "turn_completed",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 93,
+        "event": {
+          "eventId": "84a9da69-5282-4f31-bdad-5179846991d3",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "createdAt": "2026-11-23T08:05:28.029Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795421126966",
+          "from": "running",
+          "to": "idle"
+        }
+      },
+      {
+        "sequence": 94,
+        "event": {
+          "eventId": "cba5792c-d295-4710-94f5-653c71d9ed78",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "createdAt": "2026-11-23T08:06:17.487Z",
+          "method": "session.configured",
+          "sessionId": "station:1795421126966",
+          "model": "scripted-showcase",
+          "cwd": "/workspace/chat",
+          "metadata": {
+            "agentId": "station"
+          }
+        }
+      },
+      {
+        "sequence": 95,
+        "event": {
+          "eventId": "34c75010-60c0-4774-94ac-85c9422faf45",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "createdAt": "2026-11-23T08:06:17.487Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795421126966",
+          "from": "idle",
+          "to": "running",
+          "sessionState": "running",
+          "previousState": "idle",
+          "transitionReason": "manual_update",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 96,
+        "event": {
+          "eventId": "d5dc5c33-793a-4dff-a47f-bd91a36ebd0d",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:17.487Z",
+          "method": "turn.started",
+          "prompt": "Check the timeout budget.",
+          "metadata": {
+            "effectiveModel": "scripted-showcase",
+            "effectiveModelOptions": {}
+          },
+          "sessionState": "running",
+          "previousState": "running",
+          "transitionReason": "turn_started",
+          "transitionSource": "runtime",
+          "clientOrigin": {
+            "version": 1,
+            "actor": {
+              "kind": "device",
+              "deviceId": "00000000-0000-4000-8000-000000000001"
+            },
+            "reported": {
+              "version": 1,
+              "surface": "web",
+              "build": "0.2.0+219f0c2c604"
+            }
+          },
+          "principal": {
+            "id": "human:local:operator",
+            "kind": "human",
+            "display": "operator"
+          },
+          "clientTurnId": "54f8b408-1e1b-4de4-af81-59a9bfeb91e1",
+          "dispatchOrigin": "interactive",
+          "authoredBy": "person"
+        }
+      },
+      {
+        "sequence": 97,
+        "event": {
+          "eventId": "ea04d512-f345-4fcf-9e20-4561356d0268",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:17.628Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "## "
+        }
+      },
+      {
+        "sequence": 98,
+        "event": {
+          "eventId": "9ee20052-bd8d-4a8d-8212-c196708e41e1",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:17.651Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "Scripted showcase\n\nThis "
+        }
+      },
+      {
+        "sequence": 99,
+        "event": {
+          "eventId": "9402b015-adaa-4ce7-a76b-2aab61f516cd",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:17.732Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "reply is **scripted**: "
+        }
+      },
+      {
+        "sequence": 100,
+        "event": {
+          "eventId": "6e811ca8-8be8-442c-ba48-e816986f2496",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:17.827Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "no model ran "
+        }
+      },
+      {
+        "sequence": 101,
+        "event": {
+          "eventId": "e04da1f1-f956-4e54-9eaa-b08ad3dcb9fa",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:17.901Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "and nothing was "
+        }
+      },
+      {
+        "sequence": 102,
+        "event": {
+          "eventId": "5a22b89f-ca87-46f4-9259-c12c2b3ba144",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:17.981Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "billed. It streams "
+        }
+      },
+      {
+        "sequence": 103,
+        "event": {
+          "eventId": "947729cd-5ccf-40d9-b77d-7c8b9b44bf25",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:18.061Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "in small pieces "
+        }
+      },
+      {
+        "sequence": 104,
+        "event": {
+          "eventId": "96f3a5cc-b20b-4085-bce4-d73445ff449c",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:18.154Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "so you can "
+        }
+      },
+      {
+        "sequence": 105,
+        "event": {
+          "eventId": "6184a1ff-3aa8-42f1-88e5-16377e1f29a2",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:18.221Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "watch the transcript "
+        }
+      },
+      {
+        "sequence": 106,
+        "event": {
+          "eventId": "8182d2a3-ccaa-495a-8c7a-4076850ae9d8",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:18.295Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "grow.\n\n- A "
+        }
+      },
+      {
+        "sequence": 107,
+        "event": {
+          "eventId": "c0497bac-22df-4d07-a644-647dc081f317",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:18.377Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "bullet with `inline "
+        }
+      },
+      {
+        "sequence": 108,
+        "event": {
+          "eventId": "f89ad4f6-0e48-452b-96e1-7c4d91a130ef",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:18.473Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "code`\n- A "
+        }
+      },
+      {
+        "sequence": 109,
+        "event": {
+          "eventId": "190614c5-996c-4cf7-af75-3884f910f56c",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:18.742Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "bullet with a [link](https://example.com)\n- A third bullet, for rhythm\n\n"
+        }
+      },
+      {
+        "sequence": 110,
+        "event": {
+          "eventId": "700fa682-dbc7-47bb-9540-8d84a2781f44",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:18.841Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "| Column | "
+        }
+      },
+      {
+        "sequence": 111,
+        "event": {
+          "eventId": "2074772a-846f-414d-b7b8-5254c3403b98",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:18.922Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "Value |\n| "
+        }
+      },
+      {
+        "sequence": 112,
+        "event": {
+          "eventId": "1c85a779-6761-49eb-bd44-45d4e9e955b8",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:18.986Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "--- | --- "
+        }
+      },
+      {
+        "sequence": 113,
+        "event": {
+          "eventId": "717ad1fe-8f86-4f94-ab5b-d52806df20a0",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:19.063Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "|\n| alpha "
+        }
+      },
+      {
+        "sequence": 114,
+        "event": {
+          "eventId": "d3346c80-c6e6-4562-8c00-8b3c5f3efd49",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:19.184Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "| 1 |\n| "
+        }
+      },
+      {
+        "sequence": 115,
+        "event": {
+          "eventId": "7a0d8756-56bf-4ac7-a78b-7d75007acfff",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:19.251Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "beta | 2 "
+        }
+      },
+      {
+        "sequence": 116,
+        "event": {
+          "eventId": "b8b8740f-bb9b-40e8-92e4-b6f117e9a13c",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:19.331Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "|\n\n```ts\nexport "
+        }
+      },
+      {
+        "sequence": 117,
+        "event": {
+          "eventId": "206a9df8-2bd7-4eab-8bfc-4a78b9ffa700",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:19.432Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "function greet(name: string): string "
+        }
+      },
+      {
+        "sequence": 118,
+        "event": {
+          "eventId": "7030d61a-5d62-428d-b963-7e3cc5c34ba0",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:19.564Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "{\n  return \"hello \" + "
+        }
+      },
+      {
+        "sequence": 119,
+        "event": {
+          "eventId": "b63d7abc-07b9-4b8d-9211-4ddbcf326b0c",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:19.694Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "name;\n}\n```\n\n> "
+        }
+      },
+      {
+        "sequence": 120,
+        "event": {
+          "eventId": "00ed7503-0c7f-4b0b-9a80-e226f172f287",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:19.953Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "A closing quote, then the turn completes "
+        }
+      },
+      {
+        "sequence": 121,
+        "event": {
+          "eventId": "02aea9f0-cc17-4905-acd5-6fc3f3fa7c85",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:20.070Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "normally.\n"
+        }
+      },
+      {
+        "sequence": 122,
+        "event": {
+          "eventId": "f2093f31-164b-45a8-b497-085c50275054",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "turnId": "turn:f1eac10673007e46baa5d3f06fec6d9887378b1316ae51a08a4901bcbabae89c",
+          "invocationId": "38600f36-6c61-448d-bafe-51bf1026b1bf",
+          "createdAt": "2026-11-23T08:06:20.310Z",
+          "method": "turn.completed",
+          "finishReason": "stop",
+          "outputText": "## Scripted showcase\n\nThis reply is **scripted**: no model ran and nothing was billed. It streams in small pieces so you can watch the transcript grow.\n\n- A bullet with `inline code`\n- A bullet with a [link](https://example.com)\n- A third bullet, for rhythm\n\n| Column | Value |\n| --- | --- |\n| alpha | 1 |\n| beta | 2 |\n\n```ts\nexport function greet(name: string): string {\n  return \"hello \" + name;\n}\n```\n\n> A closing quote, then the turn completes normally.\n",
+          "metadata": {
+            "effectiveModel": "scripted-showcase",
+            "effectiveModelOptions": {},
+            "contextInjection": {
+              "ambient": {
+                "approxTokens": 4
+              }
+            }
+          },
+          "sessionState": "idle",
+          "previousState": "running",
+          "transitionReason": "turn_completed",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 123,
+        "event": {
+          "eventId": "e614f18f-4248-4f1f-a8fc-2e7cc95c9d58",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "createdAt": "2026-11-23T08:06:20.310Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795421126966",
+          "from": "running",
+          "to": "idle"
+        }
+      },
+      {
+        "sequence": 124,
+        "event": {
+          "eventId": "b0b0f320-9238-4d5c-91b7-fe285b5524b6",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966",
+          "createdAt": "2026-11-23T08:07:23.202Z",
+          "method": "session.exited",
+          "sessionId": "station:1795421126966",
+          "reason": "stopped",
+          "sessionState": "canceled",
+          "previousState": "queued",
+          "transitionReason": "runtime_exit",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 125,
+        "event": {
+          "eventId": "8223dba1-e622-4c88-8ed4-4028c95e80d9",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "createdAt": "2026-11-23T08:07:23.234Z",
+          "method": "session.started",
+          "sessionId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "initialState": "created",
+          "metadata": {
+            "agentId": "reviewer",
+            "agentSlug": "reviewer",
+            "targetKind": "agent",
+            "targetId": "reviewer",
+            "startClientTurnId": "handoff:afbacd1e5341d0a5e5e27a61179dcc796d49d74f09908dac71ba93d70152fc67",
+            "userId": "human:local:operator",
+            "confinementRoot": "",
+            "stationConfinement": "host",
+            "stationConfinementGrantor": {
+              "kind": "operator"
+            },
+            "stationConfinementRecord": {
+              "level": "host",
+              "required": false,
+              "posture": "no-mechanism",
+              "workspaceAccess": "mounted",
+              "policyBasis": "operator-policy"
+            },
+            "conversationId": "station:1795421126966",
+            "environmentId": "c52aa1f4-4338-495b-938b-59d343e5cee1",
+            "modelLaunchPlan": {
+              "kind": "engine-selected",
+              "evidence": "adapter-declared"
+            },
+            "modelLaunchRequestedOverride": false,
+            "agentName": "Reviewer",
+            "cwd": "/workspace/chat"
+          }
+        }
+      },
+      {
+        "sequence": 126,
+        "event": {
+          "eventId": "2abb2d35-f387-4255-bbbb-3314c8831ae1",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "createdAt": "2026-11-23T08:07:23.234Z",
+          "method": "session.configured",
+          "sessionId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "cwd": "/workspace/chat",
+          "metadata": {
+            "agentId": "reviewer",
+            "agentSlug": "reviewer",
+            "targetKind": "agent",
+            "targetId": "reviewer",
+            "startClientTurnId": "handoff:afbacd1e5341d0a5e5e27a61179dcc796d49d74f09908dac71ba93d70152fc67",
+            "userId": "human:local:operator",
+            "confinementRoot": "",
+            "stationConfinement": "host",
+            "stationConfinementGrantor": {
+              "kind": "operator"
+            },
+            "stationConfinementRecord": {
+              "level": "host",
+              "required": false,
+              "posture": "no-mechanism",
+              "workspaceAccess": "mounted",
+              "policyBasis": "operator-policy"
+            },
+            "conversationId": "station:1795421126966",
+            "environmentId": "c52aa1f4-4338-495b-938b-59d343e5cee1",
+            "modelLaunchPlan": {
+              "kind": "engine-selected",
+              "evidence": "adapter-declared"
+            },
+            "modelLaunchRequestedOverride": false,
+            "agentName": "Reviewer"
+          }
+        }
+      },
+      {
+        "sequence": 127,
+        "event": {
+          "eventId": "3555799e-495b-4245-97f0-1800e06cb75e",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "createdAt": "2026-11-23T08:07:23.668Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "from": "idle",
+          "to": "running",
+          "sessionState": "running",
+          "previousState": "queued",
+          "transitionReason": "manual_update",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 128,
+        "event": {
+          "eventId": "a188e201-f3e6-4a3a-bbe6-4c604ec4548a",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "turnId": "turn:af8f0ee13ad82e41a3d7d3f2d45275b0ec6e0ca31fe1c5b5399d7c6e76daa099",
+          "invocationId": "7a5f5843-2aa0-465c-867e-a0c12a348e34",
+          "createdAt": "2026-11-23T08:07:23.668Z",
+          "method": "turn.started",
+          "prompt": "You are taking over this conversation. Briefly summarize where things stand and what you would do next, then wait for my reply.",
+          "metadata": {},
+          "sessionState": "running",
+          "previousState": "running",
+          "transitionReason": "turn_started",
+          "transitionSource": "runtime",
+          "clientOrigin": {
+            "version": 1,
+            "actor": {
+              "kind": "device",
+              "deviceId": "00000000-0000-4000-8000-000000000001"
+            },
+            "reported": {
+              "version": 1,
+              "surface": "web",
+              "build": "0.2.0+219f0c2c604"
+            }
+          },
+          "principal": {
+            "id": "human:local:operator",
+            "kind": "human",
+            "display": "operator"
+          },
+          "clientTurnId": "handoff:3225dca0-a0c7-44e4-9409-05965902e8bc",
+          "dispatchOrigin": "interactive"
+        }
+      },
+      {
+        "sequence": 129,
+        "event": {
+          "eventId": "6a6a6345-5271-4420-9b77-c5c0811f3e68",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "turnId": "turn:af8f0ee13ad82e41a3d7d3f2d45275b0ec6e0ca31fe1c5b5399d7c6e76daa099",
+          "invocationId": "7a5f5843-2aa0-465c-867e-a0c12a348e34",
+          "createdAt": "2026-11-23T08:07:24.190Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "You "
+        }
+      },
+      {
+        "sequence": 130,
+        "event": {
+          "eventId": "0231ad0f-4a7a-42ee-a2c7-ded67904dcb6",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "turnId": "turn:af8f0ee13ad82e41a3d7d3f2d45275b0ec6e0ca31fe1c5b5399d7c6e76daa099",
+          "invocationId": "7a5f5843-2aa0-465c-867e-a0c12a348e34",
+          "createdAt": "2026-11-23T08:07:24.207Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "said: You are "
+        }
+      },
+      {
+        "sequence": 131,
+        "event": {
+          "eventId": "60c76a65-8305-4a89-abbf-c2123cf5bae2",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "turnId": "turn:af8f0ee13ad82e41a3d7d3f2d45275b0ec6e0ca31fe1c5b5399d7c6e76daa099",
+          "invocationId": "7a5f5843-2aa0-465c-867e-a0c12a348e34",
+          "createdAt": "2026-11-23T08:07:24.290Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "taking over this "
+        }
+      },
+      {
+        "sequence": 132,
+        "event": {
+          "eventId": "cb8ed2a2-0479-4356-8c0a-7084e587c04b",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "turnId": "turn:af8f0ee13ad82e41a3d7d3f2d45275b0ec6e0ca31fe1c5b5399d7c6e76daa099",
+          "invocationId": "7a5f5843-2aa0-465c-867e-a0c12a348e34",
+          "createdAt": "2026-11-23T08:07:24.367Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "conversation. Briefly summarize "
+        }
+      },
+      {
+        "sequence": 133,
+        "event": {
+          "eventId": "b2bbc4eb-ad5a-4669-ae0e-444ffe6cbea2",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "turnId": "turn:af8f0ee13ad82e41a3d7d3f2d45275b0ec6e0ca31fe1c5b5399d7c6e76daa099",
+          "invocationId": "7a5f5843-2aa0-465c-867e-a0c12a348e34",
+          "createdAt": "2026-11-23T08:07:24.445Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "where things stand "
+        }
+      },
+      {
+        "sequence": 134,
+        "event": {
+          "eventId": "0eecfbbd-7fd1-49da-a94f-3bb5a0ad1405",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "turnId": "turn:af8f0ee13ad82e41a3d7d3f2d45275b0ec6e0ca31fe1c5b5399d7c6e76daa099",
+          "invocationId": "7a5f5843-2aa0-465c-867e-a0c12a348e34",
+          "createdAt": "2026-11-23T08:07:24.531Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "and what you "
+        }
+      },
+      {
+        "sequence": 135,
+        "event": {
+          "eventId": "bb330382-3886-4987-8ed6-31d1295636d7",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "turnId": "turn:af8f0ee13ad82e41a3d7d3f2d45275b0ec6e0ca31fe1c5b5399d7c6e76daa099",
+          "invocationId": "7a5f5843-2aa0-465c-867e-a0c12a348e34",
+          "createdAt": "2026-11-23T08:07:24.608Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "would do next, "
+        }
+      },
+      {
+        "sequence": 136,
+        "event": {
+          "eventId": "6e5c92bf-59e9-42d6-8daf-9416844634bc",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "turnId": "turn:af8f0ee13ad82e41a3d7d3f2d45275b0ec6e0ca31fe1c5b5399d7c6e76daa099",
+          "invocationId": "7a5f5843-2aa0-465c-867e-a0c12a348e34",
+          "createdAt": "2026-11-23T08:07:24.693Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "then wait for "
+        }
+      },
+      {
+        "sequence": 137,
+        "event": {
+          "eventId": "715350fd-7b89-4baa-a638-7b129b9d0638",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "turnId": "turn:af8f0ee13ad82e41a3d7d3f2d45275b0ec6e0ca31fe1c5b5399d7c6e76daa099",
+          "invocationId": "7a5f5843-2aa0-465c-867e-a0c12a348e34",
+          "createdAt": "2026-11-23T08:07:24.769Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "my reply."
+        }
+      },
+      {
+        "sequence": 138,
+        "event": {
+          "eventId": "7daf8050-3531-45fc-aaef-f8cb42194309",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "turnId": "turn:af8f0ee13ad82e41a3d7d3f2d45275b0ec6e0ca31fe1c5b5399d7c6e76daa099",
+          "invocationId": "7a5f5843-2aa0-465c-867e-a0c12a348e34",
+          "createdAt": "2026-11-23T08:07:25.087Z",
+          "method": "turn.completed",
+          "finishReason": "stop",
+          "outputText": "You said: You are taking over this conversation. Briefly summarize where things stand and what you would do next, then wait for my reply.",
+          "metadata": {
+            "contextInjection": {}
+          },
+          "sessionState": "idle",
+          "previousState": "running",
+          "transitionReason": "turn_completed",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 139,
+        "event": {
+          "eventId": "58bd473e-7de5-420c-ba10-dd82842118a1",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "createdAt": "2026-11-23T08:07:25.087Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795421126966:session:78d9bc79-d907-4049-a38d-ce12b88327d7",
+          "from": "running",
+          "to": "idle"
+        }
+      },
+      {
+        "sequence": 140,
+        "event": {
+          "eventId": "8d4bca25-0fdf-475d-b64a-4226e3bdb910",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "createdAt": "2026-11-23T08:09:03.269Z",
+          "method": "session.started",
+          "sessionId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "initialState": "created",
+          "metadata": {
+            "agentId": "reviewer",
+            "agentSlug": "reviewer",
+            "targetKind": "agent",
+            "targetId": "reviewer",
+            "startClientTurnId": "07e5c006-6bfd-4af4-900d-1cabef6b5bae",
+            "contextBoundary": {
+              "boundaryId": "0c8fc11a-20c9-49bc-b610-040ff97713d0",
+              "startCommandId": "7856d2ae-8bc4-4abe-bccd-f680f381710e",
+              "policy": "empty-next-cold-start",
+              "priorTranscriptInjected": false
+            },
+            "userId": "human:local:operator",
+            "confinementRoot": "",
+            "stationConfinement": "host",
+            "stationConfinementGrantor": {
+              "kind": "operator"
+            },
+            "stationConfinementRecord": {
+              "level": "host",
+              "required": false,
+              "posture": "no-mechanism",
+              "workspaceAccess": "mounted",
+              "policyBasis": "operator-policy"
+            },
+            "conversationId": "station:1795421126966",
+            "environmentId": "c52aa1f4-4338-495b-938b-59d343e5cee1",
+            "modelLaunchPlan": {
+              "kind": "engine-selected",
+              "evidence": "adapter-declared"
+            },
+            "modelLaunchRequestedOverride": false,
+            "agentName": "Reviewer",
+            "cwd": "/workspace/chat"
+          }
+        }
+      },
+      {
+        "sequence": 141,
+        "event": {
+          "eventId": "ff2666ea-666d-4b9d-ab9b-6d52b826cc93",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "createdAt": "2026-11-23T08:09:03.269Z",
+          "method": "session.configured",
+          "sessionId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "cwd": "/workspace/chat",
+          "metadata": {
+            "agentId": "reviewer",
+            "agentSlug": "reviewer",
+            "targetKind": "agent",
+            "targetId": "reviewer",
+            "startClientTurnId": "07e5c006-6bfd-4af4-900d-1cabef6b5bae",
+            "contextBoundary": {
+              "boundaryId": "0c8fc11a-20c9-49bc-b610-040ff97713d0",
+              "startCommandId": "7856d2ae-8bc4-4abe-bccd-f680f381710e",
+              "policy": "empty-next-cold-start",
+              "priorTranscriptInjected": false
+            },
+            "userId": "human:local:operator",
+            "confinementRoot": "",
+            "stationConfinement": "host",
+            "stationConfinementGrantor": {
+              "kind": "operator"
+            },
+            "stationConfinementRecord": {
+              "level": "host",
+              "required": false,
+              "posture": "no-mechanism",
+              "workspaceAccess": "mounted",
+              "policyBasis": "operator-policy"
+            },
+            "conversationId": "station:1795421126966",
+            "environmentId": "c52aa1f4-4338-495b-938b-59d343e5cee1",
+            "modelLaunchPlan": {
+              "kind": "engine-selected",
+              "evidence": "adapter-declared"
+            },
+            "modelLaunchRequestedOverride": false,
+            "agentName": "Reviewer"
+          }
+        }
+      },
+      {
+        "sequence": 142,
+        "event": {
+          "eventId": "dd974284-391e-4893-9ed6-57bc139995cf",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "createdAt": "2026-11-23T08:09:03.491Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "from": "idle",
+          "to": "running",
+          "sessionState": "running",
+          "previousState": "queued",
+          "transitionReason": "manual_update",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 143,
+        "event": {
+          "eventId": "0ca8b604-a173-435a-adfd-4f7aa841ff06",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "turnId": "turn:a2f64438a28aa30eff50fdcfbdd91a6b9f8e22fb096b6305d48ded5b7f35f450",
+          "invocationId": "0a683acd-c634-43f5-9353-6951eca31858",
+          "createdAt": "2026-11-23T08:09:03.491Z",
+          "method": "turn.started",
+          "prompt": "Open a PR for the health endpoint.",
+          "metadata": {},
+          "sessionState": "running",
+          "previousState": "running",
+          "transitionReason": "turn_started",
+          "transitionSource": "runtime",
+          "clientOrigin": {
+            "version": 1,
+            "actor": {
+              "kind": "device",
+              "deviceId": "00000000-0000-4000-8000-000000000001"
+            },
+            "reported": {
+              "version": 1,
+              "surface": "web",
+              "build": "0.2.0+219f0c2c604"
+            }
+          },
+          "principal": {
+            "id": "human:local:operator",
+            "kind": "human",
+            "display": "operator"
+          },
+          "clientTurnId": "07e5c006-6bfd-4af4-900d-1cabef6b5bae",
+          "dispatchOrigin": "interactive",
+          "authoredBy": "person"
+        }
+      },
+      {
+        "sequence": 144,
+        "event": {
+          "eventId": "d91f02ee-cd7c-4a90-8edf-9795adc339d6",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "turnId": "turn:a2f64438a28aa30eff50fdcfbdd91a6b9f8e22fb096b6305d48ded5b7f35f450",
+          "invocationId": "0a683acd-c634-43f5-9353-6951eca31858",
+          "createdAt": "2026-11-23T08:09:03.853Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "You "
+        }
+      },
+      {
+        "sequence": 145,
+        "event": {
+          "eventId": "5b9b7e44-d8a8-4686-9e99-3f4a5bb8148c",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "turnId": "turn:a2f64438a28aa30eff50fdcfbdd91a6b9f8e22fb096b6305d48ded5b7f35f450",
+          "invocationId": "0a683acd-c634-43f5-9353-6951eca31858",
+          "createdAt": "2026-11-23T08:09:03.864Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "said: [Timezone: UTC]\n"
+        }
+      },
+      {
+        "sequence": 146,
+        "event": {
+          "eventId": "33f7a16b-403e-409c-9152-974e5e02f2bf",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "turnId": "turn:a2f64438a28aa30eff50fdcfbdd91a6b9f8e22fb096b6305d48ded5b7f35f450",
+          "invocationId": "0a683acd-c634-43f5-9353-6951eca31858",
+          "createdAt": "2026-11-23T08:09:03.942Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "Open a PR "
+        }
+      },
+      {
+        "sequence": 147,
+        "event": {
+          "eventId": "adda91cc-072a-4ac5-ad76-8953cf757f71",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "turnId": "turn:a2f64438a28aa30eff50fdcfbdd91a6b9f8e22fb096b6305d48ded5b7f35f450",
+          "invocationId": "0a683acd-c634-43f5-9353-6951eca31858",
+          "createdAt": "2026-11-23T08:09:04.027Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "for the health "
+        }
+      },
+      {
+        "sequence": 148,
+        "event": {
+          "eventId": "b2b57a18-ccfa-45c9-a543-126145db949c",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "turnId": "turn:a2f64438a28aa30eff50fdcfbdd91a6b9f8e22fb096b6305d48ded5b7f35f450",
+          "invocationId": "0a683acd-c634-43f5-9353-6951eca31858",
+          "createdAt": "2026-11-23T08:09:04.103Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "endpoint."
+        }
+      },
+      {
+        "sequence": 149,
+        "event": {
+          "eventId": "a55c88cd-219c-47f5-9a92-68bd3aba5a00",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "turnId": "turn:a2f64438a28aa30eff50fdcfbdd91a6b9f8e22fb096b6305d48ded5b7f35f450",
+          "invocationId": "0a683acd-c634-43f5-9353-6951eca31858",
+          "createdAt": "2026-11-23T08:09:04.587Z",
+          "method": "turn.completed",
+          "finishReason": "stop",
+          "outputText": "You said: [Timezone: UTC]\nOpen a PR for the health endpoint.",
+          "metadata": {
+            "contextInjection": {
+              "ambient": {
+                "approxTokens": 4
+              }
+            }
+          },
+          "sessionState": "idle",
+          "previousState": "running",
+          "transitionReason": "turn_completed",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 150,
+        "event": {
+          "eventId": "7849fd38-25f6-4977-bc9f-6cd425419fa8",
+          "provider": "station-agent",
+          "threadId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "createdAt": "2026-11-23T08:09:04.587Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795421126966:session:508683d3-f228-4e52-97e1-6edde72c0436",
+          "from": "running",
+          "to": "idle"
+        }
+      }
+    ],
+    "hasMore": false,
+    "watermark": 150,
+    "memoryContinuation": {
+      "eligible": false
+    }
+  },
+  "refused": {
+    "protocolVersion": 1,
+    "conversationId": "station:1795410818887",
+    "currentSessionId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+    "sessionLineage": [
+      {
+        "sessionId": "station:1795410818887",
+        "provider": "station-agent",
+        "agentSlug": "station",
+        "agentDisplayName": "Station Assistant"
+      },
+      {
+        "sessionId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+        "provider": "station-agent",
+        "agentSlug": "station",
+        "agentDisplayName": "Station Assistant"
+      }
+    ],
+    "handoffs": [
+      {
+        "predecessorSessionId": "station:1795410818887",
+        "sessionId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+        "idempotencyKey": "2c29f9c1-b692-4943-976b-7b1a8477df6c",
+        "targetAgentId": "reviewer",
+        "targetProvider": "station-agent",
+        "createdAt": "2026-11-23T05:35:53.169Z",
+        "carried": [
+          "authorizedTranscript",
+          "ownerTenantWorkspace",
+          "targetAgentModel"
+        ],
+        "reset": [
+          "providerNativeCursor",
+          "toolState",
+          "sessionApprovals",
+          "mcpAndEngineConfiguration",
+          "activeTurnsAndInterrupts",
+          "queuedRequests",
+          "sessionLocalGrants",
+          "taskWorkflowReferences"
+        ]
+      }
+    ],
+    "contextBoundaries": [
+      {
+        "boundaryId": "b9dc5aa8-cfb9-4a0b-bf74-cffef2259e91",
+        "successorSessionId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+        "policy": "empty-next-cold-start",
+        "priorTranscriptInjected": false,
+        "consumedAt": "2026-11-23T05:32:26.246Z"
+      }
+    ],
+    "session": {
+      "durability": {
+        "steerPlacement": {
+          "state": "emulated",
+          "boundary": "station-observed",
+          "detail": "Held until Station observes a post-tool boundary, otherwise the next turn boundary."
+        },
+        "crashContinuation": {
+          "state": "none",
+          "detail": "A running turn cannot continue after a Station restart."
+        },
+        "toolReplay": {
+          "state": "none",
+          "detail": "Interrupted tool calls are not automatically replayed."
+        },
+        "pendingApprovals": {
+          "state": "none",
+          "detail": "Pending approvals do not survive an engine restart."
+        },
+        "contextCarriage": {
+          "state": "emulated",
+          "history": "station-memory",
+          "detail": "Station supplies conversation history; mid-turn recovery and delivery acknowledgement are unavailable."
+        },
+        "fork": {
+          "state": "emulated",
+          "detail": "A new conversation receives replayed history rather than a native fork."
+        },
+        "compaction": {
+          "state": "none",
+          "owner": "station",
+          "detail": "Station owns context management, but compaction is not a crash-recovery checkpoint."
+        },
+        "partialOutput": {
+          "state": "emulated",
+          "detail": "Station keeps observed output; partial output is not a completed answer."
+        },
+        "usage": {
+          "state": "emulated",
+          "detail": "Usage is engine-reported when available; missing usage remains unknown."
+        }
+      },
+      "provider": "station-agent",
+      "threadId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+      "status": "ready",
+      "controlMode": "station-owned",
+      "answerability": {
+        "answerable": true
+      },
+      "cwd": "/workspace/chat",
+      "cwdManagedWorkspace": true,
+      "persistSession": true,
+      "createdAt": "2026-11-23T05:32:26.211Z",
+      "updatedAt": "2026-11-23T05:32:26.942Z",
+      "isLoaded": true,
+      "isPersisted": true,
+      "eventCount": 11,
+      "turnOrigin": {
+        "latest": {
+          "version": 1,
+          "actor": {
+            "kind": "device",
+            "deviceId": "00000000-0000-4000-8000-000000000001"
+          },
+          "reported": {
+            "version": 1,
+            "surface": "web",
+            "build": "0.2.0+c4272d56594"
+          }
+        },
+        "hasOtherOrigins": false
+      },
+      "lifecycleState": "idle",
+      "previousLifecycleState": "running",
+      "lifecycleChangedAt": "2026-11-23T05:32:26.942Z",
+      "transitionReason": "turn_completed",
+      "transitionSource": "runtime",
+      "pendingReview": false,
+      "assignedAgentSlug": "station",
+      "conversationId": "station:1795410818887",
+      "environmentId": "c52aa1f4-4338-495b-938b-59d343e5cee1",
+      "lastEventAt": "2026-11-23T05:32:26.942Z",
+      "lastEventMethod": "session.state-changed",
+      "conversationActivity": {
+        "conversationId": "station:1795410818887",
+        "currentThreadId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+        "asOfSequence": 82,
+        "lastActivityAt": "2026-11-23T05:35:53.189Z"
+      },
+      "displayTitle": "Add a health endpoint that checks the database.",
+      "modelLaunchPlan": {
+        "kind": "engine-selected",
+        "evidence": "adapter-declared"
+      },
+      "hasActiveTurn": false,
+      "draft": false
+    },
+    "events": [
+      {
+        "sequence": 4,
+        "event": {
+          "eventId": "8b2cf4b4-9b63-4d3a-86b9-4c20dbfbebf1",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:daf04303057585e4ab449aa3b9bfed4114894eae820d64c29689f6ac144c310c",
+          "invocationId": "4e7c7383-9b75-4812-99dc-33744aa02da6",
+          "createdAt": "2026-11-23T05:13:39.512Z",
+          "method": "turn.started",
+          "prompt": "Add a health endpoint that checks the database.",
+          "metadata": {
+            "effectiveModel": "scripted-echo",
+            "effectiveModelOptions": {}
+          },
+          "sessionState": "running",
+          "previousState": "running",
+          "transitionReason": "turn_started",
+          "transitionSource": "runtime",
+          "clientOrigin": {
+            "version": 1,
+            "actor": {
+              "kind": "device",
+              "deviceId": "00000000-0000-4000-8000-000000000001"
+            },
+            "reported": {
+              "version": 1,
+              "surface": "web",
+              "build": "0.2.0+c4272d56594"
+            }
+          },
+          "principal": {
+            "id": "human:local:operator",
+            "kind": "human",
+            "display": "operator"
+          },
+          "clientTurnId": "82d8456d-166d-4da0-9c8e-730101a36277",
+          "dispatchOrigin": "interactive",
+          "authoredBy": "person"
+        }
+      },
+      {
+        "sequence": 5,
+        "event": {
+          "eventId": "db78997f-2d89-4f20-9396-72ce2a949901",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:daf04303057585e4ab449aa3b9bfed4114894eae820d64c29689f6ac144c310c",
+          "invocationId": "4e7c7383-9b75-4812-99dc-33744aa02da6",
+          "createdAt": "2026-11-23T05:13:39.722Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "You "
+        }
+      },
+      {
+        "sequence": 6,
+        "event": {
+          "eventId": "276cb2ba-d82a-4279-8b54-9d4db9150999",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:daf04303057585e4ab449aa3b9bfed4114894eae820d64c29689f6ac144c310c",
+          "invocationId": "4e7c7383-9b75-4812-99dc-33744aa02da6",
+          "createdAt": "2026-11-23T05:13:39.737Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "said: Add a "
+        }
+      },
+      {
+        "sequence": 7,
+        "event": {
+          "eventId": "28972600-9065-4ce9-909d-340c708b6f91",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:daf04303057585e4ab449aa3b9bfed4114894eae820d64c29689f6ac144c310c",
+          "invocationId": "4e7c7383-9b75-4812-99dc-33744aa02da6",
+          "createdAt": "2026-11-23T05:13:39.817Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "health endpoint that "
+        }
+      },
+      {
+        "sequence": 8,
+        "event": {
+          "eventId": "4e5ff7da-6573-4642-837d-9b6829d60574",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:daf04303057585e4ab449aa3b9bfed4114894eae820d64c29689f6ac144c310c",
+          "invocationId": "4e7c7383-9b75-4812-99dc-33744aa02da6",
+          "createdAt": "2026-11-23T05:13:39.896Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "checks the "
+        }
+      },
+      {
+        "sequence": 9,
+        "event": {
+          "eventId": "a291a6c9-83bc-4ad9-9fb8-7cb56b225e50",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:daf04303057585e4ab449aa3b9bfed4114894eae820d64c29689f6ac144c310c",
+          "invocationId": "4e7c7383-9b75-4812-99dc-33744aa02da6",
+          "createdAt": "2026-11-23T05:13:39.996Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "database."
+        }
+      },
+      {
+        "sequence": 10,
+        "event": {
+          "eventId": "d5a4e1aa-3cc3-4f4b-afaf-318dfc3b5896",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:daf04303057585e4ab449aa3b9bfed4114894eae820d64c29689f6ac144c310c",
+          "invocationId": "4e7c7383-9b75-4812-99dc-33744aa02da6",
+          "createdAt": "2026-11-23T05:13:40.100Z",
+          "method": "turn.completed",
+          "finishReason": "stop",
+          "outputText": "You said: Add a health endpoint that checks the database.",
+          "metadata": {
+            "effectiveModel": "scripted-echo",
+            "effectiveModelOptions": {},
+            "contextInjection": {}
+          },
+          "sessionState": "idle",
+          "previousState": "running",
+          "transitionReason": "turn_completed",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 11,
+        "event": {
+          "eventId": "17d3653e-877c-46e2-92e0-b770a224f698",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "createdAt": "2026-11-23T05:13:40.100Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795410818887",
+          "from": "running",
+          "to": "idle"
+        }
+      },
+      {
+        "sequence": 12,
+        "event": {
+          "eventId": "5c0b6e85-ec62-4845-857a-c4b6d8cb284f",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "createdAt": "2026-11-23T05:24:31.900Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795410818887",
+          "from": "idle",
+          "to": "running",
+          "sessionState": "running",
+          "previousState": "idle",
+          "transitionReason": "manual_update",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 13,
+        "event": {
+          "eventId": "af1e61d0-9f3e-4947-9eff-ce0553d05149",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:8ef7b459ee0c02421f403b8fbe655550d1a78f28237978c9756e9399d4247ab1",
+          "invocationId": "ebc41086-483d-4345-b014-6bb9a571a413",
+          "createdAt": "2026-11-23T05:24:31.900Z",
+          "method": "turn.started",
+          "prompt": "Open a pull request for it.",
+          "metadata": {
+            "effectiveModel": "scripted-echo",
+            "effectiveModelOptions": {}
+          },
+          "sessionState": "running",
+          "previousState": "running",
+          "transitionReason": "turn_started",
+          "transitionSource": "runtime",
+          "clientOrigin": {
+            "version": 1,
+            "actor": {
+              "kind": "device",
+              "deviceId": "00000000-0000-4000-8000-000000000001"
+            },
+            "reported": {
+              "version": 1,
+              "surface": "web",
+              "build": "0.2.0+c4272d56594"
+            }
+          },
+          "principal": {
+            "id": "human:local:operator",
+            "kind": "human",
+            "display": "operator"
+          },
+          "clientTurnId": "8f9f841d-fa3a-4ae8-8fe0-10794f0990c6",
+          "dispatchOrigin": "interactive",
+          "authoredBy": "person"
+        }
+      },
+      {
+        "sequence": 14,
+        "event": {
+          "eventId": "2c528dc1-0b33-4429-85dd-4ff575edbc81",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:8ef7b459ee0c02421f403b8fbe655550d1a78f28237978c9756e9399d4247ab1",
+          "invocationId": "ebc41086-483d-4345-b014-6bb9a571a413",
+          "createdAt": "2026-11-23T05:24:32.076Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "You "
+        }
+      },
+      {
+        "sequence": 15,
+        "event": {
+          "eventId": "510d00c4-e0b1-4503-8f8b-58a234579203",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:8ef7b459ee0c02421f403b8fbe655550d1a78f28237978c9756e9399d4247ab1",
+          "invocationId": "ebc41086-483d-4345-b014-6bb9a571a413",
+          "createdAt": "2026-11-23T05:24:32.102Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "said: [Timezone: UTC]\n"
+        }
+      },
+      {
+        "sequence": 16,
+        "event": {
+          "eventId": "89975c5c-12ca-4035-ad90-1359fc99cd9f",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:8ef7b459ee0c02421f403b8fbe655550d1a78f28237978c9756e9399d4247ab1",
+          "invocationId": "ebc41086-483d-4345-b014-6bb9a571a413",
+          "createdAt": "2026-11-23T05:24:32.176Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "Open a pull "
+        }
+      },
+      {
+        "sequence": 17,
+        "event": {
+          "eventId": "3b0cea21-5a94-4768-85b5-fa0d44bb5510",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:8ef7b459ee0c02421f403b8fbe655550d1a78f28237978c9756e9399d4247ab1",
+          "invocationId": "ebc41086-483d-4345-b014-6bb9a571a413",
+          "createdAt": "2026-11-23T05:24:32.256Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "request for it."
+        }
+      },
+      {
+        "sequence": 18,
+        "event": {
+          "eventId": "19854968-e7fe-44ab-85b7-2fc454e9a4d6",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:8ef7b459ee0c02421f403b8fbe655550d1a78f28237978c9756e9399d4247ab1",
+          "invocationId": "ebc41086-483d-4345-b014-6bb9a571a413",
+          "createdAt": "2026-11-23T05:24:32.425Z",
+          "method": "turn.completed",
+          "finishReason": "stop",
+          "outputText": "You said: [Timezone: UTC]\nOpen a pull request for it.",
+          "metadata": {
+            "effectiveModel": "scripted-echo",
+            "effectiveModelOptions": {},
+            "contextInjection": {
+              "ambient": {
+                "approxTokens": 7
+              }
+            }
+          },
+          "sessionState": "idle",
+          "previousState": "running",
+          "transitionReason": "turn_completed",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 19,
+        "event": {
+          "eventId": "579f1898-7571-4ffb-8040-49a0dd8dc677",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "createdAt": "2026-11-23T05:24:32.425Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795410818887",
+          "from": "running",
+          "to": "idle"
+        }
+      },
+      {
+        "sequence": 20,
+        "event": {
+          "eventId": "a04b84a2-10e3-4dd5-ad66-2b3f2a8494a0",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "createdAt": "2026-11-23T05:25:33.819Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795410818887",
+          "from": "idle",
+          "to": "running",
+          "sessionState": "running",
+          "previousState": "idle",
+          "transitionReason": "manual_update",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 21,
+        "event": {
+          "eventId": "f81f2abe-2873-4018-acb6-f66e4c3b2d58",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:945f8acd07cfeb50f97893c2cac37802a7b32d7a5fbe43dee4548143199714ed",
+          "invocationId": "fc3d8336-b37c-45cd-ac4e-fd9a4aec6529",
+          "createdAt": "2026-11-23T05:25:33.819Z",
+          "method": "turn.started",
+          "prompt": "Review it for anything that could flap under load.",
+          "metadata": {
+            "effectiveModel": "scripted-echo",
+            "effectiveModelOptions": {}
+          },
+          "sessionState": "running",
+          "previousState": "running",
+          "transitionReason": "turn_started",
+          "transitionSource": "runtime",
+          "clientOrigin": {
+            "version": 1,
+            "actor": {
+              "kind": "device",
+              "deviceId": "00000000-0000-4000-8000-000000000001"
+            },
+            "reported": {
+              "version": 1,
+              "surface": "web",
+              "build": "0.2.0+c4272d56594"
+            }
+          },
+          "principal": {
+            "id": "human:local:operator",
+            "kind": "human",
+            "display": "operator"
+          },
+          "clientTurnId": "9f16e6da-79f3-4790-bf2d-d3c320348247",
+          "dispatchOrigin": "interactive",
+          "authoredBy": "person"
+        }
+      },
+      {
+        "sequence": 22,
+        "event": {
+          "eventId": "9f50140b-ff1b-44e9-b8ed-e8d5ce13171c",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:945f8acd07cfeb50f97893c2cac37802a7b32d7a5fbe43dee4548143199714ed",
+          "invocationId": "fc3d8336-b37c-45cd-ac4e-fd9a4aec6529",
+          "createdAt": "2026-11-23T05:25:34.060Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "You "
+        }
+      },
+      {
+        "sequence": 23,
+        "event": {
+          "eventId": "dac980ef-c150-4c1d-ad7a-fc082ae5cb43",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:945f8acd07cfeb50f97893c2cac37802a7b32d7a5fbe43dee4548143199714ed",
+          "invocationId": "fc3d8336-b37c-45cd-ac4e-fd9a4aec6529",
+          "createdAt": "2026-11-23T05:25:34.089Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "said: [Timezone: UTC]\n"
+        }
+      },
+      {
+        "sequence": 24,
+        "event": {
+          "eventId": "77264548-a506-4a76-9872-773fb4d4e30b",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:945f8acd07cfeb50f97893c2cac37802a7b32d7a5fbe43dee4548143199714ed",
+          "invocationId": "fc3d8336-b37c-45cd-ac4e-fd9a4aec6529",
+          "createdAt": "2026-11-23T05:25:34.170Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "Review it for "
+        }
+      },
+      {
+        "sequence": 25,
+        "event": {
+          "eventId": "36c2af62-8e55-4627-8af1-be969c402803",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:945f8acd07cfeb50f97893c2cac37802a7b32d7a5fbe43dee4548143199714ed",
+          "invocationId": "fc3d8336-b37c-45cd-ac4e-fd9a4aec6529",
+          "createdAt": "2026-11-23T05:25:34.240Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "anything that could "
+        }
+      },
+      {
+        "sequence": 26,
+        "event": {
+          "eventId": "593c0ed4-eb70-400c-b841-742730604df5",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:945f8acd07cfeb50f97893c2cac37802a7b32d7a5fbe43dee4548143199714ed",
+          "invocationId": "fc3d8336-b37c-45cd-ac4e-fd9a4aec6529",
+          "createdAt": "2026-11-23T05:25:34.313Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "flap under load."
+        }
+      },
+      {
+        "sequence": 27,
+        "event": {
+          "eventId": "38de15b8-c6fa-4637-b495-8318a9866001",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:945f8acd07cfeb50f97893c2cac37802a7b32d7a5fbe43dee4548143199714ed",
+          "invocationId": "fc3d8336-b37c-45cd-ac4e-fd9a4aec6529",
+          "createdAt": "2026-11-23T05:25:34.525Z",
+          "method": "turn.completed",
+          "finishReason": "stop",
+          "outputText": "You said: [Timezone: UTC]\nReview it for anything that could flap under load.",
+          "metadata": {
+            "effectiveModel": "scripted-echo",
+            "effectiveModelOptions": {},
+            "contextInjection": {
+              "ambient": {
+                "approxTokens": 7
+              }
+            }
+          },
+          "sessionState": "idle",
+          "previousState": "running",
+          "transitionReason": "turn_completed",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 28,
+        "event": {
+          "eventId": "47f30c2a-9877-42e7-a0db-2ef17aa3d213",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "createdAt": "2026-11-23T05:25:34.525Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795410818887",
+          "from": "running",
+          "to": "idle"
+        }
+      },
+      {
+        "sequence": 29,
+        "event": {
+          "eventId": "903c7ff0-0f0e-47cd-bd67-ec6853b4b941",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "createdAt": "2026-11-23T05:26:34.584Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795410818887",
+          "from": "idle",
+          "to": "running",
+          "sessionState": "running",
+          "previousState": "idle",
+          "transitionReason": "manual_update",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 30,
+        "event": {
+          "eventId": "9f8cdb0b-584e-49e7-a635-7f96ed456ee5",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:b8d094da0a399f08287b0f45da6705d7b8ed9a794c7b549c339b1b26bae78c06",
+          "invocationId": "8cc0d4d1-9d9e-4ecb-a814-5cfd4ba1a909",
+          "createdAt": "2026-11-23T05:26:34.584Z",
+          "method": "turn.started",
+          "prompt": "Open a PR for it.",
+          "metadata": {
+            "effectiveModel": "scripted-echo",
+            "effectiveModelOptions": {}
+          },
+          "sessionState": "running",
+          "previousState": "running",
+          "transitionReason": "turn_started",
+          "transitionSource": "runtime",
+          "clientOrigin": {
+            "version": 1,
+            "actor": {
+              "kind": "device",
+              "deviceId": "00000000-0000-4000-8000-000000000001"
+            },
+            "reported": {
+              "version": 1,
+              "surface": "web",
+              "build": "0.2.0+c4272d56594"
+            }
+          },
+          "principal": {
+            "id": "human:local:operator",
+            "kind": "human",
+            "display": "operator"
+          },
+          "clientTurnId": "30ea5cd3-4f24-4430-a7fa-86af166734f6",
+          "dispatchOrigin": "interactive",
+          "authoredBy": "person"
+        }
+      },
+      {
+        "sequence": 31,
+        "event": {
+          "eventId": "853f9353-4c9a-4ae7-a55e-0beee99c2d37",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:b8d094da0a399f08287b0f45da6705d7b8ed9a794c7b549c339b1b26bae78c06",
+          "invocationId": "8cc0d4d1-9d9e-4ecb-a814-5cfd4ba1a909",
+          "createdAt": "2026-11-23T05:26:34.929Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "You "
+        }
+      },
+      {
+        "sequence": 32,
+        "event": {
+          "eventId": "055e16dd-e43e-44a5-b196-e7fe7f5ec613",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:b8d094da0a399f08287b0f45da6705d7b8ed9a794c7b549c339b1b26bae78c06",
+          "invocationId": "8cc0d4d1-9d9e-4ecb-a814-5cfd4ba1a909",
+          "createdAt": "2026-11-23T05:26:35.025Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "said: [Timezone: UTC]\nOpen "
+        }
+      },
+      {
+        "sequence": 33,
+        "event": {
+          "eventId": "f79bb867-be2e-4b6d-a5db-7ec22c43d86a",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:b8d094da0a399f08287b0f45da6705d7b8ed9a794c7b549c339b1b26bae78c06",
+          "invocationId": "8cc0d4d1-9d9e-4ecb-a814-5cfd4ba1a909",
+          "createdAt": "2026-11-23T05:26:35.105Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "a PR for it."
+        }
+      },
+      {
+        "sequence": 34,
+        "event": {
+          "eventId": "b2039cb4-a2c0-45a0-a735-ea9debbc3fdb",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:b8d094da0a399f08287b0f45da6705d7b8ed9a794c7b549c339b1b26bae78c06",
+          "invocationId": "8cc0d4d1-9d9e-4ecb-a814-5cfd4ba1a909",
+          "createdAt": "2026-11-23T05:26:35.476Z",
+          "method": "turn.completed",
+          "finishReason": "stop",
+          "outputText": "You said: [Timezone: UTC]\nOpen a PR for it.",
+          "metadata": {
+            "effectiveModel": "scripted-echo",
+            "effectiveModelOptions": {},
+            "contextInjection": {
+              "ambient": {
+                "approxTokens": 7
+              }
+            }
+          },
+          "sessionState": "idle",
+          "previousState": "running",
+          "transitionReason": "turn_completed",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 35,
+        "event": {
+          "eventId": "4cf2a919-bf66-4f9a-b6ad-60577ffcac69",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "createdAt": "2026-11-23T05:26:35.476Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795410818887",
+          "from": "running",
+          "to": "idle"
+        }
+      },
+      {
+        "sequence": 36,
+        "event": {
+          "eventId": "f1a64215-c686-4b14-80a2-79ed881d9efb",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "createdAt": "2026-11-23T05:28:15.150Z",
+          "method": "session.configured",
+          "sessionId": "station:1795410818887",
+          "model": "scripted-showcase",
+          "cwd": "/workspace/chat",
+          "metadata": {
+            "agentId": "station"
+          }
+        }
+      },
+      {
+        "sequence": 37,
+        "event": {
+          "eventId": "4313322c-8e7a-4ffd-aa1f-39fb8b087a2c",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "createdAt": "2026-11-23T05:28:15.150Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795410818887",
+          "from": "idle",
+          "to": "running",
+          "sessionState": "running",
+          "previousState": "idle",
+          "transitionReason": "manual_update",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 38,
+        "event": {
+          "eventId": "2a6f6763-ea15-49f0-bfc7-b2aa3d9b2e8d",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:15.150Z",
+          "method": "turn.started",
+          "prompt": "Check the timeout budget.",
+          "metadata": {
+            "effectiveModel": "scripted-showcase",
+            "effectiveModelOptions": {}
+          },
+          "sessionState": "running",
+          "previousState": "running",
+          "transitionReason": "turn_started",
+          "transitionSource": "runtime",
+          "clientOrigin": {
+            "version": 1,
+            "actor": {
+              "kind": "device",
+              "deviceId": "00000000-0000-4000-8000-000000000001"
+            },
+            "reported": {
+              "version": 1,
+              "surface": "web",
+              "build": "0.2.0+c4272d56594"
+            }
+          },
+          "principal": {
+            "id": "human:local:operator",
+            "kind": "human",
+            "display": "operator"
+          },
+          "clientTurnId": "9b0315bf-46ff-470f-b641-8af9c217d4b2",
+          "dispatchOrigin": "interactive",
+          "authoredBy": "person"
+        }
+      },
+      {
+        "sequence": 39,
+        "event": {
+          "eventId": "4442ed7b-44c2-41a5-a14c-6eb92fe5bf05",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:15.334Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "## "
+        }
+      },
+      {
+        "sequence": 40,
+        "event": {
+          "eventId": "3a716b5d-e814-424e-9f04-2e1e70b23db0",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:15.358Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "Scripted showcase\n\nThis "
+        }
+      },
+      {
+        "sequence": 41,
+        "event": {
+          "eventId": "b1393aca-f111-45f2-a714-7ba451dc9084",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:15.429Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "reply is **scripted**: "
+        }
+      },
+      {
+        "sequence": 42,
+        "event": {
+          "eventId": "4ec496bd-fab1-4dbc-ae46-f504adc9cc84",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:15.507Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "no model ran "
+        }
+      },
+      {
+        "sequence": 43,
+        "event": {
+          "eventId": "aac6bb6c-fa44-4e23-8342-fed991e29397",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:15.588Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "and nothing was "
+        }
+      },
+      {
+        "sequence": 44,
+        "event": {
+          "eventId": "5e2913ae-7000-486e-91c3-2c4cd52c4fe7",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:15.668Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "billed. It streams "
+        }
+      },
+      {
+        "sequence": 45,
+        "event": {
+          "eventId": "84948679-c9a8-4c6b-9000-05648665aad5",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:15.745Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "in small pieces "
+        }
+      },
+      {
+        "sequence": 46,
+        "event": {
+          "eventId": "81372693-bf4f-4da0-9270-a0bf2af932d9",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:15.825Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "so you can "
+        }
+      },
+      {
+        "sequence": 47,
+        "event": {
+          "eventId": "285b22bd-90a9-4b94-8b5f-e95bd8023625",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:15.907Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "watch the transcript "
+        }
+      },
+      {
+        "sequence": 48,
+        "event": {
+          "eventId": "f61bfa86-ee90-4a5f-9cc6-67c9393e148a",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:15.986Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "grow.\n\n- A "
+        }
+      },
+      {
+        "sequence": 49,
+        "event": {
+          "eventId": "16acd571-638c-44d0-9810-725b5f163ff2",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:16.064Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "bullet with `inline "
+        }
+      },
+      {
+        "sequence": 50,
+        "event": {
+          "eventId": "20009a9f-2b93-4b31-bf5c-b011f34d79c3",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:16.144Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "code`\n- A "
+        }
+      },
+      {
+        "sequence": 51,
+        "event": {
+          "eventId": "9af8b273-9097-42c2-bc9c-ed6afe6b8173",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:16.220Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "bullet with a "
+        }
+      },
+      {
+        "sequence": 52,
+        "event": {
+          "eventId": "2ebcd6dc-1b78-4249-a2a6-f34af9315a76",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:16.299Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "[link](https://example.com)\n- A "
+        }
+      },
+      {
+        "sequence": 53,
+        "event": {
+          "eventId": "ab82584d-1589-4176-ab19-bdb4d846b14e",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:16.380Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "third bullet, for "
+        }
+      },
+      {
+        "sequence": 54,
+        "event": {
+          "eventId": "421f16f3-5521-4c66-9555-3ffa5ed70e69",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:16.461Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "rhythm\n\n| Column "
+        }
+      },
+      {
+        "sequence": 55,
+        "event": {
+          "eventId": "f13c5aea-d517-4069-b4fb-8f984018a73b",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:16.542Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "| Value |\n"
+        }
+      },
+      {
+        "sequence": 56,
+        "event": {
+          "eventId": "8068fb64-eab1-475e-b0b0-69360eef055b",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:16.621Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "| --- | "
+        }
+      },
+      {
+        "sequence": 57,
+        "event": {
+          "eventId": "9b1d5a14-bb33-4df0-8380-573f0854bdc5",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:16.702Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "--- |\n| "
+        }
+      },
+      {
+        "sequence": 58,
+        "event": {
+          "eventId": "25f546f6-51b5-423e-b2cc-5a77f4ae2df5",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:16.784Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "alpha | 1 "
+        }
+      },
+      {
+        "sequence": 59,
+        "event": {
+          "eventId": "667d26ca-2cef-4445-ba41-1146e9ff1d22",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:16.864Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "|\n| beta "
+        }
+      },
+      {
+        "sequence": 60,
+        "event": {
+          "eventId": "0da8bff3-6102-4d02-afd0-9e035f562623",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:16.944Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "| 2 |\n\n"
+        }
+      },
+      {
+        "sequence": 61,
+        "event": {
+          "eventId": "3ce337b1-904a-4e31-8c85-c9d93368eaaa",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:17.024Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "```ts\nexport function "
+        }
+      },
+      {
+        "sequence": 62,
+        "event": {
+          "eventId": "dd43ecb5-0d25-4554-899e-af80e4697e5d",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:17.106Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "greet(name: string): string "
+        }
+      },
+      {
+        "sequence": 63,
+        "event": {
+          "eventId": "0302539f-1cf0-4ccb-b120-e564d4c10215",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:17.185Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "{\n  return \"hello "
+        }
+      },
+      {
+        "sequence": 64,
+        "event": {
+          "eventId": "b158decd-fc1a-4530-8b32-cd0221e4e232",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:17.264Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "\" + name;\n"
+        }
+      },
+      {
+        "sequence": 65,
+        "event": {
+          "eventId": "b15b4593-a68b-455b-9fb2-f463ed3b100d",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:17.344Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "}\n```\n\n> "
+        }
+      },
+      {
+        "sequence": 66,
+        "event": {
+          "eventId": "1b2dfc1b-3c4b-4ecd-aab3-8b1133f22bcb",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:17.453Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "A closing quote, then "
+        }
+      },
+      {
+        "sequence": 67,
+        "event": {
+          "eventId": "529de63a-90ba-4d92-9b2e-7b9fabece84b",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:17.530Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "the turn completes "
+        }
+      },
+      {
+        "sequence": 68,
+        "event": {
+          "eventId": "5a9d27ea-1a25-4dc3-b36b-126839e4150e",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:17.608Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "normally.\n"
+        }
+      },
+      {
+        "sequence": 69,
+        "event": {
+          "eventId": "6c2077bf-e424-4640-8b7f-3e4dff37aaa8",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "turnId": "turn:4fd1fe3e36597aa1335b5171a70df0911e7dd47cc50b5c8b97a5b8674f199209",
+          "invocationId": "5f646c67-2db6-4d8b-b174-9188cf8b8646",
+          "createdAt": "2026-11-23T05:28:17.705Z",
+          "method": "turn.completed",
+          "finishReason": "stop",
+          "outputText": "## Scripted showcase\n\nThis reply is **scripted**: no model ran and nothing was billed. It streams in small pieces so you can watch the transcript grow.\n\n- A bullet with `inline code`\n- A bullet with a [link](https://example.com)\n- A third bullet, for rhythm\n\n| Column | Value |\n| --- | --- |\n| alpha | 1 |\n| beta | 2 |\n\n```ts\nexport function greet(name: string): string {\n  return \"hello \" + name;\n}\n```\n\n> A closing quote, then the turn completes normally.\n",
+          "metadata": {
+            "effectiveModel": "scripted-showcase",
+            "effectiveModelOptions": {},
+            "contextInjection": {
+              "ambient": {
+                "approxTokens": 7
+              }
+            }
+          },
+          "sessionState": "idle",
+          "previousState": "running",
+          "transitionReason": "turn_completed",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 70,
+        "event": {
+          "eventId": "9051f60f-24fa-46fe-9f04-8a17f60b7064",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "createdAt": "2026-11-23T05:28:17.705Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795410818887",
+          "from": "running",
+          "to": "idle"
+        }
+      },
+      {
+        "sequence": 71,
+        "event": {
+          "eventId": "f3315728-e6a0-4474-8191-1863d9f7715c",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "createdAt": "2026-11-23T05:32:26.211Z",
+          "method": "session.started",
+          "sessionId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "initialState": "created",
+          "metadata": {
+            "agentId": "station",
+            "agentSlug": "station",
+            "targetKind": "agent",
+            "targetId": "station",
+            "startClientTurnId": "4e5bba39-bea7-48b3-ba47-6932c9950827",
+            "contextBoundary": {
+              "boundaryId": "b9dc5aa8-cfb9-4a0b-bf74-cffef2259e91",
+              "startCommandId": "36ec356f-cf77-489c-adbf-309874dfc523",
+              "policy": "empty-next-cold-start",
+              "priorTranscriptInjected": false
+            },
+            "userId": "human:local:operator",
+            "confinementRoot": "",
+            "stationConfinement": "host",
+            "stationConfinementGrantor": {
+              "kind": "operator"
+            },
+            "stationConfinementRecord": {
+              "level": "host",
+              "required": false,
+              "posture": "no-mechanism",
+              "workspaceAccess": "mounted",
+              "policyBasis": "operator-policy"
+            },
+            "conversationId": "station:1795410818887",
+            "environmentId": "c52aa1f4-4338-495b-938b-59d343e5cee1",
+            "modelLaunchPlan": {
+              "kind": "engine-selected",
+              "evidence": "adapter-declared"
+            },
+            "modelLaunchRequestedOverride": false,
+            "agentName": "Station Assistant",
+            "cwd": "/workspace/chat"
+          }
+        }
+      },
+      {
+        "sequence": 72,
+        "event": {
+          "eventId": "8d560fc6-2035-4c42-acbd-253c0633a03d",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "createdAt": "2026-11-23T05:32:26.211Z",
+          "method": "session.configured",
+          "sessionId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "cwd": "/workspace/chat",
+          "metadata": {
+            "agentId": "station",
+            "agentSlug": "station",
+            "targetKind": "agent",
+            "targetId": "station",
+            "startClientTurnId": "4e5bba39-bea7-48b3-ba47-6932c9950827",
+            "contextBoundary": {
+              "boundaryId": "b9dc5aa8-cfb9-4a0b-bf74-cffef2259e91",
+              "startCommandId": "36ec356f-cf77-489c-adbf-309874dfc523",
+              "policy": "empty-next-cold-start",
+              "priorTranscriptInjected": false
+            },
+            "userId": "human:local:operator",
+            "confinementRoot": "",
+            "stationConfinement": "host",
+            "stationConfinementGrantor": {
+              "kind": "operator"
+            },
+            "stationConfinementRecord": {
+              "level": "host",
+              "required": false,
+              "posture": "no-mechanism",
+              "workspaceAccess": "mounted",
+              "policyBasis": "operator-policy"
+            },
+            "conversationId": "station:1795410818887",
+            "environmentId": "c52aa1f4-4338-495b-938b-59d343e5cee1",
+            "modelLaunchPlan": {
+              "kind": "engine-selected",
+              "evidence": "adapter-declared"
+            },
+            "modelLaunchRequestedOverride": false,
+            "agentName": "Station Assistant"
+          }
+        }
+      },
+      {
+        "sequence": 73,
+        "event": {
+          "eventId": "c8a5f5bc-6c03-48b7-aeba-be7ea03314e3",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "createdAt": "2026-11-23T05:32:26.342Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "from": "idle",
+          "to": "running",
+          "sessionState": "running",
+          "previousState": "queued",
+          "transitionReason": "manual_update",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 74,
+        "event": {
+          "eventId": "ca7711f6-d4c3-4c8a-b026-3b8130d86b76",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "turnId": "turn:927b36ff1b464bc50bffae7cb6f544f3d4ac00447df6f4c8f5e4427524c03fbf",
+          "invocationId": "ccc77c2b-72b1-4db7-932c-45c0082d5dfd",
+          "createdAt": "2026-11-23T05:32:26.342Z",
+          "method": "turn.started",
+          "prompt": "Open a PR for the health endpoint.",
+          "metadata": {},
+          "sessionState": "running",
+          "previousState": "running",
+          "transitionReason": "turn_started",
+          "transitionSource": "runtime",
+          "clientOrigin": {
+            "version": 1,
+            "actor": {
+              "kind": "device",
+              "deviceId": "00000000-0000-4000-8000-000000000001"
+            },
+            "reported": {
+              "version": 1,
+              "surface": "web",
+              "build": "0.2.0+c4272d56594"
+            }
+          },
+          "principal": {
+            "id": "human:local:operator",
+            "kind": "human",
+            "display": "operator"
+          },
+          "clientTurnId": "4e5bba39-bea7-48b3-ba47-6932c9950827",
+          "dispatchOrigin": "interactive",
+          "authoredBy": "person"
+        }
+      },
+      {
+        "sequence": 75,
+        "event": {
+          "eventId": "3e5ee48f-7342-48de-8d27-9b4672e416f6",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "turnId": "turn:927b36ff1b464bc50bffae7cb6f544f3d4ac00447df6f4c8f5e4427524c03fbf",
+          "invocationId": "ccc77c2b-72b1-4db7-932c-45c0082d5dfd",
+          "createdAt": "2026-11-23T05:32:26.598Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "You "
+        }
+      },
+      {
+        "sequence": 76,
+        "event": {
+          "eventId": "7ca12ead-33f2-4b0e-bea8-86cc1aee408c",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "turnId": "turn:927b36ff1b464bc50bffae7cb6f544f3d4ac00447df6f4c8f5e4427524c03fbf",
+          "invocationId": "ccc77c2b-72b1-4db7-932c-45c0082d5dfd",
+          "createdAt": "2026-11-23T05:32:26.621Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "said: [Timezone: UTC]\n"
+        }
+      },
+      {
+        "sequence": 77,
+        "event": {
+          "eventId": "da7074b9-39ad-451b-a05c-ad8f31953b65",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "turnId": "turn:927b36ff1b464bc50bffae7cb6f544f3d4ac00447df6f4c8f5e4427524c03fbf",
+          "invocationId": "ccc77c2b-72b1-4db7-932c-45c0082d5dfd",
+          "createdAt": "2026-11-23T05:32:26.701Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "Open a PR "
+        }
+      },
+      {
+        "sequence": 78,
+        "event": {
+          "eventId": "49a4c70b-8bfa-49c8-bfe4-ad4a71d3d4ab",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "turnId": "turn:927b36ff1b464bc50bffae7cb6f544f3d4ac00447df6f4c8f5e4427524c03fbf",
+          "invocationId": "ccc77c2b-72b1-4db7-932c-45c0082d5dfd",
+          "createdAt": "2026-11-23T05:32:26.780Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "for the health "
+        }
+      },
+      {
+        "sequence": 79,
+        "event": {
+          "eventId": "332f891f-cf5a-45d6-b867-7b548404322f",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "turnId": "turn:927b36ff1b464bc50bffae7cb6f544f3d4ac00447df6f4c8f5e4427524c03fbf",
+          "invocationId": "ccc77c2b-72b1-4db7-932c-45c0082d5dfd",
+          "createdAt": "2026-11-23T05:32:26.860Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "endpoint."
+        }
+      },
+      {
+        "sequence": 80,
+        "event": {
+          "eventId": "6e957e62-eeec-4f38-b51c-951167ec22a5",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "turnId": "turn:927b36ff1b464bc50bffae7cb6f544f3d4ac00447df6f4c8f5e4427524c03fbf",
+          "invocationId": "ccc77c2b-72b1-4db7-932c-45c0082d5dfd",
+          "createdAt": "2026-11-23T05:32:26.942Z",
+          "method": "turn.completed",
+          "finishReason": "stop",
+          "outputText": "You said: [Timezone: UTC]\nOpen a PR for the health endpoint.",
+          "metadata": {
+            "contextInjection": {
+              "ambient": {
+                "approxTokens": 7
+              }
+            }
+          },
+          "sessionState": "idle",
+          "previousState": "running",
+          "transitionReason": "turn_completed",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 81,
+        "event": {
+          "eventId": "ce540f4b-015f-4081-be8a-5227beba1a91",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "createdAt": "2026-11-23T05:32:26.942Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795410818887:session:64e43a8f-0a96-48dd-b973-cf0fd8c788e8",
+          "from": "running",
+          "to": "idle"
+        }
+      },
+      {
+        "sequence": 82,
+        "event": {
+          "eventId": "03b1c5e0-4165-43c6-91b4-11c300641391",
+          "provider": "station-agent",
+          "threadId": "station:1795410818887",
+          "createdAt": "2026-11-23T05:35:53.189Z",
+          "method": "session.exited",
+          "sessionId": "station:1795410818887",
+          "reason": "stopped",
+          "sessionState": "canceled",
+          "previousState": "queued",
+          "transitionReason": "runtime_exit",
+          "transitionSource": "runtime"
+        }
+      }
+    ],
+    "hasMore": false,
+    "watermark": 82,
+    "memoryContinuation": {
+      "eligible": false
+    }
+  },
+  "resetThenSwitch": {
+    "protocolVersion": 1,
+    "conversationId": "station:1795421394046",
+    "currentSessionId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+    "sessionLineage": [
+      {
+        "sessionId": "station:1795421394046",
+        "provider": "station-agent",
+        "agentSlug": "station",
+        "agentDisplayName": "Station Assistant"
+      },
+      {
+        "sessionId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+        "provider": "station-agent",
+        "agentSlug": "reviewer",
+        "agentDisplayName": "Reviewer"
+      }
+    ],
+    "handoffs": [
+      {
+        "predecessorSessionId": "station:1795421394046",
+        "sessionId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+        "idempotencyKey": "3d2b44bf-c93b-4532-b908-e18b7bcbd58e",
+        "targetAgentId": "reviewer",
+        "targetProvider": "station-agent",
+        "createdAt": "2026-11-23T08:11:49.980Z",
+        "carried": [
+          "authorizedTranscript",
+          "ownerTenantWorkspace",
+          "targetAgentModel"
+        ],
+        "reset": [
+          "providerNativeCursor",
+          "toolState",
+          "sessionApprovals",
+          "mcpAndEngineConfiguration",
+          "activeTurnsAndInterrupts",
+          "queuedRequests",
+          "sessionLocalGrants",
+          "taskWorkflowReferences"
+        ]
+      }
+    ],
+    "contextBoundaries": [
+      {
+        "boundaryId": "53001e2a-66dd-4ee5-be35-1c71d7e1a238",
+        "successorSessionId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+        "policy": "empty-next-cold-start",
+        "priorTranscriptInjected": false,
+        "consumedAt": "2026-11-23T08:11:50.163Z"
+      }
+    ],
+    "session": {
+      "durability": {
+        "steerPlacement": {
+          "state": "emulated",
+          "boundary": "station-observed",
+          "detail": "Held until Station observes a post-tool boundary, otherwise the next turn boundary."
+        },
+        "crashContinuation": {
+          "state": "none",
+          "detail": "A running turn cannot continue after a Station restart."
+        },
+        "toolReplay": {
+          "state": "none",
+          "detail": "Interrupted tool calls are not automatically replayed."
+        },
+        "pendingApprovals": {
+          "state": "none",
+          "detail": "Pending approvals do not survive an engine restart."
+        },
+        "contextCarriage": {
+          "state": "emulated",
+          "history": "station-memory",
+          "detail": "Station supplies conversation history; mid-turn recovery and delivery acknowledgement are unavailable."
+        },
+        "fork": {
+          "state": "emulated",
+          "detail": "A new conversation receives replayed history rather than a native fork."
+        },
+        "compaction": {
+          "state": "none",
+          "owner": "station",
+          "detail": "Station owns context management, but compaction is not a crash-recovery checkpoint."
+        },
+        "partialOutput": {
+          "state": "emulated",
+          "detail": "Station keeps observed output; partial output is not a completed answer."
+        },
+        "usage": {
+          "state": "emulated",
+          "detail": "Usage is engine-reported when available; missing usage remains unknown."
+        }
+      },
+      "provider": "station-agent",
+      "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+      "status": "ready",
+      "controlMode": "station-owned",
+      "answerability": {
+        "answerable": true
+      },
+      "cwd": "/workspace/chat",
+      "cwdManagedWorkspace": true,
+      "persistSession": true,
+      "createdAt": "2026-11-23T08:11:50.061Z",
+      "updatedAt": "2026-11-23T08:11:52.399Z",
+      "isLoaded": true,
+      "isPersisted": true,
+      "eventCount": 14,
+      "turnOrigin": {
+        "latest": {
+          "version": 1,
+          "actor": {
+            "kind": "device",
+            "deviceId": "00000000-0000-4000-8000-000000000001"
+          },
+          "reported": {
+            "version": 1,
+            "surface": "web",
+            "build": "0.2.0+219f0c2c604"
+          }
+        },
+        "hasOtherOrigins": false
+      },
+      "lifecycleState": "idle",
+      "previousLifecycleState": "running",
+      "lifecycleChangedAt": "2026-11-23T08:11:52.399Z",
+      "transitionReason": "turn_completed",
+      "transitionSource": "runtime",
+      "pendingReview": false,
+      "assignedAgentSlug": "reviewer",
+      "conversationId": "station:1795421394046",
+      "environmentId": "c52aa1f4-4338-495b-938b-59d343e5cee1",
+      "lastEventAt": "2026-11-23T08:11:52.399Z",
+      "lastEventMethod": "session.state-changed",
+      "conversationActivity": {
+        "conversationId": "station:1795421394046",
+        "currentThreadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+        "asOfSequence": 174,
+        "lastActivityAt": "2026-11-23T08:11:52.399Z"
+      },
+      "displayTitle": "Summarize the deploy log.",
+      "modelLaunchPlan": {
+        "kind": "engine-selected",
+        "evidence": "adapter-declared"
+      },
+      "hasActiveTurn": false,
+      "draft": false
+    },
+    "events": [
+      {
+        "sequence": 154,
+        "event": {
+          "eventId": "87009125-62f5-4132-a6ff-07fd58b6b375",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046",
+          "turnId": "turn:38d34c7cfb40ea3d60ea20b4bc0043720e656ff90d875c06ee0e175d4bd76a01",
+          "invocationId": "c26119e5-27c2-4be4-90cf-d9e022835e54",
+          "createdAt": "2026-11-23T08:09:54.714Z",
+          "method": "turn.started",
+          "prompt": "Summarize the deploy log.",
+          "metadata": {
+            "effectiveModel": "scripted-echo",
+            "effectiveModelOptions": {}
+          },
+          "sessionState": "running",
+          "previousState": "running",
+          "transitionReason": "turn_started",
+          "transitionSource": "runtime",
+          "clientOrigin": {
+            "version": 1,
+            "actor": {
+              "kind": "device",
+              "deviceId": "00000000-0000-4000-8000-000000000001"
+            },
+            "reported": {
+              "version": 1,
+              "surface": "web",
+              "build": "0.2.0+219f0c2c604"
+            }
+          },
+          "principal": {
+            "id": "human:local:operator",
+            "kind": "human",
+            "display": "operator"
+          },
+          "clientTurnId": "0dfef5a6-82d6-4780-89e5-afac1563c576",
+          "dispatchOrigin": "interactive",
+          "authoredBy": "person"
+        }
+      },
+      {
+        "sequence": 155,
+        "event": {
+          "eventId": "2571b9f6-ea61-4e98-b534-d0031617b757",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046",
+          "turnId": "turn:38d34c7cfb40ea3d60ea20b4bc0043720e656ff90d875c06ee0e175d4bd76a01",
+          "invocationId": "c26119e5-27c2-4be4-90cf-d9e022835e54",
+          "createdAt": "2026-11-23T08:09:54.965Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "You "
+        }
+      },
+      {
+        "sequence": 156,
+        "event": {
+          "eventId": "ab86ac9a-d5ea-417e-ad6a-fcfbcc147bc0",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046",
+          "turnId": "turn:38d34c7cfb40ea3d60ea20b4bc0043720e656ff90d875c06ee0e175d4bd76a01",
+          "invocationId": "c26119e5-27c2-4be4-90cf-d9e022835e54",
+          "createdAt": "2026-11-23T08:09:55.013Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "said: Summarize the "
+        }
+      },
+      {
+        "sequence": 157,
+        "event": {
+          "eventId": "92460695-8abf-4b74-a493-6ae016219b82",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046",
+          "turnId": "turn:38d34c7cfb40ea3d60ea20b4bc0043720e656ff90d875c06ee0e175d4bd76a01",
+          "invocationId": "c26119e5-27c2-4be4-90cf-d9e022835e54",
+          "createdAt": "2026-11-23T08:09:55.099Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "deploy log."
+        }
+      },
+      {
+        "sequence": 158,
+        "event": {
+          "eventId": "7b2b94e3-686a-45ce-b583-45589dfbdb52",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046",
+          "turnId": "turn:38d34c7cfb40ea3d60ea20b4bc0043720e656ff90d875c06ee0e175d4bd76a01",
+          "invocationId": "c26119e5-27c2-4be4-90cf-d9e022835e54",
+          "createdAt": "2026-11-23T08:09:55.346Z",
+          "method": "turn.completed",
+          "finishReason": "stop",
+          "outputText": "You said: Summarize the deploy log.",
+          "metadata": {
+            "effectiveModel": "scripted-echo",
+            "effectiveModelOptions": {},
+            "contextInjection": {}
+          },
+          "sessionState": "idle",
+          "previousState": "running",
+          "transitionReason": "turn_completed",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 159,
+        "event": {
+          "eventId": "1a715578-966e-440e-81b5-051126ce0376",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046",
+          "createdAt": "2026-11-23T08:09:55.346Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795421394046",
+          "from": "running",
+          "to": "idle"
+        }
+      },
+      {
+        "sequence": 160,
+        "event": {
+          "eventId": "272503fa-83b9-4520-b84d-5453edb16897",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046",
+          "createdAt": "2026-11-23T08:11:50.037Z",
+          "method": "session.exited",
+          "sessionId": "station:1795421394046",
+          "reason": "stopped",
+          "sessionState": "canceled",
+          "previousState": "queued",
+          "transitionReason": "runtime_exit",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 161,
+        "event": {
+          "eventId": "c445a660-a72f-46a3-bb56-6691ae7ca752",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "createdAt": "2026-11-23T08:11:50.061Z",
+          "method": "session.started",
+          "sessionId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "initialState": "created",
+          "metadata": {
+            "agentId": "reviewer",
+            "agentSlug": "reviewer",
+            "targetKind": "agent",
+            "targetId": "reviewer",
+            "startClientTurnId": "handoff:5dfbd8f65617fcdfff264ff508d566d6b2fb822dbbdecdbdb3cca129aa8305c2",
+            "contextBoundary": {
+              "boundaryId": "53001e2a-66dd-4ee5-be35-1c71d7e1a238",
+              "startCommandId": "d833513d-42d6-4c78-b682-93e7901f75a6",
+              "policy": "empty-next-cold-start",
+              "priorTranscriptInjected": false
+            },
+            "userId": "human:local:operator",
+            "confinementRoot": "",
+            "stationConfinement": "host",
+            "stationConfinementGrantor": {
+              "kind": "operator"
+            },
+            "stationConfinementRecord": {
+              "level": "host",
+              "required": false,
+              "posture": "no-mechanism",
+              "workspaceAccess": "mounted",
+              "policyBasis": "operator-policy"
+            },
+            "conversationId": "station:1795421394046",
+            "environmentId": "c52aa1f4-4338-495b-938b-59d343e5cee1",
+            "modelLaunchPlan": {
+              "kind": "engine-selected",
+              "evidence": "adapter-declared"
+            },
+            "modelLaunchRequestedOverride": false,
+            "agentName": "Reviewer",
+            "cwd": "/workspace/chat"
+          }
+        }
+      },
+      {
+        "sequence": 162,
+        "event": {
+          "eventId": "189d3120-347e-47eb-87d1-8c965ec59689",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "createdAt": "2026-11-23T08:11:50.061Z",
+          "method": "session.configured",
+          "sessionId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "cwd": "/workspace/chat",
+          "metadata": {
+            "agentId": "reviewer",
+            "agentSlug": "reviewer",
+            "targetKind": "agent",
+            "targetId": "reviewer",
+            "startClientTurnId": "handoff:5dfbd8f65617fcdfff264ff508d566d6b2fb822dbbdecdbdb3cca129aa8305c2",
+            "contextBoundary": {
+              "boundaryId": "53001e2a-66dd-4ee5-be35-1c71d7e1a238",
+              "startCommandId": "d833513d-42d6-4c78-b682-93e7901f75a6",
+              "policy": "empty-next-cold-start",
+              "priorTranscriptInjected": false
+            },
+            "userId": "human:local:operator",
+            "confinementRoot": "",
+            "stationConfinement": "host",
+            "stationConfinementGrantor": {
+              "kind": "operator"
+            },
+            "stationConfinementRecord": {
+              "level": "host",
+              "required": false,
+              "posture": "no-mechanism",
+              "workspaceAccess": "mounted",
+              "policyBasis": "operator-policy"
+            },
+            "conversationId": "station:1795421394046",
+            "environmentId": "c52aa1f4-4338-495b-938b-59d343e5cee1",
+            "modelLaunchPlan": {
+              "kind": "engine-selected",
+              "evidence": "adapter-declared"
+            },
+            "modelLaunchRequestedOverride": false,
+            "agentName": "Reviewer"
+          }
+        }
+      },
+      {
+        "sequence": 163,
+        "event": {
+          "eventId": "f186d5c9-8b12-45fe-bd79-c9bc603a8a50",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "createdAt": "2026-11-23T08:11:50.542Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "from": "idle",
+          "to": "running",
+          "sessionState": "running",
+          "previousState": "queued",
+          "transitionReason": "manual_update",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 164,
+        "event": {
+          "eventId": "c882ee9e-3ce4-4798-afb5-320b268bbe0e",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "turnId": "turn:efa751be03f0e919990a9e2689ad60284d2faef98bc0e571ffe97c478dd4b22c",
+          "invocationId": "53cc9ed0-4bd6-407b-a0a3-e97e0ebdf4f1",
+          "createdAt": "2026-11-23T08:11:50.542Z",
+          "method": "turn.started",
+          "prompt": "You are taking over this conversation. Briefly summarize where things stand and what you would do next, then wait for my reply.",
+          "metadata": {},
+          "sessionState": "running",
+          "previousState": "running",
+          "transitionReason": "turn_started",
+          "transitionSource": "runtime",
+          "clientOrigin": {
+            "version": 1,
+            "actor": {
+              "kind": "device",
+              "deviceId": "00000000-0000-4000-8000-000000000001"
+            },
+            "reported": {
+              "version": 1,
+              "surface": "web",
+              "build": "0.2.0+219f0c2c604"
+            }
+          },
+          "principal": {
+            "id": "human:local:operator",
+            "kind": "human",
+            "display": "operator"
+          },
+          "clientTurnId": "handoff:3d2b44bf-c93b-4532-b908-e18b7bcbd58e",
+          "dispatchOrigin": "interactive"
+        }
+      },
+      {
+        "sequence": 165,
+        "event": {
+          "eventId": "c71a0616-ffc6-40a9-b668-d4ee6d8d6e25",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "turnId": "turn:efa751be03f0e919990a9e2689ad60284d2faef98bc0e571ffe97c478dd4b22c",
+          "invocationId": "53cc9ed0-4bd6-407b-a0a3-e97e0ebdf4f1",
+          "createdAt": "2026-11-23T08:11:51.537Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "You "
+        }
+      },
+      {
+        "sequence": 166,
+        "event": {
+          "eventId": "94079977-b10a-470c-8f15-05468ba30832",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "turnId": "turn:efa751be03f0e919990a9e2689ad60284d2faef98bc0e571ffe97c478dd4b22c",
+          "invocationId": "53cc9ed0-4bd6-407b-a0a3-e97e0ebdf4f1",
+          "createdAt": "2026-11-23T08:11:51.580Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "said: You "
+        }
+      },
+      {
+        "sequence": 167,
+        "event": {
+          "eventId": "6d83448a-58a6-4daa-a1c7-5a8258158dca",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "turnId": "turn:efa751be03f0e919990a9e2689ad60284d2faef98bc0e571ffe97c478dd4b22c",
+          "invocationId": "53cc9ed0-4bd6-407b-a0a3-e97e0ebdf4f1",
+          "createdAt": "2026-11-23T08:11:51.677Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "are taking over this conversation. "
+        }
+      },
+      {
+        "sequence": 168,
+        "event": {
+          "eventId": "f0489ad9-2692-47c4-8452-08a9cc0a96f9",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "turnId": "turn:efa751be03f0e919990a9e2689ad60284d2faef98bc0e571ffe97c478dd4b22c",
+          "invocationId": "53cc9ed0-4bd6-407b-a0a3-e97e0ebdf4f1",
+          "createdAt": "2026-11-23T08:11:51.754Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "Briefly summarize where "
+        }
+      },
+      {
+        "sequence": 169,
+        "event": {
+          "eventId": "f01d54e6-1f3b-44d0-83d2-11faa170d011",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "turnId": "turn:efa751be03f0e919990a9e2689ad60284d2faef98bc0e571ffe97c478dd4b22c",
+          "invocationId": "53cc9ed0-4bd6-407b-a0a3-e97e0ebdf4f1",
+          "createdAt": "2026-11-23T08:11:51.829Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "things stand and "
+        }
+      },
+      {
+        "sequence": 170,
+        "event": {
+          "eventId": "1b0cc80b-5fb3-4b31-a2f3-f0d9ce578b22",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "turnId": "turn:efa751be03f0e919990a9e2689ad60284d2faef98bc0e571ffe97c478dd4b22c",
+          "invocationId": "53cc9ed0-4bd6-407b-a0a3-e97e0ebdf4f1",
+          "createdAt": "2026-11-23T08:11:51.943Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "what you would do "
+        }
+      },
+      {
+        "sequence": 171,
+        "event": {
+          "eventId": "17abdd40-d8dc-4bb2-8729-12356d7e8447",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "turnId": "turn:efa751be03f0e919990a9e2689ad60284d2faef98bc0e571ffe97c478dd4b22c",
+          "invocationId": "53cc9ed0-4bd6-407b-a0a3-e97e0ebdf4f1",
+          "createdAt": "2026-11-23T08:11:52.028Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "next, then wait "
+        }
+      },
+      {
+        "sequence": 172,
+        "event": {
+          "eventId": "b07d6f5c-f57c-4db7-a520-5fc04b41dca9",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "turnId": "turn:efa751be03f0e919990a9e2689ad60284d2faef98bc0e571ffe97c478dd4b22c",
+          "invocationId": "53cc9ed0-4bd6-407b-a0a3-e97e0ebdf4f1",
+          "createdAt": "2026-11-23T08:11:52.111Z",
+          "itemId": "txt-0",
+          "method": "content.text-delta",
+          "delta": "for my reply."
+        }
+      },
+      {
+        "sequence": 173,
+        "event": {
+          "eventId": "db3467b0-0558-4e67-97cb-f67ba7279ef3",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "turnId": "turn:efa751be03f0e919990a9e2689ad60284d2faef98bc0e571ffe97c478dd4b22c",
+          "invocationId": "53cc9ed0-4bd6-407b-a0a3-e97e0ebdf4f1",
+          "createdAt": "2026-11-23T08:11:52.399Z",
+          "method": "turn.completed",
+          "finishReason": "stop",
+          "outputText": "You said: You are taking over this conversation. Briefly summarize where things stand and what you would do next, then wait for my reply.",
+          "metadata": {
+            "contextInjection": {}
+          },
+          "sessionState": "idle",
+          "previousState": "running",
+          "transitionReason": "turn_completed",
+          "transitionSource": "runtime"
+        }
+      },
+      {
+        "sequence": 174,
+        "event": {
+          "eventId": "23925b5e-58bb-422d-91f8-5abce8db0b7e",
+          "provider": "station-agent",
+          "threadId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "createdAt": "2026-11-23T08:11:52.399Z",
+          "method": "session.state-changed",
+          "sessionId": "station:1795421394046:session:4fc7142f-8055-46e3-a996-9d3dbc1a1e18",
+          "from": "running",
+          "to": "idle"
+        }
+      }
+    ],
+    "hasMore": false,
+    "watermark": 174,
+    "memoryContinuation": {
+      "eligible": false
+    }
+  }
+}

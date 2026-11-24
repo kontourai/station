@@ -1,0 +1,7 @@
+{
+  "revision": "3e119df23ae0f56b6e15972f3a27e5bffa9a73d6",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Slice 4.10: tests/inline-browser-activity.spec.ts changed only the 'Allow once' button name. No module boundary changed. No prose change.","inputs":["docs/architecture/module-map.md","tests/inline-browser-activity.spec.ts"]}
+  ]
+}

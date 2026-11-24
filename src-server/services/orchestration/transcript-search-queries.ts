@@ -29,6 +29,7 @@ export function queryTranscriptMessages(
     ownerUserIds?: readonly string[];
     tenantId?: string;
     projectId?: string;
+    threadIds?: readonly string[];
     limit: number;
   },
   bounded = false,
@@ -83,6 +84,8 @@ export function queryTranscriptMessages(
   const overflow = bounded
     ? `(${['s.thread_id', 's.event_id', 's.turn_id', 's.created_at', 'h.agent_slug', 'h.project_slug', 'p.provider', turnAnchor].map((name) => `coalesce(length(CAST(${name} AS BLOB)), 0) > 256`).join(' OR ')} OR length(CAST(s.role AS BLOB)) > 9 OR length(CAST(s.content AS BLOB)) > 131072)`
     : '0';
+  const threadIds =
+    options.threadIds === undefined ? [] : [JSON.stringify(options.threadIds)];
   const rows = db
     .prepare(
       `SELECT ${column('s.thread_id')} AS thread_id, ${column('s.event_id')} AS event_id,
@@ -100,6 +103,7 @@ export function queryTranscriptMessages(
             AND h.owner_user_id IN (${ownerIds.map(() => '?').join(', ')})
             AND (? IS NULL OR h.tenant_id = ?)
             AND (? IS NULL OR h.project_slug = ?)
+            ${threadIds.length ? 'AND s.thread_id IN (SELECT value FROM json_each(?))' : ''}
           ORDER BY bm25(orchestration_message_search_v3) +
                      ((julianday('now') - julianday(s.created_at)) * ?) ASC,
                    s.created_at DESC,
@@ -113,6 +117,7 @@ export function queryTranscriptMessages(
       options.tenantId ?? null,
       options.projectId ?? null,
       options.projectId ?? null,
+      ...threadIds,
       MESSAGE_SEARCH_RECENCY_SCORE_PER_DAY,
       options.limit,
     ) as Array<{

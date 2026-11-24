@@ -26,6 +26,7 @@ import {
 import { useSwipeToDismiss } from '../../hooks/useSwipeToDismiss';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import { relativeTime } from '../../utils/relativeTime';
+import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
 import { WarningGlyph } from '../icons/Glyph';
 import {
@@ -58,6 +59,8 @@ function ToastCard({
   onActivate,
   clickable,
   swipeToDismiss = false,
+  queueKey,
+  onMenuOpenChange,
 }: {
   notification: Notification;
   dismissToast: (id: string) => void;
@@ -78,6 +81,14 @@ function ToastCard({
   clickable: boolean;
   /** Transient toasts only: a touch swipe sideways dismisses the card. */
   swipeToDismiss?: boolean;
+  /**
+   * Approval queue only: the requests in the queue. A change closes an open
+   * session-grant menu, so its fixed-position list never sits over a card that
+   * arrived or moved under it.
+   */
+  queueKey?: string;
+  /** Approval queue only: whether this card's session-grant menu is open. */
+  onMenuOpenChange?: (open: boolean) => void;
 }) {
   const isApproval = notification.type === 'tool-approval';
   const isActivity = notification.type === 'tool-activity';
@@ -152,6 +163,30 @@ function ToastCard({
     notification.type === 'error' &&
     (notification.actions?.length ?? 0) < 2 &&
     !notification.dedupeKey?.startsWith('troubleshoot-');
+  // One handler for a labelled button and a menu item, so the two cannot
+  // answer differently.
+  const runToastAction = (index: number) => {
+    const action = notification.actions?.[index];
+    if (!action || !toastStore.isCurrentScope(notification.stationScope))
+      return;
+    if (isApproval || isPairing) {
+      action.onClick();
+      dismissToast(notification.id);
+    } else toastStore.runAction(notification.id, index);
+  };
+  const menuActions: OverflowAction[] = (notification.actions ?? []).flatMap(
+    (action, index) =>
+      action.inMenu
+        ? [
+            {
+              key: `${action.label}-${index}`,
+              label: action.label,
+              disabled: notification.pendingAction !== undefined,
+              onSelect: () => runToastAction(index),
+            },
+          ]
+        : [],
+  );
   const message = notification.message.trim();
   const firstLine = message.split(/\r?\n/, 1)[0] ?? message;
   const headline =
@@ -321,27 +356,34 @@ function ToastCard({
       {((notification.actions && notification.actions.length > 0) ||
         troubleshootable) && (
         <div className="toast-card__actions">
-          {(notification.actions ?? []).map((action, index) => (
-            <Button
-              key={`${action.label}-${index}`}
-              variant={action.variant || 'secondary'}
-              size="sm"
-              className={`toast-card__action toast-card__action--${action.variant || 'secondary'}`}
-              disabled={notification.pendingAction !== undefined}
-              aria-busy={notification.pendingAction === index || undefined}
-              onClick={(event) => {
-                event.stopPropagation();
-                if (!toastStore.isCurrentScope(notification.stationScope))
-                  return;
-                if (isApproval || isPairing) {
-                  action.onClick();
-                  dismissToast(notification.id);
-                } else toastStore.runAction(notification.id, index);
-              }}
-            >
-              {notification.pendingAction === index ? 'Working…' : action.label}
-            </Button>
-          ))}
+          {(notification.actions ?? []).map((action, index) =>
+            action.inMenu ? null : (
+              <Button
+                key={`${action.label}-${index}`}
+                variant={action.variant || 'secondary'}
+                size="sm"
+                className={`toast-card__action toast-card__action--${action.variant || 'secondary'}`}
+                disabled={notification.pendingAction !== undefined}
+                aria-busy={notification.pendingAction === index || undefined}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  runToastAction(index);
+                }}
+              >
+                {notification.pendingAction === index
+                  ? 'Working…'
+                  : action.label}
+              </Button>
+            ),
+          )}
+          {menuActions.length > 0 && (
+            <ActionOverflowMenu
+              closeWhen={queueKey}
+              onOpenChange={onMenuOpenChange}
+              label={notification.actionsMenuLabel ?? 'More actions'}
+              actions={menuActions}
+            />
+          )}
           {troubleshootable && (
             <TroubleshootAction
               size="sm"
@@ -499,6 +541,17 @@ export function NotificationContainer() {
   );
   const approvals =
     showAllApprovals && approvalQueueOpen ? allApprovals : unclaimedApprovals;
+  const approvalQueueKey = approvals.map(notificationKey).join(' ');
+  // How many approval cards have their session-grant menu open. A ref, not
+  // state: the queue's document listeners read it in the same event the
+  // menu's own listener handles, whichever runs first.
+  const openToastMenus = useRef(0);
+  const trackToastMenu = useCallback((open: boolean) => {
+    openToastMenus.current = Math.max(
+      0,
+      openToastMenus.current + (open ? 1 : -1),
+    );
+  }, []);
   useEffect(() => {
     const open = () => {
       returnFocusRef.current = captureReturnFocus(
@@ -531,13 +584,24 @@ export function NotificationContainer() {
   useEffect(() => {
     if (!approvalQueueOpen) return;
 
+    // A card's open session-grant menu owns Escape and outside presses
+    // first: it closes itself and returns focus to its trigger. The queue
+    // closes on the next one.
     const handlePointerDown = (event: PointerEvent) => {
+      if (openToastMenus.current > 0) return;
       if (!approvalQueueRef.current?.contains(event.target as Node)) {
         closeApprovalQueue();
       }
     };
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape') return;
+      // An open menu handles this Escape: it marks it handled, and the count
+      // covers the moment before its listener has run.
+      if (
+        event.key !== 'Escape' ||
+        event.defaultPrevented ||
+        openToastMenus.current > 0
+      )
+        return;
       event.preventDefault();
       event.stopPropagation();
       closeApprovalQueue();
@@ -706,6 +770,8 @@ export function NotificationContainer() {
                 handleNavigateTo={handleNavigateTo}
                 handleAction={handleAction}
                 clickable={false}
+                queueKey={approvalQueueKey}
+                onMenuOpenChange={trackToastMenu}
               />
             ))}
           </section>

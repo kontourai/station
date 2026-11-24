@@ -1,0 +1,7 @@
+{
+  "revision": "924e83502041bb2bf6f64e2534b76e6e9a46b8cd",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Slice 4.10 hardening: the approval queue ignores an Escape already marked handled (defaultPrevented), so an open toast menu keeps that Escape whichever document listener runs first. Toast decisions, conversation routing and native push are unchanged. No prose change.","inputs":["docs/design/notification-delivery.md","src-ui/src/components/notifications/NotificationContainer.tsx"]}
+  ]
+}

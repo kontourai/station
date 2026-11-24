@@ -208,6 +208,9 @@ describe('e2e manifest', () => {
 
     expect(PRODUCT_E2E_EXECUTION_PROFILE.parallelWorkers).toBe(2);
     expect(PRODUCT_E2E_EXECUTION_PROFILE.parallelSafetyExceptions).toEqual({
+      // Its page.route mocks come from a shared helper, so the spec text
+      // alone cannot show browser-local isolation.
+      'tests/chat-dock-row-menu.spec.ts': expect.any(String),
       'tests/new-project-choices.spec.ts': expect.any(String),
       'tests/chat-history-reopen.spec.ts': expect.any(String),
       'tests/sidebar-geometry.spec.ts': expect.any(String),
