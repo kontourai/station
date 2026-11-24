@@ -1,0 +1,7 @@
+{
+  "revision": "5f513443d064340b09e3706bbb88f137563dac27",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Hold paragraph now also says the hold ends when the row it protects is closed or goes away without the reader (a finished turn folding its tool rows, a row drawn again closed): a reader still at it follows the end, one who scrolled away stays. Matches ChatMessageList's content observer (openHeldToggle). The chat-switch reset of message names is internal; the page's switch claim is unchanged.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}
