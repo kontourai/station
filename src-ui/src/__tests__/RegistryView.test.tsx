@@ -443,7 +443,11 @@ function expectInstalledToast(message: string, pluginName: string) {
  */
 function renderPluginInstall() {
   return render(
-    <RegistryView initialTab="plugins" toolPicker installTarget="demo-layout" />,
+    <RegistryView
+      initialTab="plugins"
+      toolPicker
+      installTarget="demo-layout"
+    />,
   );
 }
 
