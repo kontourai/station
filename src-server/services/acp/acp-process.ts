@@ -43,6 +43,12 @@ import { createACPClientApp } from './acp-bridge-client.js';
 import type { ACPClientCallbacks } from './acp-bridge-types.js';
 import { resolveManagedRuntimeLaunch } from './acp-engine-descriptors.js';
 import { REVIEWED_ENGINE_SECRET_BINDINGS } from './acp-inbound-extension-policy.js';
+import {
+  type AntigravityPromptFailure,
+  antigravityOutcomeProfile,
+  antigravityPromptFailure,
+  watchAntigravityPrompt,
+} from './antigravity-prompt-outcome.js';
 
 /**
  * A client capability flag Station announces at `initialize` under
@@ -431,7 +437,9 @@ export class ACPProcess extends EventEmitter {
   private releaseOwnedChild: (() => void) | null = null;
   private connection: ClientContext | null = null;
   private _sessionId: string | null = null;
+  private freshOutcomeSessionId?: string;
   private _initResult: InitializeResult | null = null;
+  private outcomeProfile: ReturnType<typeof antigravityOutcomeProfile>;
   private destroyed = false;
   private destroyPromise: Promise<void> | null = null;
 
@@ -593,6 +601,12 @@ export class ACPProcess extends EventEmitter {
         .filter(([, value]) => typeof value === 'string' && value.length > 0)
         .map(([name]) => foldEnvName(name)),
     );
+    if (!spawnedLaunch.launchReplacedByPolicy)
+      this.outcomeProfile = antigravityOutcomeProfile({
+        command: bin,
+        args: pinned.args,
+        geminiHome: env.GEMINI_HOME,
+      });
     // archive#1863: spawn through the owned-process primitive so the child is
     // tagged with this Station's identity and recorded in the host-wide
     // registry. `detached: true` is preserved deliberately — a group kill reaps
@@ -779,6 +793,7 @@ export class ACPProcess extends EventEmitter {
       ...(meta ? { _meta: meta } : {}),
     })) as SessionResult;
     this._sessionId = result.sessionId;
+    this.freshOutcomeSessionId = result.sessionId;
     return result;
   }
 
@@ -803,6 +818,7 @@ export class ACPProcess extends EventEmitter {
       ...(meta ? { _meta: meta } : {}),
     })) as Omit<SessionResult, 'sessionId'> | undefined;
     this._sessionId = sessionId;
+    this.freshOutcomeSessionId = undefined;
     return result ?? {};
   }
 
@@ -825,6 +841,7 @@ export class ACPProcess extends EventEmitter {
       },
     )) as Omit<SessionResult, 'sessionId'> | undefined;
     this._sessionId = sessionId;
+    this.freshOutcomeSessionId = undefined;
     return result ?? {};
   }
 
@@ -895,13 +912,49 @@ export class ACPProcess extends EventEmitter {
   }
 
   /** Send a prompt to the current session. */
-  async prompt(content: ContentBlock[]): Promise<PromptResponse> {
+  async prompt(
+    content: ContentBlock[],
+    onPendingGatewayFailure?: (failure: AntigravityPromptFailure) => void,
+  ): Promise<
+    PromptResponse & { [antigravityPromptFailure]?: AntigravityPromptFailure }
+  > {
     if (!this.connection || !this._sessionId)
       throw new Error('No active session');
-    return (await this.connection.request(methods.agent.session.prompt, {
-      sessionId: this._sessionId,
-      prompt: content,
-    })) as PromptResponse;
+    const sessionId = this._sessionId;
+    const fresh = this.freshOutcomeSessionId === sessionId;
+    this.freshOutcomeSessionId = undefined;
+    const watch = watchAntigravityPrompt(
+      this.outcomeProfile,
+      this._initResult,
+      sessionId,
+      fresh,
+    );
+    const diagnostic =
+      watch && onPendingGatewayFailure
+        ? setTimeout(() => {
+            const failure = watch.failure();
+            if (failure?.code === 'antigravity_upstream_bad_gateway')
+              onPendingGatewayFailure(failure);
+          }, 15 * 60_000)
+        : undefined;
+    diagnostic?.unref();
+    try {
+      const response = (await this.connection.request(
+        methods.agent.session.prompt,
+        {
+          sessionId,
+          prompt: content,
+        },
+      )) as PromptResponse;
+      const failure =
+        response.stopReason === 'end_turn' ? watch?.failure() : undefined;
+      return failure
+        ? { ...response, [antigravityPromptFailure]: failure }
+        : response;
+    } finally {
+      clearTimeout(diagnostic);
+      watch?.release();
+    }
   }
 
   /** Cancel the current prompt. */

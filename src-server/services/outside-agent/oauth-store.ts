@@ -47,6 +47,7 @@ const DEFAULT_LIMITS = {
 };
 type Limits = typeof DEFAULT_LIMITS;
 type Kind = keyof Records;
+type WriteWait = 'fail-fast';
 type LiveReview = {
   request: Records['request'];
   intent: Records['intent'];
@@ -230,21 +231,39 @@ export class OutsideAgentGrantStore {
       .prepare('DELETE FROM outside_oauth_records WHERE kind=? AND id=?')
       .run(kind, id);
   }
-  #write<T>(operation: () => T | OutsideOAuthRefusal): T {
+  #write<T>(operation: () => T | OutsideOAuthRefusal, wait?: WriteWait): T {
     if (this.#decisionInProgress) {
       const nested = operation();
       if (nested instanceof OutsideOAuthRefusal) throw nested;
       return nested;
     }
     this.#requestChanged = false;
-    this.#db.exec('BEGIN IMMEDIATE');
+    const busyTimeout =
+      wait === 'fail-fast'
+        ? this.#db.prepare('PRAGMA busy_timeout').get()?.timeout
+        : undefined;
+    if (wait === 'fail-fast') {
+      if (
+        typeof busyTimeout !== 'number' ||
+        !Number.isSafeInteger(busyTimeout) ||
+        busyTimeout < 0
+      )
+        throw new Error('Outside OAuth busy timeout unavailable');
+      this.#db.exec('PRAGMA busy_timeout=0');
+    }
     let result: T | OutsideOAuthRefusal;
     try {
-      result = operation();
-      this.#db.exec('COMMIT');
-    } catch (error) {
-      this.#db.exec('ROLLBACK');
-      throw error;
+      this.#db.exec('BEGIN IMMEDIATE');
+      try {
+        result = operation();
+        this.#db.exec('COMMIT');
+      } catch (error) {
+        this.#db.exec('ROLLBACK');
+        throw error;
+      }
+    } finally {
+      if (busyTimeout !== undefined)
+        this.#db.exec(`PRAGMA busy_timeout=${busyTimeout}`);
     }
     if (this.#requestChanged) {
       this.#requestChanged = false;
@@ -286,6 +305,7 @@ export class OutsideAgentGrantStore {
       period: number;
       refill?: boolean;
     }[],
+    wait?: WriteWait,
   ): boolean {
     return this.#write(() => {
       const now = this.#now();
@@ -364,7 +384,7 @@ export class OutsideAgentGrantStore {
           .run(id, remaining, now, expires);
       }
       return true;
-    });
+    }, wait);
   }
   #pruneAudit(): void {
     this.#db
@@ -1162,7 +1182,7 @@ export class OutsideAgentGrantStore {
     });
   }
   /** Shared synchronous decision span: expected-state reads, mutation and outbox are atomic. */
-  decide<T>(operation: () => T): T {
+  decide<T>(operation: () => T, wait?: WriteWait): T {
     return this.#write(() => {
       this.#decisionInProgress = true;
       try {
@@ -1170,7 +1190,7 @@ export class OutsideAgentGrantStore {
       } finally {
         this.#decisionInProgress = false;
       }
-    });
+    }, wait);
   }
   decision(id: string): Records['decision'] | undefined {
     return this.#get('decision', id);

@@ -292,7 +292,7 @@ function CommandAction() {
   );
 }
 
-test('plugin command dispatch uses the core parse refusal and clears the exact Dock input', async () => {
+test('plugin command dispatch uses the core parse refusal and keeps the exact Dock input to correct', async () => {
   closeCommands.mockClear();
   const host = mountPlugin(<CommandAction />);
   act(() => {
@@ -304,7 +304,8 @@ test('plugin command dispatch uses the core parse refusal and clears the exact D
   fireEvent.click(screen.getByRole('button', { name: 'Dispatch command' }));
   await screen.findByRole('button', { name: 'Handled' });
   const state = activeChatsStore.getSnapshot()['sdk-core-test'];
-  expect(state.input).toBe('');
+  // The command did not run, so its line stays to be corrected (#5491).
+  expect(state.input).toBe("/research 'unterminated");
   expect(state.ephemeralMessages?.at(-1)?.content).toContain(
     'Could not read /research',
   );

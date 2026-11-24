@@ -1,0 +1,25 @@
+{
+  "revision": "e734aaad05f204157ee334b45253b636ba578032",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp.md","note":"Traced the persistent ingress budget, zero-wait MCP writer acquisition, current grant recheck after request body and dispatch, and stream denial after response return. Release composition remains guarded.","inputs":["docs/design/outside-agent-mcp.md"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the tested response boundary. Revocation observed before the router returns the POST yields the session error. Later refusal ends the stream. The held ingress budget lock returns unavailable without the previous SQLite wait.","inputs":["docs/reference/outside-agent-oauth.md","src-server/routes/outside-agent/__tests__/mcp-routes.test.ts","src-server/routes/outside-agent/mcp-routes.ts","src-server/services/outside-agent/oauth-store.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed existing transport and grant receipts against the two new session rechecks. The earlier evidence retains its pinned execution scope. Current tests cover cross-connection revocation during body read and dispatch.","inputs":["src-server/routes/outside-agent/mcp-routes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed existing transport and grant receipts against the two new session rechecks. The earlier evidence retains its pinned execution scope. Current tests cover cross-connection revocation during body read and dispatch.","inputs":["src-server/routes/outside-agent/mcp-routes.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed the added cross-connection regression and held-writer cases. Restoring the prior production code reproduced HTTP 503 during body reads, HTTP 200 during dispatch and a 5.15-second lock wait.","inputs":["src-server/routes/outside-agent/__tests__/mcp-routes.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the added cross-connection regression and held-writer cases. Restoring the prior production code reproduced HTTP 503 during body reads, HTTP 200 during dispatch and a 5.15-second lock wait.","inputs":["src-server/routes/outside-agent/__tests__/mcp-routes.test.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r2b-evidence.md","note":"Reviewed the synchronous transaction and timeout scope. The original busy timeout is restored after the MCP operation. Grant mutations, OAuth limits and the per-emission SQLite guard retain their owners.","inputs":["src-server/services/outside-agent/oauth-store.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"Reviewed the synchronous transaction and timeout scope. The original busy timeout is restored after the MCP operation. Grant mutations, OAuth limits and the per-emission SQLite guard retain their owners.","inputs":["src-server/services/outside-agent/oauth-store.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed the synchronous transaction and timeout scope. The original busy timeout is restored after the MCP operation. Grant mutations, OAuth limits and the per-emission SQLite guard retain their owners.","inputs":["src-server/services/outside-agent/oauth-store.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the synchronous transaction and timeout scope. The original busy timeout is restored after the MCP operation. Grant mutations, OAuth limits and the per-emission SQLite guard retain their owners.","inputs":["src-server/services/outside-agent/oauth-store.ts"]}
+  ]
+}

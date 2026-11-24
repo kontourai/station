@@ -775,6 +775,63 @@ workflow and its signing secrets remain `NOT_VERIFIED` until GitHub Actions can
 run that exact release lane; local test signing proves neither protected
 signing nor draft-release publication.
 
+## Rehearse the Mac App Store sandbox locally
+
+Build with the rehearsal overlay, then stage a separate ad-hoc signed copy.
+Use a fresh output directory. The stage command checks the rehearsal bundle
+identity and signs its private Node executable and process birth helper to
+inherit the app's sandbox.
+
+```sh
+npm run dependencies:ci
+npm run build:sdk && npm run build:connect
+npm run build:desktop -- --no-sign --bundles app \
+  --config "$PWD/src-desktop/tauri.macos-store-rehearsal.conf.json"
+node ops/release/macos-store-stage.mjs \
+  "src-desktop/target/release/bundle/macos/Station Store Rehearsal.app" \
+  "$PWD/dist-macos-store-rehearsal"
+```
+
+The rehearsal uses a separate bundle identifier and pairing scheme. It has
+no direct-download updater configuration. The bundled process birth probe
+uses a PID-specific macOS query and emits the same UTC start-time fingerprint
+as normal desktop Station. An unavailable birth still stops lock admission.
+
+Verify the packaged app's startup with an isolated home in its app container.
+Store delivery also needs the production bundle identity, Apple installer
+signing, and acceptance of agent tools, workspace access, credential storage
+and pairing in the sandbox. The rehearsal's ad-hoc signature is for local
+testing.
+
+## Stage the Mac App Store candidate
+
+Set the repository variable `STATION_MAC_APP_STORE_STAGE=enabled` when the
+protected `native-release` environment contains the Mac installer certificate
+and provisioning profile. **Release: Stage** runs the Mac TestFlight job after
+the advisory gate and exact-source qualification for an immutable RC tag. The
+job builds for Apple Silicon on macOS 12 or later with the Stable bundle ID
+and pairing scheme. The Mac App Store owns updates for this package. The bundled
+host uses the [official release telemetry endpoint](release-rings.md#author-telemetry-in-official-builds)
+and the Station operator’s sharing choice.
+
+The job reuses the Apple Distribution identity and App Store Connect key from
+Stable iOS. Add these inputs to `native-release`:
+
+- `APPLE_MAC_STORE_INSTALLER_CERTIFICATE_BASE64` for the Mac Installer Distribution PKCS#12.
+- `APPLE_MAC_STORE_INSTALLER_CERTIFICATE_PASSWORD` for that PKCS#12.
+- `APPLE_MAC_STORE_PROVISIONING_PROFILE_BASE64` for the macOS App Store profile for `io.kontourai.station`.
+
+The workflow signs the bundled executables, verifies the sandboxed app and
+installer, and retains the attested package before upload. Apple build lookups
+use `MAC_OS`, so macOS and iOS can share a candidate number. Keep the Mac
+package digest, upload response, and processed build and group receipts together
+when verifying tester availability. If the build number is already occupied,
+inspect its original delivery evidence before sending new bytes.
+
+The GitHub draft and the Mac TestFlight job have independent outcomes. App Store
+review and public release use the App Store Connect macOS version after
+acceptance testing.
+
 ## Required protected environments and secrets
 
 The workflow declarations require these GitHub Environments. Their current

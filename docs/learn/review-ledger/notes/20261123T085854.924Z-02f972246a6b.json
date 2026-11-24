@@ -1,0 +1,91 @@
+{
+  "revision": "20a352e85dfe2ca4e0a046feaa84c9694c57b988",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["CONTEXT-MAP.md","docs/glossary.md"]},
+
+    {"path":"CONTEXT.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["CONTEXT.md","docs/glossary.md"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/architecture/abstraction-review.md","docs/guides/keyboard-shortcuts.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/architecture/module-map.md","scripts/conversation-surfaces.json","src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx","tests/owned-work-custody.spec.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/contexts/operations/CONTEXT.md","docs/guides/testing.md"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Checked the row menu, Mark done and Undo passages against ChatDockInboxRows, RowMenu (focus once placed, Escape first) and inbox-dismissals; the dock list now reads Chats in labels the page cites.","inputs":["docs/design/chat-composer.md","packages/contracts/src/device-settings.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/components/chat-dock/inbox-dismissals.tsx","src-ui/src/components/chat-dock/mobile-activity-groups.ts","src-ui/src/components/chat-dock/useInboxGroups.ts","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/design/motion.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/design/motion.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/design/pane-relationships.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Renamed the dock list Inbox to Chats in the header, crumb and phone sections; checked against ChatDockMobileHeader, CodingWorkbench and ChatDock labels. Layout, slot and storage claims unchanged.","inputs":["docs/design/placement.md","packages/contracts/src/device-settings.ts","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/components/chat-dock/useInboxGroups.ts"]},
+
+    {"path":"docs/design/settings-launch-triage.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/design/settings-launch-triage.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"docs/design/station-connection.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/design/station-connection.md","scripts/conversation-surfaces.json","src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx","tests/conversation-surfaces.spec.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked the Mark done entry against inbox-dismissals (notice text, latest-notice rule, host unhide), NotificationsPage (deferred Mark done through undoable-actions, pairing on every attention item, bulk pairing), the snooze list (snoozeChoices, wakeTime, Next week after Sunday) and the dock list renamed Chats.","inputs":["docs/glossary.md","src-ui/src/__tests__/session-state-word-consistency.test.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/guides/agent-configuration.md","src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/guides/code-quality.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/guides/code-quality.md","docs/guides/testing.md"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"e2e-manifest gains chat-dock-row-menu.spec.ts (product, parallel-safe with a stated reason); the matrix rules are unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/e2e-manifest.mjs","tests/mobile-chat-composer.spec.ts"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"Checked the one latest inbox notice (offerInboxUndo now registers bulk Mark done and Discard draft), the page Mark done behind Undo, and that the bell popover row Undo does not answer Cmd+Z.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/__tests__/inbox-dismissal.test.tsx","src-ui/src/components/chat-dock/inbox-dismissals.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Renamed the dock list to Chats and checked swipe, bulk Mark done, Earlier shelf and row-menu sentences against ChatDockInboxRows, MobileInboxSelection and mobile-activity-groups.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/components/chat-dock/useInboxGroups.ts","tests/chat-dock-inbox-open.spec.ts","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/guides/self-configuring-agent.md","tests/owned-work-custody.spec.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"The Task paragraph now says the Chats list; NotificationsPage changes (deferred Mark done, pairing) do not touch Starter Work claims.","inputs":["docs/guides/starter-work.md","packages/contracts/src/device-settings.ts","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/guides/testing.md","note":"The first-run journey observes the Chats surface label now; conversation-surfaces and RouteViewReadiness changes are label renames. Guidance unchanged.","inputs":["docs/guides/testing.md","scripts/conversation-surfaces.json","src-ui/src/__tests__/RouteViewReadiness.adapterScreens.test.tsx","tests/conversation-surfaces.spec.ts","tests/first-run-live.spec.ts","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt","src-ui/AGENTS.md"]},
+
+    {"path":"docs/guides/ui-copy.md","note":"The noun gate now also scans string literals of scanned components and the listed plain copy modules for retired user terms, and retires Show/Hide inbox and Inbox chats; the copy rules here still hold.","inputs":["docs/guides/ui-copy.md","scripts/noun-consistency-gate.mjs"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/learn/walkthroughs.md","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/patterns/backend.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]},
+
+    {"path":"docs/patterns/frontend.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt","src-ui/AGENTS.md"]},
+
+    {"path":"docs/plans/whole-app-ux-campaign.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/plans/whole-app-ux-campaign.md","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/reference/api.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/reference/config.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/reference/contracts.md","src-ui/src/utils/chatErrorTranslation.ts","tests/owned-work-custody.spec.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/reference/session-api.md","src-ui/src/components/attention/AttentionCard.tsx"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/reference/settings-deep-links.md","src-server/generated/settings-registry.json"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/reference/usage-telemetry.md","tests/screenshots.spec.ts"]},
+
+    {"path":"docs/testing/browser-smoke.md","note":"Smoke steps read the dock list by its Chats names now; e2e-manifest gains one product spec. Procedure unchanged.","inputs":["docs/testing/browser-smoke.md","tests/cross-runtime-chat-switching.spec.ts","tests/e2e-manifest.mjs"]},
+
+    {"path":"docs/user/concepts.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/user/concepts.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the Chats list rename, the Mark done notices (Hidden on this device…), the inbox page Mark done behind Undo, the Earlier shelf name and the one snooze list against the shipped labels.","inputs":["docs/user/getting-started.md","docs/guides/starter-work.md","src-ui/src/__tests__/inbox-dismissal.test.tsx","src-ui/src/__tests__/inbox-swipe.browser.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx","src-ui/src/components/chat-dock/ChatDockInboxRows.tsx","src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx","src-ui/src/components/chat-dock/ChatDockMobileOverflowSheet.tsx","src-ui/src/components/chat-dock/InboxScopeFilter.tsx","src-ui/src/components/chat-dock/MobileInboxPanel.tsx","src-ui/src/components/chat-dock/inbox-dismissals.tsx","src-ui/src/components/chat-dock/useInboxGroups.ts","src-ui/src/pages/NotificationsPage.tsx","tests/cross-runtime-chat-switching.spec.ts"]},
+
+    {"path":"docs/user/personal-boards.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["docs/user/personal-boards.md","src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"The device-setting labels it lists by key are renamed in device-settings.ts (Chat list scope, Chat dock list open/sections); the swipe sentence reads Mark done. Nothing here names the old labels.","inputs":["docs/user/settings.md","packages/contracts/src/device-settings.ts"]},
+
+    {"path":"scripts/AGENTS.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["scripts/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["src-server/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["src-ui/AGENTS.md","docs/guides/testing.md","scripts/conversation-surfaces.json"]},
+
+    {"path":"tests/AGENTS.md","note":"This change renames the dock list to Chats in labels and tests, gives inbox rows Mark done, one snooze list and a keyboard-ready row menu, and adds a row-menu e2e spec. I checked this page for claims about those labels or flows; none changed.","inputs":["tests/AGENTS.md","docs/guides/testing.md"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"NotificationsPage change (deferred Mark done, pairing) does not alter the request inspector this capture shows.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/pages/NotificationsPage.tsx"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"NotificationsPage change does not alter the request inspection flow this recording shows.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/pages/NotificationsPage.tsx"]}
+  ]
+}

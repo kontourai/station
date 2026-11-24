@@ -263,20 +263,23 @@ test.describe('Dock Mode Preference', () => {
     await settleDock(page);
     await dismissSetupLauncher(page);
     // The bar's inbox toggle is a pressed/unpressed button named for what
-    // it does: "Hide inbox" while open, "Show inbox" (with what is waiting)
+    // it does: "Hide chat list" while open, "Show chat list" (with what is waiting)
     // while hidden.
-    const hide = page.getByRole('button', { name: 'Hide inbox', exact: true });
-    const show = page.getByRole('button', { name: /^Show inbox/ });
+    const hide = page.getByRole('button', {
+      name: 'Hide chat list',
+      exact: true,
+    });
+    const show = page.getByRole('button', { name: /^Show chat list/ });
     await expect(hide.or(show)).toBeVisible();
     if (await show.isVisible()) await show.click();
     await expect(hide).toHaveAttribute('aria-pressed', 'true');
-    const landmark = page.getByRole('complementary', { name: 'Inbox chats' });
+    const landmark = page.getByRole('complementary', { name: 'Chats' });
     await expect(landmark).toHaveCount(1);
     const openBox = await landmark.boundingBox();
     expect(openBox!.width).toBeGreaterThanOrEqual(240);
     expect(openBox!.width).toBeLessThanOrEqual(360);
     // Exiting makes the landmark inert before the DOM node is detached.
-    const panel = page.locator('aside[aria-label="Inbox chats"]');
+    const panel = page.locator('aside[aria-label="Chats"]');
     await hide.click();
     await expect(panel).toHaveCount(0);
     await expect(show).toHaveAttribute('aria-pressed', 'false');
@@ -285,9 +288,7 @@ test.describe('Dock Mode Preference', () => {
         const observer = new MutationObserver(() => {
           if (toggle.getAttribute('aria-pressed') !== 'true') return;
           observer.disconnect();
-          resolve(
-            Boolean(document.querySelector('aside[aria-label="Inbox chats"]')),
-          );
+          resolve(Boolean(document.querySelector('aside[aria-label="Chats"]')));
         });
         observer.observe(toggle, { attributes: true });
       }),
@@ -319,9 +320,9 @@ test.describe('Dock Mode Preference', () => {
 
     await expect(page.locator('.chat-dock')).toHaveClass(/chat-dock--right/);
     await expect(
-      page.getByRole('complementary', { name: 'Inbox chats' }),
+      page.getByRole('complementary', { name: 'Chats' }),
     ).toHaveCount(0);
-    // The toggle is the bar's "Hide inbox" / "Show inbox…" button, the one
+    // The toggle is the bar's "Hide chat list" / "Show chat list…" button, the one
     // `bottom-mode inbox toggle…` above presses. (This used to look for a
     // `menuitemcheckbox` named "chat list" that nothing renders any more, so
     // it passed with the toggle on screen; #3312.)
@@ -370,7 +371,7 @@ test.describe('Dock Mode Preference', () => {
       dockBox!.x + dockBox!.width - resizeBox!.width - 2,
     );
     await expect(
-      page.getByRole('complementary', { name: 'Inbox chats' }),
+      page.getByRole('complementary', { name: 'Chats' }),
     ).toHaveCount(0);
   });
 

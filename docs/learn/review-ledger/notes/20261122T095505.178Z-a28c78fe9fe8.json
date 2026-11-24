@@ -1,0 +1,7 @@
+{
+  "revision": "3e119df23ae0f56b6e15972f3a27e5bffa9a73d6",
+
+  "notes": [
+    {"path":"docs/patterns/frontend.md","note":"Slice 4.10: responsive-action-surfaces.txt wording only; the approval row still follows ActionRow's two-labelled-actions rule. No prose change.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

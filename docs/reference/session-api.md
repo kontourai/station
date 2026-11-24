@@ -1014,7 +1014,7 @@ requests through simulated process streams; they are not a live Codex receipt.
   "threadId": "string, required, min length 1",
   "requestId": "string, required, min length 1 — from the request.opened event",
   "decision": "'accept' | 'acceptForSession' | 'decline' | 'cancel'",
-  "sessionGrantScope": "'server' | 'rule', optional, only with acceptForSession",
+  "sessionGrantScope": "'server' | 'rule' | 'all', optional, only with acceptForSession",
   "expectedRequestEventId": "string, optional — the exact request.opened event answered",
   "viewedContentDigest": "'sha256-<hex>', required to allow a request with spilledContent"
 }
@@ -1183,6 +1183,28 @@ an engine that does not declare the scope (every engine but Claude), is a
 one-call accept, never a wider grant. A prefix containing `*` or `"` is
 not offered. The inbox offers it as the
 `acceptForSessionRule` action.
+
+`sessionGrantScope: 'all'` ("Allow everything for this session") widens an
+`acceptForSession` answer to every later request in that Session that a
+grant may answer. It is for a Session that cannot run at full access, such
+as a confined, automation-dispatched one, and changes neither its
+confinement nor its approval mode. An OpenCode Session (native or over ACP)
+and an ACP Session offer it on a request whose `request.opened` payload
+carries `sessionGrantAll: true`. Requests addressed to a person (a plan exit,
+a question, a Station authority change) are excluded. ACP requires an
+allow-once option and rejects an `all` answer without one, leaving the request
+open. Orchestration keeps `sessionGrantAll` only for adapters that declare the
+scope. The adapter keeps the grant itself and mints no tool
+grant with it. It answers the answered request and each later one once
+(never OpenCode's `always` or an ACP engine's allow-always; an ACP request
+offering only allow-always goes to a person), after Station's own
+rejections and staged policy, and never for a request addressed to a
+person, an OpenCode configuration edit Station gives a person, or a
+delegated child that may not grant approvals. A change of approval mode
+drops it, and a reply still in flight across that change grants nothing.
+An engine that does not declare the scope (Claude, Codex and the others)
+takes the answer as the plain per-tool `acceptForSession`, which is
+narrower. The inbox offers it as the `acceptForSessionAll` action.
 
 A Claude Session also treats these as escalations that always prompt, even
 under a tool grant or an agent's `autoApprove` of `*` (#2932): the sandbox

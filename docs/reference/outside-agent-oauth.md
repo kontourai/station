@@ -53,10 +53,17 @@ bounded replay queues are local to this single transport owner. See the
 faults, real-client checks and topology/release limits.
 
 The isolated layout composition can also offer `list_project_layouts`.
-It opens the requested Project revision and uses the Project read lock to
-check the grant's stable identity before opening any layout records. A second
-identity check guards publication. Its result contains layout IDs, slugs, names, types and tab
-counts for the approved Project.
+It checks the grant's stable Project identity before taking the Project read
+lock, under the lock before reading layouts, and again before publication.
+The result contains layout IDs, slugs, names, types and tab counts for the
+approved Project.
+
+The isolated search composition also offers `search_conversations`. It
+admits native Sessions by stable Project and recorded owner, and restricts
+transcript ranking to those IDs. The worker verifies its SQLite read
+snapshot before querying message content. File transcripts require a
+separate ownership and artifact-binding check. The result reports incomplete
+coverage for file records, host exclusions and read limits.
 
 The isolated active-work composition also offers `list_active_work`. It
 admits rows by the grant's stable Project ID and recorded owner before
@@ -196,8 +203,10 @@ identifiers, not tokens, so the middleware does not match them. Their prefix
 keeps the host CLI from reading an ID that starts with `--` as a flag. Present invalid
 bearers on the isolated router receive `error="invalid_token"` in the 401
 challenge; anonymous requests retain the resource-metadata challenge without
-that error. Session termination returns HTTP 404 / JSON-RPC `-32001` for a pending
-JSON response, or closes an already-open SSE response, and releases call capacity.
+that error. Session termination before a POST response returns HTTP 404 /
+JSON-RPC `-32001` and releases call capacity. Once the router has returned
+a response, Station closes a revoked stream without sending more data. A held database write lock
+at ingress returns HTTP 503 without waiting to charge the request budget.
 Open GET channels share the session's 30-minute cap since the last HTTP request;
 stream activity does not extend it. Reconnect before that cap. R6 must mount the
 authenticating router in the same change that removes the compiled guard.

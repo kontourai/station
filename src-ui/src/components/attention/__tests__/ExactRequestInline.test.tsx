@@ -196,7 +196,7 @@ test("the tray row answers an exact request inline and never through the notific
     updatedAt: '2026-09-04T00:00:00Z',
     openHref: '/?chat=session-a',
     source: { notificationId: 'notif-1', notificationSource: 'approval-inbox' },
-    actions: [{ id: 'accept', label: 'Allow Once', variant: 'primary' }],
+    actions: [{ id: 'accept', label: 'Allow once', variant: 'primary' }],
     requestReference: reference,
   };
   wrap(
@@ -211,7 +211,7 @@ test("the tray row answers an exact request inline and never through the notific
   );
 
   expect(screen.getByTestId('exact-request-inline')).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'Allow Once' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Allow once' })).toBeNull();
   const approve = await screen.findByRole('button', { name: 'Approve once' });
   await waitFor(() =>
     expect((approve as HTMLButtonElement).disabled).toBe(false),

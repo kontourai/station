@@ -1,0 +1,7 @@
+{
+  "revision": "59c24b6fcfb264f9897e1aa934a54e4d10d4eb75",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Persistence bullet amended: text a plain New chat draft held when it closed without starting opens the next plain New chat, and a sender-opened draft hands its text back. Checked slash command and Home composer passages; Home now hides its composer only beside a dock showing a chat, which no passage here claimed otherwise.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

@@ -46,6 +46,9 @@ const owner = () => {
 };
 beforeEach(() => {
   vi.spyOn(Client.prototype, 'connect').mockResolvedValue(undefined);
+  vi.spyOn(Client.prototype, 'getServerCapabilities').mockReturnValue({
+    tools: {},
+  });
   vi.spyOn(Client.prototype, 'listTools').mockResolvedValue({ tools: [] });
   vi.spyOn(Client.prototype, 'close').mockResolvedValue(undefined);
   vi.spyOn(StdioClientTransport.prototype, 'close').mockResolvedValue(

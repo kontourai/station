@@ -142,20 +142,3 @@
   flex-wrap: wrap;
   gap: var(--k-space-2);
 }
-.conversation-handoff-boundary {
-  display: grid;
-  gap: 6px;
-  box-sizing: border-box;
-  margin: 12px 0;
-  min-width: 0;
-  width: 100%;
-  border: 1px solid var(--border-primary);
-  border-radius: var(--radius-md, 8px);
-  background: var(--bg-secondary);
-  color: var(--text-muted);
-  padding: 10px 12px;
-  text-align: left;
-}
-.conversation-handoff-boundary details {
-  text-align: left;
-}

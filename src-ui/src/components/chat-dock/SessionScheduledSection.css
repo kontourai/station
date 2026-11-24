@@ -6,12 +6,17 @@
  */
 .session-scheduled {
   display: grid;
+  /* The column is the card's width, never its content's: a header or row
+     wider than a narrow card wraps or truncates inside it instead of
+     widening the section past the card's edge. */
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--k-space-1);
   padding: var(--k-space-1) var(--k-space-2) var(--k-space-2);
 }
 
 .session-scheduled__header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--k-space-2);
@@ -136,14 +141,21 @@
   gap: var(--k-space-1);
 }
 
-/* The header's link sizes to its text, at the row's far end (scoped so it
-   wins over the card's full-width link whichever sheet loads last). */
-.session-scheduled__header .session-scheduled__all {
-  width: auto;
+/* The header's links keep together at the row's far end, on the title's line
+   when they fit and on one line of their own under it when they do not. */
+.session-scheduled__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--k-space-2);
+  margin-inline-start: auto;
 }
 
-.session-scheduled__header .session-scheduled__all:first-of-type {
-  margin-inline-start: auto;
+/* Each link sizes to its text (scoped so it wins over the card's full-width
+   link whichever sheet loads last). */
+.session-scheduled__header .session-scheduled__all {
+  width: auto;
+  white-space: nowrap;
 }
 
 .session-scheduled__switch {

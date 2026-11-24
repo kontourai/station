@@ -251,7 +251,7 @@ async function pageEarlierBeyondCap(
  * product's own task switcher, with no navigation or reload.
  */
 async function openConversationHistory(page: Page) {
-  const chatList = page.getByRole('complementary', { name: 'Inbox chats' });
+  const chatList = page.getByRole('complementary', { name: 'Chats' });
   await chatList.getByRole('button', { name: 'History', exact: true }).click();
   await expect(page.locator('.conversation-history')).toBeVisible({
     timeout: 10_000,

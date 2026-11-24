@@ -1,0 +1,7 @@
+{
+  "revision": "643da8d1dafb78a5df102c0ccafe06a25dee4a42",
+
+  "notes": [
+    {"path":"docs/design/acp-chat-architecture.md","note":"Compared the guide's Antigravity tool transcript behavior with the archived chat design. The historical design still points to the current guide and makes no claim about the proxy's tool label or arguments.","inputs":["docs/guides/acp.md"]}
+  ]
+}
