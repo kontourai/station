@@ -227,7 +227,7 @@ test('Home forgets Details when its row leaves and moves focus after snoozing', 
       await screen.findByRole('dialog', {
         name: 'Details for Review current work',
       }),
-    ).getByRole('button', { name: '1 hour' });
+    ).getByRole('button', { name: /^In 1 hour,/ });
     choice.focus();
     fireEvent.click(choice);
     await waitFor(() =>

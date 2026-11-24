@@ -1058,7 +1058,7 @@ export function approvalDecisionBody(
   return {
     kind: 'decision',
     options: [
-      { id: 'allow-once', label: 'Allow Once', effect: 'allow', scope: 'once' },
+      { id: 'allow-once', label: 'Allow once', effect: 'allow', scope: 'once' },
       ...(ruleGrantLabel
         ? [
             {
@@ -1093,6 +1093,38 @@ export function approvalDecisionBody(
         : []),
       { id: 'deny', label: 'Deny', effect: 'deny', scope: 'once' },
     ],
+  };
+}
+
+/**
+ * The name of the one menu that holds every session grant an approval offers.
+ * Every grant in it lasts until the adapter session ends, never longer, so the
+ * menu is not called "Always allow".
+ */
+export const APPROVAL_SESSION_GRANTS_MENU_LABEL = 'Allow for this session';
+
+/**
+ * Where an approval's choices sit, shared by every surface that answers one
+ * (the inline card, the request sheet, the toast) so they cannot drift: Allow
+ * once and Deny are the two labelled buttons, and every session grant the
+ * request offered goes in one menu ({@link APPROVAL_SESSION_GRANTS_MENU_LABEL}).
+ * A grant the body does not carry is never added here.
+ */
+export function approvalDecisionLayout(body: InputRequestDecisionBody): {
+  once: InputRequestDecisionOption | undefined;
+  deny: InputRequestDecisionOption | undefined;
+  sessionGrants: InputRequestDecisionOption[];
+} {
+  const once = body.options.find(
+    (option) => option.effect === 'allow' && option.scope === 'once',
+  );
+  const deny = body.options.find((option) => option.effect === 'deny');
+  return {
+    once,
+    deny,
+    sessionGrants: body.options.filter(
+      (option) => option !== once && option !== deny,
+    ),
   };
 }
 

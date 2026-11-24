@@ -185,7 +185,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
       },
     });
     const { onCloseChat } = renderPanel(rows, [FRESH.threadId]);
-    const search = screen.getByRole('searchbox', { name: 'Search inbox' });
+    const search = screen.getByRole('searchbox', { name: 'Search chats' });
     const discard = screen.getByRole('button', {
       name: `Discard draft ${titleOf(rows, FRESH.threadId)}`,
     });
@@ -460,7 +460,7 @@ describe('#2312 discarding Drafts from the inbox', () => {
         screen.queryByRole('dialog', { name: `Details for ${freshTitle}` }),
       ).toBeNull(),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Search chats' }));
     const search = screen.getByRole('searchbox', {
       name: 'Search chats and tasks',
     });

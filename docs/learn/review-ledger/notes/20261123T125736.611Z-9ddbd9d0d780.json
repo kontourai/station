@@ -1,0 +1,7 @@
+{
+  "revision": "78b32f20e20dd0383fafd115c94b3673c28c9be1",
+
+  "notes": [
+    {"path":"docs/architecture/abstraction-review.md","note":"Checked its commands guide citation: the added sentence (what a run or refused slash command leaves in the composer) changes no abstraction or boundary this review describes.","inputs":["docs/architecture/abstraction-review.md","docs/guides/commands.md"]}
+  ]
+}

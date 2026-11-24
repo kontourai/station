@@ -295,16 +295,16 @@ describe('NotificationHistory', () => {
       />,
     );
 
-    chooseRowAction('Dismiss');
+    chooseRowAction('Mark done');
 
     // The dismissal is held, not committed, and the panel stays open.
-    expect(screen.getByText('Dismissed')).toBeTruthy();
+    expect(screen.getByText('Marked done')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
     expect(dismiss).not.toHaveBeenCalled();
     expect(onClose).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-    expect(screen.queryByText('Dismissed')).toBeNull();
+    expect(screen.queryByText('Marked done')).toBeNull();
     expect(dismiss).not.toHaveBeenCalled();
   });
 
@@ -713,7 +713,7 @@ describe('NotificationHistory undo window', () => {
     vi.useFakeTimers();
     try {
       renderOne();
-      chooseRowAction('Dismiss');
+      chooseRowAction('Mark done');
       expect(dismiss).not.toHaveBeenCalled();
 
       act(() => {
@@ -750,7 +750,7 @@ describe('NotificationHistory undo window', () => {
             confirm = resolve;
           }),
       );
-      const menuItem = openRowAction('Dismiss', { index: 0 });
+      const menuItem = openRowAction('Mark done', { index: 0 });
       menuItem.focus();
       fireEvent.click(menuItem);
       expect(screen.getByRole('button', { name: 'Undo' })).toBeTruthy();
@@ -761,7 +761,7 @@ describe('NotificationHistory undo window', () => {
         vi.advanceTimersByTime(4000);
       });
       expect(screen.queryByText('Approval needed')).toBeNull();
-      expect(screen.getByText('Dismissing…')).toBeTruthy();
+      expect(screen.getByText('Marking done…')).toBeTruthy();
       await act(async () => {
         confirm?.();
       });
@@ -777,7 +777,7 @@ describe('NotificationHistory undo window', () => {
     vi.useFakeTimers();
     try {
       renderOne();
-      chooseRowAction('Dismiss');
+      chooseRowAction('Mark done');
       fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
 
       act(() => {
@@ -794,7 +794,7 @@ describe('NotificationHistory undo window', () => {
     vi.useFakeTimers();
     try {
       const { unmount } = renderOne();
-      chooseRowAction('Dismiss');
+      chooseRowAction('Mark done');
 
       // Closing the panel must not silently cancel what the user asked for...
       unmount();
@@ -931,10 +931,10 @@ describe('NotificationHistory answerability annotation', () => {
 
   test('AC3: Dismiss stays live — a dismissal IS a user decision', () => {
     open();
-    const dismissItem = openRowAction('Dismiss');
+    const dismissItem = openRowAction('Mark done');
     expect(dismissItem.disabled).toBe(false);
     fireEvent.click(dismissItem);
-    expect(screen.getByText('Dismissed')).toBeTruthy();
+    expect(screen.getByText('Marked done')).toBeTruthy();
   });
 
   test('AC4 (self-heal): a later poll saying answerable re-enables with no repair step', () => {
@@ -1218,9 +1218,9 @@ describe('NotificationHistory snooze (Feature Preview)', () => {
     render(
       <NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />,
     );
-    expect(screen.queryByRole('menuitem', { name: '1 hour' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /^In 1 hour/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'More actions' }));
-    expect(screen.queryByRole('menuitem', { name: '1 hour' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /^In 1 hour/ })).toBeNull();
   });
 
   test('a preset snoozes the attention item until that instant', () => {
@@ -1230,7 +1230,7 @@ describe('NotificationHistory snooze (Feature Preview)', () => {
       <NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />,
     );
 
-    chooseRowAction('1 hour');
+    chooseRowAction('In 1 hour');
 
     expect(snoozeAttention).toHaveBeenCalledTimes(1);
     const [vars] = snoozeAttention.mock.calls[0] ?? [];
@@ -1297,8 +1297,8 @@ test('dismissing an approval row holds it for Undo', () => {
     ],
   };
   render(<NotificationHistory isOpen onClose={vi.fn()} onViewAll={vi.fn()} />);
-  chooseRowAction('Dismiss');
-  expect(screen.getByText('Dismissed')).toBeTruthy();
+  chooseRowAction('Mark done');
+  expect(screen.getByText('Marked done')).toBeTruthy();
   expect(screen.queryByText('Approve the deploy')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
   expect(screen.getByText('Approve the deploy')).toBeTruthy();

@@ -1,0 +1,7 @@
+{
+  "revision": "ff50277a6d175697884db9f351a54eacf4bf0b96",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Persistence bullet now states kept New chat text is per Project (or none), lives as long as the dock and is never sent by itself. Checked Home's start composer: it now steps aside for an open dock showing a chat or the dock's own New chat draft (published by the dock), which no passage contradicts.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

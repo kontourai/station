@@ -1,0 +1,7 @@
+{
+  "revision": "ff50277a6d175697884db9f351a54eacf4bf0b96",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"ChatDock change does not alter New chat placement, the phone Inbox's floating New chat or the start composer's location; checked the passages at the New chat and start composer lines.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}
