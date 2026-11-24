@@ -1192,7 +1192,8 @@ confinement nor its approval mode. An OpenCode Session (native or over ACP)
 and an ACP Session offer it on a request whose `request.opened` payload
 carries `sessionGrantAll: true`, which the adapter sets itself, never for a
 request addressed to a person (a plan exit, a question, a Station authority
-change). Only an adapter that declares the scope may offer it:
+change) nor an ACP request without an allow-once option; an `all` answer to
+such a request is a one-call accept that grants nothing. Only an adapter that declares the scope may offer it:
 orchestration removes `sessionGrantAll` from any other adapter's request
 before storing it. The adapter keeps the grant itself and mints no tool
 grant with it. It answers the answered request and each later one once

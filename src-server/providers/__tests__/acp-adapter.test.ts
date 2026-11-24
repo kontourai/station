@@ -5033,6 +5033,75 @@ describe('AcpAdapter', () => {
     }
   });
 
+  test("a request offering allow-always alone is not offered 'all', and an 'all' answer to it grants nothing", async () => {
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [
+        { id: 'other', command: '/usr/bin/agy', args: ['acp'] },
+      ],
+    });
+    const threadId = 'thread-session-grant-all-always-only';
+    const events = adapter.streamEvents()[Symbol.asyncIterator]();
+    try {
+      await adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'other' },
+      });
+      await nextEvent(events, 'session.started');
+      await nextEvent(events, 'session.configured');
+      const client = processes[0]!.client;
+      const alwaysOnly = client.requestPermission({
+        sessionId: 'ignored-by-adapter',
+        toolCall: { toolCallId: 'always-only', title: 'x', name: 'x-tool' },
+        options: [PERMISSION_OPTIONS[1]!, PERMISSION_OPTIONS[2]!],
+      } as RequestPermissionRequest);
+      const opened = await nextEvent(events, 'request.opened');
+      // Not offered: the only allow it could send is allow-always.
+      expect(
+        (opened as { payload?: Record<string, unknown> }).payload
+          ?.sessionGrantAll,
+      ).toBeUndefined();
+      // Answered `all` anyway (an API caller): a one-call accept.
+      await adapter.respondToRequest(
+        threadId,
+        String(opened.requestId),
+        'acceptForSession',
+        { sessionGrantScope: 'all' },
+      );
+      await alwaysOnly;
+      await nextEvent(events, 'request.resolved');
+      // No session grant of any kind was minted: the same tool asks again,
+      // and so does another one.
+      const again = requestPermission(client, 'again', 'x-tool');
+      const againOpened = await nextEvent(events, 'request.opened');
+      await adapter.respondToRequest(
+        threadId,
+        String(againOpened.requestId),
+        'decline',
+      );
+      await expect(again).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+      await nextEvent(events, 'request.resolved');
+      const other = requestPermission(client, 'other', 'other-tool');
+      const otherOpened = await nextEvent(events, 'request.opened');
+      expect(otherOpened).toMatchObject({
+        payload: { sessionGrantAll: true },
+      });
+      await adapter.respondToRequest(
+        threadId,
+        String(otherOpened.requestId),
+        'decline',
+      );
+      await expect(other).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+
   test("an approval-mode change ends an 'all' grant, and it left no tool grant behind", async () => {
     const { adapter, processes } = createAdapter({
       connectionOverrides: [

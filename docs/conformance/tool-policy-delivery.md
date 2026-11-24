@@ -466,7 +466,8 @@ its request sheet's overflow item, #3331) and inbox card label it:
   per-tool grant, never instead of it, and changes nothing in the #90 N2
   auto-approval rule.
 - A request an adapter marks `sessionGrantAll: true` (OpenCode, native or
-  over ACP, and ACP; never a request addressed to a person) also offers the
+  over ACP, and ACP; never a request addressed to a person, nor an ACP
+  request without an allow-once option) also offers the
   widest choice, "Allow everything for this session", read by
   `toolRequestAllGrantFromPayload` and answered with `acceptForSession` plus
   the typed `sessionGrantScope: 'all'`. The adapter keeps one session-wide

@@ -816,6 +816,12 @@ interface AcpPendingRequest {
    */
   governedEdit?: true;
   /**
+   * The request offered "Allow everything for this session": it is not
+   * addressed to a person and has an allow-once option, so the answer can be
+   * sent as allow-once. An `all` answer to any other request mints nothing.
+   */
+  allOffered?: true;
+  /**
    * The stamped turn the request opened in, if any. Its `request.opened` and
    * every `request.resolved` for it name this turn and send, so the
    * execution coordinator owns them and the stall watch pauses while a
@@ -3760,9 +3766,27 @@ export class AcpAdapter implements ProviderAdapterShape {
     // `all` is Station's own session-wide grant and nothing else: the agent
     // is sent its allow-once option (an engine that cached allow-always
     // would stop asking, past later policy and mode changes), and no tool or
-    // edit grant is minted, so an approval-mode change ends all of it.
-    const allGrant =
+    // edit grant is minted, so an approval-mode change ends all of it. Only
+    // where the request offered it: an `all` answer to any other request is
+    // a one-call accept that grants nothing.
+    const allScoped =
       effective === 'acceptForSession' && context?.sessionGrantScope === 'all';
+    const allGrant = allScoped && pending.allOffered === true;
+    if (allScoped && !allGrant) {
+      pending.resolve('accept', content);
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: this.provider,
+        threadId,
+        createdAt: new Date().toISOString(),
+        ...pending.origin,
+        requestId,
+        method: 'request.resolved',
+        status: mapAcpDecisionToApprovalStatus(decision),
+        acknowledgement: this.metadata.approvalAcknowledgement,
+      });
+      return;
+    }
     if (allGrant) {
       record.allApproved = true;
     } else if (effective === 'acceptForSession' && pending.governedEdit) {
@@ -5139,6 +5163,12 @@ export class AcpAdapter implements ProviderAdapterShape {
       const answeredOnce =
         needsPerson ||
         (kas && !answerOptions.some(({ kind }) => kind === 'allow_once'));
+      // `all` is answered with allow-once, so a request without that option
+      // (allow-always alone) is not offered it: the only allow it could send
+      // is one the engine may cache past Station.
+      const allOffered =
+        !answeredOnce &&
+        answerOptions.some(({ kind }) => kind === 'allow_once');
       this.publish({
         eventId: crypto.randomUUID(),
         provider: this.provider,
@@ -5167,8 +5197,8 @@ export class AcpAdapter implements ProviderAdapterShape {
             ? { toolKind: engineToolKind(toolKind) }
             : {}),
           // This adapter honours `sessionGrantScope: 'all'`; never offered
-          // for a request addressed to a person.
-          ...(answeredOnce ? {} : { sessionGrantAll: true }),
+          // for a request addressed to a person or without allow-once.
+          ...(allOffered ? { sessionGrantAll: true } : {}),
           options: answerOptions,
         },
       });
@@ -5183,6 +5213,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           ...(toolName ? { toolName } : {}),
           ...(answeredOnce ? { needsPerson: true as const } : {}),
           ...(governedEdit ? { governedEdit: true as const } : {}),
+          ...(allOffered ? { allOffered: true as const } : {}),
           ...(origin ? { origin } : {}),
         });
       });
