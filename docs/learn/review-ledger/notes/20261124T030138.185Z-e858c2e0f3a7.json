@@ -1,0 +1,7 @@
+{
+  "revision": "de6c0c88f980b07f48a0e0a075c6cb4b3f8612f1",
+
+  "notes": [
+    {"path":"docs/guides/connections.md","note":"Added the Customize landing's Apps link to the opening paragraph and /customize/ to the route-alias table; checked both against CustomizeLanding.tsx and routing.ts.","inputs":["docs/guides/connections.md","src-ui/src/app-shell/routing.ts","src-ui/src/views/customize/CustomizeLanding.tsx","src-ui/src/views/page-layout.css"]}
+  ]
+}

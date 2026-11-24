@@ -1,0 +1,7 @@
+{
+  "revision": "32c2bcd30e4c5809d189cb03cb43a9180295bef9",
+
+  "notes": [
+    {"path":"README.md","note":"Re-read against this change: plugins.md gained notes on retired navigation names; nothing README says about plugins changed.","inputs":["README.md","docs/guides/plugins.md"]}
+  ]
+}
