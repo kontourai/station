@@ -1,5 +1,5 @@
 {
-  "pageLocalMediaQueryCeiling": 104,
+  "pageLocalMediaQueryCeiling": 103,
   "pageLocal": {
     "src-ui/src/components/Checkbox.css": {
       "count": 1,
@@ -8,10 +8,6 @@
     "src-ui/src/components/DetailHeader.css": {
       "count": 3,
       "reason": "station#923: DetailHeader is the shared detail-pane header used by 11 surfaces, and it now owns the 769-1180px tablet band that previously did not exist (layout jumped from mobile at 768px straight to desktop, squeezing the agent name to one character). Its responsive rules are deliberately RECORDED here rather than exempted via PRIMITIVE_ALLOWLIST: exemption would make future growth in this file invisible, while recording keeps it counted and capped. Promote it to a primitive only if a later change shows it needs rules this ceiling cannot hold."
-    },
-    "src-ui/src/components/InfoTip.css": {
-      "count": 1,
-      "reason": "The shared info-tip trigger shrinks its glyph box at 768px so the tip does not crowd the label it annotates."
     },
     "src-ui/src/components/OnboardingGate.css": {
       "count": 1,
