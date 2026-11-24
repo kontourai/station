@@ -385,7 +385,7 @@ describe.skipIf(!chromiumAvailable)(
     const SHEET = '<div role="menu" aria-label="Chat actions">Sheet</div>';
 
     const chatActions = { id: 'chat-actions', label: 'Chat actions' };
-    const mobileInbox = { id: 'mobile-inbox', label: 'Inbox' };
+    const mobileInbox = { id: 'mobile-inbox', label: 'Chats' };
 
     async function lazyBoundaryFailureMarkup(surface: typeof chatActions) {
       const { LazyBoundary } = await import('../components/LazyBoundary');
@@ -517,7 +517,7 @@ describe.skipIf(!chromiumAvailable)(
       }
     });
 
-    test('reports Inbox failure when another error clears and the count stays flat', async () => {
+    test('reports a Chats list failure when another error clears and the count stays flat', async () => {
       const actions = await lazyBoundaryFailureMarkup(chatActions);
       const inbox = await lazyBoundaryFailureMarkup(mobileInbox);
       const { page, close } = await pageWith(
@@ -528,13 +528,15 @@ describe.skipIf(!chromiumAvailable)(
           waitForLazySurface(
             page,
             {
-              surfaceName: 'The Inbox',
+              surfaceName: 'The Chats list',
               surfaceId: mobileInbox.id,
-              surface: page.getByRole('region', { name: 'Inbox' }),
+              surface: page.getByRole('region', { name: 'Chats' }),
             },
             600,
           ),
-        ).rejects.toThrow(/The Inbox is unavailable.*Unable to load Inbox\./s);
+        ).rejects.toThrow(
+          /The Chats list is unavailable.*Unable to load Chats\./s,
+        );
         await page.locator('#error-slot').evaluate((slot, markup) => {
           slot.innerHTML = markup;
         }, inbox);

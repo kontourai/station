@@ -76,7 +76,7 @@ function Controls({
           )
         }
       >
-        Allow Once
+        Allow once
       </button>
       <MessageDeliveryNote
         state={state}
@@ -205,7 +205,7 @@ test.each(['host', 'direct', 'relay'] as const)(
       </ConversationConnectionProvider>,
     );
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Allow Once' }));
+    await user.click(screen.getByRole('button', { name: 'Allow once' }));
     await user.click(screen.getByRole('button', { name: 'Check' }));
     await user.click(await screen.findByRole('button', { name: 'Retry' }));
     expect(calls).toEqual([

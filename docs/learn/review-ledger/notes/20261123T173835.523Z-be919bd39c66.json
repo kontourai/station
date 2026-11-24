@@ -1,0 +1,7 @@
+{
+  "revision": "1eda815bfbdc345f3e3dcecaec422a2a741d74cc",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"useChatDockActiveChatSync now clears only the chat pointer when it reveals a chat that exists but cannot be opened, so an open dock stays open on Chat; a chat that does not exist still clears the pointer and the dock. This page states no rule about that reveal (its ?chat= passage is about going to another chat), so nothing here changed.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/useChatDockActiveChatSync.ts"]}
+  ]
+}

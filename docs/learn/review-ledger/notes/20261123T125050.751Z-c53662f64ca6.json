@@ -1,0 +1,7 @@
+{
+  "revision": "ff50277a6d175697884db9f351a54eacf4bf0b96",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Sentences now say a command that runs is not kept as a draft while one that does not run stays to correct, and New chat text comes back for the same Project. Checked the Home start passage: Home keeps its composer beside an empty dock and steps aside for the dock's chat or draft.","inputs":["docs/user/getting-started.md","src-ui/src/__tests__/StartComposerParity.test.tsx","src-ui/src/components/chat-dock/ChatDock.tsx","src-ui/src/components/chat-dock/useChatDockOverlays.ts","src-ui/src/components/home/HomeStartComposer.tsx","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

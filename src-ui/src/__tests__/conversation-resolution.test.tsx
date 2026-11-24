@@ -25,36 +25,36 @@ const item: HomeWorkItem = {
   chatSessionId: 'conversation',
 };
 
-describe('conversation resolution row actions', () => {
+describe('Mark done row actions', () => {
   it.each([false, true])(
-    'desktop invokes the %s resolution action and restores row focus',
-    (settled) => {
-      const onChange = vi.fn();
+    'desktop invokes Mark done or Reopen (done: %s) from the row menu and restores row focus',
+    (isDone) => {
+      const onSelect = vi.fn();
       render(
         <InboxRow
           item={item}
           now={2000}
           isCurrent={false}
           isSnoozed={false}
-          isOpenChat
           onActivate={vi.fn()}
-          resolution={{ settled, pending: false, onChange }}
+          done={{ done: isDone, pending: false, onSelect }}
         />,
       );
-      const action = screen.getByRole('button', {
-        name: `${settled ? 'Reopen' : 'Settle'} Review inbox`,
-      });
-      action.focus();
-      fireEvent.click(action);
-      expect(onChange).toHaveBeenCalledOnce();
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Actions for Review inbox' }),
+      );
+      fireEvent.click(
+        screen.getByRole('menuitem', { name: isDone ? 'Reopen' : 'Mark done' }),
+      );
+      expect(onSelect).toHaveBeenCalledOnce();
       expect(document.activeElement).toBe(
         screen.getByRole('button', { name: /^Review inbox\b/ }),
       );
     },
   );
 
-  it('mobile settles from Details, closes the sheet, and keeps the row reachable', async () => {
-    const onChange = vi.fn();
+  it('mobile marks done from Details, closes the sheet, and keeps the row reachable', async () => {
+    const onSelect = vi.fn();
     render(
       <QueryClientProvider
         client={
@@ -66,11 +66,10 @@ describe('conversation resolution row actions', () => {
           now={2000}
           isCurrent={false}
           isSnoozed={false}
-          isOpenChat
           onActivate={vi.fn()}
           chrome="touch"
           actionsInDetails
-          resolution={{ settled: false, pending: false, onChange }}
+          done={{ done: false, pending: false, onSelect }}
         />
       </QueryClientProvider>,
     );
@@ -78,10 +77,8 @@ describe('conversation resolution row actions', () => {
       screen.getByRole('button', { name: 'Details for Review inbox' }),
     );
     expect(await screen.findByRole('dialog')).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Settle conversation' }),
-    );
-    expect(onChange).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole('button', { name: 'Mark done' }));
+    expect(onSelect).toHaveBeenCalledOnce();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(
       screen.getByRole('button', { name: /^Review inbox\b/ }),

@@ -1254,7 +1254,7 @@ function boundedPreviewLine(value: string): string | undefined {
   //
   // Padding is taken out first (`compactDisplaySource`, linear): before, 5000
   // spaces or RLOs after `echo a` pushed `; rm -rf /` past this cut, and the
-  // toast showed a bare "echo a" next to Allow Once (#3382).
+  // toast showed a bare "echo a" next to Allow once (#3382).
   const compact = compactDisplaySource(value);
   const cut = compact.slice(0, MAX_SANITIZED_TEXT_LENGTH);
   const trailingRun = /[^\s&;]+$/.exec(cut)?.[0] ?? '';

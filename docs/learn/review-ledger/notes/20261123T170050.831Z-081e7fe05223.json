@@ -1,0 +1,7 @@
+{
+  "revision": "f86288c415a21320529747042e11987edf241066",
+
+  "notes": [
+    {"path":"docs/guides/agent-configuration.md","note":"AttentionCard.tsx changed only in two comments, which now say the acknowledge and dismissal label is Mark done from the shared action model; nothing this page states about agents or attention behaviour changed.","inputs":["docs/guides/agent-configuration.md","src-ui/src/components/attention/AttentionCard.tsx"]}
+  ]
+}

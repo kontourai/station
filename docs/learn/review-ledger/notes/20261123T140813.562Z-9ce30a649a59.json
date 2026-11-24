@@ -1,0 +1,7 @@
+{
+  "revision": "ae4baa531b04a668824a11f0e3630bed2c09f42c",
+
+  "notes": [
+    {"path":"docs/design/station-connection.md","note":"Only a dock test changed (unmounting with a draft open publishes it closed); the draft-open flag stays a display fact outside snapshots, outbox rows and query keys.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]}
+  ]
+}

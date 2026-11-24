@@ -623,7 +623,7 @@ describe('NotificationDeliveryRouter', () => {
       const legacy = notification({
         category: 'approval-request',
         actions: [
-          { id: 'accept', label: 'Allow Once', variant: 'primary' },
+          { id: 'accept', label: 'Allow once', variant: 'primary' },
           { id: 'decline', label: 'Deny', variant: 'danger' },
         ],
       });

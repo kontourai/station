@@ -1197,7 +1197,7 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
     await expect(row.locator('.inbox-row__elapsed')).toHaveCount(0);
   } else {
     await page.getByRole('button', { name: /^(Inbox|Back to chat)$/ }).click();
-    const picker = page.getByRole('region', { name: 'Inbox', exact: true });
+    const picker = page.getByRole('region', { name: 'Chats', exact: true });
     await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
     await expect(picker.getByTestId('inbox-row-status')).toContainText(
       'Last known:',
@@ -1379,7 +1379,7 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         await page
           .getByRole('button', { name: /^(Inbox|Back to chat)$/ })
           .click();
-        const picker = page.getByRole('region', { name: 'Inbox', exact: true });
+        const picker = page.getByRole('region', { name: 'Chats', exact: true });
         await expect(picker.getByTestId('inbox-row-status')).toBeInViewport();
         // History recovery cannot clear the independent failed inventory.
         await expect(picker.getByTestId('inbox-row-status')).toContainText(
@@ -1431,9 +1431,9 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
       );
       try {
         await expect(
-          page.getByText('Couldn’t refresh the inbox.', { exact: true }),
+          page.getByText('Couldn’t refresh the chats.', { exact: true }),
         ).toBeVisible();
-        const inbox = page.getByRole('complementary', { name: 'Inbox chats' });
+        const inbox = page.getByRole('complementary', { name: 'Chats' });
         // The failed read's Retry is the inbox's refresh (#5029).
         await inbox.getByRole('button', { name: 'Retry', exact: true }).click();
         const refreshing = inbox.getByRole('button', {
@@ -1453,7 +1453,7 @@ async function verifyConversationRecovery(page: Page): Promise<void> {
         expect(inventoryReads).toBe(1);
         releaseInventory();
         await expect(
-          page.getByText('Couldn’t refresh the inbox.', { exact: true }),
+          page.getByText('Couldn’t refresh the chats.', { exact: true }),
         ).toBeHidden();
         // A healthy list offers no refresh control at all.
         await expect(inbox.getByRole('button', { name: /^Retry/ })).toHaveCount(
@@ -1654,18 +1654,18 @@ function overlayDockProjectMismatchHooks(
         if ((page.viewportSize()?.width ?? 0) > 600) {
           await expect(
             page
-              .getByRole('complementary', { name: 'Inbox chats' })
+              .getByRole('complementary', { name: 'Chats' })
               .getByRole('button', {
                 name: 'Browse all conversations',
                 exact: true,
               }),
           ).toBeVisible();
           await expect(
-            page.getByText('Couldn’t refresh the inbox.', { exact: true }),
+            page.getByText('Couldn’t refresh the chats.', { exact: true }),
           ).toBeVisible({ timeout: 15_000 });
           await expect(
             page
-              .getByRole('complementary', { name: 'Inbox chats' })
+              .getByRole('complementary', { name: 'Chats' })
               .getByRole('button', { name: 'Retry', exact: true }),
           ).toBeVisible();
         }
