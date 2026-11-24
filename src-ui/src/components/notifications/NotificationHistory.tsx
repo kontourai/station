@@ -628,7 +628,7 @@ function DismissedRow({ id, onUndo }: { id: string; onUndo?: () => void }) {
       data-dismissal-id={id}
     >
       <span className="notification-history__dismissed-label">
-        {onUndo ? 'Dismissed' : 'Dismissing…'}
+        {onUndo ? 'Marked done' : 'Marking done…'}
       </span>
       {onUndo && (
         <button

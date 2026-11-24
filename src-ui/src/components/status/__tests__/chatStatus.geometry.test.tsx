@@ -88,7 +88,6 @@ test('request and background pills fit desktop and phone in both themes', async 
             facts={workFacts.get(item.id)}
             isCurrent={false}
             isSnoozed={false}
-            isOpenChat={false}
             chrome="touch"
             onActivate={() => {}}
           />

@@ -20,7 +20,10 @@ Station does not first expand authored commands or command skills. Other
 connections check authored commands, then offered command skills, then MCP
 prompts, then built-in handlers. Unrecognized commands pass through for Claude and Codex chat
 providers; other providers get an unknown-command notice. A command appearing
-in a catalog is not proof that a remote engine will accept it.
+in a catalog is not proof that a remote engine will accept it. A command that
+runs takes its line out of the composer and out of the chat's saved draft,
+which keeps its quotes. One that does not run (unknown, refused, or a line the
+parser cannot read) stays in the composer, and saved, to be corrected.
 
 The built-in `/new` opens New chat, the same action as the chat panel's New
 chat button; where a surface has none, it says so. `/new` takes no text: a line

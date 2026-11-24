@@ -161,7 +161,7 @@ export interface ToolCallGroup<P extends ToolCallLike = ToolCallLike> {
   unresolvedCount: number;
   /** How many of this run's calls are waiting on an explicit grant. Same
    * collapsed-visible duty as `failedCount`: collapsing 2+ calls would
-   * otherwise hide Allow Once / Deny behind the sheet. */
+   * otherwise hide Allow once / Deny behind the sheet. */
   awaitingApprovalCount: number;
   deniedCount: number;
   cancelledCount: number;

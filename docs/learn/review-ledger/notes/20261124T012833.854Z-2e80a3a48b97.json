@@ -1,0 +1,7 @@
+{
+  "revision": "11a08a66db4c9dc761da057e9f83baf3a7175db5",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Reviewed after tests/android/mobile-layout.spec.ts changed: its 44px touch-target sweep now hit-tests the real tap region (symmetric elementFromPoint probes a quarter pixel inside the floor's reach) instead of measuring only getBoundingClientRect, so a compact control with a centred pseudo hit area (InfoTip) is credited while a plain undersized box, an overlay or a one-sided pad still fails. Checked the Core Nav 'Home / continuity rail' row: Android mobile-layout is still the spec owner and 'mobile geometry' is still what to inspect; the file, its test names, its suite membership and the row's mocked-responses caveat are unchanged, so the prose stays accurate. No other row cites the spec.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/android/mobile-layout.spec.ts"]}
+  ]
+}

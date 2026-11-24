@@ -190,10 +190,10 @@ On a phone: An identical sheet. The separate "Branch" icon is removed.
 
 ### `chat-14` Tool approval row
 
-On a phone: A sheet for the scopes.
+On a phone: The same choices in the request sheet, with the grants in its menu.
 
-1. **The row offers Allow once (primary), Always allow ▾, Deny and Details.** Today there are five approval buttons. _(layout; slice 4.10)_
-2. **"Always allow" opens three scopes, said in words, plus a link to "Manage rules in Settings".** The scopes are: commands like `gh pr create *`, every Bash call, or all GitHub tools. The five approval buttons become three. _(layout; slice 4.10)_
+1. **The row offers Deny, Allow once (primary), a menu named "Allow for this session", and the row's details disclosure. The approval toast uses the same order and tones. A request whose content must load first offers Deny and Review instead of Allow once, in that order ([event-content spill](event-content-spill.md)).** The inline card already had two labelled buttons with the session grants behind a menu. The toast was the surface that showed up to five buttons, one per choice. The button cap of two labelled actions holds, so the menu is not a third labelled button. _(layout; slice 4.10)_
+2. **The menu holds only the session grants the request offered, each in its own words and each "for this session".** These are a command prefix (`Allow "gh pr create *" for this session`), every call of one tool, file edits, folder access, or the Station browser. A grant lasts only until the agent's session ends, so the menu is not called "Always allow". There is no grant for all of an arbitrary tool server's tools; adding one would be new, broader safety work. The only server-wide grant is the Station browser's, offered only for a call the adapter found to be an authentic Station browser call. There is no "Manage rules in Settings" link, because nothing in Settings shows or revokes these grants. _(layout, copy; slice 4.10)_
 
 ### `chat-15` Chat menu (⋯)
 
@@ -224,7 +224,7 @@ On a phone: The same menu above the keyboard.
 
 On a phone: The inbox list with a visible ⋯ on each row and the same sheet.
 
-1. **The row ⋯ menu: Open chat, Mark done, Snooze ▸, and Discard draft (danger, only when a draft exists).** Mark done replaces Settle, Dismiss from inbox and Hide from inbox, and Reopen undoes it. Snooze uses one shared list (In 1 hour, This evening, Tomorrow morning, Next week), and Wake now replaces Unsnooze. Close is not on the row. It belongs to the open chat (⌘W). _(copy; slice 4.13)_
+1. **The row ⋯ menu: Open chat, Mark done, Snooze ▸, and Discard draft (danger, only when a draft exists).** Mark done replaces Settle, Dismiss from inbox and Hide from inbox, and Reopen undoes it. Snooze uses one shared list (In 1 hour, This evening, Tomorrow morning, Next week), and Wake now replaces Unsnooze. Close is not on the row. It belongs to the open chat (⌘W). The snooze list sits in the same menu under "Snooze until" rather than a flyout (see `automations-inbox-13` change 1). _(copy; slice 4.13)_
 
 ### `chat-19` Command palette, This chat group
 
@@ -276,7 +276,11 @@ On a phone: Same content in one column.
 On a phone: Same content in one column.
 
 1. **Three markers in one transcript: a model change (dashed pill), a fresh context (dashed rule), and an engine switch (accent rule, both engine tiles).** A model change keeps memory. A fresh context keeps the engine but drops memory. An engine switch changes the engine and hands over a bounded slice. _(new screen state; slice 4.6)_
-2. **The three marker texts: a model change, a fresh context, and an engine switch.** They read "Model: Sonnet to Opus · Same engine, same memory.", "Claude Code forgot everything above. You still see it.", and "Switched to Codex · GPT · Codex read about 8K tokens of recent messages. Approvals, tool servers and queued messages start fresh. Usage is counted separately." The handed-over amount needs a backend check. The copy says "about 8K" from the default budget. _(copy, backend check first; slice 4.6)_
+2. **The three marker texts: a model change, a fresh context, and an engine switch.** They read "Model: Sonnet to Opus · Same engine, same memory.", "Claude Code forgot everything above. You still see it.", and "Switched to Codex · GPT · Codex read up to about 8K tokens of recent messages. Approvals, tool servers and queued messages start fresh." A switch names its target "agent · engine" when the two differ. Station's own engine is named "Station's engine" in a sentence. The handed-over amount was checked: an ordinary switch seeds at most the default 8,000-token budget, and a short chat carries less, so the copy says "up to about 8K". What the new engine read follows what was seeded. A switch that starts from an empty fresh context says the new engine "read no earlier messages". Its "What carried and reset" list then leaves out recent messages, as it does after a summary start. One that starts from a summary says it "read a summary instead of recent messages". A return to an engine that already ran in the chat says it "picked up its earlier conversation and read what it missed". A fresh context started from history says the engine "started over and read recent messages from this chat". One started from a chat or task summary says it "kept only a summary". _(copy, backend check first; slice 4.6)_
+3. **Each marker is derived from what the turns recorded, so it reads the same after a reload, on another device and in an old chat.** A model change compares what ran in two adjacent turns of one session. That is the engine's own report when both turns have one, else the model Station asked for when neither has one. If the same model ran, there is no pill, whatever was asked for. A turn with no recorded model, or with a report its neighbour lacks, breaks the comparison, so there is no pill rather than a guess. A turn the engine rerouted to another model keeps its own reroute line and compares with no turn on either side, because what it ran is not on record per turn. A reroute the engine keeps for the rest of the session covers every later turn of that session the same way. A later request for another model then shows no pill, and the reroute line is what says which model runs. A model change on an engine that applies a model only when a session starts (ACP engines) starts a new session, and one on an engine that records no model per turn (OpenCode's own server) has no record. Neither shows a model pill, because "same memory" could not be shown to be true. A model change at a fresh context or a switch shows only that row. _(behaviour; slice 4.6)_
+4. **A switch row is drawn only for a switch that ran.** That means a turn of the target session started after the switch was recorded. A switch record that targets a fresh context's session which was already in use (the reset was consumed before the switch was recorded) is a refused switch, and draws nothing. Both times are the server's, and the reset rows cover the whole chat, so this holds before older messages load. A switch that starts from a fresh context nobody has used yet is one row, the switch, which says what the new engine read ("read no earlier messages" after an empty start). The stored reset records only when it was consumed, which is the switch's own first turn, so a separate fresh-context row would sort after the switch and could not name the engine it was asked on. _(behaviour; slice 4.6)_
+5. **On an engine that does not report its model per turn, a running turn shows its pill from the model its start asked for, so the answer does not move down when it ends.** On an engine that reports per turn (Claude Code), nothing shows until the turn ends, because the request and the report can name the same model differently. When the turn ends, rule 3 applies. A composer pick that has not started a turn is never used. _(behaviour; slice 4.6)_
+6. **Each marker is its own item in reading order, read once.** None is a control. A model pill sits before the answer it explains and is not part of that answer. On a phone, no exchange rule is drawn straight after a switch or fresh-context row. _(accessibility, layout; slice 4.6)_
 
 ### `chat-25` Ring popover after an engine switch
 
@@ -356,7 +360,7 @@ On a phone: Same content in one column.
 | Reasoning (N words) | Keep | Shown as "Show reasoning". |
 | Rating (thumbs up and down) | Keep | Visible. |
 | Trace link | Hide for the first release | Developer mode only. |
-| Allow once, trust, trust-server, trust-rule and Deny | Simplify | Five buttons become three: Allow once, Always allow with scopes in words, and Deny. |
+| Allow once, trust, trust-server, trust-rule and Deny | Simplify | The toast's up to five buttons become the card's shape: Deny, Allow once, and the offered session grants in one "Allow for this session" menu. |
 | Context ring and phone "Conversation stats" | Simplify | Three places become the ring popover plus the Usage tab. |
 | Chat inventory (dock ⋯, phone), Changed files (N), Task context | Simplify | Merged into the Work tab. |
 | Chat settings (gear) and phone "This chat" | Simplify | Merged into the Setup tab. |
@@ -371,7 +375,7 @@ On a phone: Same content in one column.
 | Delegated-task origin (disabled row) | Simplify | Becomes a header subtitle "from <parent chat>". |
 | Coordinator actions | Keep | Unchanged. Backend check: the exact set. |
 | New chat (header, inbox, sidebar) | Keep | The inbox button is removed. |
-| Refresh inbox | Remove | The inbox is live. |
+| Refresh chats | Remove | The inbox is live. |
 | Move to Left, Right or Bottom, Add pane…, Restore size, Full screen, Switch to a pane | Remove | Removed from the chat menu. They become dock layout controls on the dock handle or window controls. |
 | Clear project scope | Simplify | Becomes an inbox filter chip. |
 | Open project | Simplify | Becomes the project crumb in the toolbar. |

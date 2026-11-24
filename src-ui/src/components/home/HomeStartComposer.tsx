@@ -33,6 +33,7 @@ import type { ApprovalMode } from '../../utils/approvalMode';
 import type { AgentFixRoute } from '../AgentReadinessCell';
 import { agentRunnability } from '../agent-runnability';
 import { Button } from '../Button';
+import { useDockNewChatDraftOpen } from '../chat-dock/dockNewChatDraftPresence';
 import {
   type StartAgentChip,
   StartComposer,
@@ -197,7 +198,13 @@ export function HomeStartComposer({
   projectSlug?: string;
 }) {
   const { namespace } = useAuthorityPersistence();
-  const { setDockState, isDockOpen } = useNavigation();
+  const { setDockState, isDockOpen, activeChat } = useNavigation();
+  const dockDraftOpen = useDockNewChatDraftOpen();
+  // An open dock showing a chat or its New chat draft has a composer of its
+  // own, so Home's steps aside. An open dock with neither offers none, so
+  // Home keeps its own.
+  const dockHoldsComposer =
+    isDockOpen && (Boolean(activeChat) || dockDraftOpen);
   const visualSkillsEnabled = useSurfaceVisibilityFlags().has(
     VISUAL_SKILLS_PREVIEW_ID,
   );
@@ -557,7 +564,7 @@ export function HomeStartComposer({
     ? 'Start your first conversation'
     : undefined;
   const startSurface = (
-    <div hidden={!projectSlug && isDockOpen}>
+    <div hidden={!projectSlug && dockHoldsComposer}>
       <StartComposer
         compact={compact}
         heading={firstHeading}
@@ -813,7 +820,9 @@ export function HomeStartComposer({
   );
   return (
     <>
-      {firstHeading && !projectSlug && isDockOpen && <h1>{firstHeading}</h1>}
+      {firstHeading && !projectSlug && dockHoldsComposer && (
+        <h1>{firstHeading}</h1>
+      )}
       {startSurface}
     </>
   );

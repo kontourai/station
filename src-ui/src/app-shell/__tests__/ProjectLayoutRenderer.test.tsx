@@ -1309,7 +1309,7 @@ describe('ProjectLayoutRenderer', () => {
         paneScope: workspacePaneHostScopeKey(hostProps.document.scope),
       }),
     );
-    expect(stackCrumbs()).toEqual(['Inbox', 'Chat', 'Diff']);
+    expect(stackCrumbs()).toEqual(['Chat list', 'Chat', 'Diff']);
     expect(
       within(screen.getByRole('navigation', { name: 'Views' }))
         .getByRole('button', { name: 'Diff' })

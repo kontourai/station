@@ -1,0 +1,7 @@
+{
+  "revision": "ff50277a6d175697884db9f351a54eacf4bf0b96",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"ChatDock changes publish only the ambient dock's draft-open fact and key kept New chat text by Project; placement, regions and draft preservation claims are unchanged.","inputs":["docs/design/placement.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

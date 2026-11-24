@@ -295,3 +295,8 @@
   height: var(--space-8);
   flex: 0 0 var(--space-8);
 }
+
+/* A snooze choice's end time sits at the row's far edge, as in the menu. */
+.chat-dock-inbox-details__menu .menu-row > .row-menu__hint {
+  margin-inline-start: auto;
+}

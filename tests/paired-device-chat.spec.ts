@@ -466,7 +466,7 @@ test.describe('Paired-device chat round trip', () => {
               .getByRole('button', { name: '1 pending approval' })
               .click();
             await viewer
-              .getByRole('button', { name: 'Allow Once', exact: true })
+              .getByRole('button', { name: 'Allow once', exact: true })
               .click();
             await expect
               .poll(() => streams.length, { timeout: 30_000 })

@@ -1,0 +1,7 @@
+{
+  "revision": "c7e61b00d032bf5c8528b28fd64f27c265d703ba",
+
+  "notes": [
+    {"path":"docs/design/notification-delivery.md","note":"Slice 4.10 fix round: with a card's session-grant menu open, the approval queue leaves Escape and outside presses to that menu (closing it and returning focus to its trigger); the next Escape closes the queue. Toast decisions, conversation routing and native push are unchanged. No prose change.","inputs":["docs/design/notification-delivery.md","src-ui/src/components/notifications/NotificationContainer.tsx"]}
+  ]
+}
