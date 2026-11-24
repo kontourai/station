@@ -1,0 +1,15 @@
+{
+  "revision": "a6b2d9cbdaed5f76cad51198fe37927f053bbc12",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked handoff and failed-seed redelivery against the authorization, bounded history, and delivery witness already described by the citing pages.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Checked handoff and failed-seed redelivery against the authorization, bounded history, and delivery witness already described by the citing pages.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Checked handoff and failed-seed redelivery against the authorization, bounded history, and delivery witness already described by the citing pages.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Checked handoff and failed-seed redelivery against the authorization, bounded history, and delivery witness already described by the citing pages.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Checked handoff and failed-seed redelivery against the authorization, bounded history, and delivery witness already described by the citing pages.","inputs":["src-server/services/orchestration/conversation-lineage.ts"]}
+  ]
+}
