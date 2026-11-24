@@ -1,6 +1,9 @@
 import { expect, test } from 'vitest';
 import type { NativeModelRequest } from '../../../services/connections/native-model-stdio-protocol.js';
-import { prepareNativeTextModelRequest } from '../native-text-model-request.js';
+import {
+  prepareNativeBrokeredModelRequest,
+  prepareNativeTextModelRequest,
+} from '../native-text-model-request.js';
 
 function request(
   provider: 'anthropic' | 'openai',
@@ -56,6 +59,198 @@ function request(
   };
 }
 const policy = { modelId: 'fixture', maxOutputTokens: 2048 };
+const brokerTool = {
+  name: 'report_probe',
+  description: 'Return the controlled receipt.',
+  inputSchema: { type: 'object', properties: { nonce: { type: 'string' } } },
+};
+function brokeredRequest(provider: 'anthropic' | 'openai', followup = false) {
+  const native = request(provider);
+  const body = JSON.parse(native.body.toString());
+  body.tools.push(
+    provider === 'anthropic'
+      ? {
+          name: 'mcp__station_delegation__report_probe',
+          description: 'Untrusted native description',
+          input_schema: { type: 'object' },
+        }
+      : {
+          type: 'namespace',
+          name: 'mcp__station_delegation',
+          tools: [{ type: 'function', name: 'report_probe' }],
+        },
+  );
+  if (followup) {
+    if (provider === 'anthropic')
+      body.messages.push(
+        {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'call-1',
+              name: 'mcp__station_delegation__report_probe',
+              input: { nonce: 'controlled' },
+            },
+          ],
+        },
+        {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'call-1', content: 'receipt' },
+          ],
+        },
+      );
+    else
+      body.input.push(
+        {
+          type: 'function_call',
+          call_id: 'call-1',
+          name: 'report_probe',
+          namespace: 'mcp__station_delegation',
+          arguments: '{"nonce":"controlled"}',
+        },
+        { type: 'function_call_output', call_id: 'call-1', output: 'receipt' },
+      );
+  }
+  return { ...native, body: Buffer.from(JSON.stringify(body)) };
+}
+
+test.each(['anthropic', 'openai'] as const)(
+  '%s brokered wire keeps only the host catalog and caps each physical request',
+  (provider) => {
+    const native = brokeredRequest(provider);
+    native.headers = [
+      ['authorization', 'Bearer native-scoped-key'],
+      ['anthropic-beta', 'native-feature'],
+      ['x-codex-turn-state', 'unbound-state'],
+    ];
+    const final = prepareNativeBrokeredModelRequest(native, {
+      ...policy,
+      provider,
+      tools: [brokerTool],
+    });
+    expect(final.headers).toEqual([['content-type', 'application/json']]);
+    const body = JSON.parse(final.body.toString());
+    expect(body.tools).toHaveLength(1);
+    const tool =
+      provider === 'anthropic' ? body.tools[0] : body.tools[0].tools[0];
+    expect(tool.description).toBe(brokerTool.description);
+    expect(
+      provider === 'anthropic' ? tool.input_schema : tool.parameters,
+    ).toEqual(brokerTool.inputSchema);
+    expect(
+      provider === 'anthropic' ? body.max_tokens : body.max_output_tokens,
+    ).toBe(2048);
+    expect(body.tools).not.toEqual(JSON.parse(native.body.toString()).tools);
+  },
+);
+
+test.each(['anthropic', 'openai'] as const)(
+  '%s brokered wire retains paired text tool history while the sealed leaf refuses it',
+  (provider) => {
+    const native = brokeredRequest(provider, true);
+    const body = JSON.parse(
+      prepareNativeBrokeredModelRequest(native, {
+        ...policy,
+        provider,
+        tools: [brokerTool],
+      }).body.toString(),
+    );
+    const history = provider === 'anthropic' ? body.messages : body.input;
+    expect(history.slice(1)).toEqual(
+      JSON.parse(native.body.toString())[
+        provider === 'anthropic' ? 'messages' : 'input'
+      ].slice(1),
+    );
+    if (provider === 'openai') expect(history[0]).not.toHaveProperty('id');
+    expect(() =>
+      prepareNativeTextModelRequest(native, { ...policy, provider }),
+    ).toThrow('native_text_model_request_refused');
+  },
+);
+
+test('brokered Responses preserves an explicit native no-tools choice', () => {
+  const native = brokeredRequest('openai');
+  const body = JSON.parse(native.body.toString());
+  body.tool_choice = 'none';
+  native.body = Buffer.from(JSON.stringify(body));
+  const prepared = prepareNativeBrokeredModelRequest(native, {
+    ...policy,
+    provider: 'openai',
+    tools: [brokerTool],
+  });
+  expect(JSON.parse(prepared.body.toString()).tool_choice).toBe('none');
+});
+
+test.each(['anthropic', 'openai'] as const)(
+  '%s brokered wire refuses orphaned, incomplete, duplicated or foreign tool history',
+  (provider) => {
+    for (const fault of [
+      'orphan',
+      'incomplete',
+      'duplicate',
+      'duplicate-result',
+      'foreign',
+      'state',
+    ] as const) {
+      const native = brokeredRequest(provider, true);
+      const body = JSON.parse(native.body.toString());
+      const history = provider === 'anthropic' ? body.messages : body.input;
+      if (fault === 'state')
+        body.previous_response_id = 'hidden-provider-state';
+      else if (fault === 'incomplete') history.pop();
+      else if (fault === 'duplicate-result') history.push(history[2]);
+      else if (provider === 'anthropic') {
+        if (fault === 'orphan') history[2].content[0].tool_use_id = 'unseen';
+        else if (fault === 'duplicate') history.splice(2, 0, history[1]);
+        else history[1].content[0].name = 'mcp__foreign__report_probe';
+      } else {
+        if (fault === 'orphan') history[2].call_id = 'unseen';
+        else if (fault === 'duplicate') history.splice(2, 0, history[1]);
+        else history[1].namespace = 'mcp__foreign';
+      }
+      native.body = Buffer.from(JSON.stringify(body));
+      expect(
+        () =>
+          prepareNativeBrokeredModelRequest(native, {
+            ...policy,
+            provider,
+            tools: [brokerTool],
+          }),
+        fault,
+      ).toThrow('native_brokered_model_request_refused');
+    }
+  },
+);
+
+test.each(['anthropic', 'openai'] as const)(
+  '%s brokered wire refuses a missing or ambiguous host catalog',
+  (provider) => {
+    const native = brokeredRequest(provider);
+    for (const tools of [
+      [brokerTool, brokerTool],
+      [{ ...brokerTool, name: 'not_advertised' }],
+    ])
+      expect(() =>
+        prepareNativeBrokeredModelRequest(native, {
+          ...policy,
+          provider,
+          tools,
+        }),
+      ).toThrow('native_brokered_model_request_refused');
+    const body = JSON.parse(native.body.toString());
+    body.tools.push(body.tools[1]);
+    native.body = Buffer.from(JSON.stringify(body));
+    expect(() =>
+      prepareNativeBrokeredModelRequest(native, {
+        ...policy,
+        provider,
+        tools: [brokerTool],
+      }),
+    ).toThrow('native_brokered_model_request_refused');
+  },
+);
 
 test.each(['anthropic', 'openai'] as const)(
   '%s applies the selected effort to final request bytes',
