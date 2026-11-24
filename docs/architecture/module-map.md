@@ -2434,6 +2434,12 @@ member briefs and their observed Agent, Engine, and model bindings.
 Catalog validation of authored model options, actual-context authentication,
 and launch admission have separate owners.
 
+The dormant [Ensemble preset inspector](../../src-server/services/orchestration/ensemble-inspection.ts)
+uses the same holder to project authorized roster and model declarations.
+It returns the exact source digest and checks the original file identity
+before handing out the observation. Member briefs and private source details
+stay with the preparation owner.
+
 The dormant [CLI Session group owner](../../src-server/services/orchestration/cli-session-group.ts)
 captures create inputs before acquiring the storage lock and reserves each
 member start durably before calling its host adapter. Flow supplies dependency

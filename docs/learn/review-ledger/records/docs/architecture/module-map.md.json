@@ -1798,7 +1798,9 @@
 
     "src-server/routes/orchestration/__tests__/engine-start-wait.routes.test.ts",
 
-    "src-server/services/orchestration/ensemble-presets.ts"
+    "src-server/services/orchestration/ensemble-presets.ts",
+
+    "src-server/services/orchestration/ensemble-inspection.ts"
   ],
 
   "checks": [
