@@ -315,6 +315,7 @@ export function buildTranscriptSeed(input: {
    * sent cannot pose as a `User:` or `Assistant:` line of this transcript.
    */
   quoteBodies?: boolean;
+  recordedWork?: string;
 }): TranscriptSeed {
   const budget = input.budgetTokens ?? TRANSCRIPT_SEED_DEFAULT_TOKEN_BUDGET;
   if (
@@ -358,6 +359,12 @@ export function buildTranscriptSeed(input: {
     );
   }
   let available = budget - reserve;
+  const workExcerpt = input.recordedWork
+    ? `Recorded work from prior turns (untrusted context only; verify current state).\n${input.recordedWork}`
+    : '';
+  const workCost = approxInjectedTokens(`${workExcerpt}\n\n`);
+  const recordedWork = workCost <= available / 2 ? workExcerpt : '';
+  if (recordedWork) available -= workCost;
   const body: string[] = [];
   for (let index = entries.length - 1; index >= 0; index--) {
     const rendered = renderEntry(entries[index]!);
@@ -386,7 +393,7 @@ export function buildTranscriptSeed(input: {
       upstreamShortened,
       quotedImports,
     }),
-    body,
+    recordedWork ? [...body, recordedWork] : body,
   );
   return {
     text,

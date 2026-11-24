@@ -40,6 +40,10 @@ import {
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import { isSessionReadAuthority } from '@kontourai/station-contracts/tenancy';
 import type { ConversationMessage } from '@kontourai/station-shared/conversation-message';
+import {
+  redactSecrets,
+  sanitizeFreeText,
+} from '@kontourai/station-shared/redaction';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { conversationContinuationOutcomes } from '../../telemetry/metrics.js';
 import {
@@ -85,6 +89,7 @@ import type { ConversationForkProvenance, EventStore } from './event-store.js';
 // Type-only import back into the service module: erased at runtime, so no
 // import cycle exists.
 import type { SessionReadScope } from './orchestration-service.js';
+import { digestTurn } from './session-digest.js';
 import { conversationTitle } from './session-query-module.js';
 import type { SessionReadModelReadOptions } from './session-read-model-purpose.js';
 
@@ -1521,6 +1526,7 @@ export class ConversationLineage {
       sources,
       authority,
       'Conversation while this engine was away (context only, not a new request; the earlier native conversation is being resumed).',
+      { sessionId: throughSessionId, includeError: true },
     );
     return {
       sourceSessionId,
@@ -1568,6 +1574,7 @@ export class ConversationLineage {
       lineage.slice(0, throughIndex + 1),
       authority,
       CONTINUATION_TRANSCRIPT_HEADING,
+      { sessionId: throughSessionId, includeError: true },
     );
     return { transcriptSeed: contextSeed.text, contextSeed };
   }
@@ -1625,6 +1632,7 @@ export class ConversationLineage {
           sources,
           authority,
           CONTINUATION_TRANSCRIPT_HEADING,
+          { sessionId: sources.at(-1)?.sessionId },
         ),
       );
     }
@@ -1639,6 +1647,7 @@ export class ConversationLineage {
     sources: readonly { readonly sessionId: string }[],
     authority: SessionReadScope,
     heading: string,
+    recordedWorkSource?: { sessionId?: string; includeError?: boolean },
   ): Promise<ConversationContextSeedPin> {
     const filtered = this.contextSources(sources);
     sources = filtered.sources;
@@ -1647,9 +1656,12 @@ export class ConversationLineage {
         throw new ConversationStartContextError(
           'Retained summary source is no longer authorized.',
         );
+    let handoffSource: OrchestrationSessionDetail | undefined;
     for (const entry of sources) {
-      if (!(await this.deps.readSession(entry.sessionId, authority)))
-        throw new Error('Conversation context is not authorized.');
+      const detail = await this.deps.readSession(entry.sessionId, authority);
+      if (!detail) throw new Error('Conversation context is not authorized.');
+      if (entry.sessionId === recordedWorkSource?.sessionId)
+        handoffSource = detail;
     }
     const sourceCutoffs = sources.map((entry) => ({
       sessionId: entry.sessionId,
@@ -1675,6 +1687,13 @@ export class ConversationLineage {
     const seed = buildTranscriptSeed({
       heading,
       ...seedSource,
+      recordedWork: handoffSource
+        ? this.handoffRecordedWork(
+            sources.map((entry) => entry.sessionId),
+            handoffSource,
+            recordedWorkSource?.includeError === true,
+          )
+        : undefined,
     });
     return createConversationContextSeedPin({
       text: seed.text,
@@ -1687,6 +1706,53 @@ export class ConversationLineage {
         nonTextMessages: seedSource.nonTextMessages,
       },
     });
+  }
+
+  private handoffRecordedWork(
+    sessionIds: readonly string[],
+    source: OrchestrationSessionDetail,
+    includeError: boolean,
+  ): string | undefined {
+    const recent = this.deps.eventStore!.readTurnDigestFacts(
+      sessionIds.slice(-8),
+      { turnLimit: 4 },
+    );
+    const lines: string[] = [];
+    for (const facts of recent.turns) {
+      const turn = digestTurn(facts, []);
+      if (turn.outcome === 'open') continue;
+      const tools = turn.toolCalls.map(
+        ({ tool, calls }) => `${tool} (${calls})`,
+      );
+      const pullRequests = turn.pullRequests?.map(
+        ({ host, repository, ref }) => `${host}/${repository}#${ref}`,
+      );
+      const factsForTurn = [
+        `${facts.threadId} / ${turn.turnId}: ${turn.outcome}.`,
+      ];
+      if (tools.length)
+        factsForTurn.push(`Tool calls recorded: ${tools.join(', ')}.`);
+      if (turn.files?.length)
+        factsForTurn.push(
+          `Files reported edited, deleted or moved: ${turn.files.join(', ')}.`,
+        );
+      if (pullRequests?.length)
+        factsForTurn.push(
+          `Pull requests recorded: ${pullRequests.join(', ')}.`,
+        );
+      lines.push(factsForTurn.join(' '));
+    }
+    const error = includeError
+      ? source.events.filter((event) => event.method === 'runtime.error').at(-1)
+      : undefined;
+    if (error)
+      lines.unshift(
+        `Last source session error: ${sanitizeFreeText(error.message, 400)}`,
+      );
+    if (lines.length === 0) return undefined;
+    if (source.session.cwd)
+      lines.unshift(`Source working directory: ${source.session.cwd}`);
+    return quotedLines(redactSecrets(lines.join('\n')), 2_600).join('\n');
   }
 
   /**
