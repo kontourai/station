@@ -1,0 +1,7 @@
+{
+  "revision": "9ef9244119d916718ece7ccfdb63c0148a24333b",
+
+  "notes": [
+    {"path":"docs/user/concepts.md","note":"Rechecked after the window hook began replacing a window read from another event log: consistent with the page's statement that replacing the orchestration database resets sequence fences; the last-known failure claims are unchanged.","inputs":["docs/user/concepts.md","src-ui/src/hooks/orchestration/useSessionEventWindow.ts"]}
+  ]
+}
