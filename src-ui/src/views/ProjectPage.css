@@ -44,6 +44,7 @@
   font-weight: 700;
   color: var(--text-primary);
   margin: 0;
+  overflow-wrap: anywhere;
 }
 
 .project-page__desc {
@@ -115,10 +116,11 @@
   white-space: nowrap;
 }
 
-.project-page__settings-btn {
+.project-page__header-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   gap: var(--k-space-2);
 }
 
@@ -1093,15 +1095,14 @@
    flight, and its own call to action. Every value here is an existing token —
    no new colours, no gradients. */
 
-.project-page__live-work {
-  margin-bottom: 2rem;
-}
-
 .project-page__live-work-lane {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin-bottom: 14px;
+}
+
+.project-page__live-work-lane + .project-page__live-work-lane {
+  margin-block-start: var(--k-space-4);
 }
 
 .project-page__live-work-eyebrow {
@@ -1340,7 +1341,7 @@
     padding: 8px 12px;
   }
 
-  .project-page__settings-btn,
+  .project-page__header-action,
   .project-page__add-btn,
   .project-page__ns-tab,
   .project-page__doc-group-header {
@@ -1352,23 +1353,12 @@
     min-width: 44px;
   }
 
-  .project-page__header--operator {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: var(--k-space-3);
-  }
-
-  .project-page__invite-btn {
-    grid-column: 1 / -1;
-    justify-self: start;
-  }
-
-  .project-page__settings-btn {
+  .project-page__header-action {
     min-width: 44px;
     padding-inline: var(--k-space-2);
   }
 
-  .project-page__settings-label {
+  .project-page__header-action-label {
     display: none;
   }
 
@@ -1441,7 +1431,6 @@
 
 .project-page__workspace {
   border-top: 1px solid var(--k-line);
-  margin-top: var(--k-space-5);
 }
 
 .project-page__workspace > summary::before {

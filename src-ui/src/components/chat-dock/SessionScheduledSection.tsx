@@ -25,6 +25,10 @@ import { jobLabel } from '../scheduler/jobName';
 import { Toggle } from '../Toggle';
 import { everyText } from './agentScheduleText';
 import './SessionScheduledSection.css';
+import {
+  automationFlag,
+  automationStatus,
+} from '../../views/schedule/automationRow';
 
 type ScheduledRow =
   | { kind: 'wake-up'; key: string; wakeUp: AgentWakeUp }
@@ -249,10 +253,17 @@ function jobWhen(job: SchedulerJob, now: number): string {
         : Number.isFinite(next)
           ? `Next at ${clockTime(next, now)}`
           : 'Scheduled';
-  const failing = job.consecutiveFailures
-    ? ` · ${job.consecutiveFailures} failed`
-    : '';
-  return job.enabled ? `${cadence}${failing}` : `${cadence} · paused${failing}`;
+  // The Automations list's own words: its state when it is not Active, and
+  // its flag ("Last 2 runs didn't work", "Paused itself after …").
+  const status = automationStatus(job, false, now);
+  const flag = automationFlag(job);
+  return [
+    cadence,
+    status !== 'Active' && !job.pausedItself ? status : null,
+    flag,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 }
 
 /** An automation for this chat, read from the scheduler's own list. */

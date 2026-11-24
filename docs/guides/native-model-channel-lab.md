@@ -37,6 +37,27 @@ re-enters that port. Finished response bytes or a retired worker do not release
 pending accounting. Unexpected channel loss aborts active request signals before
 waiting for worker cleanup. A failed or timed-out close remains a failure.
 
+The private bridge offers `POST /station/delegation-rpc/v1` when its host
+supplies a separate RPC callback. The default bridge serves model requests.
+The RPC route accepts the exact path without a query, authenticates the
+scoped bridge key, and forwards only Accept and Content-Type. The model
+owner receives no RPC bytes. RPC responses expose Content-Type only.
+Both request types share the existing byte and concurrency limits. Each
+actual response write checks the captured delivery port, and host settlement
+continues to own completion after a response is sent.
+
+The worker also has an internal stdio relay mode for an explicitly bound
+loopback broker. The relay carries the scoped key in its environment and
+forwards requests through the fixed RPC path. It bounds requests, concurrency,
+and output. A reply must name the exact request ID, including its type, and
+contain either a result or an error. An invalid reply closes the relay.
+The request deadline includes writing the reply to the relay's stdout pipe.
+Input closure or deadline expiry cancels pending relay requests and closes
+the pipe even when its reader stops draining.
+
+Parent issuance, native launcher configuration, effect admission, and model
+accounting still require their own owners before serving inherited delegation.
+
 The protocol limits requests to 2 MiB, frames to 3 MiB, channel lifetime to
 64 MiB, concurrent requests to four and total requests to 1,024. Response chunks
 are at most 64 KiB. These transport bounds do not establish token or fiscal
@@ -64,8 +85,12 @@ observations and cleanup state; the final output names that artifact directory.
 The scoped bridge key is retained in the private generated runner, so this is
 not key-erasure evidence.
 
-Add `--with-native-engines` to run pinned Linux Claude 2.1.322 and Codex 0.167.0
-binaries through the same channel. Downloads must match exact byte counts and
+Add `--with-native-engines` to run pinned Linux Claude 2.1.322 and Codex 0.167.0.
+Each binary gets its own verified namespace and model channel. The container
+owner admits one fixed text client per namespace and delivers the prompt through
+the caller's stdin writer. The prompt stays out of process arguments and
+environment variables. The owner bounds combined output to 1 MiB and tracks
+the program result, local exec settlement, and namespace removal separately. Downloads must match exact byte counts and
 SHA-256 digests. An explicit `CHILD_WORK_NATIVE_BINARY_CACHE_ROOT` may name an
 existing owned artifact directory containing `claude` and `codex`; copies pass
 the same integrity checks. A truncated download refuses before image creation.
@@ -108,8 +133,14 @@ unqualified.
 The [real-worker process tests](../../src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts)
 cover authentication, Unicode/binary framing, request limits, private-byte
 withholding after revocation, cancellation before delayed cleanup, and retained
-terminal/accounting ownership. Bypassing only the body-delivery check exposed
+terminal/accounting ownership. The relay test closes stdin while a valid RPC
+reply is blocked on unread stdout and verifies that the relay exits before
+forced cleanup. Bypassing only the body-delivery check exposed
 23 private bytes in the stronger test; later response failure could not hide it.
+
+The [simulated exec tests](../../src-server/services/connections/__tests__/native-model-container.test.ts)
+cover private stdin delivery under competing starts, preserving the result when
+exec settlement fails, and closing model admission during a pending exec stop.
 
 The isolated lab exercises real read-only-root and network refusal, private
 staging, synthetic model replies and owned cleanup. With native engines, it

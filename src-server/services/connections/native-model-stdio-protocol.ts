@@ -27,6 +27,8 @@ const headers = z
   .array(z.tuple([z.string().min(1).max(128), z.string().max(8192)]))
   .max(16);
 const id = z.string().uuid();
+export const NATIVE_DELEGATION_RPC_PATH = '/station/delegation-rpc/v1';
+
 const modelPaths = new Set([
   '/v1/messages',
   '/v1/messages/count_tokens',
@@ -80,11 +82,30 @@ export const nativeModelWorkerFrame = z.discriminatedUnion('type', [
       body,
     })
     .strict(),
+  z
+    .object({
+      type: z.literal('delegation-rpc'),
+      id,
+      method: z.literal('POST'),
+      path: z.literal(NATIVE_DELEGATION_RPC_PATH),
+      headers: headers.refine((items) =>
+        items.every(
+          ([name, value]) =>
+            ['accept', 'content-type'].includes(name) && !/[\r\n]/.test(value),
+        ),
+      ),
+      body,
+    })
+    .strict(),
   z.object({ type: z.literal('cancel'), id }).strict(),
 ]);
 export const nativeModelHostFrame = z.discriminatedUnion('type', [
   z
-    .object({ type: z.literal('init'), token: z.string().min(32).max(128) })
+    .object({
+      type: z.literal('init'),
+      token: z.string().min(32).max(128),
+      delegationRpc: z.literal(true).optional(),
+    })
     .strict(),
   z
     .object({

@@ -177,6 +177,11 @@ export function ProjectRepositoriesSection({
             stationName={stationName}
           />
         </details>
+        {onManageSources && (
+          <Button variant="link" onClick={onManageSources}>
+            Manage sources
+          </Button>
+        )}
       </div>
       <ProjectRepositorySources
         slug={slug}
@@ -193,11 +198,7 @@ export function ProjectRepositoriesSection({
           })
         }
       />
-      {onManageSources ? (
-        <Button variant="link" onClick={onManageSources}>
-          Manage sources
-        </Button>
-      ) : (
+      {!onManageSources && (
         <details
           className="project-sources__diagnostics"
           open={repairOpen}

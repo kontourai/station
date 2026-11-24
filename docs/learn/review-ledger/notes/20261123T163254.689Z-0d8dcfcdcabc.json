@@ -1,0 +1,7 @@
+{
+  "revision": "f87992cc551486a30131f4870bc0575421c9cca6",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Traced isolated consent capacity and the module's release refusal. The cap scenarios failed on the shared-cap baseline and passed after the split. The native route proved an ordinary decision under real local-grant admission and refused the guarded registration before commit or audit. The MCP transport tests retain the pre-emission check and cross-process response suppression; the write-locked shared budget and client-visible interruption are documented. 143 focused tests passed. Exposure remains compiled off.","inputs":["docs/reference/outside-agent-oauth.md","src-server/services/consent/consent-transactions.ts","src-server/services/consent/__tests__/consent-transactions.test.ts"]}
+  ]
+}

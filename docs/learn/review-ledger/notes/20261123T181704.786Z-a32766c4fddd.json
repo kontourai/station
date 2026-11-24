@@ -1,0 +1,109 @@
+{
+  "revision": "5cbbdfe776f4b7b945d70f585c518aefeb032607",
+
+  "notes": [
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the isolated active-work contract against MCP dispatch and the grant-derived reader. The deployed endpoint stays guarded. Stable Project identity, inventory visibility, direct Session scope and durable host history are checked across the lineage before projection. The application scans a bounded number of visible candidate IDs; the SQLite query itself has no storage scan bound. Signed cursors bind the grant and scope.","inputs":["docs/reference/outside-agent-oauth.md","src-server/routes/outside-agent/__tests__/mcp-routes.test.ts","src-server/routes/outside-agent/mcp-routes.ts","src-server/services/outside-agent/mcp-dispatch.ts","src-server/services/outside-agent/active-work.ts","src-server/services/orchestration/session-activity-reader.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed existing Station Control and person-facing work discovery. Their caller authority, query values, row projection, ordering, and cursor format are preserved through the shared activity reader.","inputs":["src-server/routes/orchestration/session-project-activity.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Scoped review of the new active-work wire case. The original R4a receipts still describe the two-tool composition and their original fault controls.","inputs":["src-server/routes/outside-agent/__tests__/mcp-routes.test.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Scoped review of the new active-work wire case. The original R4a receipts still describe the two-tool composition and their original fault controls.","inputs":["src-server/routes/outside-agent/__tests__/mcp-routes.test.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed optional active-work composition. Request authentication, stream emission admission, transport capacity and the compiled release guard retain the same ownership.","inputs":["src-server/routes/outside-agent/mcp-routes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed optional active-work composition. Request authentication, stream emission admission, transport capacity and the compiled release guard retain the same ownership.","inputs":["src-server/routes/outside-agent/mcp-routes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"The added direct Session target reads the same recorded owner, Project and view permission. The outside reader checks each lineage member. Existing dispatch, handoff and REST scope checks still apply their existing lineage rule.","inputs":["src-server/runtime/mcp/station-control-dispatch-scope.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The added direct Session target reads the same recorded owner, Project and view permission. The outside reader checks each lineage member. Existing dispatch, handoff and REST scope checks still apply their existing lineage rule.","inputs":["src-server/runtime/mcp/station-control-dispatch-scope.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"The added direct Session target reads the same recorded owner, Project and view permission. The outside reader checks each lineage member. Existing dispatch, handoff and REST scope checks still apply their existing lineage rule.","inputs":["src-server/runtime/mcp/station-control-dispatch-scope.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The added direct Session target reads the same recorded owner, Project and view permission. The outside reader checks each lineage member. Existing dispatch, handoff and REST scope checks still apply their existing lineage rule.","inputs":["src-server/runtime/mcp/station-control-dispatch-scope.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"The added direct Session target reads the same recorded owner, Project and view permission. The outside reader checks each lineage member. Existing dispatch, handoff and REST scope checks still apply their existing lineage rule.","inputs":["src-server/runtime/mcp/station-control-dispatch-scope.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the new read-only queries over ownership, Project and host-history metadata. Existing event storage, projection, transaction, durability and tenant/owner behavior retain their callers. The activity reader admits members before projecting any transcript-derived fields.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed the new read-only queries over ownership, Project and host-history metadata. Existing event storage, projection, transaction, durability and tenant/owner behavior retain their callers. The activity reader admits members before projecting any transcript-derived fields.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the new read-only queries over ownership, Project and host-history metadata. Existing event storage, projection, transaction, durability and tenant/owner behavior retain their callers. The activity reader admits members before projecting any transcript-derived fields.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed the new read-only queries over ownership, Project and host-history metadata. Existing event storage, projection, transaction, durability and tenant/owner behavior retain their callers. The activity reader admits members before projecting any transcript-derived fields.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed the new read-only queries over ownership, Project and host-history metadata. Existing event storage, projection, transaction, durability and tenant/owner behavior retain their callers. The activity reader admits members before projecting any transcript-derived fields.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reviewed the new read-only queries over ownership, Project and host-history metadata. Existing event storage, projection, transaction, durability and tenant/owner behavior retain their callers. The activity reader admits members before projecting any transcript-derived fields.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed the new read-only queries over ownership, Project and host-history metadata. Existing event storage, projection, transaction, durability and tenant/owner behavior retain their callers. The activity reader admits members before projecting any transcript-derived fields.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the new read-only queries over ownership, Project and host-history metadata. Existing event storage, projection, transaction, durability and tenant/owner behavior retain their callers. The activity reader admits members before projecting any transcript-derived fields.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed the new read-only queries over ownership, Project and host-history metadata. Existing event storage, projection, transaction, durability and tenant/owner behavior retain their callers. The activity reader admits members before projecting any transcript-derived fields.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed the new read-only queries over ownership, Project and host-history metadata. Existing event storage, projection, transaction, durability and tenant/owner behavior retain their callers. The activity reader admits members before projecting any transcript-derived fields.","inputs":["src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/adr/0012-decorate-session-summaries-with-read-time-answerability.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/approval-posture-server-ordered.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/notification-delivery.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/orchestration-decomposition-map.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/portable-project-identity.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/user/workspace-checkpoints.md","note":"Reviewed the optional Session selection after inventory refresh. Outside callers supply scope checks before reading projection events or counts. The existing read-model visibility predicate applies in both paths, and callers with a fixed list or no list follow their existing selection and authorization behavior.","inputs":["src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"The isolated server advertises active work only when configured with its scoped reader. The R4a default still offers exactly two Project reads. Catalog checks and live grant-derived callers apply at list and dispatch.","inputs":["src-server/services/outside-agent/mcp-dispatch.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"The isolated server advertises active work only when configured with its scoped reader. The R4a default still offers exactly two Project reads. Catalog checks and live grant-derived callers apply at list and dispatch.","inputs":["src-server/services/outside-agent/mcp-dispatch.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"The shared list_active_work registration preserves the Station Control path and its cursor bound. The outside composition uses a separate bound for its signed format. Conversation search retains its existing scope and entry point.","inputs":["src-server/tools/station-control-work-discovery-tools.ts"]}
+  ]
+}

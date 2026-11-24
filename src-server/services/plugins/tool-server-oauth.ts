@@ -742,6 +742,14 @@ const accountRefreshCooldowns = new Map<
   { expected: StoredOAuthTokens; retryAt: number; forced: boolean }
 >();
 
+function accessTokenRenewalIsDue(
+  expiresAt: number | undefined,
+  tokens: StoredOAuthTokens,
+): boolean {
+  const leadTimeMs = tokens.refresh_token ? 120_000 : 0;
+  return expiresAt !== undefined && expiresAt <= Date.now() + leadTimeMs;
+}
+
 export class StationToolServerOAuthProvider implements OAuthClientProvider {
   /** Every transport built with this provider must carry its fetch guard. */
   readonly [REQUIRES_AUTHORIZATION_FETCH] = true;
@@ -1177,7 +1185,7 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
       available?.access_token &&
       available.token_type.toLowerCase() === 'bearer' &&
       rejectedToken !== available.access_token &&
-      (expiresAt === undefined || expiresAt > Date.now() + 120_000)
+      !accessTokenRenewalIsDue(expiresAt, available)
     )
       return available.access_token;
     const key = this.refreshKey;
@@ -1231,8 +1239,8 @@ export class StationToolServerOAuthProvider implements OAuthClientProvider {
     // Unknown lifetime (including pre-expiry-stamp envelopes) is resolved by a 401.
     const rejected =
       rejectedToken !== undefined && tokens.access_token === rejectedToken;
-    const due = expiresAt !== undefined && expiresAt <= Date.now() + 120_000;
-    if (!rejected && !due) return tokens.access_token;
+    if (!rejected && !accessTokenRenewalIsDue(expiresAt, tokens))
+      return tokens.access_token;
     const discovery = await this.discoveryState();
     const issuer =
       discovery?.authorizationServerMetadata?.issuer ??

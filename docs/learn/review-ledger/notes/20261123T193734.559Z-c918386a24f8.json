@@ -1,0 +1,7 @@
+{
+  "revision": "3e1b6205bf83885827295179cac86c823d5ae127",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Checked that the confined lab remains an opt-in developer control with explicit scope and owned cleanup. The added fixed text invocation uses synthetic provider replies.","inputs":["docs/README.md","docs/guides/native-model-channel-lab.md"]}
+  ]
+}
