@@ -564,6 +564,11 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         expect(store.conversationSessions(conversationId)).toHaveLength(0);
       }
 
+      sourceAdapter.turnShape = {
+        toolCalls: 1,
+        toolOutputBytes: 80,
+        deltas: 0,
+      };
       const started = await post('/api/orchestration/chat', {
         conversationId,
         clientTurnId: 'initial-send',
@@ -1038,6 +1043,13 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       expect(targetAdapter.starts).toHaveLength(1);
       await eventually(() => expect(targetAdapter.turns).toHaveLength(1));
       expect(targetAdapter.turns[0]?.ambientContext).toContain(CONTEXT_TOKEN);
+      expect(targetAdapter.turns[0]?.ambientContext).toContain(
+        'Recorded work from prior turns',
+      );
+      expect(targetAdapter.turns[0]?.ambientContext).toContain('read_file (1)');
+      expect(targetAdapter.turns[0]?.ambientContext).not.toContain(
+        '0:'.padEnd(80, 'o'),
+      );
       if (staged) {
         expect(targetAdapter.starts[0]).toMatchObject({ modelId: 'gpt-5.4' });
         expect(targetAdapter.starts[0]?.resumeCursor).toBeUndefined();

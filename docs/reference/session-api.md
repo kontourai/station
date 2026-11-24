@@ -868,7 +868,11 @@ execution override under the same profile checks as other handoffs.
 
 Station requires an idle, current source Session and refuses while a follow-up
 is queued. A successful Send starts a fresh Session with bounded authorized
-conversation text and the submitted first message. Prior attachment bytes,
+conversation text, a short record of recent work, and the submitted first
+message. The record includes the source working directory, settled turn outcomes,
+reported tool names and counts, reported file changes and pull requests, and a
+redacted excerpt of the latest recorded source error when those facts are available.
+Tool arguments and outputs stay with the source. Prior attachment bytes,
 engine-native cursors and engine-local tool state stay with the source.
 The message can include attachments supported by the selected engine. If the
 response is lost, check the handoff status using the same key before trying

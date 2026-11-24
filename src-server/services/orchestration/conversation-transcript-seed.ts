@@ -315,6 +315,7 @@ export function buildTranscriptSeed(input: {
    * sent cannot pose as a `User:` or `Assistant:` line of this transcript.
    */
   quoteBodies?: boolean;
+  recordedWork?: string;
 }): TranscriptSeed {
   const budget = input.budgetTokens ?? TRANSCRIPT_SEED_DEFAULT_TOKEN_BUDGET;
   if (
@@ -349,8 +350,11 @@ export function buildTranscriptSeed(input: {
   // Reserve the widest disclosure (every counter at its maximum, every
   // notice, plus slack for singular/plural wording) so the real one can never
   // push the seed over the budget.
+  const recordedWork = input.recordedWork
+    ? `Recorded work from prior turns (context only; verify current state).\n${input.recordedWork}`
+    : '';
   const reserve = approxInjectedTokens(
-    `${input.heading}\n${disclosure({ total, included: total, omitted: total, nonText, shortened: true, upstreamShortened, quotedImports })}${' '.repeat(16)}\n\n${TRANSCRIPT_SEED_END}\n\n`,
+    `${input.heading}\n${disclosure({ total, included: total, omitted: total, nonText, shortened: true, upstreamShortened, quotedImports })}${' '.repeat(16)}\n\n${recordedWork && `${recordedWork}\n\n`}${TRANSCRIPT_SEED_END}\n\n`,
   );
   if (reserve > budget) {
     throw new RangeError(
@@ -386,7 +390,7 @@ export function buildTranscriptSeed(input: {
       upstreamShortened,
       quotedImports,
     }),
-    body,
+    recordedWork ? [...body, recordedWork] : body,
   );
   return {
     text,
