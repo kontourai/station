@@ -4976,6 +4976,47 @@ describe('useActiveChatTranscript', () => {
       expect(result.current.hasMore).toBe(false);
     });
 
+    // A replaced log whose head has passed what is held still numbers a
+    // shared event differently.
+    test('a shared event at another sequence replaces what a reader away holds', async () => {
+      const renumbered = storeEvents('old', 49, 50).map((item, offset) => ({
+        ...item,
+        sequence: 61 + offset,
+      }));
+      fetchWindow
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 50,
+          hasMore: true,
+          nextCursor: 'below-46',
+          events: storeEvents('old', 46, 50),
+        })
+        .mockResolvedValueOnce({
+          protocolVersion: 1,
+          watermark: 62,
+          hasMore: true,
+          nextCursor: 'below-61',
+          events: renumbered,
+        });
+      const { result, rerender } = renderHook(
+        ({ revision }) =>
+          useActiveChatTranscript('http://replaced-log-renumbered.test', {
+            ...baseSession,
+            orchestrationHistoryRevision: revision,
+          }),
+        { initialProps: { revision: 0 } },
+      );
+      await waitFor(() => expect(result.current.events).toHaveLength(5));
+      act(() =>
+        result.current.setReaderPlace({ away: true, turnId: 'old-turn-46' }),
+      );
+      rerender({ revision: 1 });
+      await waitFor(() => expect(fetchWindow).toHaveBeenCalledTimes(2));
+      await waitFor(() =>
+        expect(sequences(result.current.events)).toEqual([61, 62]),
+      );
+    });
+
     test('a replaced event log replaces the older pages a reader loaded', async () => {
       fetchWindow
         .mockResolvedValueOnce({
