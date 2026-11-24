@@ -828,6 +828,39 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       targetAdapter.failNextTranscriptSeed = failFirstHandoffSeed !== undefined;
       if (failFirstHandoffSeed)
         targetAdapter.seedFailureMethod = failFirstHandoffSeed;
+      if (
+        !staged &&
+        !nativeReturn &&
+        !preserveProfile &&
+        !dropHandoffSeedWitness
+      ) {
+        const readFacts = store.readTurnDigestFacts.bind(store);
+        const duringCapture = vi.spyOn(store, 'readTurnDigestFacts');
+        duringCapture.mockImplementationOnce((...args) => {
+          store.appendEvent({
+            provider: source.provider,
+            threadId: conversationId,
+            turnId: `${source.provider}-handoff-turn-1`,
+            eventId: 'tool-reported-during-handoff-capture',
+            createdAt: new Date().toISOString(),
+            method: 'tool.started',
+            itemId: 'late-tool',
+            toolCallId: 'late-tool',
+            toolName: 'late_read',
+          });
+          return readFacts(...args);
+        });
+        try {
+          const changedSource = await post(handoffPath, handoffBody);
+          expect(await changedSource.text()).toContain(
+            'Conversation context changed before its handoff reservation.',
+          );
+          expect(store.conversationSessions(conversationId)).toHaveLength(1);
+          expect(targetAdapter.starts).toHaveLength(0);
+        } finally {
+          duringCapture.mockRestore();
+        }
+      }
       const handoff = await post(handoffPath, handoffBody);
       expect(handoff.status, await handoff.clone().text()).toBe(200);
       const handoffReceipt = (await handoff.json()) as {

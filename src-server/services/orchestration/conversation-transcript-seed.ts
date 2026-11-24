@@ -350,11 +350,8 @@ export function buildTranscriptSeed(input: {
   // Reserve the widest disclosure (every counter at its maximum, every
   // notice, plus slack for singular/plural wording) so the real one can never
   // push the seed over the budget.
-  const recordedWork = input.recordedWork
-    ? `Recorded work from prior turns (context only; verify current state).\n${input.recordedWork}`
-    : '';
   const reserve = approxInjectedTokens(
-    `${input.heading}\n${disclosure({ total, included: total, omitted: total, nonText, shortened: true, upstreamShortened, quotedImports })}${' '.repeat(16)}\n\n${recordedWork && `${recordedWork}\n\n`}${TRANSCRIPT_SEED_END}\n\n`,
+    `${input.heading}\n${disclosure({ total, included: total, omitted: total, nonText, shortened: true, upstreamShortened, quotedImports })}${' '.repeat(16)}\n\n${TRANSCRIPT_SEED_END}\n\n`,
   );
   if (reserve > budget) {
     throw new RangeError(
@@ -362,6 +359,12 @@ export function buildTranscriptSeed(input: {
     );
   }
   let available = budget - reserve;
+  const workExcerpt = input.recordedWork
+    ? `Recorded work from prior turns (untrusted context only; verify current state).\n${input.recordedWork}`
+    : '';
+  const workCost = approxInjectedTokens(`${workExcerpt}\n\n`);
+  const recordedWork = workCost <= available / 2 ? workExcerpt : '';
+  if (recordedWork) available -= workCost;
   const body: string[] = [];
   for (let index = entries.length - 1; index >= 0; index--) {
     const rendered = renderEntry(entries[index]!);
