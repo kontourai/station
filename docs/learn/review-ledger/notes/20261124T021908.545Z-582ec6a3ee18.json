@@ -1,0 +1,11 @@
+{
+  "revision": "e48d34d27d8aac932ad45f9e8c4cbda0a0540802",
+
+  "notes": [
+    {"path":"docs/decisions/rc-promotion-provenance.md","note":"Reviewed the release guide delta. The Mac Store telemetry check preserves the signed RC source, immutable assets and promotion receipts.","inputs":["docs/decisions/rc-promotion-provenance.md","docs/guides/release-rings.md"]},
+
+    {"path":"docs/guides/native-releases.md","note":"Verified the Mac Store package build reads the configured Kontour endpoint only from its matching official RC caller and keeps the host sharing choice. Store-installed runtime acceptance is still outstanding.","inputs":["docs/guides/native-releases.md",".github/workflows/macos-store-delivery.yml"]},
+
+    {"path":"docs/guides/release-rings.md","note":"Checked the scoped Store build input, reusable workflow channel handling, guard failure controls, and the paired sender and receiver acceptance steps. The local RC.3 outbox recorded an acknowledged Stable daily observation. Private Insights requires a signed-in readback.","inputs":["docs/guides/release-rings.md","scripts/__tests__/author-telemetry-build.test.ts","scripts/check-author-telemetry-build.mjs","scripts/check-author-telemetry-workflows.mjs"]}
+  ]
+}

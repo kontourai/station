@@ -85,7 +85,7 @@ function workflowChannels(name, jobPrefix, context) {
       undefined,
       'Channel must be scoped to a build step',
     );
-    for (const step of job.steps) {
+    for (const step of job.steps ?? []) {
       const channel = step.env?.STATION_CHANNEL;
       if (channel === undefined) continue;
       const expression = /^\$\{\{(.*)\}\}$/.exec(channel);
@@ -112,6 +112,11 @@ try {
   const desktop = workflowChannels('release.yml', 'desktop-', {
     needs: { preflight: { outputs: { channel: 'stable' } } },
   });
+  const macStore = workflowChannels(
+    'macos-store-delivery.yml',
+    'macos-testflight',
+    {},
+  );
   const portable = workflowChannels('portable-server-archives.yml', 'archive', {
     inputs: { ring: 'stable' },
   });
@@ -126,11 +131,16 @@ try {
     'Every desktop producer needs a build-scoped channel',
   );
   assert.deepEqual(
+    macStore,
+    ['stable'],
+    'The Mac App Store producer needs a build-scoped Stable channel',
+  );
+  assert.deepEqual(
     [...desktop, ...portable, packaged.channel],
     Array(6).fill('stable'),
     'Desktop and portable release candidates must stamp the Stable runtime channel',
   );
-  build({ ...candidate, STATION_CHANNEL: desktop[0] }, endpoint, 'stable');
+  build({ ...candidate, STATION_CHANNEL: macStore[0] }, endpoint, 'stable');
   build(
     { ...candidate, STATION_CHANNEL: packaged.channel },
     endpoint,
