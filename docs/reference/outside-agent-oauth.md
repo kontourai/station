@@ -52,6 +52,12 @@ bounded replay queues are local to this single transport owner. See the
 [isolated R4a receipt](../design/outside-agent-mcp-r4a-evidence.md) for executed
 faults, real-client checks and topology/release limits.
 
+The isolated layout composition can also offer `list_project_layouts`.
+It checks the grant's stable Project identity before taking the Project read
+lock, under the lock before reading layouts, and again before publication.
+The result contains layout IDs, slugs, names, types and tab counts for the
+approved Project.
+
 The isolated search composition also offers `search_conversations`. It
 admits native Sessions by stable Project and recorded owner, and restricts
 transcript ranking to those IDs. The worker verifies its SQLite read

@@ -26,7 +26,6 @@ import {
   listAutomationRules,
   listAutomationSources,
   listJobs,
-  listProjectLayouts,
   listReviewReceipts,
   listSchedulerProviders,
   migratePreIndexKnowledge,
@@ -754,18 +753,6 @@ export function registerOperationsTools(
   );
 
   registerProjectReadTools(server, projectReads);
-
-  server.tool(
-    'list_project_layouts',
-    'List layouts for a project',
-    { slug: z.string() },
-    async ({ slug }) =>
-      jsonToolResult(
-        await toOperationsEnvelope(
-          listProjectLayouts(controlApiBase(), slug, controlRequestOptions()),
-        ),
-      ),
-  );
 
   server.tool(
     'send_message',
