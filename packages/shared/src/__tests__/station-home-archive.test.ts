@@ -23,6 +23,7 @@ import {
   readStationHomeBackupManifest,
   readStationHomeRecovery,
   restoreStationHomeBackup,
+  restoreStationHomeUpdateBackup,
   STATION_HOME_BACKUP_MANIFEST,
   STATION_HOME_RECOVERY_RECORD,
   StationHomeArchiveError,
@@ -519,13 +520,17 @@ describe('StationHomeArchive', () => {
   });
 
   it.each(['home', 'update'] as const)(
-    'omits media downloads from a new %s archive at its exact entry cap',
+    'omits media downloads and live engine profiles from a new %s archive',
     (kind) => {
       const parent = root();
       const home = join(parent, 'home');
       ensureStationHomeSchemaSync(home);
       mkdirSync(join(home, 'media-tools'));
       writeFileSync(join(home, 'media-tools', 'tool'), 'local download');
+      const profile = join(home, 'engine-profiles', 'antigravity');
+      mkdirSync(profile, { recursive: true, mode: 0o700 });
+      const sessionLog = join(profile, 'conversation.db');
+      writeFileSync(sessionLog, 'provider-owned session data', { mode: 0o600 });
       const backupDir = join(parent, 'backup');
       const { manifest } =
         kind === 'home'
@@ -544,9 +549,23 @@ describe('StationHomeArchive', () => {
       ]);
       expect(manifest.directories).toEqual([]);
       expect(existsSync(join(backupDir, 'home', 'media-tools'))).toBe(false);
+      expect(existsSync(join(backupDir, 'home', 'engine-profiles'))).toBe(
+        false,
+      );
       expect(readFileSync(join(home, 'media-tools', 'tool'), 'utf8')).toBe(
         'local download',
       );
+      if (kind === 'update') {
+        writeFileSync(sessionLog, 'provider wrote after the snapshot');
+        restoreStationHomeUpdateBackup({
+          homeDir: home,
+          backupDir,
+          maxFiles: 1,
+        });
+        expect(readFileSync(sessionLog, 'utf8')).toBe(
+          'provider wrote after the snapshot',
+        );
+      }
     },
   );
 

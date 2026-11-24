@@ -1078,6 +1078,8 @@ and the scripted profile
   `<Station home>/engine-profiles/antigravity` to enable diagnostics for the
   built-in launch. Create that directory with mode `0700` and use it only
   for this Station instance. Sign in through Station with that environment.
+  Station excludes the provider-owned profile from home backups and update
+  snapshots. During update rollback the profile stays in place.
   Station checks a bounded interval in the active CLI session's SQLite log
   for a 404 or 502 when Antigravity reports the turn ended. It shows a
   fixed failure message and retains the reported token usage. If a prompt
