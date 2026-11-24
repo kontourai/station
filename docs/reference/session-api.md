@@ -1196,7 +1196,7 @@ change). Only an adapter that declares the scope may offer it:
 orchestration removes `sessionGrantAll` from any other adapter's request
 before storing it. The adapter keeps the grant itself and mints no tool
 grant with it. It answers the answered request and each later one once
-(never OpenCode's `always` or an ACP agent's allow-always; an ACP request
+(never OpenCode's `always` or an ACP engine's allow-always; an ACP request
 offering only allow-always goes to a person), after Station's own
 rejections and staged policy, and never for a request addressed to a
 person, an OpenCode configuration edit Station gives a person, or a
