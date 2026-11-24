@@ -266,12 +266,15 @@ the same `perProject` level, from silently muting turn and approval alerts.
 The in-app approval toast sends the selected decision and opens its originating
 conversation. An accepted approval action in notification history or Attention
 also opens that conversation; a runtime Activity link is converted to the chat
-dock for this decision action. Ordinary Open session links keep their original
-destination. These client actions do not add approval buttons to native push or
-change background delivery guarantees. A request answered with a form (a
-harness question) carries no decision actions in notification history or
-Attention: an Allow or Deny there names no answer and no exact request event,
-so the command route would refuse it. Its Open session link leads to the form.
+dock for this decision action. An Attention row's own Open session link is that
+dock href (`notificationSessionHref`) for a session on this Station, a failed
+one included, so the row and its alert open the same chat. A stored Activity
+link still opens the session reader in Chat. These client actions do not add
+approval buttons to native push or change background delivery guarantees. A
+request answered with a form (a harness question) carries no decision actions
+in notification history or Attention: an Allow or Deny there names no answer
+and no exact request event, so the command route would refuse it. Its Open
+session link leads to the form.
 A request whose content, or the content of a call it gates, was stored out of
 line carries only Deny there: allowing it needs the whole request loaded,
 which the conversation's card does ([event content spill](event-content-spill.md)).
