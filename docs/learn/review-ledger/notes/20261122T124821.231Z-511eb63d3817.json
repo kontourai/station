@@ -1,0 +1,7 @@
+{
+  "revision": "8536887899340a426582526113b7607cbf423a29",
+
+  "notes": [
+    {"path":"docs/guides/responsive-ui.md","note":"Slice 4.10 delta: ActionOverflowMenu gains an optional closeWhen value that closes an open menu without remounting its trigger and returns focus to the trigger. Callers that omit it are unchanged; the page's overflow-menu, focus-return and touch-target claims still hold. No prose change.","inputs":["docs/guides/responsive-ui.md","src-ui/src/components/ActionOverflowMenu.tsx"]}
+  ]
+}

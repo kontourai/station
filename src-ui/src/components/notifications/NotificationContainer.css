@@ -283,6 +283,21 @@
   color: var(--text-primary);
 }
 
+/* An approval's Deny, drawn as the card's `danger-outline` button draws it.
+   `.toast-card__action`'s transparent border would otherwise erase its edge. */
+.toast-card__action--danger-outline {
+  border-color: color-mix(in srgb, var(--k-negative) 25%, transparent);
+}
+
+/* The approval's session-grant menu takes its buttons' height, as it does
+   beside an `ActionRow` (ActionOverflowMenu.css). */
+.toast-card__actions > .action-overflow__trigger {
+  width: auto;
+  min-width: 44px;
+  height: auto;
+  align-self: stretch;
+}
+
 .toast-card__action--danger {
   /* --error is defined nowhere, so this only ever rendered its literal
      fallback. --error-fill is the theme-aware white-carrying danger fill. */

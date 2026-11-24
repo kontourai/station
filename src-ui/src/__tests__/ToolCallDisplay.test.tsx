@@ -499,7 +499,7 @@ describe('ToolCallDisplay — quiet activity row (station#2652 redesign)', () =>
     // The marker says what the status pill says (#3312).
     expect(screen.getByRole('img', { name: 'Needs approval' })).toBeTruthy();
     expect(screen.queryByText('Edited approved.txt')).toBe(null);
-    fireEvent.click(screen.getByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Allow once' }));
     expect(onApprove).toHaveBeenCalledWith('once');
   });
 });
@@ -762,7 +762,7 @@ describe('ToolCallDisplay — a pending multi-line command is shown whole (#3382
       'Why: List the txt.exe files',
     );
     fireEvent.click(
-      screen.getByRole('button', { name: 'More ways to allow this request' }),
+      screen.getByRole('button', { name: 'Allow for this session' }),
     );
     expect(
       await screen.findByRole('menuitem', {
@@ -1291,7 +1291,7 @@ describe('ToolCallDisplay — multi-line text arguments show as text', () => {
 });
 
 describe('ToolCallDisplay — a session grant the adapter would refuse is not offered', () => {
-  const MORE = 'More ways to allow this request';
+  const MORE = 'Allow for this session';
 
   test('a registry-route part (no request binding) is judged by its tool name', () => {
     pendingBash({ command: 'ls' });
@@ -1306,7 +1306,7 @@ describe('ToolCallDisplay — a session grant the adapter would refuse is not of
       { command: 'cat /outside/f' },
       { approvalThreadId: 'thread-1', approvalToolName: 'Bash' },
     );
-    expect(screen.getByRole('button', { name: 'Allow Once' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Allow once' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: MORE })).toBeNull();
   });
 });

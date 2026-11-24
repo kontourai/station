@@ -42,7 +42,7 @@
       "concern": "inbox",
       "file": "src-ui/src/components/chat-dock/useInboxPanelController.ts",
       "symbol": "useInboxPanelController",
-      "reason": "Shared activation currency, filtering and Inbox actions for both shells."
+      "reason": "Shared activation currency, filtering and Chat list actions for both shells."
     },
     {
       "concern": "failure",

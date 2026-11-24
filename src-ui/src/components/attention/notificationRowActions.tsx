@@ -1,6 +1,7 @@
 /**
  * The words this page uses for its two dismissal mechanisms, decided once
- * (archive#3779).
+ * (archive#3779). Both read "Mark done", the inbox's one verb for "I've
+ * handled this" (the dock rows say it too); the mechanisms stay distinct.
  *
  * The issue reported that a row's own Dismiss DELETES the notification while
  * the bulk action merely acknowledges — "one hides a fact and one destroys a
@@ -49,7 +50,7 @@ interface NotificationRowAction {
  * record.
  */
 export const ACKNOWLEDGE_ATTENTION_ACTION: NotificationRowAction = {
-  label: 'Dismiss',
+  label: 'Mark done',
 };
 
 /**
@@ -57,5 +58,5 @@ export const ACKNOWLEDGE_ATTENTION_ACTION: NotificationRowAction = {
  * the record is kept.
  */
 export const DISMISS_NOTIFICATION_ACTION: NotificationRowAction = {
-  label: 'Dismiss',
+  label: 'Mark done',
 };

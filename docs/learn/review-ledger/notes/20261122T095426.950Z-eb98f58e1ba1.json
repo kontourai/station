@@ -1,0 +1,7 @@
+{
+  "revision": "3e119df23ae0f56b6e15972f3a27e5bffa9a73d6",
+
+  "notes": [
+    {"path":"docs/patterns/backend.md","note":"Slice 4.10: responsive-action-surfaces.txt wording only. No backend pattern affected. No prose change.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt"]}
+  ]
+}

@@ -104,6 +104,28 @@ export function clockTime(at: number, now: number): string {
 }
 
 /**
+ * When a snooze ends, so each choice tells days apart: the local time today
+ * ("6:00 PM"), "tomorrow 9:00 AM", the short weekday within six days
+ * ("Mon 9:00 AM"), and the short date after that ("Nov 30 9:00 AM"). Days are
+ * counted on the calendar, so a daylight-saving change does not shift them.
+ */
+export function wakeTime(at: number, now: number): string {
+  const date = new Date(at);
+  const time = date.toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const day = (value: Date) =>
+    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const days = Math.round((day(date) - day(new Date(now))) / 86_400_000);
+  if (days <= 0) return time;
+  if (days === 1) return `tomorrow ${time}`;
+  if (days < 7)
+    return `${date.toLocaleDateString(undefined, { weekday: 'short' })} ${time}`;
+  return `${date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} ${time}`;
+}
+
+/**
  * A transcript row's own clock time, for the phone answer's meta row: the
  * local time ("7:36 AM") on `now`'s day, and with the short date otherwise
  * ("Oct 3, 7:36 AM"; the year too once it differs). Unlike the work

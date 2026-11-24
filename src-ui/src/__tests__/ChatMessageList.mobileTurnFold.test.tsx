@@ -443,7 +443,7 @@ describe('transcript: one work row per settled turn', () => {
     expect(approval?.getAttribute('data-approval-id')).toBe('req-1');
     fireEvent.click(within(pending).getByRole('button', { name: 'Answer' }));
     const sheet = await screen.findByRole('dialog', { name: 'Needs approval' });
-    fireEvent.click(within(sheet).getByRole('button', { name: 'Allow Once' }));
+    fireEvent.click(within(sheet).getByRole('button', { name: 'Allow once' }));
     await waitFor(() =>
       expect(answers).toEqual([
         {

@@ -1,0 +1,7 @@
+{
+  "revision": "59c24b6fcfb264f9897e1aa934a54e4d10d4eb75",
+
+  "notes": [
+    {"path":"docs/design/station-connection.md","note":"Checked against the New chat text change: the kept text lives in the dock's own overlay state, not in snapshots, outbox rows or query keys, so no Station identity or authority claim changes.","inputs":["docs/design/station-connection.md","src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]}
+  ]
+}

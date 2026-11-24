@@ -1,0 +1,7 @@
+{
+  "revision": "ff50277a6d175697884db9f351a54eacf4bf0b96",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Fix round: the composer now empties only the text of an answered command's saved draft (quotes kept, other chats' pending saves untouched), and the dock keeps New chat text per Project; no module ownership or contract described here changes.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx","src-ui/src/components/chat-dock/useChatDockOverlays.ts","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

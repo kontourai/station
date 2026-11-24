@@ -1,0 +1,7 @@
+{
+  "revision": "ff50277a6d175697884db9f351a54eacf4bf0b96",
+
+  "notes": [
+    {"path":"docs/reference/skill-experiences.md","note":"Visual skill drafts and sends unchanged; only an answered slash command's saved text is emptied, quotes kept.","inputs":["docs/reference/skill-experiences.md","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

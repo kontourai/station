@@ -1,0 +1,7 @@
+{
+  "revision": "59c24b6fcfb264f9897e1aa934a54e4d10d4eb75",
+
+  "notes": [
+    {"path":"docs/guides/self-configuring-agent.md","note":"Checked the status ladder references for Station Control project activity: sessionLadderWord never returned the removed delivery-unconfirmed word, so the listed words are unchanged.","inputs":["docs/guides/self-configuring-agent.md","packages/contracts/src/session-attention.ts"]}
+  ]
+}

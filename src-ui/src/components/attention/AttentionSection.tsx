@@ -42,6 +42,7 @@ export function AttentionSection({
   focusedApprovalId,
   focusedPairingRequestId,
   unavailableSources = [],
+  onMarkDone,
 }: {
   items: AttentionItem[];
   pendingTotal: number;
@@ -57,6 +58,8 @@ export function AttentionSection({
    * does not have.
    */
   unavailableSources?: readonly AttentionSourceUnavailable[];
+  /** The page's Mark done, held behind an Undo (see `AttentionCard`). */
+  onMarkDone?: (item: AttentionItem) => void;
 }) {
   const contextFor = useInboxContext();
   const snooze = useInboxSnooze();
@@ -102,6 +105,7 @@ export function AttentionSection({
               key={item.id}
               item={item}
               context={contextFor.forAttention(item)}
+              onMarkDone={onMarkDone}
               menuItems={
                 snooze.enabled
                   ? snoozeMenuItems(
