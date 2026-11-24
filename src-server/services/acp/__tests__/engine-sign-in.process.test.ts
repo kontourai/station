@@ -230,11 +230,11 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
       ]),
     );
     await expect(
-      service.startTerminal(cli, 'station:google-sign-in'),
+      service.startTerminal(cli, 'station:google-sign-in', true),
     ).rejects.toThrow('already signed in');
     expect(terminal.opened).toHaveLength(0);
 
-    await service.startTerminal(cli, 'station:cli-sign-out');
+    await service.startTerminal(cli, 'station:cli-sign-out', true);
     expect(terminal.opened[0].launch.args).toEqual(['logout']);
     await expect(
       service.startTerminal(kas, 'station:device-login'),
@@ -246,7 +246,7 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
       message: 'The engine did not confirm sign-out.',
     });
 
-    await service.startTerminal(cli, 'station:cli-sign-out');
+    await service.startTerminal(cli, 'station:cli-sign-out', true);
     writeFileSync(stateFile, '');
     await terminal.exit(terminal.opened[1], 0);
     expect(await settle(service, cli.id)).toMatchObject({
@@ -254,7 +254,7 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
       state: 'succeeded',
     });
 
-    await service.startTerminal(cli, 'station:google-sign-in');
+    await service.startTerminal(cli, 'station:google-sign-in', true);
     expect(terminal.opened[2].launch.args).toEqual([
       'login',
       '--social',

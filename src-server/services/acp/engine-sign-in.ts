@@ -399,10 +399,12 @@ export class EngineSignInService {
     }
   }
 
-  #cliMethods(config: ACPConnectionConfig) {
+  #cliMethods(config: ACPConnectionConfig, accountActions = true) {
     const legacy = registryAuthFor(config)?.auth.terminalLogin?.id;
     return (this.#observation(config)?.cliMethods ?? []).filter(
-      (method) => method.id === legacy || this.#accountActionsEnabled(),
+      (method) =>
+        method.id === legacy ||
+        (accountActions && this.#accountActionsEnabled()),
     );
   }
 
@@ -414,7 +416,10 @@ export class EngineSignInService {
   }
 
   /** The advertised methods Station offers, as the person sees them. */
-  methodsView(config: ACPConnectionConfig): {
+  methodsView(
+    config: ACPConnectionConfig,
+    accountActions = true,
+  ): {
     methods?: EngineSignInMethod[];
     observedAt?: string;
     error?: string;
@@ -425,12 +430,7 @@ export class EngineSignInService {
     if (!observed.methods) return { observedAt, error: observed.error };
     const auth = registryAuthFor(config)?.auth;
     const hidden = new Set(auth?.hiddenAuthMethodIds);
-    if (auth?.terminalAccount) {
-      hidden.add(auth.terminalAccount.signOut.id);
-      for (const method of auth.terminalAccount.signInMethods)
-        hidden.add(method.id);
-    }
-    const cliMethods = this.#cliMethods(config);
+    const cliMethods = this.#cliMethods(config, accountActions);
     for (const method of cliMethods) hidden.add(method.id);
     const methods: EngineSignInMethod[] = [];
     for (const method of observed.methods) {
@@ -482,15 +482,9 @@ export class EngineSignInService {
     const cliMethod = this.#cliMethods(config).find(
       (candidate) => candidate.id === methodId,
     );
-    const account = auth?.terminalAccount;
-    const reserved =
-      account?.signOut.id === methodId ||
-      account?.signInMethods.some((candidate) => candidate.id === methodId);
     const method =
       cliMethod ??
-      (reserved
-        ? undefined
-        : observed.methods.find((candidate) => candidate?.id === methodId));
+      observed.methods.find((candidate) => candidate?.id === methodId);
     if (!method || hidden.includes(methodId))
       throw new EngineSignInError(
         'The engine does not offer that sign-in.',
@@ -609,6 +603,7 @@ export class EngineSignInService {
   async startTerminal(
     config: ACPConnectionConfig,
     methodId: string,
+    accountActions = false,
   ): Promise<EngineSignInAttempt> {
     const terminal = this.#terminal;
     if (!terminal)
@@ -623,25 +618,29 @@ export class EngineSignInService {
       (candidate) => candidate === method,
     );
     const signOut = reviewedMethod?.operation === 'sign-out';
-    if (reviewedMethod) {
-      const before = await engineSignInStatus(config, {
-        refresh: true,
-        commandOnly: true,
-      });
-      if (!signOut && before.state === 'authenticated')
-        throw new EngineSignInError(
-          'This engine is already signed in. Sign out before switching accounts.',
-          409,
-        );
-      const required = signOut ? 'authenticated' : 'unauthenticated';
-      if (before.state !== required)
-        throw new EngineSignInError(
-          signOut
-            ? 'Station could not verify an active sign-in.'
-            : 'Station could not verify that this engine is signed out.',
-          409,
-        );
-    }
+    const accountAction =
+      reviewedMethod !== undefined &&
+      reviewedMethod.id !== registryAuthFor(config)?.auth.terminalLogin?.id;
+    if (accountAction && !accountActions)
+      throw new EngineSignInError('Account actions are unavailable.', 404);
+    const before = reviewedMethod
+      ? await engineSignInStatus(config, { refresh: true, commandOnly: true })
+      : undefined;
+    if (!signOut && before?.state === 'authenticated')
+      throw new EngineSignInError(
+        'This engine is already signed in. Sign out before switching accounts.',
+        409,
+      );
+    if (
+      accountAction &&
+      before?.state !== (signOut ? 'authenticated' : 'unauthenticated')
+    )
+      throw new EngineSignInError(
+        signOut
+          ? 'Station could not verify an active sign-in.'
+          : 'Station could not verify that this engine is signed out.',
+        409,
+      );
     this.#requireCurrent(config, generation);
     if (!isTerminalMethod(method))
       throw new EngineSignInError('That sign-in does not run in a terminal.');
@@ -761,9 +760,12 @@ export class EngineSignInService {
               commandOnly: true,
             });
             const expected = signOut ? 'unauthenticated' : 'authenticated';
+            const verified =
+              status.state === expected &&
+              (signOut || before?.state === 'unauthenticated');
             live.finish(
-              status.state === expected ? 'succeeded' : 'failed',
-              status.state === expected
+              verified ? 'succeeded' : 'failed',
+              verified
                 ? undefined
                 : signOut
                   ? 'The engine did not confirm sign-out.'

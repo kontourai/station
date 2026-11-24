@@ -243,11 +243,10 @@ async function viewFor(
   const configured = new Set(
     engineCredentials()?.configuredNames(config.id, names) ?? [],
   );
-  const methods = service.methodsView(config);
-  const offeredMethods =
-    c.req.query('accountActions') === '1'
-      ? methods.methods
-      : methods.methods?.filter((method) => method.operation !== 'sign-out');
+  const methods = service.methodsView(
+    config,
+    c.req.query('accountActions') === '1',
+  );
   const termsNotice = service.engineTermsNotice(config);
   const signIn = maySignInEngines(c);
   const hostAuth = hostAuthView(c, config);
@@ -256,7 +255,7 @@ async function viewFor(
     engineName: config.name,
     status: await engineSignInStatus(config, { refresh }),
     ...(auth?.signInHint ? { signInHint: auth.signInHint } : {}),
-    ...(offeredMethods ? { methods: offeredMethods } : {}),
+    ...(methods.methods ? { methods: methods.methods } : {}),
     ...(methods.observedAt ? { methodsObservedAt: methods.observedAt } : {}),
     ...(methods.error ? { methodsError: methods.error } : {}),
     credentials: names.map((name) => ({
@@ -395,7 +394,11 @@ export function createACPSignInRoutes(input: {
         if (!mayRunTerminalSignIn(c)) return c.json(TERMINAL_NOT_GRANTED, 403);
         return c.json({
           success: true,
-          data: await service.startTerminal(config, methodId),
+          data: await service.startTerminal(
+            config,
+            methodId,
+            c.req.query('accountActions') === '1',
+          ),
         });
       }
       return c.json({
@@ -411,6 +414,8 @@ export function createACPSignInRoutes(input: {
     if (!maySignInEngines(c)) return c.json(SIGN_IN_NOT_GRANTED, 403);
     const config = await connection(c);
     if (!config) return notFound(c);
+    const refused = managedRefusal(config);
+    if (refused) return c.json(managedEngineRefusalBody(refused), 403);
     const attempt =
       c.req.query('accountActions') === '1' && mayRunTerminalSignIn(c)
         ? await service.attemptWithTerminalLinks(config)
