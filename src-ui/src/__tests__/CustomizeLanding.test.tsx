@@ -98,7 +98,7 @@ if (chromiumRequired() && !chromiumAvailable)
 describe.skipIf(!chromiumAvailable)(
   'the Apps link on a phone, in a real engine',
   () => {
-    test('is at least 44px tall', async () => {
+    test('is at least 44px tall and 44px wide', async () => {
       const css = ['../index.css', '../views/customize/customize.css']
         .map((path) => resolveCssImports(resolve(import.meta.dirname, path)))
         .join('\n');
@@ -113,12 +113,15 @@ describe.skipIf(!chromiumAvailable)(
         });
         const page = await context.newPage();
         await page.setContent(`<style>${css}</style>${markup}`);
-        const height = await page.evaluate(() => {
+        const target = await page.evaluate(() => {
           const link = document.querySelector('a[href="/apps"]');
           if (!link) throw new Error('the Apps link did not render');
-          return link.getBoundingClientRect().height;
+          const box = link.getBoundingClientRect();
+          return { height: box.height, width: box.width };
         });
-        expect(height).toBeGreaterThanOrEqual(44);
+        expect(target.height).toBeGreaterThanOrEqual(44);
+        // A one-word link is narrower than the floor unless it is given one.
+        expect(target.width).toBeGreaterThanOrEqual(44);
       } finally {
         await browser.close();
       }
