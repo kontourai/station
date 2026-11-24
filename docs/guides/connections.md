@@ -1236,6 +1236,17 @@ Both kiro-cli engines read their status from `kiro-cli whoami`, since it is
 the one login they share, and run with `KIRO_CLI_CLIENT_APPLICATION=station`.
 A saved `kiro` connection keeps its own arguments.
 
+With **Engine account management** enabled in Feature Previews, a supported
+Kiro CLI connection offers **Sign out**. This clears the shared CLI login for
+Kiro CLI and Kiro (KAS) on the Station host. Station checks the engine's status
+after the command before it reports sign-out. Then choose **Sign in with
+Google** if the installed CLI offers social device sign-in. Open the link shown
+by Kiro and complete authorization there. Station shows the HTTPS link beside
+the terminal when it can read one. The panel keeps the
+attempt's result visible after the terminal closes. An engine status check
+confirms a sign-in. A fresh chat verifies the connection can answer.
+
+
 **Kiro (KAS, no CLI)** needs neither kiro-cli nor a login on the computer:
 
 1. **Install.** Its Sign-in panel has **Install**, which says what is

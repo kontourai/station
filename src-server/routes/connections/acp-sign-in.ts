@@ -244,6 +244,10 @@ async function viewFor(
     engineCredentials()?.configuredNames(config.id, names) ?? [],
   );
   const methods = service.methodsView(config);
+  const offeredMethods =
+    c.req.query('accountActions') === '1'
+      ? methods.methods
+      : methods.methods?.filter((method) => method.operation !== 'sign-out');
   const termsNotice = service.engineTermsNotice(config);
   const signIn = maySignInEngines(c);
   const hostAuth = hostAuthView(c, config);
@@ -252,7 +256,7 @@ async function viewFor(
     engineName: config.name,
     status: await engineSignInStatus(config, { refresh }),
     ...(auth?.signInHint ? { signInHint: auth.signInHint } : {}),
-    ...(methods.methods ? { methods: methods.methods } : {}),
+    ...(offeredMethods ? { methods: offeredMethods } : {}),
     ...(methods.observedAt ? { methodsObservedAt: methods.observedAt } : {}),
     ...(methods.error ? { methodsError: methods.error } : {}),
     credentials: names.map((name) => ({
@@ -376,6 +380,14 @@ export function createACPSignInRoutes(input: {
     const method = service
       .methodsView(config)
       .methods?.find((candidate) => candidate.id === methodId);
+    if (
+      method?.operation === 'sign-out' &&
+      c.req.query('accountActions') !== '1'
+    )
+      return c.json(
+        { success: false, error: 'Account actions are unavailable.' },
+        404,
+      );
     try {
       // Kind is decided again from the live handshake inside the service;
       // this read only picks which gate applies before anything runs.
@@ -399,13 +411,32 @@ export function createACPSignInRoutes(input: {
     if (!maySignInEngines(c)) return c.json(SIGN_IN_NOT_GRANTED, 403);
     const config = await connection(c);
     if (!config) return notFound(c);
-    return c.json({ success: true, data: service.attempt(config.id) });
+    const attempt =
+      c.req.query('accountActions') === '1' && mayRunTerminalSignIn(c)
+        ? await service.attemptWithTerminalLinks(config)
+        : service.attempt(config.id);
+    return c.json({
+      success: true,
+      data:
+        attempt?.operation === 'sign-out' &&
+        c.req.query('accountActions') !== '1'
+          ? null
+          : attempt,
+    });
   });
 
   app.delete('/connections/:id/sign-in/attempt', async (c) => {
     if (!maySignInEngines(c)) return c.json(SIGN_IN_NOT_GRANTED, 403);
     const config = await connection(c);
     if (!config) return notFound(c);
+    if (service.attempt(config.id)?.operation === 'sign-out') {
+      if (c.req.query('accountActions') !== '1')
+        return c.json(
+          { success: false, error: 'Account actions are unavailable.' },
+          404,
+        );
+      if (!mayRunTerminalSignIn(c)) return c.json(TERMINAL_NOT_GRANTED, 403);
+    }
     service.cancel(config.id);
     return c.json({ success: true, data: service.attempt(config.id) });
   });

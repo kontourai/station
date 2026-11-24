@@ -56,6 +56,7 @@ export interface EngineSignInMethod {
   name: string;
   description?: string;
   kind: EngineSignInMethodKind;
+  operation?: 'sign-out';
   /** Set when the provider's terms may restrict this route in other tools. */
   termsNotice?: EngineSubscriptionTermsNotice;
 }
@@ -83,6 +84,7 @@ export interface EngineSignInAttempt {
   id: string;
   methodId: string;
   kind: EngineSignInMethodKind;
+  operation?: 'sign-out';
   state: EngineSignInAttemptState;
   startedAt: string;
   /**

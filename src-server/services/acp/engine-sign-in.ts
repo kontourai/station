@@ -18,6 +18,7 @@
 import { randomUUID } from 'node:crypto';
 import { homedir } from 'node:os';
 import { basename } from 'node:path';
+import { stripVTControlCharacters } from 'node:util';
 import type {
   AuthMethod,
   AuthMethodTerminal,
@@ -48,6 +49,7 @@ import { antigravityOutcomeProfile } from './antigravity-prompt-outcome.js';
 import {
   engineSignInStatus,
   forgetEngineAuthStatus,
+  forgetSharedEngineAccountStatus,
   invalidateEngineStatus,
   recordEngineAuthenticated,
 } from './engine-auth-status.js';
@@ -100,10 +102,13 @@ export interface SignInTerminalHost {
     exited: Promise<{ exitCode: number | null }>;
   }>;
   close(terminalId: string): Promise<void>;
+  readSignInOutput?(terminalId: string): Promise<string>;
 }
 
 interface MethodsObservation {
-  cliLogin?: AuthMethodTerminal & { type: 'terminal' };
+  cliMethods?: Array<
+    AuthMethodTerminal & { type: 'terminal'; operation?: 'sign-out' }
+  >;
   key: string;
   at: number;
   methods?: AuthMethod[];
@@ -113,6 +118,7 @@ interface MethodsObservation {
 interface LiveAttempt {
   view: EngineSignInAttempt;
   connectionId: string;
+  accountScope?: string;
   finish: (
     state: Exclude<EngineSignInAttempt['state'], 'running'>,
     message?: string,
@@ -203,6 +209,7 @@ export class EngineSignInService {
   readonly #terminal: SignInTerminalHost | null;
   readonly #processFactory: ProcessFactory;
   readonly #now: () => number;
+  readonly #accountActionsEnabled: () => boolean;
   readonly #timeouts: {
     handshake: number;
     agent: number;
@@ -212,10 +219,13 @@ export class EngineSignInService {
   constructor(options: {
     terminal: SignInTerminalHost | null;
     processFactory?: ProcessFactory;
+    accountActionsEnabled?: () => boolean;
     now?: () => number;
     timeouts?: Partial<{ handshake: number; agent: number; terminal: number }>;
   }) {
     this.#terminal = options.terminal;
+    this.#accountActionsEnabled =
+      options.accountActionsEnabled ?? (() => false);
     this.#processFactory =
       options.processFactory ?? ((opts) => new ACPProcess(opts));
     this.#now = options.now ?? Date.now;
@@ -332,37 +342,68 @@ export class EngineSignInService {
     } finally {
       await process.destroy().catch(() => undefined);
     }
-    const binding = registryAuthFor(config)?.auth.terminalLogin;
-    if (binding) {
-      const help = await runCliCommand(
-        config.command,
-        binding.helpArgs,
-        undefined,
-        registryLaunchEnvFor(config),
-        { timeoutMs: 8_000, maxBuffer: 64 * 1024 },
-      );
-      this.#requireCurrent(config, generation);
-      if (
-        help?.code === 0 &&
-        !help.timedOut &&
-        !help.outputTruncated &&
-        `${help.stdout}\n${help.stderr}`.includes(binding.requiredHelpText)
-      ) {
-        const observed = this.#methods.get(config.id);
-        this.#methods.set(config.id, {
-          ...observed,
+    const auth = registryAuthFor(config)?.auth;
+    const account = this.#accountActionsEnabled()
+      ? auth?.terminalAccount
+      : undefined;
+    const choices = [
+      ...(auth?.terminalLogin ? [auth.terminalLogin] : []),
+      ...(account?.signInMethods ?? []),
+      ...(account ? [account.signOut] : []),
+    ];
+    const helpByArgs = new Map<string, string>();
+    const cliMethods: NonNullable<MethodsObservation['cliMethods']> = [];
+    for (const binding of choices) {
+      const key = JSON.stringify(binding.helpArgs);
+      if (!helpByArgs.has(key)) {
+        const help = await runCliCommand(
+          config.command,
+          binding.helpArgs,
+          undefined,
+          registryLaunchEnvFor(config),
+          { timeoutMs: 8_000, maxBuffer: 64 * 1024 },
+        );
+        this.#requireCurrent(config, generation);
+        helpByArgs.set(
           key,
-          at: this.#now(),
-          methods: observed?.methods ?? [],
-          cliLogin: {
-            id: binding.id,
-            name: binding.name,
-            type: 'terminal',
-            args: [...binding.args],
-          },
+          help?.code === 0 && !help.timedOut && !help.outputTruncated
+            ? `${help.stdout}\n${help.stderr}`
+            : '',
+        );
+      }
+      const help = helpByArgs.get(key);
+      if (
+        help?.includes(binding.requiredHelpText) &&
+        binding.args.every((arg) => !arg.startsWith('--') || help.includes(arg))
+      ) {
+        cliMethods.push({
+          id: binding.id,
+          name: binding.name,
+          type: 'terminal',
+          args: [...binding.args],
+          ...(binding === account?.signOut
+            ? { operation: 'sign-out' as const }
+            : {}),
         });
       }
     }
+    if (cliMethods.length > 0) {
+      const observed = this.#methods.get(config.id);
+      this.#methods.set(config.id, {
+        ...observed,
+        key,
+        at: this.#now(),
+        methods: observed?.methods ?? [],
+        cliMethods,
+      });
+    }
+  }
+
+  #cliMethods(config: ACPConnectionConfig) {
+    const legacy = registryAuthFor(config)?.auth.terminalLogin?.id;
+    return (this.#observation(config)?.cliMethods ?? []).filter(
+      (method) => method.id === legacy || this.#accountActionsEnabled(),
+    );
   }
 
   #observation(config: ACPConnectionConfig): MethodsObservation | undefined {
@@ -382,8 +423,15 @@ export class EngineSignInService {
     if (!observed) return {};
     const observedAt = new Date(observed.at).toISOString();
     if (!observed.methods) return { observedAt, error: observed.error };
-    const hidden = new Set(registryAuthFor(config)?.auth.hiddenAuthMethodIds);
-    if (observed.cliLogin) hidden.add(observed.cliLogin.id);
+    const auth = registryAuthFor(config)?.auth;
+    const hidden = new Set(auth?.hiddenAuthMethodIds);
+    if (auth?.terminalAccount) {
+      hidden.add(auth.terminalAccount.signOut.id);
+      for (const method of auth.terminalAccount.signInMethods)
+        hidden.add(method.id);
+    }
+    const cliMethods = this.#cliMethods(config);
+    for (const method of cliMethods) hidden.add(method.id);
     const methods: EngineSignInMethod[] = [];
     for (const method of observed.methods) {
       const id = boundedText(method?.id, 256);
@@ -400,12 +448,14 @@ export class EngineSignInService {
       });
       if (methods.length >= 32) break;
     }
-    if (observed.cliLogin)
-      methods.unshift({
-        id: observed.cliLogin.id,
-        name: observed.cliLogin.name,
-        kind: 'terminal',
-      });
+    methods.unshift(
+      ...cliMethods.map(({ id, name, operation }) => ({
+        id,
+        name,
+        kind: 'terminal' as const,
+        ...(operation ? { operation } : {}),
+      })),
+    );
     return { methods, observedAt };
   }
 
@@ -427,11 +477,20 @@ export class EngineSignInService {
         observed?.error ?? 'The engine did not answer.',
         502,
       );
-    const hidden = registryAuthFor(config)?.auth.hiddenAuthMethodIds ?? [];
+    const auth = registryAuthFor(config)?.auth;
+    const hidden = auth?.hiddenAuthMethodIds ?? [];
+    const cliMethod = this.#cliMethods(config).find(
+      (candidate) => candidate.id === methodId,
+    );
+    const account = auth?.terminalAccount;
+    const reserved =
+      account?.signOut.id === methodId ||
+      account?.signInMethods.some((candidate) => candidate.id === methodId);
     const method =
-      observed.cliLogin?.id === methodId
-        ? observed.cliLogin
-        : observed.methods.find((candidate) => candidate?.id === methodId);
+      cliMethod ??
+      (reserved
+        ? undefined
+        : observed.methods.find((candidate) => candidate?.id === methodId));
     if (!method || hidden.includes(methodId))
       throw new EngineSignInError(
         'The engine does not offer that sign-in.',
@@ -456,14 +515,46 @@ export class EngineSignInService {
     };
   }
 
+  async attemptWithTerminalLinks(
+    config: ACPConnectionConfig,
+  ): Promise<EngineSignInAttempt | null> {
+    const attempt = this.attempt(config.id);
+    if (
+      !attempt?.terminal ||
+      attempt.state !== 'running' ||
+      !this.#terminal?.readSignInOutput ||
+      !this.#cliMethods(config).some(
+        (method) =>
+          method.id === attempt.methodId && method.operation !== 'sign-out',
+      )
+    )
+      return attempt;
+    const output = await this.#terminal
+      .readSignInOutput(attempt.terminal.terminalId)
+      .catch(() => '');
+    const current = this.attempt(config.id);
+    if (current?.id !== attempt.id || current.state !== 'running')
+      return current;
+    const links = linksIn(stripVTControlCharacters(output)).slice(0, MAX_LINKS);
+    return links.length ? { ...current, links } : current;
+  }
+
   cancel(connectionId: string): void {
     this.#generations.delete(connectionId);
     const live = this.#attempts.get(connectionId);
     if (live?.view.state === 'running') live.cancel();
   }
 
-  #claim(connectionId: string): void {
-    if (this.#attempts.get(connectionId)?.view.state === 'running')
+  #claim(config: ACPConnectionConfig): void {
+    const scope = registryAuthFor(config)?.auth.terminalAccount?.scope;
+    if (
+      [...this.#attempts.values()].some(
+        (attempt) =>
+          attempt.view.state === 'running' &&
+          (attempt.connectionId === config.id ||
+            (scope !== undefined && attempt.accountScope === scope)),
+      )
+    )
       throw new EngineSignInError(
         'A sign-in for this engine is already running.',
         409,
@@ -488,6 +579,7 @@ export class EngineSignInService {
     const live: LiveAttempt = {
       view,
       connectionId: config.id,
+      accountScope: registryAuthFor(config)?.auth.terminalAccount?.scope,
       cancel,
       finish: (state, message) => {
         if (live.view.state !== 'running') return;
@@ -498,7 +590,13 @@ export class EngineSignInService {
           state = 'cancelled';
         live.view = { ...live.view, state, ...(message ? { message } : {}) };
         live.finishedAt = this.#now();
-        if (state === 'succeeded') recordEngineAuthenticated(config);
+        if (
+          view.operation === 'sign-out' ||
+          (state === 'succeeded' && live.accountScope)
+        )
+          forgetSharedEngineAccountStatus(config.id);
+        if (state === 'succeeded' && view.operation !== 'sign-out')
+          recordEngineAuthenticated(config);
         else invalidateEngineStatus(config.id);
         onFinish();
       },
@@ -519,9 +617,31 @@ export class EngineSignInService {
         503,
       );
     const generation = this.#generation(config);
-    this.#claim(config.id);
+    this.#claim(config);
     const method = await this.#liveMethod(config, methodId);
-    const reviewedCliLogin = method === this.#observation(config)?.cliLogin;
+    const reviewedMethod = this.#cliMethods(config).find(
+      (candidate) => candidate === method,
+    );
+    const signOut = reviewedMethod?.operation === 'sign-out';
+    if (reviewedMethod) {
+      const before = await engineSignInStatus(config, {
+        refresh: true,
+        commandOnly: true,
+      });
+      if (!signOut && before.state === 'authenticated')
+        throw new EngineSignInError(
+          'This engine is already signed in. Sign out before switching accounts.',
+          409,
+        );
+      const required = signOut ? 'authenticated' : 'unauthenticated';
+      if (before.state !== required)
+        throw new EngineSignInError(
+          signOut
+            ? 'Station could not verify an active sign-in.'
+            : 'Station could not verify that this engine is signed out.',
+          409,
+        );
+    }
     this.#requireCurrent(config, generation);
     if (!isTerminalMethod(method))
       throw new EngineSignInError('That sign-in does not run in a terminal.');
@@ -547,9 +667,14 @@ export class EngineSignInService {
       );
     const path = await resolveAugmentedPath();
     this.#requireCurrent(config, generation);
+    if (reviewedMethod && !this.#cliMethods(config).includes(reviewedMethod))
+      throw new EngineSignInError(
+        'This account action is no longer available.',
+        409,
+      );
     // Recheck: the steps above awaited, and another request may have
     // started a sign-in meanwhile.
-    this.#claim(config.id);
+    this.#claim(config);
 
     const env: Record<string, string> = {
       PATH: path,
@@ -561,7 +686,7 @@ export class EngineSignInService {
     const methodEnv = sanitizeConnectionEnvMap(method.env);
     let profile: ReturnType<typeof antigravityOutcomeProfile>;
     if (
-      !reviewedCliLogin &&
+      !reviewedMethod &&
       basename(program) === 'agy' &&
       extra.length === 1 &&
       extra[0] === '--login'
@@ -591,6 +716,7 @@ export class EngineSignInService {
       id: randomUUID(),
       methodId,
       kind: 'terminal',
+      ...(signOut ? { operation: 'sign-out' as const } : {}),
       state: 'running',
       startedAt: new Date(this.#now()).toISOString(),
     };
@@ -618,7 +744,7 @@ export class EngineSignInService {
         rows: 30,
         launch: {
           file: program,
-          args: reviewedCliLogin
+          args: reviewedMethod
             ? extra
             : [...configuredArgs, ...(profile?.args ?? []), ...extra],
           env: { ...env, ...methodEnv },
@@ -628,16 +754,20 @@ export class EngineSignInService {
       void opened.exited
         .then(async ({ exitCode }) => {
           if (live.view.state !== 'running') return;
-          if (exitCode === 0 && reviewedCliLogin) {
+          if (exitCode === 0 && reviewedMethod) {
+            invalidateEngineStatus(config.id);
             const status = await engineSignInStatus(config, {
               refresh: true,
               commandOnly: true,
             });
+            const expected = signOut ? 'unauthenticated' : 'authenticated';
             live.finish(
-              status.state === 'authenticated' ? 'succeeded' : 'failed',
-              status.state === 'authenticated'
+              status.state === expected ? 'succeeded' : 'failed',
+              status.state === expected
                 ? undefined
-                : 'The engine has not confirmed sign-in. Check its sign-in status before trying again.',
+                : signOut
+                  ? 'The engine did not confirm sign-out.'
+                  : 'The engine did not confirm sign-in.',
             );
             return;
           }
@@ -645,7 +775,7 @@ export class EngineSignInService {
             exitCode === 0 ? 'succeeded' : 'failed',
             exitCode === 0
               ? undefined
-              : `The sign-in ended with exit code ${exitCode ?? 'unknown'}.`,
+              : `The ${signOut ? 'sign-out' : 'sign-in'} ended with exit code ${exitCode ?? 'unknown'}.`,
           );
         })
         .catch(() =>
@@ -684,12 +814,12 @@ export class EngineSignInService {
     methodId: string,
   ): Promise<EngineSignInAttempt> {
     const generation = this.#generation(config);
-    this.#claim(config.id);
+    this.#claim(config);
     const method = await this.#liveMethod(config, methodId);
     this.#requireCurrent(config, generation);
     if (isTerminalMethod(method))
       throw new EngineSignInError('That sign-in runs in a terminal.');
-    this.#claim(config.id);
+    this.#claim(config);
 
     let scanned = 0;
     const view: EngineSignInAttempt = {

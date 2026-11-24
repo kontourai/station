@@ -152,6 +152,7 @@ const signInViewSchema = z
             name: z.string(),
             description: z.string().optional(),
             kind,
+            operation: z.literal('sign-out').optional(),
             termsNotice: termsNotice.optional(),
           })
           .strict(),
@@ -172,6 +173,7 @@ const attemptSchema = z
     id: z.string(),
     methodId: z.string(),
     kind,
+    operation: z.literal('sign-out').optional(),
     state: z.enum(['running', 'succeeded', 'failed', 'cancelled', 'timed-out']),
     startedAt: z.string(),
     terminal: z
@@ -242,10 +244,13 @@ export function useEngineSignInQuery(
     queryFn: async ({ signal }) =>
       signInViewSchema.parse(
         await readBody(
-          await getJson(`${base(scope, connectionId)}/sign-in`, {
-            requestScope: scope,
-            signal,
-          }),
+          await getJson(
+            `${base(scope, connectionId)}/sign-in?accountActions=1`,
+            {
+              requestScope: scope,
+              signal,
+            },
+          ),
         ),
       ) as EngineSignInView,
     enabled,
@@ -272,7 +277,7 @@ export function useEngineSignInCheckMutation(
       signInViewSchema.parse(
         await readBody(
           await mutateJson(
-            `${base(scope, connectionId)}/sign-in/check`,
+            `${base(scope, connectionId)}/sign-in/check?accountActions=1`,
             'POST',
             { requestScope: scope },
             {},
@@ -294,10 +299,13 @@ export function useEngineSignInAttemptQuery(
     queryKey: attemptKey(scope, connectionId),
     queryFn: async ({ signal }) => {
       const data = await readBody(
-        await getJson(`${base(scope, connectionId)}/sign-in/attempt`, {
-          requestScope: scope,
-          signal,
-        }),
+        await getJson(
+          `${base(scope, connectionId)}/sign-in/attempt?accountActions=1`,
+          {
+            requestScope: scope,
+            signal,
+          },
+        ),
       );
       return data === null ? null : attemptSchema.parse(data);
     },
@@ -321,7 +329,7 @@ export function useEngineSignInMutation(
     ) => {
       const data = await readBody(
         await mutateJson(
-          `${base(scope, connectionId)}/sign-in/${action.kind === 'start' ? 'start' : 'attempt'}`,
+          `${base(scope, connectionId)}/sign-in/${action.kind === 'start' ? 'start' : 'attempt'}?accountActions=1`,
           action.kind === 'start' ? 'POST' : 'DELETE',
           { requestScope: scope },
           action.kind === 'start' ? { methodId: action.methodId } : undefined,
@@ -347,7 +355,7 @@ export function useEngineCredentialMutation(
       signInViewSchema.parse(
         await readBody(
           await mutateJson(
-            `${base(scope, connectionId)}/credentials/${encodeURIComponent(input.name)}`,
+            `${base(scope, connectionId)}/credentials/${encodeURIComponent(input.name)}?accountActions=1`,
             input.value === null ? 'DELETE' : 'PUT',
             { requestScope: scope },
             input.value === null ? undefined : { value: input.value },

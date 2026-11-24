@@ -53,6 +53,25 @@ const KIRO_CLI_AUTH: BuiltinEngine['auth'] = {
   // Amazon Q CLI it grew from (crates/chat-cli/src/cli/user.rs). Other
   // output (a login kind that code does not print) stays unknown.
   statusCommand: ['kiro-cli', 'whoami'],
+  terminalAccount: {
+    scope: 'kiro-cli',
+    signOut: {
+      id: 'station:cli-sign-out',
+      name: 'Sign out',
+      args: ['logout'],
+      helpArgs: ['logout', '--help'],
+      requiredHelpText: 'Log out of Kiro',
+    },
+    signInMethods: [
+      {
+        id: 'station:google-sign-in',
+        name: 'Sign in with Google',
+        args: ['login', '--social', 'google', '--use-device-flow'],
+        helpArgs: ['login', '--help'],
+        requiredHelpText: '--social',
+      },
+    ],
+  },
   terminalLogin: {
     id: 'station:device-login',
     name: 'Sign in from this device',

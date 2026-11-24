@@ -186,6 +186,93 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
     await service.dispose();
   });
 
+  test('switches a shared CLI account only after confirmed sign-out', async () => {
+    const kiro = engineProgram('kiro-cli', 'factory-droid.json');
+    const original = readFileSync(kiro.command, 'utf8');
+    const stateFile = join(kiro.command, '..', 'account-state');
+    writeFileSync(stateFile, 'Builder ID');
+    writeFileSync(
+      kiro.command,
+      `#!/bin/sh\nif [ "$1" = login ] && [ "$2" = --help ]; then printf '%s\\n' --use-device-flow --social; exit 0; fi\nif [ "$1" = logout ] && [ "$2" = --help ]; then echo 'Log out of Kiro'; exit 0; fi\nif [ "$1" = whoami ]; then account=$(cat '${stateFile}'); if [ -n "$account" ]; then echo "Logged in with $account"; else echo 'Not logged in'; fi; exit 0; fi\n${original.slice(original.indexOf('\n') + 1)}`,
+    );
+    const terminal = recordingTerminal();
+    let allowed = false;
+    const service = new EngineSignInService({
+      terminal: {
+        ...terminal.host,
+        readSignInOutput: async () =>
+          '\x1b[32mhttps://example.test/verify\x1b[0m\nEnter your code.',
+      },
+      accountActionsEnabled: () => allowed,
+    });
+    const cli = connection('kiro-cli', kiro.command);
+    const kas = connection('kiro-kas', kiro.command);
+    await service.refreshMethods(cli);
+    expect(
+      service.methodsView(cli).methods?.map((method) => method.id),
+    ).not.toContain('station:cli-sign-out');
+    await expect(
+      service.startTerminal(cli, 'station:device-login'),
+    ).rejects.toThrow('already signed in');
+
+    allowed = true;
+    await service.refreshMethods(cli);
+    expect(service.methodsView(cli).methods).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'station:cli-sign-out',
+          operation: 'sign-out',
+        }),
+        expect.objectContaining({
+          id: 'station:google-sign-in',
+          name: 'Sign in with Google',
+        }),
+      ]),
+    );
+    await expect(
+      service.startTerminal(cli, 'station:google-sign-in'),
+    ).rejects.toThrow('already signed in');
+    expect(terminal.opened).toHaveLength(0);
+
+    await service.startTerminal(cli, 'station:cli-sign-out');
+    expect(terminal.opened[0].launch.args).toEqual(['logout']);
+    await expect(
+      service.startTerminal(kas, 'station:device-login'),
+    ).rejects.toThrow('already running');
+    await terminal.exit(terminal.opened[0], 0);
+    expect(await settle(service, cli.id)).toMatchObject({
+      operation: 'sign-out',
+      state: 'failed',
+      message: 'The engine did not confirm sign-out.',
+    });
+
+    await service.startTerminal(cli, 'station:cli-sign-out');
+    writeFileSync(stateFile, '');
+    await terminal.exit(terminal.opened[1], 0);
+    expect(await settle(service, cli.id)).toMatchObject({
+      operation: 'sign-out',
+      state: 'succeeded',
+    });
+
+    await service.startTerminal(cli, 'station:google-sign-in');
+    expect(terminal.opened[2].launch.args).toEqual([
+      'login',
+      '--social',
+      'google',
+      '--use-device-flow',
+    ]);
+    expect(await service.attemptWithTerminalLinks(cli)).toMatchObject({
+      links: ['https://example.test/verify'],
+    });
+    writeFileSync(stateFile, 'Google');
+    await terminal.exit(terminal.opened[2], 0);
+    expect(await settle(service, cli.id)).toMatchObject({ state: 'succeeded' });
+    expect(
+      (await service.attemptWithTerminalLinks(cli))?.links,
+    ).toBeUndefined();
+    await service.dispose();
+  });
+
   test('the handshake offers terminal sign-in and lists methods minus hidden ones', async () => {
     const droid = engineProgram('droid', 'factory-droid.json');
     const service = new EngineSignInService({ terminal: null });

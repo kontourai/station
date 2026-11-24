@@ -295,15 +295,23 @@ export function compareEngineVersions(a: string, b: string): number {
   return 0;
 }
 
+interface ReviewedTerminalAuthMethod {
+  id: string;
+  name: string;
+  args: string[];
+  helpArgs: string[];
+  requiredHelpText: string;
+}
+
 export interface ACPEngineAuthDescriptor {
-  /** Reviewed built-in CLI login, offered only after its help advertises the required flag. */
-  terminalLogin?: {
-    id: string;
-    name: string;
-    args: string[];
-    helpArgs: string[];
-    requiredHelpText: string;
+  /** Reviewed actions for a login shared by connections on this host. */
+  terminalAccount?: {
+    scope: string;
+    signOut: ReviewedTerminalAuthMethod;
+    signInMethods: ReviewedTerminalAuthMethod[];
   };
+  /** Reviewed built-in CLI login, offered only after its help advertises the required flag. */
+  terminalLogin?: ReviewedTerminalAuthMethod;
   /**
    * A non-interactive command (argv, no shell) documented to report sign-in
    * status. Run only from built-in entries, and only together with
@@ -703,24 +711,37 @@ export function validateACPEngineDescriptor(
       errors.push('auth must be an object');
     } else {
       const auth = entry.auth;
-      if (auth.terminalLogin !== undefined) {
-        const login = auth.terminalLogin;
+      if (auth.terminalLogin !== undefined)
+        validateReviewedTerminalAuthMethod(
+          auth.terminalLogin,
+          'auth.terminalLogin',
+          errors,
+        );
+      if (auth.terminalAccount !== undefined) {
+        const account = auth.terminalAccount;
         if (
-          !isObjectRecord(login) ||
-          !isBoundedText(login.id) ||
-          !isBoundedText(login.name) ||
-          !isBoundedText(login.requiredHelpText)
-        )
+          !isObjectRecord(account) ||
+          !isBoundedText(account.scope) ||
+          !Array.isArray(account.signInMethods) ||
+          account.signInMethods.length > 8 ||
+          !auth.statusCommand ||
+          !auth.statusRule
+        ) {
           errors.push(
-            'auth.terminalLogin needs bounded id, name and requiredHelpText',
+            'auth.terminalAccount requires a bounded scope, sign-in methods and a status check',
           );
-        if (isObjectRecord(login)) {
-          boundedStringList(login.args, 'auth.terminalLogin.args', errors);
-          boundedStringList(
-            login.helpArgs,
-            'auth.terminalLogin.helpArgs',
+        } else {
+          validateReviewedTerminalAuthMethod(
+            account.signOut,
+            'auth.terminalAccount.signOut',
             errors,
           );
+          for (const method of account.signInMethods)
+            validateReviewedTerminalAuthMethod(
+              method,
+              'auth.terminalAccount.signInMethods',
+              errors,
+            );
         }
       }
       if (auth.statusCommand !== undefined) {
@@ -759,6 +780,24 @@ export function validateACPEngineDescriptor(
     validateMinimumVersion(entry.minimumVersion, errors);
   }
   return errors;
+}
+
+function validateReviewedTerminalAuthMethod(
+  method: unknown,
+  field: string,
+  errors: string[],
+): void {
+  if (
+    !isObjectRecord(method) ||
+    !isBoundedText(method.id) ||
+    !isBoundedText(method.name) ||
+    !isBoundedText(method.requiredHelpText)
+  ) {
+    errors.push(`${field} needs bounded id, name and requiredHelpText`);
+    return;
+  }
+  boundedStringList(method.args, `${field}.args`, errors);
+  boundedStringList(method.helpArgs, `${field}.helpArgs`, errors);
 }
 
 function validateMinimumVersion(value: unknown, errors: string[]): void {
