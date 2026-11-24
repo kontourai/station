@@ -1290,12 +1290,8 @@ function ChatMessageListComponent({
         activatedRowRef.current = { ...held, toggle };
       if (held && !toggle) {
         releaseReaderHold();
-        const readerClosed =
-          held.toggle.isConnected &&
-          (readerActing() ||
-            performance.now() < readerInputRef.current.interactedUntil);
-        if (readerClosed) {
-          // The reader closed what they were holding. With the end in view
+        if (held.toggle.isConnected) {
+          // What they were holding was closed in place. With the end in view
           // (ignoring the line Scroll to bottom took) the tail is followed
           // again; past it, they are a reader scrolled up like any other.
           const shortBy =
@@ -1310,10 +1306,10 @@ function ChatMessageListComponent({
             return;
           }
         }
-        // Otherwise the app closed or redrew it (a finished turn folds its
-        // tool rows): nothing is left to protect. A reader still at it
-        // follows the end below, as with no hold; one who scrolled away
-        // stays where they are.
+        // Otherwise it went away (a finished turn folds its tool rows, a row
+        // is drawn again closed): nothing is left to protect. A reader still
+        // at it follows the end below, as with no hold; one who scrolled
+        // away stays where they are.
       }
       if (!isUserScrolledUpRef.current) {
         // Growth the reader caused (opening a tool card near the end) or that
