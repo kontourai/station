@@ -335,7 +335,7 @@ describe('ChatDock picker recovery follows the server on Start new chat', () => 
     await pick();
 
     const inbox = await screen.findByRole('complementary', {
-      name: 'Inbox chats',
+      name: 'Chats',
     });
     expect(
       await within(inbox).findByRole('button', { name: 'Retry' }),

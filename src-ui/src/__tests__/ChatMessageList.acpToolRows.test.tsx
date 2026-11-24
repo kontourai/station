@@ -407,12 +407,12 @@ describe('ACP (OpenCode) tool rows', () => {
     // The batch surfaces the pending call without being opened…
     await waitFor(() =>
       expect(
-        screen.getAllByRole('button', { name: 'Allow Once' }),
+        screen.getAllByRole('button', { name: 'Allow once' }),
       ).toHaveLength(1),
     );
     // …and nothing else renders a second copy of the same decision.
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(
+    expect(screen.getAllByRole('button', { name: 'Allow once' })).toHaveLength(
       1,
     );
     expect(screen.getAllByRole('button', { name: 'Deny' })).toHaveLength(1);
@@ -420,7 +420,7 @@ describe('ACP (OpenCode) tool rows', () => {
     // command line is not the grant's subject.
     // The session choices sit behind the row's overflow menu (#3045).
     const more = screen.getByRole('button', {
-      name: 'More ways to allow this request',
+      name: 'Allow for this session',
     });
     fireEvent.click(more);
     const grant = await screen.findByRole('menuitem', {
@@ -481,11 +481,11 @@ describe('ACP (OpenCode) tool rows', () => {
     );
     await waitFor(() =>
       expect(
-        screen.getAllByRole('button', { name: 'Allow Once' }),
+        screen.getAllByRole('button', { name: 'Allow once' }),
       ).toHaveLength(1),
     );
     await new Promise((resolve) => setTimeout(resolve, 50));
-    expect(screen.getAllByRole('button', { name: 'Allow Once' })).toHaveLength(
+    expect(screen.getAllByRole('button', { name: 'Allow once' })).toHaveLength(
       1,
     );
     // Owner decision (2026-11-16): a session answer is offered on every tool
@@ -493,7 +493,7 @@ describe('ACP (OpenCode) tool rows', () => {
     // own tool grant, which forwards nothing to the engine.
     expect(
       screen.getByRole('button', {
-        name: 'More ways to allow this request',
+        name: 'Allow for this session',
       }),
     ).toBeTruthy();
     expect(screen.getAllByText(/^Edit approved\.txt/)).toHaveLength(1);

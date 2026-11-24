@@ -168,6 +168,15 @@ describe('a reload carrying a chat pointer nothing can resolve', () => {
 
     await mountReload();
 
+    // `dock=open` seeds the region visible, so asserting before the reveal
+    // has run passes on the seed. Wait for the reveal's own pointer clear,
+    // which follows the bounded retry here.
+    await waitFor(() => expect(fetchConversationById).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        new URLSearchParams(window.location.search).get('chat'),
+      ).toBeNull(),
+    );
     await waitFor(() =>
       expect(model?.regions.bottom).toMatchObject({
         panes: ['chat'],
@@ -189,12 +198,24 @@ describe('a reload carrying a chat pointer nothing can resolve', () => {
 
     await mountReload();
 
+    // `dock=open` seeds the region visible, so asserting before the reveal
+    // has run passes on the seed, and a slow run then caught the region the
+    // reveal had closed. Assert only once the reveal has cleared the pointer.
+    await waitFor(() => expect(openConversation).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        new URLSearchParams(window.location.search).get('chat'),
+      ).toBeNull(),
+    );
     await waitFor(() =>
       expect(model?.regions.bottom).toMatchObject({
         panes: ['chat'],
         occupant: 'chat',
         visible: true,
       }),
+    );
+    expect(new URLSearchParams(window.location.search).get('dock')).toBe(
+      'open',
     );
   });
 });

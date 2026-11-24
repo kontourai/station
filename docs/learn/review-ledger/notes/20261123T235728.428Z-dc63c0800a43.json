@@ -1,0 +1,9 @@
+{
+  "revision": "be5e0dac4d7e32ae5d69086d5250715ca58c9938",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Only a test changed: New chat text left by opening a chat row (in the draft's Project or another) comes back on the next New chat. No module ownership or Station identity claim changes.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]},
+
+    {"path":"docs/design/station-connection.md","note":"Only a test changed: New chat text left by opening a chat row (in the draft's Project or another) comes back on the next New chat. No module ownership or Station identity claim changes.","inputs":["src-ui/src/components/chat-dock/__tests__/ChatWorkspacePaneComposerDraft.test.tsx"]}
+  ]
+}

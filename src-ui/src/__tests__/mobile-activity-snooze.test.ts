@@ -1,9 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import {
-  groupMobileActivity,
-  SNOOZE_OPTIONS,
-  snoozeWakeAt,
-} from '../components/chat-dock/mobile-activity-groups';
+import { groupMobileActivity } from '../components/chat-dock/mobile-activity-groups';
+import { snoozeChoices } from '../components/inbox-row/snooze-presets';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 
 const item = (over: Partial<HomeWorkItem>): HomeWorkItem =>
@@ -154,41 +151,6 @@ describe('groupMobileActivity snooze', () => {
   });
 });
 
-describe('snoozeWakeAt', () => {
-  it('the one preset set: two durations and two mornings', () => {
-    expect(SNOOZE_OPTIONS.map((option) => option.label)).toEqual([
-      '1 hour',
-      '3 hours',
-      'Tomorrow 9am',
-      'Next Monday 9am',
-    ]);
-  });
-
-  it('adds fixed durations', () => {
-    expect(snoozeWakeAt(SNOOZE_OPTIONS[0], 1_000)).toBe(3_601_000);
-    expect(snoozeWakeAt(SNOOZE_OPTIONS[1], 1_000)).toBe(10_801_000);
-  });
-
-  it('"Tomorrow 9am" is always tomorrow, even before 9 today', () => {
-    const now = new Date(2026, 7, 13, 8, 59).getTime();
-    expect(snoozeWakeAt(SNOOZE_OPTIONS[2], now)).toBe(
-      new Date(2026, 7, 14, 9).getTime(),
-    );
-  });
-
-  it('"Next Monday 9am" lands in a later week, skipping a Monday today', () => {
-    // 2026-08-13 is a Thursday; 2026-08-17 is a Monday.
-    const thursday = new Date(2026, 7, 13, 15).getTime();
-    expect(snoozeWakeAt(SNOOZE_OPTIONS[3], thursday)).toBe(
-      new Date(2026, 7, 17, 9).getTime(),
-    );
-    const monday = new Date(2026, 7, 17, 8).getTime();
-    expect(snoozeWakeAt(SNOOZE_OPTIONS[3], monday)).toBe(
-      new Date(2026, 7, 24, 9).getTime(),
-    );
-  });
-});
-
 /**
  * archive#1783 — the mobile grouping is derived from `lifecycleLabel`, so the
  * `'Unanswerable'` label added to `orchestrationLifecycleLabel` reaches this
@@ -236,9 +198,10 @@ describe('groupMobileActivity answerability (station#1783, re-adjudicated by #32
     // US DST spring-forward 2026-03-08: 02:00 -> 03:00. Adding 24h of
     // milliseconds would land at 10am; setting calendar fields must not.
     const beforeSpring = new Date(2026, 2, 7, 22, 0, 0); // Mar 7, 10pm local
-    const wake = new Date(
-      snoozeWakeAt(SNOOZE_OPTIONS[2], beforeSpring.getTime()),
+    const tomorrow = snoozeChoices(beforeSpring.getTime()).find(
+      (choice) => choice.label === 'Tomorrow morning',
     );
+    const wake = new Date(tomorrow?.wakeAt ?? 0);
     expect(wake.getHours()).toBe(9);
     expect(wake.getDate()).toBe(8);
   });

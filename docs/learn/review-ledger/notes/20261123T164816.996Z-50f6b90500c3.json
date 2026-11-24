@@ -1,0 +1,7 @@
+{
+  "revision": "3751d1907760c395de2218029c10ea5ae96c8e5d",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"Checked after pinning tests/chat-dock-row-menu.spec.ts in the manifest test's exact list of parallel-safety exceptions. The page's claims (the manifest owns every spec's bucket and execution class, and validation refuses an unassigned spec) still hold; the browser smoke contract is unchanged.","inputs":["docs/guides/e2e-coverage-matrix.md","scripts/__tests__/e2e-manifest.test.ts"]}
+  ]
+}

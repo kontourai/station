@@ -21,6 +21,10 @@ import {
   createOutsideActiveWorkReader,
   type OutsideActiveWorkDeps,
 } from '../../services/outside-agent/active-work.js';
+import {
+  createOutsideConversationSearchReader,
+  type OutsideConversationSearchDeps,
+} from '../../services/outside-agent/conversation-search.js';
 import { canonicalOutsideOrigin } from '../../services/outside-agent/management-service.js';
 import { createOutsideMcpDispatch } from '../../services/outside-agent/mcp-dispatch.js';
 import {
@@ -95,6 +99,7 @@ export async function createOutsideAgentMcpServer(input: {
   validateGrant(grant: Grant): boolean;
   projects: Pick<ProjectService, 'listProjects' | 'getProject'>;
   activeWork?: OutsideActiveWorkDeps;
+  conversationSearch?: OutsideConversationSearchDeps;
   exposure: OutsideOAuthExposure;
   checkServe?: () => Promise<'clear' | 'mapped' | 'unverifiable'>;
 }) {
@@ -106,6 +111,12 @@ export async function createOutsideAgentMcpServer(input: {
   const now = store.options.now ?? Date.now;
   const listActiveWork = input.activeWork
     ? createOutsideActiveWorkReader(input.activeWork, now)
+    : undefined;
+  const searchConversations = input.conversationSearch
+    ? createOutsideConversationSearchReader(
+        input.conversationSearch,
+        input.projects,
+      )
     : undefined;
   const sessions = new Map<string, Session>();
   const calls = new Map<string, number>();
@@ -131,19 +142,25 @@ export async function createOutsideAgentMcpServer(input: {
     session.abort.abort();
     void session.server.close().catch(() => {});
   };
-  const current = (session: Session): Grant => {
-    const grant = live(session.token, session.origin);
+  const sessionGrant = (
+    session: Session,
+    token = session.token,
+  ): Grant | undefined => {
+    if (session.abort.signal.aborted) return undefined;
+    const grant = live(token, session.origin);
     if (
-      !grant ||
-      grant.id !== session.grantId ||
-      grant.familyId !== session.familyId ||
-      grant.version !== session.version ||
-      session.touched + 30 * MINUTE <= now()
-    ) {
-      terminate(session);
-      throw new Error('Outside MCP session ended');
-    }
-    return grant;
+      grant?.id === session.grantId &&
+      grant.familyId === session.familyId &&
+      grant.version === session.version &&
+      session.touched + 30 * MINUTE > now()
+    )
+      return grant;
+  };
+  const current = (session: Session): Grant => {
+    const grant = sessionGrant(session);
+    if (grant) return grant;
+    terminate(session);
+    throw new Error('Outside MCP session ended');
   };
   const recheck = () => {
     for (const session of [...sessions.values()]) {
@@ -257,7 +274,7 @@ export async function createOutsideAgentMcpServer(input: {
               if (!grant || grant.version !== session.version)
                 throw new Error('Outside MCP stream ended');
               controller.enqueue(next.value);
-            });
+            }, 'fail-fast');
           } catch {
             terminate(session);
             controller.close();
@@ -299,18 +316,21 @@ export async function createOutsideAgentMcpServer(input: {
     }
     try {
       if (
-        !store.chargeBudgets([
-          { key: 'mcp:global', capacity: 600, period: MINUTE },
-          ...(ingress.peerKey
-            ? [
-                {
-                  key: `mcp:peer:${ingress.peerKey}`,
-                  capacity: 120,
-                  period: MINUTE,
-                },
-              ]
-            : []),
-        ])
+        !store.chargeBudgets(
+          [
+            { key: 'mcp:global', capacity: 600, period: MINUTE },
+            ...(ingress.peerKey
+              ? [
+                  {
+                    key: `mcp:peer:${ingress.peerKey}`,
+                    capacity: 120,
+                    period: MINUTE,
+                  },
+                ]
+              : []),
+          ],
+          'fail-fast',
+        )
       ) {
         c.header('Retry-After', '1');
         return rpcError(c, 429, -32000, 'MCP ingress capacity');
@@ -462,17 +482,19 @@ export async function createOutsideAgentMcpServer(input: {
               )
             ) {
               const id = message.id;
-              return store.decide(() =>
-                live(candidate, origin)
-                  ? c.json(
-                      {
-                        jsonrpc: '2.0',
-                        id,
-                        error: { code: -32601, message: 'Method not found' },
-                      },
-                      200,
-                    )
-                  : challenge(c),
+              return store.decide(
+                () =>
+                  live(candidate, origin)
+                    ? c.json(
+                        {
+                          jsonrpc: '2.0',
+                          id,
+                          error: { code: -32601, message: 'Method not found' },
+                        },
+                        200,
+                      )
+                    : challenge(c),
+                'fail-fast',
               );
             }
             if (!isJSONRPCRequest(message) || message.method !== 'initialize')
@@ -516,6 +538,7 @@ export async function createOutsideAgentMcpServer(input: {
                 current: () => current(owned),
                 projects: input.projects,
                 listActiveWork,
+                searchConversations,
                 reserveCall: () => {
                   const count = dispatches.get(grant.id) ?? 0;
                   if (count >= 10)
@@ -538,12 +561,18 @@ export async function createOutsideAgentMcpServer(input: {
             };
             await owned.server.connect(transport);
           }
-          current(session);
+          if (!sessionGrant(session, candidate)) {
+            terminate(session);
+            return rpcError(c, 404, -32001, 'Session not found');
+          }
           session.touched = now();
           const response = await handleRequest(session, c.req.raw, parsedBody);
-          return response
-            ? guardEmission(response, session, candidate)
-            : rpcError(c, 404, -32001, 'Session not found');
+          if (!response || !sessionGrant(session, candidate)) {
+            terminate(session);
+            void response?.body?.cancel().catch(() => {});
+            return rpcError(c, 404, -32001, 'Session not found');
+          }
+          return guardEmission(response, session, candidate);
         } finally {
           const count = (calls.get(grant.id) ?? 1) - 1;
           if (count) calls.set(grant.id, count);

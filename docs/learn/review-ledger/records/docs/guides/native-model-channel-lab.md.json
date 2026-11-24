@@ -12,6 +12,8 @@
   "sources": [
     "src-server/services/connections/native-model-container.ts",
 
+    "src-server/services/connections/__tests__/native-model-container.test.ts",
+
     "src-server/services/connections/native-model-stdio-channel.ts",
 
     "src-server/services/connections/native-model-stdio-protocol.ts",
