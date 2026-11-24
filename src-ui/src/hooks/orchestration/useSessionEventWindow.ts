@@ -38,8 +38,6 @@ import {
   writeTranscriptWindow,
 } from './transcriptWindowCache';
 
-export type { ReaderPlace } from './readerPlace';
-
 function eventKey(item: OrchestrationSequencedEvent): string {
   return item.event.eventId || `sequence:${item.sequence}`;
 }
