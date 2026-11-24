@@ -757,10 +757,9 @@ describe.skipIf(process.platform === 'win32')(
             diagnosePendingPrompt?.();
             const warning = await waitFor(
               () =>
-                engine.events.find(
-                  (event) =>
-                    event.method === 'runtime.warning' && event.code === code,
-                ),
+                engine.events
+                  .filter((event) => event.method === 'runtime.warning')
+                  .find((event) => event.turnId === id && event.code === code),
               'a gateway diagnostic while the prompt is still open',
             );
             expect(warning.message).toContain(
@@ -775,10 +774,9 @@ describe.skipIf(process.platform === 'win32')(
           }
           const error = await waitFor(
             () =>
-              engine.events.find(
-                (event) =>
-                  event.method === 'runtime.error' && event.turnId === id,
-              ),
+              engine.events
+                .filter((event) => event.method === 'runtime.error')
+                .find((event) => event.turnId === id),
             'current turn failure',
           );
           expect(error).toMatchObject({
