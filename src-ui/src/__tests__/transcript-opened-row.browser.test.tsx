@@ -20,6 +20,13 @@ import {
   tailFixture,
 } from './transcript-tail-fixture';
 
+// How far the row a reader is looking at may shift when the transcript's
+// height changes around them. Rows re-measure by a few px, and by how much
+// depends on the platform's font metrics (4 on macOS, 12 on the hosted Linux
+// runner). What these tests guard is the reader being pulled back to the held
+// row, which is hundreds of px (780 with the guard removed).
+const READ_ROW_DRIFT_PX = 24;
+
 const call = (page: Page, name: string, arg?: unknown) =>
   page.evaluate(
     ([fn, value]) =>
@@ -589,11 +596,11 @@ for (const [name, viewport] of [
             ?.getBoundingClientRect().top ?? null,
         before!.key,
       );
-      // A few px of re-measurement, never the jump to the held row.
+      // Re-measurement, never the jump to the held row.
       expect(
         Math.abs(after! - before!.top),
         'the row being read',
-      ).toBeLessThanOrEqual(8);
+      ).toBeLessThanOrEqual(READ_ROW_DRIFT_PX);
       expect(errors).toEqual([]);
     } finally {
       await browser.close();
@@ -663,7 +670,7 @@ for (const [name, viewport] of [
       expect(
         Math.abs((await topOf(page, before!.key)) - before!.top),
         'the row being read',
-      ).toBeLessThanOrEqual(8);
+      ).toBeLessThanOrEqual(READ_ROW_DRIFT_PX);
       expect(errors).toEqual([]);
     } finally {
       await browser.close();
@@ -709,7 +716,7 @@ for (const [name, viewport] of [
       expect(
         Math.abs((await topOf(page, before!.key)) - before!.top),
         'the row being read',
-      ).toBeLessThanOrEqual(8);
+      ).toBeLessThanOrEqual(READ_ROW_DRIFT_PX);
       expect(await distanceFromEnd(page)).toBeGreaterThan(100);
       expect(errors).toEqual([]);
     } finally {
