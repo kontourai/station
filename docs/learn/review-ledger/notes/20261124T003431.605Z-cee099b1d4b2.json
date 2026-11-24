@@ -1,0 +1,11 @@
+{
+  "revision": "b9ca310ba4788d738ae29ef45673f9398cc6ad89",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Eight allowlist entries had their reviewedAt and expiresAt dates renewed; no version, integrity hash, hook, decision, path or artifact changed. The three pages that cite the allowlist describe its fields, its checks and the node-pty artifact path, and state no review or expiry date for these entries, so nothing they say changed.","inputs":["config/dependency-lifecycle-allowlist.json"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Eight allowlist entries had their reviewedAt and expiresAt dates renewed; no version, integrity hash, hook, decision, path or artifact changed. The three pages that cite the allowlist describe its fields, its checks and the node-pty artifact path, and state no review or expiry date for these entries, so nothing they say changed.","inputs":["config/dependency-lifecycle-allowlist.json"]},
+
+    {"path":"packaging/node-pty-prebuilds/README.md","note":"Eight allowlist entries had their reviewedAt and expiresAt dates renewed; no version, integrity hash, hook, decision, path or artifact changed. The three pages that cite the allowlist describe its fields, its checks and the node-pty artifact path, and state no review or expiry date for these entries, so nothing they say changed.","inputs":["config/dependency-lifecycle-allowlist.json"]}
+  ]
+}
