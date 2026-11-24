@@ -687,7 +687,23 @@ browser clamping the position, a restore) neither counts as leaving the end nor
 as returning to it. When the view gets shorter (the keyboard, the pending list)
 the held row's header is brought back into it, moved no further than that,
 unless the reader has scrolled away. Their rows stay where they are as it
-appears. Scroll-button hover changes its background
+appears. A reader away from the end (scrolled up, or holding a row with the
+end out of view) keeps the rows they are reading through whatever arrives: the
+transcript's window, which otherwise returns to its newest turns on each
+reload, keeps everything it holds while they are away, so a delivery, a turn
+ending or a new turn never drops the turns above them. Back at the end, the
+next reload returns it to its bounded size. Kept for a reader away, it holds
+at most 200 turns, trimmed only above the turn they are reading less five, so
+that cap does not bound everything: a reader parked on an old turn holds every
+newer turn until they return to the end, and while the turn they are reading
+is not known nothing is trimmed. A reload whose page cannot belong to what is
+held (an event past its head, or a shared event at another sequence: Station's
+event log was replaced) replaces the window whatever the reader's place. When
+more than about 240 turns arrive between two reloads, the reload fills only
+that far down (12 pages of 20 turns), and the rest of the gap is left to Load
+older with no marker where it lies in the transcript; that limit predates
+reader-place keeping and applies equally once older pages are loaded.
+Scroll-button hover changes its background
 without enlarging its target. The desktop header exposes Hide chat list /
 Show chat list directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 

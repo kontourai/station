@@ -1,0 +1,7 @@
+{
+  "revision": "9ef9244119d916718ece7ccfdb63c0148a24333b",
+
+  "notes": [
+    {"path":"docs/design/placement.md","note":"Rechecked after the list gained an unmount-only reader-place report: placement, maximize memory and reload claims do not depend on it and still hold.","inputs":["docs/design/placement.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}
