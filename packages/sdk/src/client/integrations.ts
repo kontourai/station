@@ -87,21 +87,22 @@ export async function pollIntegrationEvents(
 const eventStreamFrame = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('active'),
-    cursor: z.string().min(1).max(4096),
+    cursor: z.string().min(1).max(4096).nullable(),
     truncated: z.boolean(),
     heartbeatMs: z.number().int().positive(),
   }),
   z.object({
     type: z.literal('event'),
-    cursor: z.string().min(1).max(4096),
+    cursor: z.string().min(1).max(4096).nullable(),
     eventId: z.string().min(1).max(256),
     timestamp: z.iso.datetime({ offset: true }),
     data: z.json(),
   }),
   z.object({
     type: z.literal('heartbeat'),
-    cursor: z.string().min(1).max(4096),
+    cursor: z.string().min(1).max(4096).nullable(),
   }),
+  z.object({ type: z.literal('warning') }),
   z.object({
     type: z.literal('ended'),
     reason: z.enum(['complete', 'unavailable']),

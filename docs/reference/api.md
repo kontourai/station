@@ -2309,7 +2309,9 @@ or acquires a short-lived connection. The response carries
 `{success: true, data: {supported: false}}` when the server has no Events
 capability, or `{success: true, data: {supported: true, events}}` for a
 successful catalog read. Each entry has `name` and optional `title` and
-`description`. A catalog read failure returns HTTP 502 with a Station error.
+`description`. Entries may also carry `delivery` (`poll`, `push` or `webhook`),
+`inputSchema` and `payloadSchema`. `data.truncated` is true if Station reached
+its catalog limits. A catalog read failure returns HTTP 502 with a Station error.
 
 ### Poll an integration’s events
 
@@ -2317,20 +2319,23 @@ successful catalog read. Each entry has `name` and optional `title` and
 checks. Send an event `name` and a `cursor`. Start with `null`, then pass the
 returned cursor when checking again. Optional fields are `arguments`,
 `maxEvents` (1–100, default 25) and `maxAgeMs`. Station returns the server’s
-`hasMore` and `truncated` flags with the page. If the server advertises no
-Events support, `data.supported` is false. Station bounds the response while
-reading it and checks event count before returning the page. Polls do not
-create subscriptions.
+`hasMore` and `truncated` flags and its `nextPollMs` hint when present. If the
+server advertises no Events support, `data.supported` is false. Station bounds
+the response while reading it and checks the event count before returning the
+page. Polls do not create subscriptions.
 
 `POST /integrations/:id/events/stream` opens a bounded SSE reader for a named
 event on the same shared Streamable HTTP connection. Send `name`, a nullable
 `cursor` and optional `arguments`, `maxAgeMs` or `heartbeatMs` (5,000–30,000).
-The response publishes `active`, `event`, `heartbeat` and `ended` frames.
+The response publishes `active`, `event`, `heartbeat`, `warning` and `ended`
+frames. A `warning` reports a transient upstream error while the reader continues.
 Station binds frames to the upstream request and rechecks operator access
 before each write. Disconnecting cancels the upstream fetch. The reader
 closes after 60 seconds or its byte budget. Open another stream with the
 latest cursor to continue. A Station accepts up to four readers at once and
 one per integration.
+
+Authorized programs can call these endpoints without opening Connections.
 
 ### Discover transcript App tools
 

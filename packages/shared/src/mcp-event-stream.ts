@@ -7,7 +7,12 @@ import {
 } from '@modelcontextprotocol/client';
 import { z } from 'zod';
 
-const cursor = z.string().min(1).max(4096);
+const cursor = z
+  .string()
+  .min(1)
+  .max(4096)
+  .nullish()
+  .transform((value) => value ?? null);
 const streamNotice = z.discriminatedUnion('method', [
   z.object({
     method: z.literal('notifications/events/active'),
@@ -24,12 +29,18 @@ const streamNotice = z.discriminatedUnion('method', [
       name: z.string(),
       eventId: z.string().min(1).max(256),
       timestamp: z.iso.datetime({ offset: true }),
-      data: z.json(),
+      data: z.record(z.string(), z.json()),
     }),
   }),
   z.object({
     method: z.literal('notifications/events/heartbeat'),
     params: z.object({ cursor }),
+  }),
+  z.object({
+    method: z.literal('notifications/events/error'),
+    params: z.object({
+      error: z.object({ code: z.number().int(), message: z.string() }),
+    }),
   }),
 ]);
 
@@ -93,9 +104,14 @@ export async function observeMcpEventStream(
     const notice = streamNotice.parse(message);
     switch (notice.method) {
       case 'notifications/events/active':
-        if (active) throw new Error('MCP event stream activated twice');
+        if (active && !notice.params.truncated)
+          throw new Error('MCP event stream activated twice');
         active = true;
-        await receive({ type: 'active', ...notice.params });
+        await receive({
+          type: 'active',
+          ...notice.params,
+          truncated: notice.params.cursor !== null && notice.params.truncated,
+        });
         break;
       case 'notifications/events/event': {
         if (!active || notice.params.name !== request.name)
@@ -107,6 +123,10 @@ export async function observeMcpEventStream(
       case 'notifications/events/heartbeat':
         if (!active) throw new Error('MCP event stream is inactive');
         await receive({ type: 'heartbeat', cursor: notice.params.cursor });
+        break;
+      case 'notifications/events/error':
+        if (!active) throw new Error('MCP event stream is inactive');
+        await receive({ type: 'warning' });
         break;
     }
   };

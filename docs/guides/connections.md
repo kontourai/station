@@ -2191,6 +2191,10 @@ results identifies missing earlier events. Open **Live events** and choose
 Each connection lasts up to a minute. Choose **Listen** again to resume
 from the last cursor. For OAuth, sign in to the server before checking its events.
 
+Live events is an operator viewer. Authorized programs can discover, poll,
+and stream the same events through the [Station integration API](../reference/api.md#check-an-integrations-event-catalog)
+with the viewer closed. Use the cursor to resume a reader after it closes.
+
 ## Connect an OAuth MCP server to an Agent
 
 Obtain the outside-agent MCP endpoint from the remote workspace's connection

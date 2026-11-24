@@ -21,6 +21,7 @@ type EventListeningView = {
   active: boolean;
   truncated: boolean;
   unavailable: boolean;
+  warning: boolean;
 };
 
 const recentEventLimit = 20;
@@ -42,6 +43,7 @@ export function IntegrationEventLive({
     active: false,
     truncated: false,
     unavailable: false,
+    warning: false,
   });
   const [stopping, setStopping] = useState(false);
   useEffect(
@@ -57,7 +59,12 @@ export function IntegrationEventLive({
     if (session.current) return;
     const controller = new AbortController();
     session.current = controller;
-    setView((current) => ({ ...current, active: false, unavailable: false }));
+    setView((current) => ({
+      ...current,
+      active: false,
+      unavailable: false,
+      warning: false,
+    }));
     void request
       .mutateAsync({
         id: integrationId,
@@ -93,6 +100,8 @@ export function IntegrationEventLive({
                     current.truncated || events.length > recentEventLimit,
                 };
               }
+              case 'warning':
+                return { ...current, warning: true };
               case 'ended':
                 return {
                   ...current,
@@ -156,6 +165,11 @@ export function IntegrationEventLive({
               }
             />
           ) : null}
+          {view.warning && request.isPending && (
+            <p role="status">
+              An event could not be read. Listening continues.
+            </p>
+          )}
           {(!unavailable || view.events.length > 0) && (
             <IntegrationEventRead
               events={view.events}

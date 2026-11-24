@@ -25,6 +25,7 @@ import {
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
 import { z } from 'zod';
 import { spawnChildWorkload } from './child-workload.js';
+import { encodeMcpEventHeader } from './mcp-event-headers.js';
 import { observeMcpEventStream } from './mcp-event-stream.js';
 import { isObjectRecord } from './object-record.js';
 import {
@@ -108,6 +109,7 @@ export interface MCPConnection {
     input: ToolServerEventStreamInput,
     receive: EventStreamReceiver,
     signal: AbortSignal,
+    headers?: Record<string, string>,
   ) => Promise<void>;
   /**
    * Run `operation` with `route` answering an elicitation the server sends
@@ -593,7 +595,7 @@ export function prepareMCPConnection(
               disconnect: handle.close,
               isUsable: () => current() && phase === 'connected',
               localState: handle.inspect,
-              readEventStream: async (input, receive, signal) => {
+              readEventStream: async (input, receive, signal, headers) => {
                 const controller = new AbortController();
                 const scope: EventStreamScope = {
                   receive,
@@ -604,7 +606,7 @@ export function prepareMCPConnection(
                     guardedClient.request(
                       { method: 'events/stream', params: { ...input } },
                       z.object({}),
-                      { signal: scope.signal, timeout: 65_000 },
+                      { signal: scope.signal, timeout: 65_000, headers },
                     ),
                   );
                 } finally {
@@ -829,6 +831,26 @@ export const REQUIRES_AUTHORIZATION_FETCH = Symbol.for(
   'kontourai.station.oauth.requiresAuthorizationFetch',
 );
 
+function boundEventResponse(response: Response): Response {
+  if (!response.body) return response;
+  let bytes = 0;
+  const body = response.body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        bytes += chunk.byteLength;
+        if (bytes > 512 * 1024)
+          throw new Error('MCP Events response exceeds 512 KiB');
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+  return new Response(body, {
+    headers: response.headers,
+    status: response.status,
+    statusText: response.statusText,
+  });
+}
+
 // The current SDK omits Mcp-Name on named Events requests.
 function withEventsTransport(
   fetch: FetchLike,
@@ -837,6 +859,8 @@ function withEventsTransport(
   return async (input, init) => {
     const headers = new Headers(init?.headers);
     const method = headers.get('mcp-method');
+    if (method === 'events/list')
+      return boundEventResponse(await fetch(input, init));
     if (method !== 'events/poll' && method !== 'events/stream')
       return fetch(input, init);
     if (typeof init?.body !== 'string')
@@ -854,16 +878,8 @@ function withEventsTransport(
       id,
       params: { name },
     } = request;
-    if (!headers.has('mcp-name')) {
-      const plain =
-        name.trim() === name &&
-        /^[\x20-\x7e]+$/u.test(name) &&
-        !(name.startsWith('=?base64?') && name.endsWith('?='));
-      headers.set(
-        'mcp-name',
-        plain ? name : `=?base64?${Buffer.from(name).toString('base64')}?=`,
-      );
-    }
+    if (!headers.has('mcp-name'))
+      headers.set('mcp-name', encodeMcpEventHeader(name));
     const scope = method === 'events/stream' ? getStreamScope?.() : undefined;
     const response = await fetch(input, {
       ...init,
@@ -900,23 +916,7 @@ function withEventsTransport(
         headers,
       });
     }
-    if (!response.body) return response;
-    let bytes = 0;
-    const body = response.body.pipeThrough(
-      new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) {
-          bytes += chunk.byteLength;
-          if (bytes > 512 * 1024)
-            throw new Error('MCP Events response exceeds 512 KiB');
-          controller.enqueue(chunk);
-        },
-      }),
-    );
-    return new Response(body, {
-      headers: response.headers,
-      status: response.status,
-      statusText: response.statusText,
-    });
+    return boundEventResponse(response);
   };
 }
 

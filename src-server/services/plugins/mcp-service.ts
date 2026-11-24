@@ -15,12 +15,15 @@ import type {
   ToolDef,
   ToolMetadata,
   ToolServerEventCatalog,
+  ToolServerEventDescriptor,
   ToolServerEventPollInput,
   ToolServerEventPollPage,
   ToolServerEventStreamFrame,
   ToolServerEventStreamInput,
 } from '@kontourai/station-contracts/tool';
 import {
+  buildEventArgumentHeaders,
+  describeEventArgumentHeaders,
   type MCPConnection,
   type MCPLocalClaim,
   type MCPLocalCleanup,
@@ -195,6 +198,13 @@ export interface ToolInfo {
   resource?: { uri: string };
 }
 
+const eventCursor = z
+  .string()
+  .min(1)
+  .max(4096)
+  .nullish()
+  .transform((cursor) => cursor ?? null);
+
 const mcpEventListResult = z.object({
   events: z
     .array(
@@ -202,21 +212,31 @@ const mcpEventListResult = z.object({
         name: z.string().min(1).max(256),
         title: z.string().max(256).optional(),
         description: z.string().max(2048).optional(),
+        delivery: z
+          .array(z.enum(['poll', 'push', 'webhook']))
+          .min(1)
+          .max(3)
+          .optional(),
+        inputSchema: z.record(z.string(), z.json()).optional(),
+        payloadSchema: z.record(z.string(), z.json()).optional(),
       }),
     )
     .max(512),
+  nextCursor: z.string().min(1).max(4096).optional(),
 });
 
 const mcpEventPollResult = z.object({
-  cursor: z.string().min(1).max(4096),
+  cursor: eventCursor,
   truncated: z.boolean(),
   hasMore: z.boolean(),
+  nextPollMs: z.number().int().nonnegative().optional(),
   events: z
     .array(
       z.object({
+        name: z.string().optional(),
         eventId: z.string().min(1).max(256),
         timestamp: z.iso.datetime({ offset: true }),
-        data: z.json(),
+        data: z.record(z.string(), z.json()),
       }),
     )
     .max(100),
@@ -1925,20 +1945,79 @@ export class MCPService {
     );
   }
 
-  async discoverMCPEvents(serverId: string): Promise<ToolServerEventCatalog> {
-    return this.withMcpConnection(serverId, 'event-read', async (conn) => {
-      if (!supportsMcpEvents(conn)) return { supported: false };
-      const { events } = await conn.client.request(
-        { method: 'events/list', params: {} },
+  private async readEventCatalog(
+    conn: MCPConnection,
+    signal: AbortSignal,
+  ): Promise<Extract<ToolServerEventCatalog, { supported: true }>> {
+    const events: ToolServerEventDescriptor[] = [];
+    const names = new Set<string>();
+    const cursors = new Set<string>();
+    let cursor: string | undefined;
+    let bytes = 0;
+    for (let page = 0; page < 8; page += 1) {
+      const result = await conn.client.request(
+        { method: 'events/list', params: cursor ? { cursor } : {} },
         mcpEventListResult,
-        { timeout: 10_000 },
+        { signal, timeout: 10_000 },
       );
-      if (new Set(events.map(({ name }) => name)).size !== events.length)
+      for (const event of result.events) {
+        if (names.has(event.name))
+          throw new StationOwnedToolServerError(
+            'The event catalog has duplicate names.',
+          );
+        names.add(event.name);
+        if (!describeEventArgumentHeaders(event.inputSchema)) {
+          this.logger.warn('Ignored event with invalid routing headers', {
+            serverId: conn.serverId,
+          });
+          continue;
+        }
+        bytes += Buffer.byteLength(JSON.stringify(event)) + 1;
+        if (events.length >= 512 || bytes > 256 * 1024)
+          return { supported: true, events, truncated: true };
+        events.push(event);
+      }
+      cursor = result.nextCursor;
+      if (!cursor) return { supported: true, events };
+      if (cursors.has(cursor))
         throw new StationOwnedToolServerError(
-          'The event catalog has duplicate names.',
+          'The event catalog has a repeated cursor.',
         );
-      return { supported: true, events };
-    });
+      cursors.add(cursor);
+    }
+    return { supported: true, events, truncated: true };
+  }
+
+  async discoverMCPEvents(serverId: string): Promise<ToolServerEventCatalog> {
+    const signal = AbortSignal.timeout(10_000);
+    return this.withMcpConnection<ToolServerEventCatalog>(
+      serverId,
+      'event-read',
+      (conn) =>
+        supportsMcpEvents(conn)
+          ? this.readEventCatalog(conn, signal)
+          : Promise.resolve({ supported: false }),
+      { signal },
+    );
+  }
+
+  private async eventArgumentHeaders(
+    conn: MCPConnection,
+    input: ToolServerEventPollInput | ToolServerEventStreamInput,
+    signal: AbortSignal,
+  ): Promise<Record<string, string> | undefined> {
+    const args = input.arguments;
+    if (!args || Object.keys(args).length === 0) return undefined;
+    const catalog = await this.readEventCatalog(conn, signal);
+    const event = catalog.events.find(({ name }) => name === input.name);
+    if (!event)
+      throw new StationOwnedToolServerError('The Event type is unavailable.');
+    const declarations = describeEventArgumentHeaders(event.inputSchema);
+    if (!declarations)
+      throw new StationOwnedToolServerError(
+        'The Event routing headers are invalid.',
+      );
+    return buildEventArgumentHeaders(declarations, args);
   }
 
   async pollMCPEvents(
@@ -1949,14 +2028,16 @@ export class MCPService {
     return this.withMcpConnection(
       serverId,
       'event-read',
-      async (conn) => {
+      async (conn, assertCurrent) => {
         signal.throwIfAborted();
         if (!supportsMcpEvents(conn)) return { supported: false };
         const maxEvents = input.maxEvents ?? 25;
+        const headers = await this.eventArgumentHeaders(conn, input, signal);
+        assertCurrent();
         const page = await conn.client.request(
           { method: 'events/poll', params: { ...input, maxEvents } },
           mcpEventPollResult,
-          { signal, timeout: 10_000 },
+          { signal, timeout: 10_000, headers },
         );
         if (
           page.events.length > maxEvents ||
@@ -1965,7 +2046,19 @@ export class MCPService {
           throw new StationOwnedToolServerError(
             'The event page exceeds the read limit.',
           );
-        return { supported: true, ...page };
+        if (
+          page.events.some(
+            (event) => event.name !== undefined && event.name !== input.name,
+          )
+        )
+          throw new StationOwnedToolServerError(
+            'The event page contains a different event type.',
+          );
+        return {
+          supported: true,
+          ...page,
+          truncated: page.cursor !== null && page.truncated,
+        };
       },
       { signal },
     );
@@ -1994,6 +2087,8 @@ export class MCPService {
             throw new StationOwnedToolServerError(
               'This tool server does not offer Events streams.',
             );
+          const headers = await this.eventArgumentHeaders(conn, input, signal);
+          assertCurrent();
           await conn.readEventStream(
             input,
             async (frame) => {
@@ -2001,6 +2096,7 @@ export class MCPService {
               await receive(frame, assertCurrent);
             },
             signal,
+            headers,
           );
         },
         { signal },

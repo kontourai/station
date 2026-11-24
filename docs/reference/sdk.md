@@ -427,7 +427,8 @@ withhold stale provenance.
 Call `useDiscoverIntegrationEventsMutation().mutateAsync({id, requestScope})`
 to check a saved Streamable HTTP tool server’s event catalog as the Station
 operator. The result carries `supported` and, when supported, bounded event
-names with optional titles and descriptions. The captured scope binds the
+descriptors with names, optional titles and descriptions, delivery modes,
+and schemas supplied by the server. The captured scope binds the
 request to the current Station and authority. Older hosts return HTTP 404.
 
 `usePollIntegrationEventsMutation().mutateAsync({id, input, requestScope})`
@@ -439,6 +440,10 @@ reports whether more events remain and whether earlier events are unavailable.
 `useStreamIntegrationEventsMutation().mutateAsync({id, input, requestScope, signal, receive})`
 opens a bounded operator event stream and delivers typed frames to `receive`.
 Use the caller's abort signal to stop it and the latest cursor to resume.
+
+Programs can import `discoverIntegrationEvents`, `pollIntegrationEvents` and
+`streamIntegrationEvents` from `@kontourai/station-sdk/client` to use the same
+operator-scoped API outside React.
 
 `useIntegrationAccountQuery(id, projectSlug?, requestScope?)` reads the account
 summary. Pass the captured `ApiRequestScope` to partition account state by

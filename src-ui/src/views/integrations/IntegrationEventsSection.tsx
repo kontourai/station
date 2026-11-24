@@ -122,7 +122,9 @@ function EventCatalog({
                     variant="primary"
                     onClick={() => read(event.name, currentPage.cursor)}
                   >
-                    {currentPage.hasMore ? 'Next page' : 'Check again'}
+                    {currentPage.hasMore && currentPage.cursor !== null
+                      ? 'Next page'
+                      : 'Check again'}
                   </Button>
                 )}
               </>
@@ -177,6 +179,11 @@ function EventCatalog({
                   className="integration-event-catalog"
                   aria-label="Available event types"
                 >
+                  {discovery.data.truncated && (
+                    <p role="status">
+                      Some event types are unavailable in this catalog.
+                    </p>
+                  )}
                   {discovery.data.events.map((event) => (
                     <PageRow
                       key={event.name}
@@ -186,33 +193,37 @@ function EventCatalog({
                         <ActionRow
                           overflowLabel="More event actions"
                           secondary={
-                            <Button
-                              onClick={(click) => {
-                                eventOpener.current = click.currentTarget;
-                                setEvent({
-                                  name: event.name,
-                                  label: event.title || event.name,
-                                  mode: 'live',
-                                });
-                              }}
-                            >
-                              Live events
-                            </Button>
+                            event.delivery?.includes('push') && (
+                              <Button
+                                onClick={(click) => {
+                                  eventOpener.current = click.currentTarget;
+                                  setEvent({
+                                    name: event.name,
+                                    label: event.title || event.name,
+                                    mode: 'live',
+                                  });
+                                }}
+                              >
+                                Live events
+                              </Button>
+                            )
                           }
                           primary={
-                            <Button
-                              onClick={(click) => {
-                                eventOpener.current = click.currentTarget;
-                                setEvent({
-                                  name: event.name,
-                                  label: event.title || event.name,
-                                  mode: 'poll',
-                                });
-                                read(event.name, null);
-                              }}
-                            >
-                              Read events
-                            </Button>
+                            event.delivery?.includes('poll') && (
+                              <Button
+                                onClick={(click) => {
+                                  eventOpener.current = click.currentTarget;
+                                  setEvent({
+                                    name: event.name,
+                                    label: event.title || event.name,
+                                    mode: 'poll',
+                                  });
+                                  read(event.name, null);
+                                }}
+                              >
+                                Read events
+                              </Button>
+                            )
                           }
                         />
                       }
