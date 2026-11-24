@@ -1,0 +1,13 @@
+{
+  "revision": "78f7d92916879bf4501ca540e5dca95442e2b2fd",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the reservation, replay, caller binding, capacity and refusal claims. New delegation reservations store the original allocation origin beside the reserved identity. Existing replay and public receipt contracts still apply. Focused owner, process and HTTP orchestration suites passed 202 cases, including three regressions reproduced against the prior source.","inputs":["src-server/services/orchestration/create-request-claims.ts"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Reviewed the reservation, replay, caller binding, capacity and refusal claims. New delegation reservations store the original allocation origin beside the reserved identity. Existing replay and public receipt contracts still apply. Focused owner, process and HTTP orchestration suites passed 202 cases, including three regressions reproduced against the prior source.","inputs":["src-server/services/orchestration/create-request-claims.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the reservation, replay, caller binding, capacity and refusal claims. New delegation reservations store the original allocation origin beside the reserved identity. Existing replay and public receipt contracts still apply. Focused owner, process and HTTP orchestration suites passed 202 cases, including three regressions reproduced against the prior source.","inputs":["src-server/services/orchestration/create-request-claims.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed the reservation, replay, caller binding, capacity and refusal claims. New delegation reservations store the original allocation origin beside the reserved identity. Existing replay and public receipt contracts still apply. Focused owner, process and HTTP orchestration suites passed 202 cases, including three regressions reproduced against the prior source.","inputs":["src-server/services/orchestration/create-request-claims.ts"]}
+  ]
+}
