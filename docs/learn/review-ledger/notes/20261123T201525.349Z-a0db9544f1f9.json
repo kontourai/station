@@ -1,0 +1,9 @@
+{
+  "revision": "2014d963fa667b2ace3302f952ebf3aa379d1b50",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Rechecked the explicit Docker path assertions and numeric request counter. The same input refusals, separate namespace custody and per-engine request checks apply.","inputs":["scripts/child-work-native-model-channel-lab.ts"]},
+
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Rechecked the explicit Docker path assertions and numeric request counter. The same input refusals, separate namespace custody and per-engine request checks apply.","inputs":["scripts/child-work-native-model-channel-lab.ts"]}
+  ]
+}
