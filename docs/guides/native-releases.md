@@ -810,7 +810,9 @@ protected `native-release` environment contains the Mac installer certificate
 and provisioning profile. **Release: Stage** runs the Mac TestFlight job after
 the advisory gate and exact-source qualification for an immutable RC tag. The
 job builds for Apple Silicon on macOS 12 or later with the Stable bundle ID
-and pairing scheme. The Mac App Store owns updates for this package.
+and pairing scheme. The Mac App Store owns updates for this package. The bundled
+host uses the [official release telemetry endpoint](release-rings.md#author-telemetry-in-official-builds)
+and the Station operator’s sharing choice.
 
 The job reuses the Apple Distribution identity and App Store Connect key from
 Stable iOS. Add these inputs to `native-release`:
