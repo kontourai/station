@@ -38,7 +38,13 @@
 
     "src-server/providers/adapters/acp-tool-update-supervisor.ts",
 
-    "src-server/providers/__tests__/acp-session-answers.process.test.ts"
+    "src-server/services/acp/antigravity-prompt-outcome.ts",
+
+    "src-server/providers/__tests__/acp-session-answers.process.test.ts",
+
+    "packages/shared/src/station-home-store-registry.ts",
+
+    "packages/shared/src/__tests__/station-home-archive.test.ts"
   ],
 
   "checks": [

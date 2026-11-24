@@ -137,6 +137,10 @@ import {
 } from '../../services/acp/acp-process.js';
 import type { AcpSessionTerminals } from '../../services/acp/acp-session-terminals.js';
 import {
+  AntigravityPromptFailure,
+  antigravityPromptFailure,
+} from '../../services/acp/antigravity-prompt-outcome.js';
+import {
   clearEngineSignInRefusal,
   engineSignInStatus,
   engineStatusCheckable,
@@ -3522,7 +3526,30 @@ export class AcpAdapter implements ProviderAdapterShape {
       decodedAttachments.length === 0
         ? readSlashCommandInvocation(input.input)
         : undefined;
-    const asPromptText = () => record.process.prompt(content);
+    const promptEpoch = record.promptEpoch;
+    const asPromptText = () =>
+      record.process.prompt(content, (failure) => {
+        if (
+          record.promptEpoch !== promptEpoch ||
+          !this.ownsActiveTurn(input.threadId, record, turnId) ||
+          record.quarantinedTurnIds?.has(turnId) ||
+          record.turnErrorNotificationsSuppressed ||
+          record.pendingRequests.size > 0
+        )
+          return;
+        this.publish({
+          eventId: crypto.randomUUID(),
+          provider: this.provider,
+          threadId: input.threadId,
+          createdAt: new Date().toISOString(),
+          turnId,
+          ...this.turnOrigin(record, turnId),
+          method: 'runtime.warning',
+          severity: 'warning',
+          code: failure.code,
+          message: `${failure.message} The engine has not closed the turn.`,
+        });
+      });
     const routed = invocation
       ? resolveAcpCommandRoute(record.process.initResult, invocation)
       : undefined;
@@ -6617,7 +6644,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     threadId: string,
     turnId: string,
     promptEpoch: number,
-    prompt: Promise<PromptResponse>,
+    prompt: ReturnType<ACPProcess['prompt']>,
   ): void {
     record.promptSettled = prompt.then(
       () => undefined,
@@ -6631,7 +6658,7 @@ export class AcpAdapter implements ProviderAdapterShape {
         // lands here too, since interruptTurn does not replace this
         // handler). Must run before the ownsActiveTurn early return below,
         // or a superseded turn's quarantine would never clear.
-        record.quarantinedTurnIds?.delete(turnId);
+        const interrupted = record.quarantinedTurnIds?.delete(turnId) === true;
         // The engine answered, so a sign-in refusal it gave earlier is stale.
         clearEngineSignInRefusal({
           id: record.connectionId,
@@ -6662,6 +6689,9 @@ export class AcpAdapter implements ProviderAdapterShape {
           this.failStaleToolPolicyTurn(record, threadId, turnId)
         )
           return;
+        const failure = response[antigravityPromptFailure];
+        if (failure && !interrupted && !record.turnErrorNotificationsSuppressed)
+          throw failure;
         record.turnErrorNotifications = undefined;
         this.settleRequestsAtPromptEnd(record, threadId, turnId);
         this.settlePromptEndState(
@@ -6703,7 +6733,21 @@ export class AcpAdapter implements ProviderAdapterShape {
         record.turnErrorNotifications = undefined;
         this.settleRequestsAtPromptEnd(record, threadId, turnId);
         this.settlePromptEndState(record, threadId, turnId, 'unresolved');
-        if (quota) {
+        if (error instanceof AntigravityPromptFailure) {
+          this.publish({
+            eventId: crypto.randomUUID(),
+            provider: this.provider,
+            threadId,
+            createdAt: new Date().toISOString(),
+            turnId,
+            ...this.turnOrigin(record, turnId),
+            method: 'runtime.error',
+            ...providerFailure(error.kind),
+            severity: 'error',
+            code: error.code,
+            message: error.message,
+          } satisfies ProviderRuntimeErrorEvent);
+        } else if (quota) {
           this.publish({
             eventId: crypto.randomUUID(),
             provider: this.provider,

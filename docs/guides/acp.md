@@ -1073,6 +1073,20 @@ and the scripted profile
   declares `http` and called a client HTTP MCP server with its headers.
   When Antigravity uses `call_mcp_tool`, the transcript shows the server and
   tool named in the call along with the tool's arguments.
+- **Upstream errors with a dedicated profile.** On macOS and Linux, set
+  `GEMINI_HOME` in the Station service environment to the absolute path
+  `<Station home>/engine-profiles/antigravity` to enable diagnostics for the
+  built-in launch. Create that directory with mode `0700` and use it only
+  for this Station instance. Sign in through Station with that environment.
+  Station excludes the provider-owned profile from home backups and update
+  snapshots. During update rollback the profile stays in place.
+  Station checks a bounded interval in the active CLI session's SQLite log
+  for a 404 or 502 when Antigravity reports the turn ended. It shows a
+  fixed failure message and retains the reported token usage. If a prompt
+  still has no answer at 15 minutes and has a matching gateway error,
+  Station can show the diagnostic while the active turn remains open.
+  The warning leaves replay and Stop under the operator's control.
+  Unavailable or ambiguous records leave the ordinary ACP outcome in place.
 - **Questions** arrive as core `elicitation/create` forms (a `oneOf` choice
   and a free-text `q1_other`) because Station announces `elicitation`.
   Without it the engine prints the question as text and takes the next
