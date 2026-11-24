@@ -4972,8 +4972,10 @@ describe('AcpAdapter', () => {
         'acceptForSession',
         { sessionGrantScope: 'all' },
       );
+      // The engine is sent allow-once, never allow-always: an engine that
+      // cached that would stop asking Station.
       await expect(first).resolves.toEqual({
-        outcome: { outcome: 'selected', optionId: 'allow-always' },
+        outcome: { outcome: 'selected', optionId: 'allow-once' },
       });
       await nextEvent(iterator, 'request.resolved');
 
@@ -4988,8 +4990,25 @@ describe('AcpAdapter', () => {
           outcome: { outcome: 'selected', optionId: 'allow-once' },
         },
       );
-      // Both resolved without an answer, so neither was put to a person; the
-      // next event is the plan exit's request.
+      // Both resolved without an answer, so neither was put to a person.
+
+      // A request offering allow-always alone is the person's: the grant
+      // only ever selects allow-once.
+      const alwaysOnly = client.requestPermission({
+        sessionId: 'ignored-by-adapter',
+        toolCall: { toolCallId: 'always-only', title: 'x', name: 'x-tool' },
+        options: [PERMISSION_OPTIONS[1]!, PERMISSION_OPTIONS[2]!],
+      } as RequestPermissionRequest);
+      const alwaysOpened = await nextEvent(iterator, 'request.opened');
+      await adapter.respondToRequest(
+        threadId,
+        String(alwaysOpened.requestId),
+        'decline',
+      );
+      await expect(alwaysOnly).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'reject-once' },
+      });
+      await nextEvent(iterator, 'request.resolved');
 
       // A plan exit is still a person's, and is not offered the grant.
       const exit = planExit('plan-exit');
@@ -5009,6 +5028,79 @@ describe('AcpAdapter', () => {
       await expect(exit).resolves.toEqual({
         outcome: { outcome: 'selected', optionId: 'reject-once' },
       });
+    } finally {
+      await adapter.stopAll();
+    }
+  });
+
+  test("an approval-mode change ends an 'all' grant, and it left no tool grant behind", async () => {
+    const { adapter, processes } = createAdapter({
+      connectionOverrides: [
+        { id: 'other', command: '/usr/bin/agy', args: ['acp'] },
+      ],
+    });
+    const threadId = 'thread-session-grant-all-mode';
+    const events = adapter.streamEvents()[Symbol.asyncIterator]();
+    try {
+      await adapter.startSession({
+        provider: 'acp',
+        threadId,
+        cwd: '/tmp/project',
+        metadata: { connectionId: 'other' },
+        confinement: 'host',
+        modelOptions: { approvalMode: 'ask' },
+      });
+      await nextEvent(events, 'session.started');
+      await nextEvent(events, 'session.configured');
+      const client = processes[0]!.client;
+      const first = requestPermission(client, 'granted-1', 'granted-tool');
+      const opened = await nextEvent(events, 'request.opened');
+      await adapter.respondToRequest(
+        threadId,
+        String(opened.requestId),
+        'acceptForSession',
+        { sessionGrantScope: 'all' },
+      );
+      await expect(first).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'allow-once' },
+      });
+      await nextEvent(events, 'request.resolved');
+      // Under Ask, the grant answers another tool without a prompt.
+      await expect(
+        requestPermission(client, 'covered', 'other-tool'),
+      ).resolves.toEqual({
+        outcome: { outcome: 'selected', optionId: 'allow-once' },
+      });
+
+      await adapter.sendTurn({
+        threadId,
+        input: 'Continue',
+        confinement: 'host',
+        modelOptions: { approvalMode: 'auto' },
+      });
+      await nextEvent(events, 'turn.started');
+      processes[0]!.resolvePrompt('end_turn');
+      await nextEvent(events, 'turn.completed');
+
+      // Auto answers edits only: the tool the 'all' answer was given on, and
+      // any other, is asked again.
+      for (const [id, tool] of [
+        ['after-1', 'granted-tool'],
+        ['after-2', 'other-tool'],
+      ] as const) {
+        const asked = requestPermission(client, id, tool);
+        const reopened = await nextEvent(events, 'request.opened');
+        expect(reopened).toMatchObject({ payload: { toolName: tool } });
+        await adapter.respondToRequest(
+          threadId,
+          String(reopened.requestId),
+          'decline',
+        );
+        await expect(asked).resolves.toEqual({
+          outcome: { outcome: 'selected', optionId: 'reject-once' },
+        });
+        await nextEvent(events, 'request.resolved');
+      }
     } finally {
       await adapter.stopAll();
     }

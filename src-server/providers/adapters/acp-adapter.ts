@@ -3757,19 +3757,21 @@ export class AcpAdapter implements ProviderAdapterShape {
       decision === 'acceptForSession' && pending.needsPerson
         ? 'accept'
         : decision;
-    if (effective === 'acceptForSession' && pending.governedEdit) {
+    // `all` is Station's own session-wide grant and nothing else: the agent
+    // is sent its allow-once option (an engine that cached allow-always
+    // would stop asking, past later policy and mode changes), and no tool or
+    // edit grant is minted, so an approval-mode change ends all of it.
+    const allGrant =
+      effective === 'acceptForSession' && context?.sessionGrantScope === 'all';
+    if (allGrant) {
+      record.allApproved = true;
+    } else if (effective === 'acceptForSession' && pending.governedEdit) {
       record.openCodeEditGrant = true;
     } else if (effective === 'acceptForSession' && pending.toolName) {
       record.approvedTools.add(pending.toolName);
     }
-    // `all` also grants every later request a grant may answer.
-    if (
-      effective === 'acceptForSession' &&
-      context?.sessionGrantScope === 'all'
-    )
-      record.allApproved = true;
     pending.resolve(
-      effective === 'acceptForSession' && pending.governedEdit
+      allGrant || (effective === 'acceptForSession' && pending.governedEdit)
         ? 'accept'
         : effective,
       content,
@@ -5102,16 +5104,19 @@ export class AcpAdapter implements ProviderAdapterShape {
       // request the grant may answer, after authored policy as above, never
       // one addressed to a person (a plan exit, a question, a governed
       // OpenCode configuration edit) nor in a delegated session that may not
-      // grant approvals. Answered with the agent's allow-once option.
+      // grant approvals. Answered only with the agent's allow-once option: a
+      // request that offers allow-always alone goes to the person, since
+      // choosing it would let the engine stop asking Station.
       if (
         !needsPerson &&
         !record.delegation?.denyApprovals &&
         record.allApproved
       ) {
-        const grantedOutcome = mapAcpDecisionToOutcome('accept', answerOptions);
-        if (grantedOutcome.outcome !== 'cancelled') {
-          return { outcome: grantedOutcome };
-        }
+        const once = answerOptions.find(
+          (option) => option.kind === 'allow_once',
+        );
+        if (once)
+          return { outcome: { outcome: 'selected', optionId: once.optionId } };
       }
 
       // #2933: a delegated child that may not grant approvals reaches here

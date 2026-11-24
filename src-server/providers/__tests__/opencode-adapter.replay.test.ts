@@ -4695,6 +4695,86 @@ describe('OpenCodeAdapter native governance and lifecycle (2.3.0 replay)', () =>
     ).toEqual([]);
   });
 
+  test("a background child's session answer whose reply lands after an approval-mode change grants nothing", async () => {
+    // The subagent capture, made a background child outliving its turn: the
+    // root's execution ends when the child starts, then the child asks
+    // twice. The first answer's reply is held across a move from Ask to
+    // Auto; the second ask waits until that answer has settled.
+    let releaseReply = false;
+    let releaseSecond = false;
+    const h = await setup({
+      scenario: 'subagent',
+      rewrite: (record) => {
+        if (record.kind === 'sse' && record.event?.data?.sessionID === CHILD) {
+          if (record.event.type === 'session.step.started')
+            return {
+              ...record,
+              event: {
+                type: 'session.execution.succeeded',
+                data: { sessionID: SUBAGENT_ROOT },
+              },
+            };
+          if (record.event.type === 'session.text.ended')
+            return {
+              ...record,
+              event: {
+                type: 'permission.asked',
+                data: {
+                  id: 'per_child2',
+                  sessionID: CHILD,
+                  action: 'shell',
+                  resources: ['echo two'],
+                  save: ['echo *'],
+                },
+              },
+            };
+        }
+        return childAsk('shell', ['echo one'])(record);
+      },
+      respond: childGovernance({ build: [], general: [] }),
+      holdUntil: (request) =>
+        request.method === 'POST' &&
+        request.path.endsWith('/permission/per_child/reply')
+          ? () => releaseReply
+          : undefined,
+      holdFrame: (record) =>
+        record.kind === 'sse' &&
+        record.event?.type === 'permission.asked' &&
+        record.event.data?.id === 'per_child2'
+          ? () => releaseSecond
+          : undefined,
+    });
+    await h.start({ approvalMode: 'ask' });
+    const first = await h.turn('DO_TASK now');
+    await h.waitFor(completedFor(first.turnId));
+    await h.waitFor(
+      (event) =>
+        event.method === 'request.opened' && event.requestId === 'per_child',
+    );
+    const answering = h.adapter.respondToRequest(
+      'thread-1',
+      'per_child',
+      'acceptForSession',
+      { sessionGrantScope: 'all' },
+    );
+    await h.waitFor(() => repliesTo(h, CHILD).length === 1);
+    // The move to Auto drops the session's grants while the reply is held.
+    await h
+      .turn('DO_BASH next', { approvalMode: 'auto' })
+      .catch(() => undefined);
+    releaseReply = true;
+    await answering;
+    releaseSecond = true;
+    // Auto does not answer a shell ask, and no grant survived the move.
+    expect(
+      await h.waitFor(
+        (event) =>
+          event.method === 'request.opened' && event.requestId === 'per_child2',
+      ),
+    ).toMatchObject({ payload: { rawInput: { resources: ['echo two'] } } });
+    expect(repliesTo(h, CHILD)).toEqual([{ decision: 'once' }]);
+  });
+
   test('a turn stopped on a rejection OpenCode will not take ends only when OpenCode says its execution ended; meanwhile a next turn is refused as busy and a steer as too late', async () => {
     let released = false;
     const h = await setup(

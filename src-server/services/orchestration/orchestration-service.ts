@@ -14928,6 +14928,11 @@ export class OrchestrationService {
             );
             continue;
           }
+          event = withoutUndeclaredAllGrant(
+            adapter,
+            event,
+            this.options.logger,
+          );
           event = await this.captureUsagePricingSnapshot(event);
           lastThreadId = event.threadId;
           const adapterEvent = event;
@@ -19295,4 +19300,33 @@ function adoptionConfinement(grant: unknown): AdoptionConfinement {
   assertAttributedFullAccessGrant(grant);
   const grantor = fullAccessGrantor(grant);
   return grantor ? { stamp: 'host', grantor } : { stamp: 'workspace' };
+}
+
+/**
+ * `sessionGrantAll` on a request offers "Allow everything for this session".
+ * Only an adapter that honours `sessionGrantScope: 'all'` may set it; from
+ * any other (whose payload may carry an engine's raw params) it is removed
+ * before the event is stored, so no surface offers a grant the adapter would
+ * narrow to the per-tool one.
+ */
+function withoutUndeclaredAllGrant(
+  adapter: ProviderAdapterShape,
+  event: CanonicalRuntimeEvent,
+  logger: { warn(message: string, meta?: Record<string, unknown>): void },
+): CanonicalRuntimeEvent {
+  if (event.method !== 'request.opened') return event;
+  const offered = event.payload;
+  if (
+    !offered ||
+    !Object.hasOwn(offered, 'sessionGrantAll') ||
+    adapter.metadata.sessionGrantScopes?.includes('all')
+  )
+    return event;
+  const payload = { ...offered };
+  delete payload.sessionGrantAll;
+  logger.warn('Ignored a session-wide grant offer from an adapter without it', {
+    provider: adapter.provider,
+    threadId: event.threadId,
+  });
+  return { ...event, payload };
 }

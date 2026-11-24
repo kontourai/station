@@ -1192,14 +1192,19 @@ confinement nor its approval mode. An OpenCode Session (native or over ACP)
 and an ACP Session offer it on a request whose `request.opened` payload
 carries `sessionGrantAll: true`, which the adapter sets itself, never for a
 request addressed to a person (a plan exit, a question, a Station authority
-change). The adapter keeps the grant itself and answers each later request
-once (never OpenCode's `always`), after Station's own rejections and staged
-policy, and never for a request addressed to a person, an OpenCode
-configuration edit Station gives a person, or a delegated child that may not
-grant approvals. A change of approval mode drops it. An engine that does
-not declare the scope (Claude, Codex and the others) takes the answer as the
-plain per-tool `acceptForSession`, which is narrower. The inbox offers it
-as the `acceptForSessionAll` action.
+change). Only an adapter that declares the scope may offer it:
+orchestration removes `sessionGrantAll` from any other adapter's request
+before storing it. The adapter keeps the grant itself and mints no tool
+grant with it. It answers the answered request and each later one once
+(never OpenCode's `always` or an ACP agent's allow-always; an ACP request
+offering only allow-always goes to a person), after Station's own
+rejections and staged policy, and never for a request addressed to a
+person, an OpenCode configuration edit Station gives a person, or a
+delegated child that may not grant approvals. A change of approval mode
+drops it, and a reply still in flight across that change grants nothing.
+An engine that does not declare the scope (Claude, Codex and the others)
+takes the answer as the plain per-tool `acceptForSession`, which is
+narrower. The inbox offers it as the `acceptForSessionAll` action.
 
 A Claude Session also treats these as escalations that always prompt, even
 under a tool grant or an agent's `autoApprove` of `*` (#2932): the sandbox

@@ -261,7 +261,9 @@ export function ApprovalSheetProvider({
         overflow={[
           {
             key: 'allow-all-session',
-            label: 'Allow all for this session',
+            // Each listed request's own tool grant: narrower than "Allow
+            // everything for this session", which a request may also offer.
+            label: 'Allow these tools for this session',
             disabled: bulk !== null,
             onSelect: () => void allowAll('trust'),
           },

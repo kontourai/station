@@ -560,6 +560,11 @@ export class OpenCodeNativeSession {
    * grant may answer. Cleared with {@link grants}.
    */
   private allGranted = false;
+  /**
+   * Bumped on every approval-mode change that drops the grants: an answer
+   * whose reply was in flight across one grants nothing.
+   */
+  private grantGeneration = 0;
   /** Asks Station is answering itself (or deciding), by native id. */
   /**
    * A turn stopped before anything ran it whose prompt Station could not
@@ -654,6 +659,7 @@ export class OpenCodeNativeSession {
     if (mode !== this.deps.approvalMode) {
       this.grants.splice(0);
       this.allGranted = false;
+      this.grantGeneration += 1;
     }
     this.deps.approvalMode = mode;
     this.deps.agentRules = agentRules;
@@ -1102,6 +1108,8 @@ export class OpenCodeNativeSession {
     if (context?.inputContent !== undefined)
       throw new Error('This request does not accept question answers.');
     pending.decided = decision;
+    // The grant belongs to the approval mode this answer was given under.
+    const generation = this.grantGeneration;
     // Ruling R4: never `always`. A session grant stays here, answered `once`.
     try {
       await this.deps.client.request(
@@ -1129,8 +1137,15 @@ export class OpenCodeNativeSession {
     // Station browser's. `all` grants every later ask instead. The
     // configuration-edit guard still runs before a grant answers
     // (`openCodeNativeAskAnswer`). A session answer to an ask addressed to a
-    // person grants nothing, so a later one is still put to a person.
-    if (decision !== 'acceptForSession' || pending.needsPerson) return;
+    // person grants nothing, so a later one is still put to a person. Nor
+    // does an answer whose reply was in flight while the approval mode
+    // changed: that change dropped the grants it would add to.
+    if (
+      decision !== 'acceptForSession' ||
+      pending.needsPerson ||
+      generation !== this.grantGeneration
+    )
+      return;
     if (context?.sessionGrantScope === 'all') this.allGranted = true;
     else if (pending.action)
       this.grants.push({ action: pending.action, patterns: ['*'] });

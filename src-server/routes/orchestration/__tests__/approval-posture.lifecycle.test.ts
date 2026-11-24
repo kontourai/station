@@ -988,6 +988,44 @@ describe('approval posture probe table under server order (#2436)', () => {
         );
       });
 
+      /** The stored request.opened payload, as the surfaces read it. */
+      const storedPayload = (h: Harness, threadId: string, requestId: string) =>
+        (
+          h.store.readCurrentRequestEvent(threadId, requestId) as {
+            event: { payload: { payload?: Record<string, unknown> } };
+          }
+        ).event.payload.payload;
+
+      test('a session-wide grant offer from an engine that does not declare it is not stored', async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        expect(h.adapter.metadata.sessionGrantScopes).not.toContain('all');
+        const threadId = await h.openRequest('req-spoof', {
+          toolName: 'Bash',
+          toolInput: { command: 'npm ls react' },
+          sessionGrantAll: true,
+        });
+        const payload = storedPayload(h, threadId, 'req-spoof');
+        expect(payload).toMatchObject({ toolName: 'Bash' });
+        expect(payload).not.toHaveProperty('sessionGrantAll');
+      });
+
+      test('an engine that declares the session-wide grant keeps its offer', async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        Object.defineProperty(h.adapter, 'metadata', {
+          value: { ...h.adapter.metadata, sessionGrantScopes: ['rule', 'all'] },
+        });
+        const threadId = await h.openRequest('req-offer', {
+          toolName: 'Bash',
+          toolInput: { command: 'npm ls react' },
+          sessionGrantAll: true,
+        });
+        expect(storedPayload(h, threadId, 'req-offer')).toMatchObject({
+          sessionGrantAll: true,
+        });
+      });
+
       test("an 'all' answer to an edit request on an engine without it is judged as the plain session answer", async () => {
         const h = await harness();
         await h.firstSend('ask');

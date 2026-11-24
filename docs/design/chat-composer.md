@@ -678,8 +678,9 @@ alike; a failed check keeps the request. While a reconnect replays missed
 events, the sheet and the pill hold what they showed (at most five seconds),
 so requests opened and resolved in the gap do not run the count up and down.
 With two or more permissions waiting, the sheet's pinned actions offer
-**Allow all (N)** and, in its menu, **Allow all for this session**; each
-answer is its own authority check, and one refusal does not stop the rest.
+**Allow all (N)** and, in its menu, **Allow these tools for this session**
+(each listed request's own per-tool grant, not "Allow everything for this
+session"); each answer is its own authority check, and one refusal does not stop the rest.
 An in-flight decision shows on its chosen button (Allowing…, Denying…) with no
 status sentence. Background work keeps the pill visible after the
 main turn ends, using the server count and oldest reported start. Failed history or
