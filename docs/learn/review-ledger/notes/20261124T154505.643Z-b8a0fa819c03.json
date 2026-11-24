@@ -1,0 +1,7 @@
+{
+  "revision": "ef05ad65d3121eab85caecc4c5dd66b4ba72ff37",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Reviewed the profile launch comment against the native flags and the guide. The comment now names the Antigravity directory; launch and diagnostic behavior are identical to the live acceptance revision.","inputs":["src-server/services/acp/antigravity-prompt-outcome.ts"]}
+  ]
+}

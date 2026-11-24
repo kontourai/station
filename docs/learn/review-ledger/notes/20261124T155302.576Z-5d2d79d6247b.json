@@ -1,0 +1,15 @@
+{
+  "revision": "e0d568a4153327d170640d4425f1e9576921a2ee",
+
+  "notes": [
+    {"path":"docs/guides/acp.md","note":"Checked the dedicated profile behavior after applying managed launch authority. The process fixture proves an argument pin matching the baseline still prevents adding profile flags and the terminal fixture proves managed environment choices enable and disable dedicated login in step with chat. The server-test typecheck and 47 focused tests passed.","inputs":["docs/guides/acp.md","src-server/services/acp/acp-process.ts","src-server/services/acp/antigravity-prompt-outcome.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Reviewed profile admission against the saved launch and policy-owned effective environment. The reader is admitted when native dedicated flags remain authorized. Existing managed binary and argument pins have priority.","inputs":["src-server/services/acp/acp-process.ts"]},
+
+    {"path":"docs/guides/acp.md","note":"Reviewed profile admission against the saved launch and policy-owned effective environment. The reader is admitted when native dedicated flags remain authorized. Existing managed binary and argument pins have priority.","inputs":["src-server/services/acp/acp-process.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Checked the terminal login path with effective managed GEMINI_HOME set and cleared, alongside the unchanged person-owned ACP sign-in flow. The terminal launcher reports a safe typed error for a refused dedicated profile.","inputs":["src-server/services/acp/engine-sign-in.ts"]},
+
+    {"path":"docs/design/acp-chat-architecture.md","note":"The historical chat architecture continues to defer current ACP behavior to the guide. The added profile policy sentence is consistent with that pointer.","inputs":["docs/guides/acp.md"]}
+  ]
+}
