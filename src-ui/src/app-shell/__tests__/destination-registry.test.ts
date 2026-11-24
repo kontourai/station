@@ -521,16 +521,31 @@ describe('DestinationRegistry', () => {
     [
       'an alias that is another destination id',
       [
-        { id: 'one', route: '/one', label: () => 'One', aliases: ['two'] },
-        { id: 'two', route: '/two', label: () => 'Two' },
+        {
+          id: 'one',
+          route: '/one',
+          label: (): string => 'One',
+          aliases: ['two'],
+        },
+        { id: 'two', route: '/two', label: (): string => 'Two' },
       ],
       /alias must be a free, nonempty id: two/,
     ],
     [
       'an alias two destinations claim',
       [
-        { id: 'one', route: '/one', label: () => 'One', aliases: ['old'] },
-        { id: 'two', route: '/two', label: () => 'Two', aliases: ['old'] },
+        {
+          id: 'one',
+          route: '/one',
+          label: (): string => 'One',
+          aliases: ['old'],
+        },
+        {
+          id: 'two',
+          route: '/two',
+          label: (): string => 'Two',
+          aliases: ['old'],
+        },
       ],
       /alias must be a free, nonempty id: old/,
     ],
