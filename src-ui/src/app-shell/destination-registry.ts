@@ -59,6 +59,12 @@ export interface DestinationBadge {
 
 export interface DestinationDefinition {
   id: string;
+  /**
+   * Retired ids a published plugin may still name (a palette command's
+   * `surfaceId`, a frame's `app-surface` target). `get` answers to them; no
+   * list shows them.
+   */
+  aliases?: readonly string[];
   route: string;
   label: () => string;
   keywords?: readonly string[];
@@ -147,6 +153,9 @@ export function createDestinationRegistry(
         route,
         keywords: definition.keywords
           ? Object.freeze([...definition.keywords])
+          : undefined,
+        aliases: definition.aliases
+          ? Object.freeze(definition.aliases.map((alias) => alias.trim()))
           : undefined,
         sidebar: definition.sidebar
           ? Object.freeze({ ...definition.sidebar })
@@ -246,6 +255,17 @@ export function createDestinationRegistry(
         );
       }
       byManagementView.set(viewType, definition);
+    }
+  }
+  // After every id is known, so an alias cannot shadow a later id either.
+  for (const definition of registered) {
+    for (const alias of definition.aliases ?? []) {
+      if (!alias || byId.has(alias)) {
+        throw new Error(
+          `Destination ${definition.id} alias must be a free, nonempty id: ${alias}`,
+        );
+      }
+      byId.set(alias, definition);
     }
   }
   const advertised = (flags: ReadonlySet<string>) =>
@@ -374,6 +394,8 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     // answers someone who learned them. Item keywords drop only words the
     // label already matches; the palette test pins the rest.
     id: 'customize',
+    // The published id of the destination Customize replaced.
+    aliases: ['connections'],
     route: '/customize',
     label: () => 'Customize',
     keywords: ['connections', 'set up', 'providers', 'models', 'integrations'],
@@ -440,9 +462,11 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
   },
   {
     id: 'plugins',
+    // The published id of the Registry, which Apps › Discover replaced.
+    aliases: ['registry'],
     route: '/apps',
     label: () => 'Apps',
-    keywords: ['apps', 'discover', 'library', 'plugins'],
+    keywords: ['apps', 'discover', 'library', 'plugins', 'registry'],
     icon: 'plugins',
     // Apps is not a Customize item. Until it has a sidebar row, the palette,
     // the links that point here and the redirects from `/plugins` and

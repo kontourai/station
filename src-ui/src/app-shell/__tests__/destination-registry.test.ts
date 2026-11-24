@@ -157,6 +157,8 @@ describe('DestinationRegistry', () => {
     ['discover', 'plugins'],
     ['library', 'plugins'],
     ['plugins', 'plugins'],
+    // The Registry was replaced by Apps › Discover.
+    ['registry', 'plugins'],
   ])('the palette answers "%s" with the %s destination first', (query, id) => {
     const commands = APP_DESTINATION_REGISTRY.getPalette(
       new Set([DEVELOPER_TOOLS_FLAG]),
@@ -500,6 +502,13 @@ describe('DestinationRegistry', () => {
     expect(Object.isFrozen(navDefinition?.customizeNav)).toBe(true);
   });
 
+  // Published plugins still name the ids of the places Apps and Customize
+  // replaced.
+  test('the retired registry and connections ids name Apps and Customize', () => {
+    expect(APP_DESTINATION_REGISTRY.get('registry')?.id).toBe('plugins');
+    expect(APP_DESTINATION_REGISTRY.get('connections')?.id).toBe('customize');
+  });
+
   test.each([
     [
       'duplicate ids',
@@ -508,6 +517,22 @@ describe('DestinationRegistry', () => {
         { id: 'same', route: '/two', label: () => 'Two' },
       ],
       /Duplicate destination id/,
+    ],
+    [
+      'an alias that is another destination id',
+      [
+        { id: 'one', route: '/one', label: () => 'One', aliases: ['two'] },
+        { id: 'two', route: '/two', label: () => 'Two' },
+      ],
+      /alias must be a free, nonempty id: two/,
+    ],
+    [
+      'an alias two destinations claim',
+      [
+        { id: 'one', route: '/one', label: () => 'One', aliases: ['old'] },
+        { id: 'two', route: '/two', label: () => 'Two', aliases: ['old'] },
+      ],
+      /alias must be a free, nonempty id: old/,
     ],
     [
       'relative routes',

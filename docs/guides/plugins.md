@@ -378,7 +378,7 @@ Common fields:
 | `serverModule` | string | no | Path to a server-side module that registers request-scoped plugin routes and lifecycle hooks |
 | `build` | string | no | Reserved; currently rejected so builds cannot execute manifest-supplied commands |
 | `capabilities` | string[] | no | Declared capabilities, e.g. `["chat", "navigation"]` |
-| `commands` | PluginCommandContribution[] | no | Palette-command declarations (at most 32). Each `id` must be `<name>.<command>` and unique; `navigate` names a destination id and uses the built-in palette's page behavior. Validated for both manifest formats; declarations that fail are dropped (the plugin still loads) and the inventory shows `commandsRejected.reason`. Declaration grants no execution authority, and every effect is admitted by Station (see [Plugin Command Effects](../reference/api.md#plugin-command-effects)) |
+| `commands` | PluginCommandContribution[] | no | Palette-command declarations (at most 32). Each `id` must be `<name>.<command>` and unique; `navigate` names a destination id (the retired ids `registry` and `connections` still name Apps and Customize) and uses the built-in palette's page behavior. Validated for both manifest formats; declarations that fail are dropped (the plugin still loads) and the inventory shows `commandsRejected.reason`. Declaration grants no execution authority, and every effect is admitted by Station (see [Plugin Command Effects](../reference/api.md#plugin-command-effects)) |
 | `commandsRejected` | `{ reason: string }` | no | Set by Station, not by authors: the loader discards any value in `plugin.json` and sets it only when `commands` failed validation and was dropped |
 | `permissions` | string[] | no | Permissions the plugin needs (see Permissions) |
 | `links` | unknown | no | Opaque link metadata returned by plugin preview; it grants no capability |
@@ -1013,6 +1013,11 @@ registry resolves to a view. Absolute URLs, protocol-relative paths,
 traversals, queries, and fragments are rejected, so a plugin can never send the
 shell off Station.
 
+A retired address still resolves, through the same redirect a person typing it
+gets: `/plugins` and `/registry` land on Apps, and `/connections` on Customize.
+A redirect that ends below a page's root lands on that root, so `/plugins`
+opens Apps rather than Apps › Library.
+
 Two limits are deliberate, and a plugin should not be written around them:
 
 - **Nothing is persisted.** A plugin's project-layout navigation goes through
@@ -1054,7 +1059,9 @@ message; the host answers on the same channel.
 `{ kind: 'app-surface', surfaceId }`, `{ kind: 'project-layout', projectSlug,
 layoutSlug }`, `{ kind: 'project-workspace', projectSlug, taskSlug? }`. A typed
 target names a destination rather than a path: the host looks the route up in
-its own surface registry, so there is nowhere in the message to put one.
+its own surface registry, so there is nowhere in the message to put one. The retired
+surface ids still name their successors: `registry` is Apps and `connections`
+is Customize.
 
 Three things are worth knowing before writing against it:
 
