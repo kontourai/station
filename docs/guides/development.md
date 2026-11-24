@@ -1143,6 +1143,15 @@ GitHub's merge queue verifies the synthesized latest-main candidate.
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
+Prefer live acceptance before arming auto-merge for a change to a user journey
+or integration when the affected runtime is available. Exercise a representative
+changed path on the candidate revision with the actual app, engine, service,
+or device. Use an isolated Station instance for local acceptance. Record the
+revision, environment, path, and observed result in the PR. If access,
+credentials, a device, or a reproducible provider condition is unavailable,
+state which live case remains open and what the available checks exercised.
+Keep the normal required checks and merge queue.
+
 The reusable hosted workflow `.github/workflows/full-regression.yml` qualifies
 one exact source SHA through every canonical phase and the Android viewport suite.
 `Main: Qualification` runs after main pushes (one admitted push and one
