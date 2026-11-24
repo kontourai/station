@@ -18,6 +18,7 @@ import {
   kindTone,
   locationHint,
   overlappingSources,
+  redactHome,
   statusTone,
   suppliedKinds,
   suppliesAny,
@@ -122,6 +123,7 @@ export function MarketplaceSources({
   label = 'Source',
   hideLabel = false,
   manageAll = false,
+  pathsInOptions = true,
 }: {
   selected: string;
   /**
@@ -141,6 +143,12 @@ export function MarketplaceSources({
    * removed.
    */
   manageAll?: boolean;
+  /**
+   * Whether an option shows a local source's folder or file beside its name.
+   * When false, a local source is named alone and its location moves to the
+   * option's tooltip; a repository keeps its address.
+   */
+  pathsInOptions?: boolean;
 }) {
   const sources = useRegistrySourcesQuery();
   const mutation = useRegistrySourceActionMutation();
@@ -187,13 +195,28 @@ export function MarketplaceSources({
             }}
           >
             <option value="all">All sources</option>
-            {visible.map((source) => (
-              <option key={source.id} value={source.id}>
-                {labels.get(source.id) ?? source.displayName}
-                {locationHint(source) ? ` — ${locationHint(source)}` : ''}
-                {!source.enabled ? ' (disabled)' : ''}
-              </option>
-            ))}
+            {visible.map((source) => {
+              const hint = locationHint(source);
+              const pathHidden =
+                !pathsInOptions &&
+                source.adapter !== 'github' &&
+                hint !== undefined;
+              return (
+                <option
+                  key={source.id}
+                  value={source.id}
+                  title={
+                    pathHidden && source.location
+                      ? redactHome(source.location)
+                      : undefined
+                  }
+                >
+                  {labels.get(source.id) ?? source.displayName}
+                  {hint && !pathHidden ? ` — ${hint}` : ''}
+                  {!source.enabled ? ' (disabled)' : ''}
+                </option>
+              );
+            })}
           </select>
         </label>
         <Button

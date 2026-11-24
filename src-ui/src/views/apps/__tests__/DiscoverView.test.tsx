@@ -594,6 +594,42 @@ describe('Apps › Discover', () => {
     ]);
   });
 
+  test('names a local catalogue without its path and keeps the location as the tooltip', () => {
+    state.sources = [
+      {
+        id: 'bundled',
+        kind: 'plugins',
+        displayName: 'Station',
+        origin: 'station',
+        location: '/Users/someone/station/examples/registry/default.json',
+        adapter: 'manifest',
+        enabled: true,
+        status: 'ready',
+      },
+      {
+        id: 'repo',
+        kind: 'plugins',
+        displayName: 'Team apps',
+        origin: 'user',
+        location: 'github:example-org/example-apps/main/apps',
+        adapter: 'github',
+        enabled: true,
+        status: 'ready',
+      },
+    ];
+    render(<DiscoverView />);
+    const picker = screen.getByLabelText('Show apps from') as HTMLSelectElement;
+    const local = [...picker.options].find((o) => o.value === 'bundled')!;
+    expect(local.textContent).toBe('Station');
+    expect(local.title).toBe('~/station/examples/registry/default.json');
+    // A repository is not a path: its address still tells sources apart.
+    const repo = [...picker.options].find((o) => o.value === 'repo')!;
+    expect(repo.textContent).toBe(
+      'Team apps — github.com/example-org/example-apps/apps @ main',
+    );
+    expect(repo.title).toBe('');
+  });
+
   test('Manage sources lists every source, so one Discover does not browse can still be removed', () => {
     state.sources = [
       {

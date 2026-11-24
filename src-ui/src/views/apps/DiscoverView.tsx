@@ -235,6 +235,9 @@ export function DiscoverView() {
                   manageAll
                   label="Show apps from"
                   hideLabel
+                  // A path is not a name: a local catalogue is named alone,
+                  // with its location in the option's tooltip.
+                  pathsInOptions={false}
                 />
               </div>
               {/* The sentence ends before the links, so a phone that puts
