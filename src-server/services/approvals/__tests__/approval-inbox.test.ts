@@ -438,7 +438,7 @@ describe('approval inbox notifications', () => {
       'decline',
     ]);
     expect(card('req-all')?.actions?.map((action) => action.label)).toEqual([
-      'Allow Once',
+      'Allow once',
       'Allow all shell calls for this session',
       'Allow everything for this session',
       'Deny',

@@ -13335,6 +13335,15 @@ export class OrchestrationService {
           // an adapter never sees a context it cannot use.
           const grantScope =
             decision === 'acceptForSession' ? requestedScope : undefined;
+          if (
+            grantScope === 'all' &&
+            contentRequest &&
+            contentRequest.payload?.sessionGrantAll !== true
+          )
+            throw new RequestEventGuardError(
+              'request_verification_unavailable',
+              'This request does not offer Allow everything for this session.',
+            );
           const requestContext =
             inputForm || context?.clientOrigin || grantScope
               ? {

@@ -947,7 +947,7 @@ describe('approval posture probe table under server order (#2436)', () => {
         );
       });
 
-      test("the session-wide scope 'all' reaches an adapter that declares it", async () => {
+      test("the session-wide scope 'all' reaches the adapter that offered it", async () => {
         const h = await harness();
         await h.firstSend('ask');
         Object.defineProperty(h.adapter, 'metadata', {
@@ -956,6 +956,7 @@ describe('approval posture probe table under server order (#2436)', () => {
         const threadId = await h.openRequest('req-browser', {
           toolName: 'Bash',
           toolInput: { command: 'npm ls react' },
+          sessionGrantAll: true,
         });
         const response = await post(h, threadId, {
           decision: 'acceptForSession',
@@ -966,6 +967,34 @@ describe('approval posture probe table under server order (#2436)', () => {
         expect(h.adapter.answerContexts.at(-1)).toMatchObject({
           sessionGrantScope: 'all',
         });
+      });
+
+      test("an unoffered 'all' answer stays open without reaching a supporting adapter", async () => {
+        const h = await harness();
+        await h.firstSend('ask');
+        Object.defineProperty(h.adapter, 'metadata', {
+          value: { ...h.adapter.metadata, sessionGrantScopes: ['rule', 'all'] },
+        });
+        const threadId = await h.openRequest('req-browser', {
+          toolName: 'Bash',
+          toolInput: { command: 'npm ls react' },
+        });
+        const refused = await post(h, threadId, {
+          decision: 'acceptForSession',
+          sessionGrantScope: 'all',
+        });
+        const refusal = await refused.text();
+        expect(refused.status, refusal).toBe(409);
+        expect(refusal).toContain(
+          'This request does not offer Allow everything for this session.',
+        );
+        expect(h.adapter.answers).toEqual([]);
+
+        const denied = await post(h, threadId, { decision: 'decline' });
+        expect(denied.status, await denied.text()).toBe(200);
+        expect(h.adapter.answers).toEqual([
+          { requestId: 'req-browser', decision: 'decline' },
+        ]);
       });
 
       test("an 'all' answer to an engine that does not declare it is the plain per-tool grant", async () => {
