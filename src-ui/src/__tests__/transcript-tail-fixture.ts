@@ -19,7 +19,19 @@
  * - `window.__sendUser(text)` appends the reader's own message;
  *   `window.__answer(text)` appends a new answer (no message of theirs).
  * - `window.__switchSession()` shows another chat (one turn fewer) in the
- *   same list.
+ *   same list; `window.__switchToQueued(text)` shows one with a turn running
+ *   and a follow-up queued at its end.
+ * - `window.__redrawLast()` draws the newest answer again under a new id, its
+ *   rows closed, as the settled copy replaces the streaming one.
+ * - `window.__beginTurn()`, `__setLive(on)`, `__queueFollowUp(text)`,
+ *   `__serverCopy(clientId)` and `__deliver(text)` play a running turn of the
+ *   reader's, a follow-up queued during it, the server's copy replacing their
+ *   bubble, and the follow-up's delivery, in the shapes the app writes.
+ * - `window.__sendBubble(text)` and `__startBubbleTurn()` play a message
+ *   typed with no turn running, as the send path shows it, and its turn
+ *   starting.
+ * - `window.__answersOnly()` drops the reader's messages from the window;
+ *   `window.__loadOlder()` loads earlier history in front of it.
  *
  * Needs a cached Chromium (PLAYWRIGHT_BROWSERS_PATH); never downloads.
  */
@@ -173,6 +185,66 @@ export async function tailFixture(
         window.__answer=text=>setSession(current=>({...current,messages:[...current.messages,
           {id:'a-sent-'+current.messages.length,role:'assistant',turnId:'turn-sent-'+current.messages.length,content:text,timestamp:9000+current.messages.length}]}));
         window.__switchSession=()=>setSession(()=>({...base,id:'tail-session-2',messages:makeMessages().slice(2)}));
+        // Another chat with a turn running and, last, a follow-up the reader
+        // queued there, as the send path shows it (its id is its client id).
+        window.__switchToQueued=text=>setSession(()=>({...base,id:'tail-session-3',orchestrationSessionStarted:true,orchestrationTurnOpen:true,messages:[...makeMessages().slice(2),
+          {id:'client-q',clientId:'client-q',role:'user',content:text,contentParts:[{type:'text',content:text}],timestamp:8500,optimistic:true}]}));
+        // The newest answer drawn again under a new id, as the settled copy
+        // replaces the streaming one: its rows come back closed.
+        window.__redrawLast=()=>setSession(current=>{
+          const messages=[...current.messages];
+          const index=messages.map(m=>m.role).lastIndexOf('assistant');
+          messages[index]={...messages[index],id:messages[index].id+'-settled'};
+          return {...current,messages};
+        });
+        // The shapes the app's own writers produce for the reader's messages.
+        // A turn of theirs that is running: their message as the composer's
+        // bubble after its \`turn.started\` (client id, turn, event), and the
+        // answer so far with its tool row.
+        window.__beginTurn=()=>setSession(current=>({...current,orchestrationSessionStarted:true,orchestrationTurnOpen:true,messages:[...current.messages,
+          {role:'user',clientId:'client-a',turnId:'turn-a',sourceEventId:'event-a',content:'Check the deploy script once more.',timestamp:7000},
+          {id:'a-live',role:'assistant',turnId:'turn-a',timestamp:7001,content:'Looking at the deploy script now.',
+            contentParts:[{type:'tool-invocation',toolCallId:'call-live',toolName:'shell_exec',args:{command:'ls'},result:output,state:'completed'},
+              {type:'text',content:'Looking at the deploy script now.'}]}]}));
+        window.__setLive=on=>setSession(current=>({...current,orchestrationSessionStarted:true,orchestrationTurnOpen:on}));
+        // A follow-up sent while a turn runs: the send path shows its bubble
+        // (as the app builds it: its id is its client id), Station answers
+        // that it is queued, and the bubble goes again.
+        window.__queueFollowUp=text=>{
+          setSession(current=>({...current,messages:[...current.messages,
+            {id:'client-b',clientId:'client-b',role:'user',content:text,contentParts:[{type:'text',content:text}],timestamp:Date.now(),optimistic:true}]}));
+          setTimeout(()=>setSession(current=>({...current,
+            messages:current.messages.filter(m=>m.clientId!=='client-b')})),160);
+        };
+        // A message the reader types with no turn running, as the send path
+        // shows it (its id is its client id), and its turn starting: the
+        // bubble gains the turn and its \`turn.started\` event, and the answer
+        // so far follows with its tool row.
+        window.__sendBubble=text=>setSession(current=>({...current,messages:[...current.messages,
+          {id:'client-c',clientId:'client-c',role:'user',content:text,contentParts:[{type:'text',content:text}],timestamp:6000,optimistic:true}]}));
+        window.__startBubbleTurn=()=>setSession(current=>({...current,orchestrationSessionStarted:true,orchestrationTurnOpen:true,messages:[
+          ...current.messages.map(m=>m.clientId==='client-c'?{...m,turnId:'turn-c',sourceEventId:'event-c'}:m),
+          {id:'a-live-c',role:'assistant',turnId:'turn-c',timestamp:6001,content:'Working on it.',
+            contentParts:[{type:'tool-invocation',toolCallId:'call-live-c',toolName:'shell_exec',args:{command:'ls'},result:output,state:'completed'},
+              {type:'text',content:'Working on it.'}]}]}));
+        // The server's copy replaces the composer's bubble: same message, its
+        // id now the server's (\`<turn.started event>:user\`).
+        window.__serverCopy=clientId=>setSession(current=>({...current,messages:current.messages.map(m=>{
+          if(m.clientId!==clientId) return m;
+          const {clientId:_c,...rest}=m;
+          return {...rest,id:m.sourceEventId+':user'};
+        })}));
+        // Station delivers the queued follow-up: its turn starts, and the
+        // transcript shows it as \`turn.started\` restores it.
+        window.__deliver=text=>setSession(current=>({...current,orchestrationSessionStarted:true,orchestrationTurnOpen:true,messages:[...current.messages,
+          {id:'event-input:event-b',clientId:'event-input:event-b',sourceEventId:'event-b',role:'user',content:text,turnId:'turn-b',timestamp:8000}]}));
+        // A window of one long answer with no message of the reader's in it,
+        // and earlier history loaded in front of it.
+        window.__answersOnly=()=>setSession(current=>({...current,messages:current.messages.filter(m=>m.role!=='user')}));
+        window.__loadOlder=()=>setSession(current=>({...current,messages:[
+          {id:'u-older',role:'user',content:'An earlier question.',timestamp:10},
+          {id:'a-older',role:'assistant',turnId:'turn-older',content:'An earlier answer.',timestamp:11},
+          ...current.messages]}));
         window.__streamTail=text=>setSession(current=>{
           const messages=[...current.messages];
           const last={...messages[messages.length-1]};
