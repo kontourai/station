@@ -3447,7 +3447,9 @@ Its source check applies the preview's own location checks, so a symlinked
 Codex home or prompts folder is reported unavailable rather than offered. A
 prompts folder past the 128-entry enumeration limit is refused as
 `TOO_MANY_FILES`, and a file name holding a control or direction-changing
-character is excluded as `unsafe-name`.
+character is excluded as `unsafe-name`. A target that names an existing Skill in
+any letter case or Unicode composition is refused on every host, since a Mac's
+file system treats it as the same folder.
 
 **Contract.** Capabilities are keyed by the discovered local Skill directory and
 acquired in deterministic order for a rename, so ordinary, conditional, and registry
