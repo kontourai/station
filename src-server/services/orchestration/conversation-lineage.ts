@@ -1526,7 +1526,7 @@ export class ConversationLineage {
       sources,
       authority,
       'Conversation while this engine was away (context only, not a new request; the earlier native conversation is being resumed).',
-      throughSessionId,
+      { sessionId: throughSessionId, includeError: true },
     );
     return {
       sourceSessionId,
@@ -1574,7 +1574,7 @@ export class ConversationLineage {
       lineage.slice(0, throughIndex + 1),
       authority,
       CONTINUATION_TRANSCRIPT_HEADING,
-      throughSessionId,
+      { sessionId: throughSessionId, includeError: true },
     );
     return { transcriptSeed: contextSeed.text, contextSeed };
   }
@@ -1632,7 +1632,7 @@ export class ConversationLineage {
           sources,
           authority,
           CONTINUATION_TRANSCRIPT_HEADING,
-          sources.at(-1)?.sessionId,
+          { sessionId: sources.at(-1)?.sessionId },
         ),
       );
     }
@@ -1647,7 +1647,7 @@ export class ConversationLineage {
     sources: readonly { readonly sessionId: string }[],
     authority: SessionReadScope,
     heading: string,
-    handoffSourceId?: string,
+    recordedWorkSource?: { sessionId?: string; includeError?: boolean },
   ): Promise<ConversationContextSeedPin> {
     const filtered = this.contextSources(sources);
     sources = filtered.sources;
@@ -1660,7 +1660,8 @@ export class ConversationLineage {
     for (const entry of sources) {
       const detail = await this.deps.readSession(entry.sessionId, authority);
       if (!detail) throw new Error('Conversation context is not authorized.');
-      if (entry.sessionId === handoffSourceId) handoffSource = detail;
+      if (entry.sessionId === recordedWorkSource?.sessionId)
+        handoffSource = detail;
     }
     const sourceCutoffs = sources.map((entry) => ({
       sessionId: entry.sessionId,
@@ -1690,6 +1691,7 @@ export class ConversationLineage {
         ? this.handoffRecordedWork(
             sources.map((entry) => entry.sessionId),
             handoffSource,
+            recordedWorkSource?.includeError === true,
           )
         : undefined,
     });
@@ -1709,6 +1711,7 @@ export class ConversationLineage {
   private handoffRecordedWork(
     sessionIds: readonly string[],
     source: OrchestrationSessionDetail,
+    includeError: boolean,
   ): string | undefined {
     const recent = this.deps.eventStore!.readTurnDigestFacts(
       sessionIds.slice(-8),
@@ -1739,9 +1742,9 @@ export class ConversationLineage {
         );
       lines.push(factsForTurn.join(' '));
     }
-    const error = source.events.findLast(
-      (event) => event.method === 'runtime.error',
-    );
+    const error = includeError
+      ? source.events.filter((event) => event.method === 'runtime.error').at(-1)
+      : undefined;
     if (error)
       lines.unshift(
         `Last source session error: ${sanitizeFreeText(error.message, 400)}`,
