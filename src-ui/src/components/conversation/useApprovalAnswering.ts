@@ -25,6 +25,7 @@ type ToolApprovalAction =
   | 'trust'
   | 'trust-server'
   | 'trust-rule'
+  | 'trust-all'
   | 'deny';
 type CapturedApprovalAuthority = NonNullable<
   ReturnType<typeof useHostRequestAuthorityScope>
@@ -39,7 +40,10 @@ function orchestrationDecisionForToolApproval(
   // tool, not a local list.
   return action === 'once'
     ? 'accept'
-    : action === 'trust' || action === 'trust-server' || action === 'trust-rule'
+    : action === 'trust' ||
+        action === 'trust-server' ||
+        action === 'trust-rule' ||
+        action === 'trust-all'
       ? 'acceptForSession'
       : 'decline';
 }
@@ -243,7 +247,9 @@ export function useApprovalAnswering(apiBase: string) {
       const capability =
         action === 'trust-server'
           ? 'approvalTrustServer'
-          : action === 'trust' || action === 'trust-rule'
+          : action === 'trust' ||
+              action === 'trust-rule' ||
+              action === 'trust-all'
             ? 'approvalTrustTool'
             : 'approvalAnswer';
       if (
@@ -273,7 +279,9 @@ export function useApprovalAnswering(apiBase: string) {
             ? { sessionGrantScope: 'server' }
             : action === 'trust-rule'
               ? { sessionGrantScope: 'rule' }
-              : {}),
+              : action === 'trust-all'
+                ? { sessionGrantScope: 'all' }
+                : {}),
         });
       } else {
         if (station && station.routeKind !== 'host')
@@ -350,7 +358,8 @@ export function useApprovalAnswering(apiBase: string) {
               cancelled: !approved,
               approvalStatus: (action === 'trust' ||
               action === 'trust-server' ||
-              action === 'trust-rule'
+              action === 'trust-rule' ||
+              action === 'trust-all'
                 ? 'auto-approved'
                 : approved
                   ? 'user-approved'

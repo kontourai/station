@@ -1656,10 +1656,12 @@ export async function resolveOrchestrationRequest(input: {
   decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel';
   /**
    * With `acceptForSession`: `server` grants the whole Station browser
-   * server; `rule` only the Bash command prefixes the engine suggested.
-   * Honoured only where the request offered that scope.
+   * server; `rule` only the Bash command prefixes the engine suggested;
+   * `all` every later request in the session a grant may answer.
+   * Honoured only where the request offered that scope (an engine without
+   * the session-wide grant takes the per-tool grant for `all`).
    */
-  sessionGrantScope?: 'server' | 'rule';
+  sessionGrantScope?: 'server' | 'rule' | 'all';
   /** @deprecated since 0.9.0; retained for compatibility. Use `content`. */
   answers?: HarnessQuestionAnswers;
   /** #3390: accepted content for a form input request. */

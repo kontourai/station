@@ -408,6 +408,55 @@ describe('approval inbox notifications', () => {
     });
   });
 
+  test('offers the session-wide grant only where the adapter marked the request, and sends the typed scope', async () => {
+    const openShell = (requestId: string, payload: Record<string, unknown>) =>
+      emit('orchestration:event', {
+        event: {
+          createdAt: new Date().toISOString(),
+          method: 'request.opened',
+          payload: {
+            toolName: 'shell',
+            rawInput: { action: 'shell' },
+            ...payload,
+          },
+          provider: 'opencode',
+          requestId,
+          eventId: `event-${requestId}`,
+          requestType: 'approval',
+          threadId: 'thread-all',
+          title: 'Allow shell',
+        },
+      });
+    await openShell('req-plain', {});
+    await openShell('req-all', { sessionGrantAll: true });
+    const cards = await notificationService.list();
+    const card = (requestId: string) =>
+      cards.find((entry) => entry.metadata?.requestId === requestId);
+    expect(card('req-plain')?.actions?.map((action) => action.id)).toEqual([
+      'accept',
+      'acceptForSession',
+      'decline',
+    ]);
+    expect(card('req-all')?.actions?.map((action) => action.label)).toEqual([
+      'Allow once',
+      'Allow all shell calls for this session',
+      'Allow everything for this session',
+      'Deny',
+    ]);
+    await notificationService.action(
+      card('req-all')!.id,
+      'acceptForSessionAll',
+    );
+    expect(orchestrationService.dispatch).toHaveBeenCalledWith({
+      type: 'respondToRequest',
+      threadId: 'thread-all',
+      requestId: 'req-all',
+      expectedRequestEventId: 'event-req-all',
+      decision: 'acceptForSession',
+      sessionGrantScope: 'all',
+    });
+  });
+
   describe('the Station browser server grant', () => {
     const open = (payload: Record<string, unknown>) =>
       emit('orchestration:event', {

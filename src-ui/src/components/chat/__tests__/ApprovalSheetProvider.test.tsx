@@ -352,7 +352,7 @@ describe('the conversation approval sheet', () => {
     );
     fireEvent.click(
       await screen.findByRole('menuitem', {
-        name: 'Allow all for this session',
+        name: 'Allow these tools for this session',
       }),
     );
     await waitFor(() => expect(approve).toHaveBeenCalledTimes(3));

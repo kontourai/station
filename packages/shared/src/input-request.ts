@@ -1048,12 +1048,15 @@ export function inputRequestAnswerTexts(
  * (`toolRequestGrantLabel`), or undefined where none is offered. The optional
  * server label is supplied only after the adapter authenticated a Station browser call.
  * The optional rule label (`toolRequestRuleGrant`) offers the narrower
- * command-prefix choice, placed before the whole-tool one.
+ * command-prefix choice, placed before the whole-tool one. The optional
+ * all label (`toolRequestAllGrantFromPayload`) offers the widest choice,
+ * every later ask in the session, placed last of the session choices.
  */
 export function approvalDecisionBody(
   sessionGrantLabel: string | undefined,
   serverGrantLabel?: string,
   ruleGrantLabel?: string,
+  allGrantLabel?: string,
 ): InputRequestDecisionBody {
   return {
     kind: 'decision',
@@ -1088,6 +1091,17 @@ export function approvalDecisionBody(
               effect: 'allow' as const,
               scope: 'session' as const,
               sessionGrantScope: 'server' as const,
+            },
+          ]
+        : []),
+      ...(allGrantLabel
+        ? [
+            {
+              id: 'allow-all-session',
+              label: allGrantLabel,
+              effect: 'allow' as const,
+              scope: 'session' as const,
+              sessionGrantScope: 'all' as const,
             },
           ]
         : []),

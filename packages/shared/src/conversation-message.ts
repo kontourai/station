@@ -170,6 +170,11 @@ export interface MessagePart {
    */
   approvalRuleGrant?: ToolRequestRuleGrant;
   /**
+   * Whether that request also offers the session-wide grant
+   * (`toolRequestAllGrantFromPayload`); absent offers nothing.
+   */
+  approvalAllGrant?: true;
+  /**
    * station#3117: `'policy-denied'` is set only from the runtime event's own
    * `policyDenied` marker (see `runtime-event-projection.ts`'s `tool.completed`
    * case) — never inferred from `state === 'error'` alone, so a rehydrated
