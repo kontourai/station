@@ -1,0 +1,145 @@
+{
+  "revision": "7287ab715455918a8f5441edc9425c525dd69953",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Checked the SDK negotiation and owned connection against the stated Events support. The authenticated catalog read passed against an isolated Nightly host. Polling and subscriptions remain outside the Connections workflow.","inputs":["docs/design/mcp-ui-host.md","packages/shared/src/mcp-connection.ts","src-server/routes/agents/__tests__/tools.routes.test.ts","src-server/routes/agents/tools.ts","src-server/services/plugins/mcp-service.ts","src-ui/src/views/integrations/IntegrationEventsSection.tsx"]},
+
+    {"path":"docs/guides/connections.md","note":"Traced Check events from the saved integration editor through its Station-scoped request and server operator check. The action uses the existing shared account and requests only the catalog.","inputs":["docs/guides/connections.md","packages/contracts/src/tool.ts","src-server/security/pairing-route-scopes.ts","src-server/services/plugins/tool-server-oauth.ts","src-ui/src/views/integrations/IntegrationEventsSection.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the event discovery endpoint, HTTP dispositions, live operator check, bounded event fields and private cache policy in the mounted tool route.","inputs":["docs/reference/api.md","packages/contracts/src/tool.ts","packages/sdk/src/queries.ts","src-server/routes/agents/tools.ts","src-server/security/pairing-route-scopes.ts","src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked the captured request scope, read-only POST deadline semantics and typed catalog result. Existing integration account and tool discovery hooks retain their request contract.","inputs":["docs/reference/sdk.md","docs/design/mcp-ui-host.md","packages/contracts/src/tool.ts","packages/sdk/src/index.ts","packages/sdk/src/query-domains/catalog.ts","src-server/security/pairing-route-scopes.ts","packages/sdk/src/client/integrations.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed integration contract references against the additive event catalog DTO. Tool definitions, persisted probes, account models and existing metadata are unchanged.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed integration contract references against the additive event catalog DTO. Tool definitions, persisted probes, account models and existing metadata are unchanged.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed integration contract references against the additive event catalog DTO. Tool definitions, persisted probes, account models and existing metadata are unchanged.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed integration contract references against the additive event catalog DTO. Tool definitions, persisted probes, account models and existing metadata are unchanged.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed integration contract references against the additive event catalog DTO. Tool definitions, persisted probes, account models and existing metadata are unchanged.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed integration contract references against the additive event catalog DTO. Tool definitions, persisted probes, account models and existing metadata are unchanged.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed integration contract references against the additive event catalog DTO. Tool definitions, persisted probes, account models and existing metadata are unchanged.","inputs":["packages/contracts/src/tool.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed cited SDK consumers against the barrel change. It adds the event discovery hook to existing exports and preserves the existing pane, query and control exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Reviewed cited SDK consumers against the barrel change. It adds the event discovery hook to existing exports and preserves the existing pane, query and control exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Reviewed cited SDK consumers against the barrel change. It adds the event discovery hook to existing exports and preserves the existing pane, query and control exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed cited SDK consumers against the barrel change. It adds the event discovery hook to existing exports and preserves the existing pane, query and control exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed cited SDK consumers against the barrel change. It adds the event discovery hook to existing exports and preserves the existing pane, query and control exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed cited SDK consumers against the barrel change. It adds the event discovery hook to existing exports and preserves the existing pane, query and control exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed cited SDK consumers against the barrel change. It adds the event discovery hook to existing exports and preserves the existing pane, query and control exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed cited SDK consumers against the barrel change. It adds the event discovery hook to existing exports and preserves the existing pane, query and control exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Reviewed cited SDK consumers against the barrel change. It adds the event discovery hook to existing exports and preserves the existing pane, query and control exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/README.md","note":"Reviewed cited SDK consumers against the barrel change. It adds the event discovery hook to existing exports and preserves the existing pane, query and control exports.","inputs":["packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed query-export consumers. The catalog discovery hook adds one authority-bound action to the existing query surface.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed query-export consumers. The catalog discovery hook adds one authority-bound action to the existing query surface.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed query-export consumers. The catalog discovery hook adds one authority-bound action to the existing query surface.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed query-export consumers. The catalog discovery hook adds one authority-bound action to the existing query surface.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed query-export consumers. The catalog discovery hook adds one authority-bound action to the existing query surface.","inputs":["packages/sdk/src/queries.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed catalog and agent-configuration claims against the connection hooks. The new hook has an explicit captured Station authority and does not attach or enable a tool.","inputs":["packages/sdk/src/query-domains/catalog.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed catalog and agent-configuration claims against the connection hooks. The new hook has an explicit captured Station authority and does not attach or enable a tool.","inputs":["packages/sdk/src/query-domains/catalog.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed negotiation, elicitation, compatibility and custody references. The SDK sends the Events declaration, reads tools only if advertised, and treats modern event listing as a non-eliciting read.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed negotiation, elicitation, compatibility and custody references. The SDK sends the Events declaration, reads tools only if advertised, and treats modern event listing as a non-eliciting read.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed negotiation, elicitation, compatibility and custody references. The SDK sends the Events declaration, reads tools only if advertised, and treats modern event listing as a non-eliciting read.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed negotiation, elicitation, compatibility and custody references. The SDK sends the Events declaration, reads tools only if advertised, and treats modern event listing as a non-eliciting read.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/guides/development.md","note":"Reviewed negotiation, elicitation, compatibility and custody references. The SDK sends the Events declaration, reads tools only if advertised, and treats modern event listing as a non-eliciting read.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed negotiation, elicitation, compatibility and custody references. The SDK sends the Events declaration, reads tools only if advertised, and treats modern event listing as a non-eliciting read.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/reference/shared.md","note":"Reviewed negotiation, elicitation, compatibility and custody references. The SDK sends the Events declaration, reads tools only if advertised, and treats modern event listing as a non-eliciting read.","inputs":["packages/shared/src/mcp-connection.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed App route evidence alongside the added Events authority regression. An existing authenticated runtime fixture exercises the event protocol and the route test covers refusal after operator loss.","inputs":["src-server/routes/agents/__tests__/tools.routes.test.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed integration and App routes against the additive Events catalog leaf. It checks operator admission before connecting and before returning, and has no App resource or tool-call path.","inputs":["src-server/routes/agents/tools.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed integration and App routes against the additive Events catalog leaf. It checks operator admission before connecting and before returning, and has no App resource or tool-call path.","inputs":["src-server/routes/agents/tools.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed integration and App routes against the additive Events catalog leaf. It checks operator admission before connecting and before returning, and has no App resource or tool-call path.","inputs":["src-server/routes/agents/tools.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed integration and App routes against the additive Events catalog leaf. It checks operator admission before connecting and before returning, and has no App resource or tool-call path.","inputs":["src-server/routes/agents/tools.ts"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"Reviewed integration and App routes against the additive Events catalog leaf. It checks operator admission before connecting and before returning, and has no App resource or tool-call path.","inputs":["src-server/routes/agents/tools.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/answer-share-permalinks.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-capabilities.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/design/native-relay-enrollment.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"packages/connect/README.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"tests/tauri-shell/native-fresh-relay-fixture.md","note":"Reviewed affected pairing, broker, native, deployment and API scope references. The sole route entry added is the host-operator Events catalog POST, which inherits integration operate. It does not alter other route matches or credentials.","inputs":["src-server/security/pairing-route-scopes.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the shared MCP connection and App authority references. The catalog read uses the same owned connection and fences, with a Streamable HTTP shared-account input and a negotiated Events capability.","inputs":["src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the shared MCP connection and App authority references. The catalog read uses the same owned connection and fences, with a Streamable HTTP shared-account input and a negotiated Events capability.","inputs":["src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/guides/plugins.md","note":"Reviewed the shared MCP connection and App authority references. The catalog read uses the same owned connection and fences, with a Streamable HTTP shared-account input and a negotiated Events capability.","inputs":["src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/reference/agent-plugins.md","note":"Reviewed the shared MCP connection and App authority references. The catalog read uses the same owned connection and fences, with a Streamable HTTP shared-account input and a negotiated Events capability.","inputs":["src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the shared MCP connection and App authority references. The catalog read uses the same owned connection and fences, with a Streamable HTTP shared-account input and a negotiated Events capability.","inputs":["src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the shared MCP connection and App authority references. The catalog read uses the same owned connection and fences, with a Streamable HTTP shared-account input and a negotiated Events capability.","inputs":["src-server/services/plugins/mcp-service.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed OAuth and dependency-security references. The additive event-read error label keeps remote diagnostics private and does not change registration, exchange, refresh or user account selection.","inputs":["src-server/services/plugins/tool-server-oauth.ts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed OAuth and dependency-security references. The additive event-read error label keeps remote diagnostics private and does not change registration, exchange, refresh or user account selection.","inputs":["src-server/services/plugins/tool-server-oauth.ts"]}
+  ]
+}

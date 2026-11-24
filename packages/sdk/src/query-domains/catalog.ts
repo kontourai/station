@@ -9,6 +9,7 @@ import type {
   ToolDef,
 } from '@kontourai/station-contracts/tool';
 import type { ApiRequestScope } from '../client/http';
+import { discoverIntegrationEvents } from '../client/integrations';
 import {
   type MutationOptions,
   type QueryConfig,
@@ -406,6 +407,13 @@ export function useIntegrationAccountQuery(
         requestScope,
       ),
     { cancelWhenInactive: true, staleTime: 0, refetchOnMount: 'always' },
+  );
+}
+
+export function useDiscoverIntegrationEventsMutation() {
+  return useApiMutation(
+    ({ id, requestScope }: { id: string; requestScope: ApiRequestScope }) =>
+      discoverIntegrationEvents(id, requestScope),
   );
 }
 
