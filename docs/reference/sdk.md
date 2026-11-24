@@ -6225,9 +6225,12 @@ await respondToRequest(requestScope.apiBase, {
 `decision: 'acceptForSession'`. `'server'` widens the grant to the built-in
 Station browser server; `'rule'` narrows it to the Bash command prefixes a
 Claude engine suggested. Each applies only where the request offered that
-choice; otherwise the answer is a one-call accept. Omit it for the per-tool
-grant. A Station that predates `'server'` ignores it; one that predates
-`'rule'` refuses the command.
+choice; otherwise the answer is a one-call accept. `'all'` widens the grant
+to every later request in the Session a grant may answer, where the request
+offered it (`sessionGrantAll: true` on its payload); an engine without it
+takes the per-tool grant. Omit it for the per-tool grant. A Station that
+predates `'server'` ignores it; one that predates `'rule'` or `'all'` refuses
+the command.
 The approval decision option carries the same optional `sessionGrantScope`;
 renderers must forward it separately from `acceptForSession` so a scoped
 choice cannot collapse into ordinary per-tool trust.

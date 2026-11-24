@@ -1,4 +1,5 @@
 import { useInboxWorkingCount } from '../components/chat-dock/useInboxGroups';
+
 // @vitest-environment jsdom
 
 /**
@@ -26,6 +27,7 @@ import {
 } from '@testing-library/react';
 import { createRef } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { snoozeChoices } from '../components/inbox-row/snooze-presets';
 
 vi.mock('../contexts/ProjectsContext', () => ({
   useProjects: () => ({ projects: [{ slug: 'alpha', name: 'Alpha' }] }),
@@ -181,7 +183,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       now: NOW,
     };
     const mounted = render(<MobileInboxPanel {...props} open />);
-    fireEvent.click(screen.getByRole('button', { name: 'Search inbox' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Search chats' }));
     fireEvent.change(screen.getByRole('searchbox'), {
       target: { value: 'Shared row' },
     });
@@ -191,7 +193,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     )!;
     list.scrollTop = 120;
     mounted.rerender(<MobileInboxPanel {...props} open={false} />);
-    expect(screen.queryByRole('region', { name: 'Inbox' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Chats' })).toBeNull();
     mounted.rerender(<MobileInboxPanel {...props} open />);
     expect((screen.getByRole('searchbox') as HTMLInputElement).value).toBe(
       'Shared row',
@@ -243,7 +245,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     ]);
     expect(onClose).not.toHaveBeenCalled();
     expect(onAcknowledgeConversation).not.toHaveBeenCalled();
-    expect(screen.getByRole('region', { name: 'Inbox' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Chats' })).toBeTruthy();
   });
   beforeEach(() => {
     localStorage.clear();
@@ -323,7 +325,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       />,
     );
     fireEvent.click(
-      screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+      screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
     );
     expect(screen.getByText(child.title)).toBeTruthy();
     expect(screen.getByText(parent.title)).toBeTruthy();
@@ -381,12 +383,12 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
             );
       const first = mount();
       if (host === 'mobile') {
-        fireEvent.click(screen.getByRole('button', { name: 'Filter inbox' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Filter chats' }));
         fireEvent.click(screen.getByRole('button', { name: /^Alpha/ }));
         fireEvent.click(screen.getByRole('button', { name: 'Apply filters' }));
       } else
         fireEvent.change(
-          screen.getByRole('combobox', { name: 'Inbox scope' }),
+          screen.getByRole('combobox', { name: 'Chat list scope' }),
           {
             target: { value: 'project:["station:local","alpha"]' },
           },
@@ -404,7 +406,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         expect(
           (
             screen.getByRole('combobox', {
-              name: 'Inbox scope',
+              name: 'Chat list scope',
             }) as HTMLSelectElement
           ).value,
         ).toBe('project:["station:local","alpha"]');
@@ -476,7 +478,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       const mounted = render(panel());
       const scope = () =>
         screen.getByRole('combobox', {
-          name: 'Inbox scope',
+          name: 'Chat list scope',
         }) as HTMLSelectElement;
       // With no stored setting a project route scopes the inbox.
       expect(scope().value).toBe('current-project');
@@ -763,7 +765,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
           0,
         );
         fireEvent.click(
-          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
         );
       } else {
         render(
@@ -778,7 +780,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       }
       if (host === 'mobile')
         fireEvent.click(
-          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
         );
       expect(document.querySelectorAll('.chat-dock-inbox__row')).toHaveLength(
         20,
@@ -837,7 +839,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
           />,
         );
         fireEvent.click(
-          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
         );
       } else {
         render(
@@ -852,7 +854,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       }
       if (host === 'mobile')
         fireEvent.click(
-          screen.getByRole('button', { name: /^Settled(?: · \d+)?$/ }),
+          screen.getByRole('button', { name: /^Earlier(?: · \d+)?$/ }),
         );
       const current = screen.getByRole('button', {
         name: /^Historical work 40.*Shared project/,
@@ -881,7 +883,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
 
   it('sheet host renders the same shared anatomy with touch chrome', () => {
     renderSheetHost(workItem());
-    const dialog = screen.getByRole('region', { name: 'Inbox' });
+    const dialog = screen.getByRole('region', { name: 'Chats' });
     expectSharedRowAnatomy(dialog);
     expect(
       screen.getByRole('button', {
@@ -892,7 +894,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     expect(dialog.querySelector('.inbox-row--touch')).not.toBeNull();
     expect(dialog.querySelector('.inbox-row--hover')).toBeNull();
     // Chrome stays host-owned: the pinned accessible names survive.
-    expect(screen.getByRole('region', { name: 'Inbox' })).not.toBeNull();
+    expect(screen.getByRole('region', { name: 'Chats' })).not.toBeNull();
   });
 
   // Rendered through the shared row directly: a 3h-old terminal row lives in
@@ -907,7 +909,6 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         })}
         isCurrent={false}
         isSnoozed={false}
-        isOpenChat={false}
         now={NOW}
         onActivate={vi.fn()}
       />,
@@ -924,7 +925,6 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         item={workItem({ lifecycleLabel: 'Failed', updatedAt: 0 })}
         isCurrent={false}
         isSnoozed={false}
-        isOpenChat={false}
         now={NOW}
         onActivate={vi.fn()}
       />,
@@ -944,11 +944,11 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       screen.getByRole('button', { name: /^Shared row title/ }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
-    expect(await screen.findByRole('button', { name: '3 hours' })).toBeTruthy();
     expect(
-      screen.getByRole('button', { name: 'Dismiss from inbox' }),
+      await screen.findByRole('button', { name: /^Tomorrow morning,/ }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: '3 hours' }));
+    expect(screen.getByRole('button', { name: 'Mark done' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Tomorrow morning,/ }));
     const snoozed = screen.getByRole('region', { name: 'Snoozed · 1' });
     fireEvent.click(
       within(snoozed).getByRole('button', { name: 'Snoozed · 1' }),
@@ -960,10 +960,10 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     ).toBeTruthy();
   });
 
-  it('the desktop panel’s snooze is one control that opens the duration choice (D7)', () => {
+  it('the desktop panel’s snooze is in the one row menu, which opens the duration choice (D7)', () => {
     renderPanelHost(workItem());
     const snooze = screen.getByRole('button', {
-      name: 'Snooze Shared row title',
+      name: 'Actions for Shared row title',
     });
     expect(snooze.getAttribute('aria-haspopup')).toBe('menu');
     expect(
@@ -974,14 +974,22 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     // Pressing it opens the choice and snoozes nothing: a one-tap default
     // would hide the row before the user said for how long.
     fireEvent.click(snooze);
-    const menu = screen.getByRole('menu', { name: 'Snooze Shared row title' });
+    const menu = screen.getByRole('menu', {
+      name: 'Actions for Shared row title',
+    });
     expect(
       within(menu)
         .getAllByRole('menuitem')
-        .map((option) => option.textContent?.trim()),
-    ).toEqual(['1 hour', '3 hours', 'Tomorrow 9am', 'Next Monday 9am']);
+        .map((option) => option.firstChild?.textContent),
+    ).toEqual([
+      'Open chat',
+      'Mark done',
+      ...snoozeChoices(NOW).map((choice) => choice.label),
+    ]);
     expect(screen.queryByRole('button', { name: 'Snoozed · 1' })).toBeNull();
-    fireEvent.click(within(menu).getByRole('menuitem', { name: '1 hour' }));
+    fireEvent.click(
+      within(menu).getByRole('menuitem', { name: /^In 1 hour,/ }),
+    );
     expect(screen.getByRole('button', { name: 'Snoozed · 1' })).not.toBeNull();
   });
 
@@ -1024,15 +1032,16 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       screen.getByRole('button', { name: /^Shared row title/ }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Details' }));
-    fireEvent.click(await screen.findByRole('button', { name: '1 hour' }));
+    fireEvent.click(await screen.findByRole('button', { name: /^In 1 hour,/ }));
     sheet.unmount();
 
     renderPanelHost(item);
     const snoozedToggle = screen.getByRole('button', { name: 'Snoozed · 1' });
     fireEvent.click(snoozedToggle);
-    expect(
-      screen.getByRole('button', { name: 'Unsnooze Shared row title' }),
-    ).not.toBeNull();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for Shared row title' }),
+    );
+    expect(screen.getByRole('menuitem', { name: 'Wake now' })).not.toBeNull();
   });
 });
 
@@ -1174,7 +1183,7 @@ describe('inbox rows show the agent they belong to (station#2802)', () => {
 
   it('renders the same icon through the mobile sheet chrome', () => {
     renderSheetHost(sessionItem({ agentSlug: 'codex' }), vi.fn(), AGENTS);
-    const dialog = screen.getByRole('region', { name: 'Inbox' });
+    const dialog = screen.getByRole('region', { name: 'Chats' });
     expect(avatarOf(dialog)?.getAttribute('data-brand-key')).toBe('codex');
   });
 });

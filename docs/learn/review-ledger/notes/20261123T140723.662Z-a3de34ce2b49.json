@@ -1,0 +1,7 @@
+{
+  "revision": "ae4baa531b04a668824a11f0e3630bed2c09f42c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Persistence bullet: kept New chat text is filed under the dock's Project when the draft closes (a Project picked inside the draft does not move it), or none; checked against useChatDockOverlays (scope read from newChatScopeRef at close) and ChatDock's newChatScope.","inputs":["docs/design/chat-composer.md"]}
+  ]
+}

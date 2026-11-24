@@ -12,7 +12,7 @@ import { Hono } from 'hono';
 // module loads below.
 // @ts-expect-error no type declarations for 'jsdom' in this typecheck lane
 import { JSDOM } from 'jsdom';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../src-server/__test-utils__/temp-dirs';
 import type { ChatMessage } from '../types';
 import { CHAT_ERROR_MARKER_PREFIX } from '../utils/sessionFailure';
@@ -43,9 +43,14 @@ const dom = new JSDOM('<!doctype html><html><body></body></html>', {
 // (the per-client `page` below is a native `EventTarget`, and mixing a
 // jsdom `Event` into a native `dispatchEvent` fails Node's own brand check).
 // Only what `document`-driven rendering actually needs.
-vi.stubGlobal('document', dom.window.document);
-vi.stubGlobal('navigator', dom.window.navigator);
-vi.stubGlobal('getComputedStyle', dom.window.getComputedStyle);
+function stubDocument() {
+  vi.stubGlobal('document', dom.window.document);
+  vi.stubGlobal('navigator', dom.window.navigator);
+  vi.stubGlobal('getComputedStyle', dom.window.getComputedStyle);
+}
+stubDocument();
+// Each test's afterEach unstubs every global; the next test needs these back.
+beforeEach(stubDocument);
 // This test drives two real clients through real async I/O and waits for
 // convergence with waitFor; its updates are deliberately outside act(). React
 // warns on every such update while IS_REACT_ACT_ENVIRONMENT is true, which a
@@ -332,6 +337,37 @@ async function clientGraph(
   function unmountTranscript(): void {
     transcriptView.unmount();
   }
+  /**
+   * The whole conversation, read by a reader of its own that loads older
+   * pages until there are none: the oracle for what a kept window holds.
+   */
+  async function fullTranscript(): Promise<ChatMessage[]> {
+    const view = renderHook(
+      (session: ReturnType<typeof buildSession>) =>
+        useActiveChatTranscript(apiBase, session),
+      { initialProps: buildSession() },
+    );
+    const quiet = () =>
+      vi.waitFor(
+        () => {
+          expect(view.result.current.settled).toBe(true);
+          expect(view.result.current.loading).toBe(false);
+        },
+        { timeout: 5_000 },
+      );
+    try {
+      await quiet();
+      for (let pages = 0; view.result.current.hasMore; pages += 1) {
+        expect(pages, 'older pages to the beginning').toBeLessThan(200);
+        await view.result.current.loadOlder();
+        view.rerender(buildSession());
+        await quiet();
+      }
+      return view.result.current.messages;
+    } finally {
+      view.unmount();
+    }
+  }
   return {
     activeChatsStore,
     childWorkRegistrySnapshot,
@@ -344,6 +380,9 @@ async function clientGraph(
     settleTranscript,
     remountTranscript,
     unmountTranscript,
+    fullTranscript,
+    setReaderPlace: (place: { away: boolean; turnId?: string }) =>
+      transcriptView.result.current.setReaderPlace(place),
   };
 }
 
@@ -574,13 +613,21 @@ async function assertClientsConverged(
 async function assertTranscriptsConverged(
   a: ClientGraph,
   b: ClientGraph,
+  aAway: boolean,
   label: string,
 ): Promise<{ aMessages: ChatMessage[]; bMessages: ChatMessage[] }> {
   const aMessages = await a.settleTranscript();
   const bMessages = await b.settleTranscript();
-  expect(normalizeTranscript(bMessages), label).toEqual(
-    normalizeTranscript(aMessages),
-  );
+  const aNormalized = normalizeTranscript(aMessages);
+  const bNormalized = normalizeTranscript(bMessages);
+  // A reader away from the end keeps older turns; B's window must still be
+  // exactly A's newest messages.
+  if (aAway)
+    expect(
+      aNormalized.slice(aNormalized.length - bNormalized.length),
+      label,
+    ).toEqual(bNormalized);
+  else expect(bNormalized, label).toEqual(aNormalized);
   return { aMessages, bMessages };
 }
 
@@ -669,7 +716,15 @@ async function reconnectClient(params: {
   return b;
 }
 
-test('seeded clients converge through live, replay, and snapshot reconnects', async () => {
+/**
+ * The seeded run below. With `aAway`, client A's reader is away from the end
+ * throughout: its window keeps what it holds across reloads, so A may show
+ * older turns B's bounded window has dropped, but what B shows must be
+ * exactly A's newest messages, each delta still rendered once.
+ */
+async function seededConvergence(aAway: boolean) {
+  // The request log is the file's; each run reads only its own requests.
+  requests.splice(0);
   const { store, publish, publishViaService } = await setup();
   const conversationId = 'sync-root';
   const createdAt = '2026-09-24T00:00:00.000Z';
@@ -690,6 +745,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
     metadata: { agentSlug: 'claude', userId },
   } as CanonicalRuntimeEvent);
   const a = await clientGraph(conversationId);
+  if (aAway) a.setReaderPlace({ away: true });
   await until(() =>
     Boolean(
       a.activeChatsStore.getSnapshot()[conversationId]?.conversationActivity,
@@ -1228,6 +1284,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       const { aMessages, bMessages } = await assertTranscriptsConverged(
         a,
         b,
+        aAway,
         seedLabel,
       );
       assertDeltaTextRenderedOnce(
@@ -1241,6 +1298,27 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
         `${seedLabel} oracle(B) ${turnId}`,
       );
     }
+    // A's whole window against the whole conversation: every message from
+    // its oldest turn to the newest, each once and in order.
+    if (seed !== 50 && (seed % 20 === 19 || seed === 51)) {
+      const full = normalizeTranscript(await a.fullTranscript());
+      const held = normalizeTranscript(await a.settleTranscript());
+      expect(held.length, `${seedLabel} A within history`).toBeLessThan(
+        full.length + 1,
+      );
+      expect(held, `${seedLabel} A's whole window`).toEqual(
+        full.slice(full.length - held.length),
+      );
+    }
+    // Remounted, A has no reader state: its window is the bounded page B
+    // shows. Then its reader is away again.
+    if (seed === 100) {
+      a.remountTranscript();
+      const held = normalizeTranscript(await a.settleTranscript());
+      const bounded = normalizeTranscript(await b.settleTranscript());
+      expect(held, `${seedLabel} A remounted`).toEqual(bounded);
+      if (aAway) a.setReaderPlace({ away: true });
+    }
     if (seed === 51) {
       // turn-50 closed just now (the late `turn.completed` published above)
       // — its own deltas (published back at seed 50) must render exactly
@@ -1248,6 +1326,7 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
       const { aMessages, bMessages } = await assertTranscriptsConverged(
         a,
         b,
+        aAway,
         `${seedLabel} turn-50 late-close`,
       );
       assertDeltaTextRenderedOnce(
@@ -1340,4 +1419,12 @@ test('seeded clients converge through live, replay, and snapshot reconnects', as
   await reader.cancel();
   expect(wire).toContain('event: orchestration:snapshot');
   expect(wire).toContain(`"epoch":"${replacement.store.streamEpoch()}"`);
+}
+
+test('seeded clients converge through live, replay, and snapshot reconnects', async () => {
+  await seededConvergence(false);
+}, 150_000);
+
+test('seeded clients converge with one reader away from the end throughout', async () => {
+  await seededConvergence(true);
 }, 150_000);

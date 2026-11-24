@@ -1,0 +1,11 @@
+{
+  "revision": "d0f65f52d514bb1fa84645fe16d9fbd9f08467e9",
+
+  "notes": [
+    {"path":"docs/design/ai-ui-bridge-expansion.md","note":"Rechecked the pages citing ChatMessageList after narrowing the row-gone rule to a held row that left the page: chat-composer updated in the same change; ai-ui-bridge-expansion (form submission) and placement make no hold claim, unaffected.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Rechecked the pages citing ChatMessageList after narrowing the row-gone rule to a held row that left the page: chat-composer updated in the same change; ai-ui-bridge-expansion (form submission) and placement make no hold claim, unaffected.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"Rechecked the pages citing ChatMessageList after narrowing the row-gone rule to a held row that left the page: chat-composer updated in the same change; ai-ui-bridge-expansion (form submission) and placement make no hold claim, unaffected.","inputs":["src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

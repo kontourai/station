@@ -272,7 +272,7 @@ describe('mobile conversation focus', () => {
     ).toBeNull();
     expect(screen.queryByRole('button', { name: 'New chat' })).toBeNull();
     expect(
-      screen.getByText(state.inboxActive ? 'Inbox' : 'New chat', {
+      screen.getByText(state.inboxActive ? 'Chats' : 'New chat', {
         selector: '.chat-dock__mobile-title-text',
       }),
     ).toBeTruthy();
@@ -291,7 +291,7 @@ describe('mobile conversation focus', () => {
     renderHeader({
       onToggleInbox,
     });
-    const inbox = screen.getByRole('button', { name: 'Inbox' });
+    const inbox = screen.getByRole('button', { name: 'Chat list' });
     const identity = inbox
       .closest('.chat-dock__mobile-header')!
       .querySelector('.chat-dock__mobile-identity')!;
@@ -310,7 +310,7 @@ describe('mobile conversation focus', () => {
       screen.queryByRole('button', { name: /^Switch project/ }),
     ).toBeNull();
     expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Inbox' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Chat list' })).toBeTruthy();
   });
   test('the activity dot on chat actions says what it means', () => {
     renderHeader({ activeCount: 2, unreadCount: 1 });
@@ -401,7 +401,7 @@ describe('mobile conversation focus', () => {
   test('chat overflow is chats and dock chrome, not Profile or a second conversation list', async () => {
     renderHeader();
     await openActions();
-    expect(screen.getByRole('menuitem', { name: 'Inbox' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Chat list' })).toBeTruthy();
     expect(screen.getByRole('menuitem', { name: 'New chat' })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: 'Profile' })).toBeNull();
     expect(screen.queryByRole('menuitem', { name: 'Settings' })).toBeNull();
@@ -456,7 +456,7 @@ describe('mobile conversation focus', () => {
 describe('the mobile dock bar control set (#928 C2b)', () => {
   test('an open bar exposes navigation, primary context actions, and secondary actions', () => {
     renderHeader();
-    for (const name of ['Inbox', 'Chat actions']) {
+    for (const name of ['Chat list', 'Chat actions']) {
       expect(screen.getByRole('button', { name })).toBeTruthy();
     }
   });
@@ -755,7 +755,7 @@ describe('first-run bar without a chat (#4404 A44)', () => {
         agentIdentity: null,
       });
       expect(
-        screen.getByText('Inbox', { selector: '.chat-dock__mobile-title' }),
+        screen.getByText('Chats', { selector: '.chat-dock__mobile-title' }),
       ).toBeTruthy();
       expect(
         screen.getByRole('button', { name: 'Collapse chat' }),
@@ -771,7 +771,7 @@ describe('first-run bar without a chat (#4404 A44)', () => {
 test('Inbox title takes precedence over an open child breadcrumb', () => {
   renderHeader({ inboxActive: true, childTrail: 'Parent / Child' });
   expect(
-    screen.getByText('Inbox', { selector: '.chat-dock__mobile-title' }),
+    screen.getByText('Chats', { selector: '.chat-dock__mobile-title' }),
   ).toBeTruthy();
   expect(screen.queryByText('Parent / Child')).toBeNull();
 });

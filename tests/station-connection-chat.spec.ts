@@ -63,10 +63,10 @@ test('owner Device chats through a real Station delegation and keeps target refu
   );
   streams[0]!.stream.finish('tool_calls');
   await expect(
-    page.getByRole('button', { name: 'Allow Once', exact: true }),
+    page.getByRole('button', { name: 'Allow once', exact: true }),
   ).toBeEnabled();
   await captureConnectionState(page, testInfo, 'relay-approval');
-  await page.getByRole('button', { name: 'Allow Once', exact: true }).click();
+  await page.getByRole('button', { name: 'Allow once', exact: true }).click();
   await expect.poll(() => streams.length).toBe(2);
   streams[1]!.stream.text('The approved receiver tool completed.');
   streams[1]!.stream.finish();

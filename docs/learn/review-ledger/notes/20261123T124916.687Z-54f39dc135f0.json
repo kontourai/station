@@ -1,0 +1,7 @@
+{
+  "revision": "ff50277a6d175697884db9f351a54eacf4bf0b96",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"SDK surface unchanged; the composer's saved-draft handling for slash commands is UI behaviour the reference does not describe.","inputs":["docs/reference/sdk.md","src-ui/src/hooks/useChatInput.ts"]}
+  ]
+}

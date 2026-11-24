@@ -1,0 +1,7 @@
+{
+  "revision": "567736a2c654794fba6d2c0f7b1d54bdd5888e0f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rechecked after the window-blur fix: the hold paragraph still matches the code (reader-made scrolls only, including a scrollbar drag; new messages of the reader's end it).","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

@@ -42,7 +42,7 @@ createRoot(document.getElementById('root')).render(
       <div className="chat-dock-inbox__scroll" data-testid="scroll">
         <InboxGroupList groups={groups} idPrefix="fixture" now={NOW}
           activeChatSessionId={items[0].orchestrationThreadId ?? items[0].chatSessionId}
-          openChatIds={new Set()} chrome="hover"
+          chrome="hover"
           collapsible={{sections: {running: false, open: false, external: false}, onToggle: () => {}}}
           onActivate={() => {}} onSnoozeWake={() => {}} />
       </div>

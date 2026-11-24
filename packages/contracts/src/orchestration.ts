@@ -197,6 +197,11 @@ export type OrchestrationCommand =
        * only where the request offered them (a Claude Bash ask); Station
        * then mints no tool grant. A scope the request did not offer, and a
        * `rule` answer to an engine other than Claude, is a one-call accept.
+       * `all` widens the grant to every later ask in the session that a grant
+       * may answer (never one addressed to a person, nor one Station's
+       * configuration-edit guard, policy or rejections decide), only where
+       * the request offered it; an adapter that does not honour `all` takes
+       * the per-tool grant, which is narrower.
        * Absent keeps the per-tool grant, so an older client's answer is
        * unchanged. An engine without the server grant takes the per-tool
        * grant for `server`.

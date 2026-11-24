@@ -1,0 +1,7 @@
+{
+  "revision": "f86288c415a21320529747042e11987edf241066",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"The two dock passages now say the chat list (search the chat list, then Marked done and Reopen; the Attention row's snooze offers the same choices as the chat list), matching the dock's Chats list from slice 4.13; Inbox stays the attention page's word.","inputs":["docs/user/getting-started.md"]}
+  ]
+}

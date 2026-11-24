@@ -174,6 +174,77 @@ describe('App Store Connect receipt authority', () => {
     ).toThrow(/at most one/);
   });
 
+  test.each([
+    { platform: [], appStorePlatform: 'IOS', buildId: 'ios-build' },
+    {
+      platform: ['--platform', 'MAC_OS'],
+      appStorePlatform: 'MAC_OS',
+      buildId: 'mac-build',
+    },
+  ])(
+    'reconciles the $appStorePlatform build when both platforms share a build number',
+    async ({ platform, appStorePlatform, buildId }) => {
+      const output = join(makeTempDir('asc-platform-'), 'receipt.json');
+      const fetch = vi.fn(async (input: string | URL) => {
+        const url = new URL(input);
+        const builds = [
+          { platform: 'IOS', id: 'ios-build' },
+          { platform: 'MAC_OS', id: 'mac-build' },
+        ];
+        const requestedPlatform = url.searchParams.get(
+          'filter[preReleaseVersion.platform]',
+        );
+        return Response.json({
+          data: builds
+            .filter(
+              (build) =>
+                !requestedPlatform || build.platform === requestedPlatform,
+            )
+            .map((build) => ({
+              type: 'builds',
+              id: build.id,
+              attributes: { version: '20004', processingState: 'VALID' },
+            })),
+        });
+      });
+      vi.stubGlobal('fetch', fetch);
+      try {
+        await main(
+          [
+            'reconcile-build',
+            '--app-id',
+            '6805330833',
+            '--bundle-version',
+            '20004',
+            '--authority-ref',
+            'refs/tags/v0.2.0-rc.4',
+            '--authority-sha',
+            'a'.repeat(40),
+            '--output',
+            output,
+            ...platform,
+          ],
+          {
+            APPLE_API_KEY_ID: 'key',
+            APPLE_API_ISSUER_ID: 'issuer',
+            APPLE_API_PRIVATE_KEY: privateKey,
+          },
+        );
+        expect(
+          new URL(fetch.mock.calls[0][0]).searchParams.get(
+            'filter[preReleaseVersion.platform]',
+          ),
+        ).toBe(appStorePlatform);
+        expect(JSON.parse(readFileSync(output, 'utf8'))).toMatchObject({
+          buildId,
+          processingState: 'VALID',
+        });
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    },
+  );
+
   test('accepts only the exact internal group', () => {
     const payload = {
       data: [

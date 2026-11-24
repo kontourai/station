@@ -253,7 +253,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await expect(
       dock.getByText('Allow is offered once the full request has loaded.'),
     ).toBeVisible();
-    await expect(dock.getByRole('button', { name: 'Allow Once' })).toHaveCount(
+    await expect(dock.getByRole('button', { name: 'Allow once' })).toHaveCount(
       0,
     );
     await expect(dock.getByRole('button', { name: 'Deny' })).toBeVisible();
@@ -266,7 +266,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     });
 
     release();
-    const allow = dock.getByRole('button', { name: 'Allow Once' });
+    const allow = dock.getByRole('button', { name: 'Allow once' });
     await expect(allow).toBeVisible();
     await expect(
       dock.getByText('export const value1199 = 1199;'),
@@ -304,7 +304,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await expect(
       sheet.getByText('Allow is offered once the full request has loaded.'),
     ).toBeVisible();
-    await expect(sheet.getByRole('button', { name: 'Allow Once' })).toHaveCount(
+    await expect(sheet.getByRole('button', { name: 'Allow once' })).toHaveCount(
       0,
     );
     await settled(page);
@@ -315,7 +315,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     });
     release();
     await expect(
-      sheet.getByRole('button', { name: 'Allow Once' }),
+      sheet.getByRole('button', { name: 'Allow once' }),
     ).toBeVisible();
     // However long the loaded request, the decision stays on screen.
     await expect(
@@ -323,7 +323,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     ).toBeAttached();
     await settled(page);
     await expect(
-      sheet.getByRole('button', { name: 'Allow Once' }),
+      sheet.getByRole('button', { name: 'Allow once' }),
     ).toBeInViewport();
     await expect(sheet.getByRole('button', { name: 'Deny' })).toBeInViewport();
     await page.screenshot({

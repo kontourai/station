@@ -40,7 +40,23 @@ const unsnoozeAttention = vi.fn();
 const snoozeNotification = vi.fn();
 let useRealUnsnooze = false;
 
+import { undoLatestAction } from '../components/undo/UndoableActionShortcut';
+import { resetUndoableActionsForTest } from '../components/undo/undoable-actions';
 import { chooseRowAction } from './helpers/row-menu';
+
+afterEach(() => resetUndoableActionsForTest());
+
+/**
+ * Mark done on the page holds its write behind the notice's Undo; closing
+ * the notice (its window ends, or it is dismissed) is what commits it.
+ */
+async function commitMarkDone() {
+  await act(async () => {
+    for (const toast of toastStore.getSnapshot())
+      if (toast.id.startsWith('undoable-')) toastStore.dismiss(toast.id);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => {
   const sdk = await importOriginal<typeof import('@kontourai/station-sdk')>();
@@ -53,6 +69,12 @@ vi.mock('@kontourai/station-sdk', async (importOriginal) => {
     useAttentionQuery: () => ({ data: attention, isLoading: false }),
     useDevicePresentation: () => undefined,
     useFeaturePreviewsQuery: () => ({ data: snoozePreviews }),
+    // The page's Mark done writes through the plain function after its Undo
+    // window; the row hooks write through the mutation below.
+    dismissNotification: (id: string) => {
+      dismiss(id);
+      return Promise.resolve();
+    },
     useSnoozeAttentionItemMutation: (apiBase?: string) => {
       const mutation = sdk.useSnoozeAttentionItemMutation(apiBase);
       return useRealUnsnooze
@@ -253,7 +275,7 @@ describe('NotificationsPage', () => {
             notificationId: 'notif-1',
             notificationSource: 'approval-inbox',
           },
-          actions: [{ id: 'accept', label: 'Allow Once', variant: 'primary' }],
+          actions: [{ id: 'accept', label: 'Allow once', variant: 'primary' }],
         },
       ],
     };
@@ -261,7 +283,7 @@ describe('NotificationsPage', () => {
     renderPage();
 
     expect(screen.getAllByText('Approval request').length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByText('Allow Once'));
+    fireEvent.click(screen.getByText('Allow once'));
     expect(action).toHaveBeenCalledWith(
       { actionId: 'accept', id: 'notif-1' },
       { onSuccess: expect.any(Function) },
@@ -773,7 +795,7 @@ describe('NotificationsPage', () => {
             notificationId: 'active',
             notificationSource: 'approval-inbox',
           },
-          actions: [{ id: 'accept', label: 'Allow Once' }],
+          actions: [{ id: 'accept', label: 'Allow once' }],
         },
       ],
     };
@@ -913,7 +935,7 @@ describe('NotificationsPage', () => {
             notificationId: 'notif-approval',
             notificationSource: 'approval-inbox',
           },
-          actions: [{ id: 'accept', label: 'Allow Once' }],
+          actions: [{ id: 'accept', label: 'Allow once' }],
         },
       ],
     };
@@ -975,7 +997,7 @@ describe('NotificationsPage', () => {
             notificationId: 'notif-approval',
             notificationSource: 'approval-inbox',
           },
-          actions: [{ id: 'accept', label: 'Allow Once' }],
+          actions: [{ id: 'accept', label: 'Allow once' }],
         },
       ],
     };
@@ -1172,7 +1194,7 @@ describe('NotificationsPage', () => {
   // for `status === 'delivered'` — an `expired` (or still-`pending`)
   // notification, exactly the stale-pairing-request shape the issue
   // reported, had no dismiss affordance at all.
-  test('an expired notification still offers a Dismiss button', () => {
+  test('an expired notification still offers a Dismiss button', async () => {
     notifications = [
       {
         id: 'notif-expired',
@@ -1189,7 +1211,10 @@ describe('NotificationsPage', () => {
     renderPage();
 
     expect(screen.getByText('Pairing request expired')).toBeTruthy();
-    chooseRowAction('Dismiss');
+    chooseRowAction('Mark done');
+    // Held behind its Undo until the notice closes.
+    expect(dismiss).not.toHaveBeenCalled();
+    await commitMarkDone();
     expect(dismiss).toHaveBeenCalledWith('notif-expired');
   });
 
@@ -1218,7 +1243,7 @@ describe('NotificationsPage', () => {
 
   // archive#1914: a `session-failed` attention item's "Dismiss" acknowledges
   // it (a stored ack, not a notification delete) rather than doing nothing.
-  test('dismissing a session-failed attention item acknowledges it', () => {
+  test('dismissing a session-failed attention item acknowledges it', async () => {
     const timestamp = new Date().toISOString();
     attention = {
       pendingCount: 1,
@@ -1239,10 +1264,125 @@ describe('NotificationsPage', () => {
     renderPage();
 
     expect(screen.getByText('Needs attention (1)')).toBeTruthy();
-    chooseRowAction('Dismiss');
+    chooseRowAction('Mark done');
+    await commitMarkDone();
     expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
       'session-failed:thread-boom',
+      expect.any(String),
     );
+  });
+
+  // One failed run, one row: the failed Session's attention row stands for
+  // the same thread's failed-turn notification.
+  describe('one failed run, one row', () => {
+    const timestamp = new Date().toISOString();
+    const failedSession = (acknowledgedAt?: string) => ({
+      id: 'session-failed:thread-boom',
+      kind: 'session-failed' as const,
+      title: 'Upgrade the test runner',
+      body: 'Engine exited with code 1',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      ...(acknowledgedAt ? { acknowledgedAt } : {}),
+      openHref: '/?surface=activity&session=thread-boom',
+      source: { threadId: 'thread-boom' },
+    });
+    const turnFailed = (id: string, threadId: string): Notification => ({
+      id,
+      source: 'turn-completion',
+      category: 'turn-failed',
+      title: 'Your agent needs attention',
+      priority: 'high',
+      status: 'delivered',
+      createdAt: timestamp,
+      updatedAt: timestamp,
+      metadata: { sessionId: threadId, threadId, turnId: `${id}-turn` },
+    });
+    beforeEach(() => {
+      attention = { pendingCount: 1, items: [failedSession()] };
+      notifications = [
+        turnFailed('pair', 'thread-boom'),
+        turnFailed('other', 'thread-other'),
+      ];
+    });
+
+    test('lists the pair once, and Mark done marks its notification done too', async () => {
+      renderPage();
+      // The pair's notification is not a second row; another thread's is.
+      expect(screen.getAllByText('Your agent needs attention')).toHaveLength(1);
+      expect(screen.getByText('Showing 1 of 1 activity items')).toBeTruthy();
+      chooseRowAction('Mark done');
+      // The row leaves at once; the write waits behind the notice's Undo.
+      expect(screen.queryByText('Upgrade the test runner')).toBeNull();
+      expect(acknowledgeAttentionItem).not.toHaveBeenCalled();
+      await commitMarkDone();
+      expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
+        'session-failed:thread-boom',
+        expect.any(String),
+      );
+      expect(dismiss).toHaveBeenCalledWith('pair');
+      expect(dismiss).not.toHaveBeenCalledWith('other');
+    });
+
+    test('the heading stops counting a row hidden behind its Undo, and counts it again on Undo', () => {
+      renderPage();
+      const heading = () =>
+        screen.getByRole('heading', { name: /^Needs attention/ }).textContent;
+      expect(heading()).toContain('(1)');
+      chooseRowAction('Mark done');
+      expect(heading()).not.toContain('(1)');
+      act(() => {
+        expect(undoLatestAction()).toBe(true);
+      });
+      expect(heading()).toContain('(1)');
+    });
+
+    test('Undo (and ⌘Z) takes Mark done back before anything is written', async () => {
+      renderPage();
+      chooseRowAction('Mark done');
+      expect(screen.queryByText('Upgrade the test runner')).toBeNull();
+      act(() => {
+        expect(undoLatestAction()).toBe(true);
+      });
+      expect(screen.getByText('Upgrade the test runner')).toBeTruthy();
+      await commitMarkDone();
+      expect(acknowledgeAttentionItem).not.toHaveBeenCalled();
+      expect(dismiss).not.toHaveBeenCalled();
+    });
+
+    test('a run already marked done does not come back as its notification', () => {
+      attention = {
+        pendingCount: 0,
+        items: [failedSession(timestamp)],
+      };
+      notifications = [
+        { ...turnFailed('pair', 'thread-boom'), status: 'dismissed' },
+        turnFailed('other', 'thread-other'),
+      ];
+      renderPage();
+      expect(screen.getAllByText('Your agent needs attention')).toHaveLength(1);
+      expect(screen.getByText('Showing 1 of 1 activity items')).toBeTruthy();
+    });
+
+    test('the bulk action marks the paired notification done with its row', async () => {
+      renderPage();
+      fireEvent.click(
+        screen.getByRole('button', { name: /^Dismiss eligible items/ }),
+      );
+      fireEvent.click(
+        within(screen.getByRole('dialog')).getByRole('button', {
+          name: /^Dismiss eligible items/,
+        }),
+      );
+      await waitFor(() =>
+        expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
+          'session-failed:thread-boom',
+          expect.any(String),
+        ),
+      );
+      await waitFor(() => expect(dismiss).toHaveBeenCalledWith('pair'));
+      expect(dismiss).not.toHaveBeenCalledWith('other');
+    });
   });
 });
 
@@ -1445,7 +1585,7 @@ describe('NotificationsPage attention count scope', () => {
    * with the acknowledgement recorded, exactly as the invalidation-driven
    * refetch does.
    */
-  test('acknowledging an item moves the heading and the badge together', () => {
+  test('acknowledging an item moves the heading and the badge together', async () => {
     attention = {
       pendingCount: 2,
       items: [
@@ -1457,9 +1597,11 @@ describe('NotificationsPage attention count scope', () => {
     const page = renderPage();
     expect(attentionHeading()).toBe('Needs attention (2)');
 
-    chooseRowAction('Dismiss');
+    chooseRowAction('Mark done');
+    await commitMarkDone();
     expect(acknowledgeAttentionItem).toHaveBeenCalledWith(
       'session-failed:boom',
+      expect.any(String),
     );
 
     attention = {
@@ -1609,7 +1751,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     ];
   });
 
-  describe('Unsnooze through the SDK HTTP mutation', () => {
+  describe('Wake now through the SDK HTTP mutation', () => {
     beforeEach(() => {
       useRealUnsnooze = true;
       snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
@@ -1629,7 +1771,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       });
     });
 
-    test('a rejected Unsnooze keeps the item, explains the failure and leaves retry available', async () => {
+    test('a rejected Wake now keeps the item, explains the failure and leaves retry available', async () => {
       const request = vi.fn(
         async (input: RequestInfo | URL, init?: RequestInit) => {
           expect(String(input)).toBe(
@@ -1645,23 +1787,23 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       vi.stubGlobal('fetch', request);
       renderPage();
 
-      fireEvent.click(screen.getByRole('button', { name: 'Unsnooze' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Wake now' }));
 
       await waitFor(() =>
         expect(
-          screen.getByText(/Couldn't unsnooze:.*Try again in a moment/),
+          screen.getByText(/Couldn't wake it:.*Try again in a moment/),
         ).toBeTruthy(),
       );
       expect(screen.getByText('Snoozed failure')).toBeTruthy();
       expect(request).toHaveBeenCalledTimes(1);
       expect(
         screen
-          .getByRole('button', { name: 'Unsnooze' })
+          .getByRole('button', { name: 'Wake now' })
           .hasAttribute('disabled'),
       ).toBe(false);
     });
 
-    test('Unsnooze serializes requests while only the active row reports pending', async () => {
+    test('Wake now serializes requests while only the active row reports pending', async () => {
       attention.items.push({
         id: 'session-failed:c',
         kind: 'session-failed',
@@ -1681,7 +1823,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       );
       vi.stubGlobal('fetch', request);
       renderPage();
-      const buttons = screen.getAllByRole('button', { name: 'Unsnooze' });
+      const buttons = screen.getAllByRole('button', { name: 'Wake now' });
       expect(buttons).toHaveLength(2);
       const [button, otherButton] = buttons;
 
@@ -1689,8 +1831,8 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
       try {
         await waitFor(() => expect(button.hasAttribute('disabled')).toBe(true));
-        expect(button.textContent).toBe('Unsnoozing…');
-        expect(otherButton.textContent).toBe('Unsnooze');
+        expect(button.textContent).toBe('Waking…');
+        expect(otherButton.textContent).toBe('Wake now');
         expect(otherButton.hasAttribute('disabled')).toBe(true);
         fireEvent.click(button);
         fireEvent.click(otherButton);
@@ -1706,7 +1848,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       }
     });
 
-    test('Undo retains its action until the unsnooze response settles and can retry a rejection', async () => {
+    test('Undo retains its action until the wake response settles and can retry a rejection', async () => {
       let rejectUndo!: (response: Response) => void;
       const undoResponse = new Promise<Response>((resolve) => {
         rejectUndo = resolve;
@@ -1730,7 +1872,7 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
       );
       vi.stubGlobal('fetch', request);
       renderPage();
-      chooseRowAction('1 hour');
+      chooseRowAction('In 1 hour');
       await waitFor(() => expect(toastStore.getSnapshot().length).toBe(1));
       const notice = toastStore.getSnapshot()[0];
       expect(notice.actions?.[0].label).toBe('Undo');
@@ -1783,8 +1925,26 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     // The activity count describes the activity shown, not the snoozed row.
     expect(screen.getByText(/Showing 1 of 1 activity items/)).toBeTruthy();
 
-    fireEvent.click(within(snoozed).getByRole('button', { name: 'Unsnooze' }));
+    fireEvent.click(within(snoozed).getByRole('button', { name: 'Wake now' }));
     expect(unsnoozeAttention.mock.calls.at(-1)?.[0]).toBe('session-failed:b');
+    snoozePreviews = [];
+  });
+
+  test('every page row menu leads with Mark done, then the snooze list, as the dock does', () => {
+    snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
+    renderPage();
+    const triggers = screen.getAllByRole('button', { name: 'More actions' });
+    expect(triggers.length).toBeGreaterThan(1);
+    for (const trigger of triggers) {
+      fireEvent.click(trigger);
+      const names = screen
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent ?? '');
+      expect(names[0]).toBe('Mark done');
+      expect(names[1]).toMatch(/^In 1 hour/);
+      fireEvent.click(trigger);
+      expect(screen.queryByRole('menu')).toBeNull();
+    }
     snoozePreviews = [];
   });
 
@@ -1793,10 +1953,10 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     renderPage();
     expect(screen.queryByRole('region', { name: /Snoozed/ })).toBeNull();
     fireEvent.click(screen.getAllByRole('button', { name: 'More actions' })[0]);
-    expect(screen.queryByRole('menuitem', { name: /^1 hour/ })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /^In 1 hour/ })).toBeNull();
   });
 
-  test('when everything is snoozed, filters stay reachable and clearing restores Unsnooze', () => {
+  test('when everything is snoozed, filters stay reachable and clearing restores Wake now', () => {
     snoozePreviews = [{ id: 'attention-snooze', enabled: true }];
     attention = {
       pendingCount: 0,
@@ -1805,14 +1965,14 @@ describe('NotificationsPage snoozed items (Feature Preview)', () => {
     notifications = [];
     renderPage();
     expect(screen.queryByText('All caught up')).toBeNull();
-    expect(screen.getByRole('button', { name: 'Unsnooze' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Wake now' })).toBeTruthy();
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search' }), {
       target: { value: 'no matching work' },
     });
-    expect(screen.queryByRole('button', { name: 'Unsnooze' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Wake now' })).toBeNull();
     expect(screen.getByRole('searchbox', { name: 'Search' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Unsnooze' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Wake now' }));
     expect(unsnoozeAttention.mock.calls.at(-1)?.[0]).toBe('session-failed:b');
     snoozePreviews = [];
   });
