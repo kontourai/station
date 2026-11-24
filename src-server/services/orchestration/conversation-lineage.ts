@@ -1632,6 +1632,7 @@ export class ConversationLineage {
           sources,
           authority,
           CONTINUATION_TRANSCRIPT_HEADING,
+          sources.at(-1)?.sessionId,
         ),
       );
     }

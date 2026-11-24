@@ -890,6 +890,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             store.conversationSessions(conversationId).at(-1)?.sessionId,
           ).toBe(redelivered.threadId);
           expect(redelivered.ambientContext).toContain(CONTEXT_TOKEN);
+          expect(redelivered.ambientContext).toContain('read_file (1)');
           // Never the failed Session's native thread: it never took the seed.
           expect(targetAdapter.starts.at(-1)?.resumeCursor).toBeUndefined();
           if (failRedeliveredSeed) {
@@ -920,6 +921,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
               store.conversationSessions(conversationId).at(-1)?.sessionId,
             ).toBe(again.threadId);
             expect(again.ambientContext).toContain(CONTEXT_TOKEN);
+            expect(again.ambientContext).toContain('read_file (1)');
             expect(targetAdapter.starts.at(-1)?.resumeCursor).toBeUndefined();
           }
         } finally {
