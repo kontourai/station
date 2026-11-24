@@ -1,10 +1,7 @@
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import type { toastStore } from '../../../contexts/ToastContext';
 
-type ApprovalToastOptions = {
-  toolName: string;
-  toolPreview?: string;
-  actions: Array<{ label: string; variant?: string; onClick: () => void }>;
-};
+type ApprovalToastOptions = Parameters<typeof toastStore.showToolApproval>[0];
 
 const showToolApproval = vi.fn((_options: ApprovalToastOptions) => 'toast-1');
 const showToast = vi.fn();
