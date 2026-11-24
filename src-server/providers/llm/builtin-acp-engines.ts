@@ -70,6 +70,13 @@ const KIRO_CLI_AUTH: BuiltinEngine['auth'] = {
         helpArgs: ['login', '--help'],
         requiredHelpText: '--social',
       },
+      {
+        id: 'station:github-sign-in',
+        name: 'Sign in with GitHub',
+        args: ['login', '--social', 'github', '--use-device-flow'],
+        helpArgs: ['login', '--help'],
+        requiredHelpText: '--social',
+      },
     ],
   },
   terminalLogin: {

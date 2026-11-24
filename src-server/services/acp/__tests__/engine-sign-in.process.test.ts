@@ -276,8 +276,17 @@ describe.runIf(posix)('engine sign-in through a live handshake', () => {
     expect(await service.attemptWithTerminalLinks(cli)).toMatchObject({
       links: ['https://example.test/verify'],
     });
-    writeFileSync(stateFile, 'Google');
-    await terminal.exit(terminal.opened[2], 0);
+    await terminal.exit(terminal.opened[2], 1);
+    expect(await settle(service, cli.id)).toMatchObject({ state: 'failed' });
+    await service.startTerminal(cli, 'station:github-sign-in', true);
+    expect(terminal.opened[3].launch.args).toEqual([
+      'login',
+      '--social',
+      'github',
+      '--use-device-flow',
+    ]);
+    writeFileSync(stateFile, 'GitHub');
+    await terminal.exit(terminal.opened[3], 0);
     expect(await settle(service, cli.id)).toMatchObject({ state: 'succeeded' });
     expect(
       (await service.attemptWithTerminalLinks(cli))?.links,

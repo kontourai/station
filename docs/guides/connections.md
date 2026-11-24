@@ -1240,8 +1240,10 @@ With **Engine account management** enabled in Feature Previews, a supported
 Kiro CLI or Grok Build connection offers **Sign out**. For Kiro, this clears
 the shared CLI login for
 Kiro CLI and Kiro (KAS) on the Station host. Station checks the engine's status
-after the command before it reports sign-out. Then choose **Sign in with
-Google** if the installed CLI offers social device sign-in. Open the link shown
+after the command before it reports sign-out. For Kiro, choose **Sign in with
+Google** or **Sign in with GitHub** if the CLI offers social device sign-in.
+Use **Sign in from this device** to let Kiro prompt for other supported
+methods, including AWS Builder ID and IAM Identity Center. Open the link shown
 by Kiro and complete authorization there. Station shows the HTTPS link beside
 the terminal when it can read one. The panel keeps the
 attempt's result visible after the terminal closes. An engine status check
