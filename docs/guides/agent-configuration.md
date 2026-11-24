@@ -478,6 +478,15 @@ covers later plain calls of that tool, and only an answer to an escalation
 also covers the tool's later escalations. A pattern and a guardian allow keep
 the limits above.
 
+On OpenCode and other ACP engines, a request that is not addressed to a
+person also offers **Allow everything for this session**: Station then
+answers every later request in that session itself, after the Agent's
+policy, never a plan exit, a question or an OpenCode configuration edit that
+must go to a person. It suits a session that cannot run at full access, such
+as a confined automation task, and changes neither its confinement nor its
+approval mode; a change of approval mode ends it. Claude and other engines
+take the answer as the per-tool grant.
+
 Full access means no prompts: the untrusted-content ask is not raised at full
 access on Claude Code, Codex, OpenCode or a Station-governed ACP session; a
 tool set to refuse after untrusted content still refuses.

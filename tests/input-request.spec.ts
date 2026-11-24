@@ -459,10 +459,10 @@ for (const [label, viewport] of VIEWPORTS) {
         await expect(strip.getByRole('button', { name: 'Deny' })).toBeVisible();
       }
       await expect(
-        decisions.getByRole('button', { name: 'Allow Once' }),
+        decisions.getByRole('button', { name: 'Allow once' }),
       ).toBeVisible();
       await shot(page, testInfo, `${label}-approval-decision`);
-      await decisions.getByRole('button', { name: 'Allow Once' }).click();
+      await decisions.getByRole('button', { name: 'Allow once' }).click();
       await expect
         .poll(() => answers(posted))
         .toEqual([

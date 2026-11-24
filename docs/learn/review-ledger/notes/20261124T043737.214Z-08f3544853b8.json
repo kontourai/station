@@ -1,0 +1,7 @@
+{
+  "revision": "9ef9244119d916718ece7ccfdb63c0148a24333b",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the reader-away paragraph against the hook and list: the cap trims only above the turn read less five (readerPlace.ts margin), an unknown turn trims nothing, a page from another event log (an event past its head or a shared event at another sequence) replaces whatever the reader's place, the list reports no one away on unmount, and the 12-page by 20-turn fill limit predates this branch for older pages too.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

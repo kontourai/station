@@ -170,6 +170,8 @@ export function ActionOverflowMenu({
   triggerText,
   triggerGlyph,
   reserveGlyphColumn = false,
+  closeWhen,
+  onOpenChange,
 }: {
   actions: readonly OverflowAction[];
   /**
@@ -231,6 +233,20 @@ export function ActionOverflowMenu({
    * when some row has a glyph.
    */
   reserveGlyphColumn?: boolean;
+  /**
+   * A value whose change closes an open menu, keeping the trigger mounted.
+   * The approval queue passes its requests: a card arriving or leaving must
+   * not leave a fixed-position list over another card. Focus inside the menu
+   * returns to this trigger. Left out, nothing closes the menu this way.
+   */
+  closeWhen?: string;
+  /**
+   * Told when the menu opens and when it closes (or unmounts open), so a host
+   * with its own Escape or outside-press handling can leave those to the open
+   * menu: two capture-phase listeners on `document` both run, whatever
+   * `stopPropagation` says.
+   */
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
   if (disabled && open) setOpen(false);
@@ -245,6 +261,31 @@ export function ActionOverflowMenu({
   const ownRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useMenuFocus<HTMLDivElement>(open, () => setOpen(false));
 
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  useEffect(() => {
+    if (!open) return;
+    onOpenChangeRef.current?.(true);
+    return () => onOpenChangeRef.current?.(false);
+  }, [open]);
+  const closeWhenRef = useRef(closeWhen);
+  const refocusTrigger = useRef(false);
+  useEffect(() => {
+    if (closeWhenRef.current === closeWhen) return;
+    closeWhenRef.current = closeWhen;
+    if (!openRef.current) return;
+    refocusTrigger.current = Boolean(
+      menuRef.current?.contains(document.activeElement),
+    );
+    setOpen(false);
+  }, [closeWhen, menuRef]);
+  // After the close has committed, so the menu's own focus return has run.
+  useEffect(() => {
+    if (open || !refocusTrigger.current) return;
+    refocusTrigger.current = false;
+    ownRef.current?.focus();
+  }, [open]);
+
   const setTrigger = useCallback(
     (node: HTMLButtonElement | null) => {
       ownRef.current = node;
@@ -257,6 +298,10 @@ export function ActionOverflowMenu({
     if (!open) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return;
+      // Marked handled as well as stopped: another capture listener on
+      // `document` (the approval queue's) still runs for this event, and
+      // reads `defaultPrevented` to leave it to the menu, in either order.
+      event.preventDefault();
       event.stopPropagation();
       setOpen(false);
       ownRef.current?.focus();

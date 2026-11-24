@@ -1,0 +1,7 @@
+{
+  "revision": "04349dac9fa25702d2bd5c984a1fa9902a9d169f",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Added the reader-away rule: while the reader is away from the end (scrolled up, or holding a row with the end out of view) the transcript's window keeps everything it holds through reloads; back at the end the next reload returns it to its bounded size; kept for a reader away it holds at most 200 turns, trimmed only above the reader's turn. Matches useSessionEventWindow.reload with reloadKeepsHeld and awayTrimSequence (readerPlace.ts), fed by ChatMessageList's onReaderPlaceChange via ConversationBody. The hold paragraph from the hold change is otherwise unchanged; Hide chat list wording taken from main.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx","src-ui/src/components/conversation/ConversationBody.tsx"]}
+  ]
+}

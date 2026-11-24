@@ -116,6 +116,20 @@ jobs:
       capacity_class: release
       source_sha: ${{ needs.preflight.outputs.sha }}
 
+  desktop-macos-store:
+    needs: [preflight, full-regression]
+    if: ${{ needs['full-regression'].result == 'success' && needs.preflight.outputs.release_kind == 'rc' && vars.STATION_MAC_APP_STORE_STAGE == 'enabled' }}
+    uses: ./.github/workflows/macos-store-delivery.yml
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    with:
+      source_sha: ${{ needs.preflight.outputs.sha }}
+      tag: ${{ needs.preflight.outputs.tag }}
+      bundle_version: ${{ needs.preflight.outputs.macos_bundle_version }}
+    secrets: inherit
+
   # Every desktop job below (macOS/Windows/Linux) receives the endpoint
   # selected once by preflight. The protected publish workflow advances that
   # rolling channel only after the tag-bound release and its signed updater

@@ -1,0 +1,7 @@
+{
+  "revision": "60e7ce27a65ce3050fe89d2db1def448faa9cd7d",
+
+  "notes": [
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed the process-supervisor adoption claim against the real CLI journey. The fixture still runs the built server and supervisor with an isolated home, probes its loopback listeners, and uses the existing startup, restart, ownership and stop assertions. The fixture port band is below default ephemeral TCP ranges. Seven local tests passed. The isolated Linux socket control reproduced EADDRINUSE after a released probe; it is not hosted qualification of this repair.","inputs":["packages/cli/src/__tests__/supervised-lifecycle.real.test.ts"]}
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "revision": "1b1f42a6c7b9854525fb66d301b1e370394668ce",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Hold paragraph rewritten to match the code: only reader-made scrolls (wheel, touch, scroll keys, End, scrollbar drag, Scroll to bottom) end or leave a hold; a new message of the reader's ends it (send, steer once the server copy arrives, delivered follow-up), not a queued bubble, an id switch or a withdrawn bubble; a shorter view brings the held header back only for a reader still at it, minimally.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ChatMessageList.tsx"]}
+  ]
+}

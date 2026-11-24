@@ -64,10 +64,13 @@ export async function dispatchSlashCommand(
     runSkillMutation,
     readSkillDetail,
   } = dependencies;
+  // A command that runs takes its line out of the composer. One that does
+  // not run leaves the line where it is, so the person can correct it.
   const cleanup = () => {
     updateChat(sessionId, { input: '' });
     context.autocomplete.closeAll();
   };
+  const keepLine = () => context.autocomplete.closeAll();
   const agent = agents.find((a) => a.slug === chatState.agentSlug);
   // An Agent on a saved ACP connection takes every slash command as engine
   // text, whichever provider runs its chat (`acp`, or `opencode` behind its
@@ -98,7 +101,7 @@ export async function dispatchSlashCommand(
       role: 'system',
       content: `Could not read ${command}: ${parsed.error}`,
     });
-    cleanup();
+    keepLine();
     return true;
   }
 
@@ -110,7 +113,7 @@ export async function dispatchSlashCommand(
         role: 'system',
         content: `/${cmd} didn’t run. ${reason}`,
       });
-      cleanup();
+      keepLine();
       return true;
     };
     if (args.length > params.length) {
@@ -151,7 +154,7 @@ export async function dispatchSlashCommand(
         role: 'system',
         content: `Could not read /${cmd}: ${describeStationFailure(error).body}`,
       });
-      cleanup();
+      keepLine();
       return true;
     }
     // Variable substitution is the SAME derivation the Test modal runs
@@ -169,7 +172,7 @@ export async function dispatchSlashCommand(
         role: 'system',
         content: `/${cmd}: ${argAssignment.error} — nothing was sent`,
       });
-      cleanup();
+      keepLine();
       return true;
     }
     const substitution = substituteSkillVariables(
@@ -182,7 +185,7 @@ export async function dispatchSlashCommand(
         role: 'system',
         content: `/${cmd} needs a value for ${substitution.missing.map((name) => `{{${name}}}`).join(', ')} — nothing was sent`,
       });
-      cleanup();
+      keepLine();
       return true;
     }
     void runSkillMutation.mutateAsync(match.name).catch(() => undefined);
@@ -209,13 +212,16 @@ export async function dispatchSlashCommand(
       prompt,
       args,
     );
-    if ('refusal' in outcome)
+    if ('refusal' in outcome) {
       addEphemeralMessage(sessionId, {
         role: 'system',
         content: outcome.refusal,
       });
+      keepLine();
+      return true;
+    }
     cleanup();
-    return 'text' in outcome ? outcome : true;
+    return outcome;
   }
 
   // 3. Check registered commands
@@ -226,7 +232,7 @@ export async function dispatchSlashCommand(
       role: 'system',
       content: `Could not load Station's built-in commands, so ${command} was not sent. Try again. (${describeStationFailure(error).body})`,
     });
-    cleanup();
+    keepLine();
     return true;
   }
   // /new opens an empty New chat. Text typed after it would be lost with the
@@ -270,7 +276,7 @@ export async function dispatchSlashCommand(
       role: 'system',
       content: '/clear isn’t a Station command. Use /new for a new chat.',
     });
-    cleanup();
+    keepLine();
     return true;
   }
 
@@ -286,6 +292,6 @@ export async function dispatchSlashCommand(
     role: 'system',
     content: `Unknown command: ${command}\n\nAvailable:\n${availableCommands.map((c) => `• /${c}`).join('\n')}`,
   });
-  cleanup();
+  keepLine();
   return true;
 }

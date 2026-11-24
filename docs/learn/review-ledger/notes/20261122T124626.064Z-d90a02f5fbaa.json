@@ -1,0 +1,7 @@
+{
+  "revision": "8536887899340a426582526113b7607cbf423a29",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Slice 4.10 delta: the content-load toast now reads Deny (outline) then Review, matching every approval row; Review still only opens the card and Deny still declines. The session-grant section and its decisions are unchanged. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/hooks/orchestration/__tests__/approvalHandlers.test.ts","src-ui/src/hooks/orchestration/approvalHandlers.ts"]}
+  ]
+}

@@ -87,13 +87,13 @@ export function NotificationHistoryItem({
             </time>
             <RowMenu
               items={[
-                ...menuItems,
                 {
                   id: 'dismiss',
                   label: DISMISS_NOTIFICATION_ACTION.label,
                   disabled: isDismissPending,
                   onSelect: () => onDismiss(notification.id),
                 },
+                ...menuItems,
               ]}
             />
           </span>

@@ -183,6 +183,8 @@ export type ChatContentPart = {
   approvalServerGrant?: ToolRequestServerGrant;
   /** See `MessagePart.approvalRuleGrant`. */
   approvalRuleGrant?: ToolRequestRuleGrant;
+  /** See `MessagePart.approvalAllGrant`. */
+  approvalAllGrant?: true;
   cancelled?: boolean;
   approvalStatus?:
     | 'auto-approved'

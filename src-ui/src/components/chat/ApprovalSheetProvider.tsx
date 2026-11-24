@@ -25,7 +25,13 @@ import { ApprovalSheetContext } from './ApprovalSheetContext';
 import { RequestSheet } from './RequestSheet';
 import { type ToolApprovalOutcome, ToolCallDisplay } from './ToolCallDisplay';
 
-type SheetAction = 'once' | 'trust' | 'trust-server' | 'trust-rule' | 'deny';
+type SheetAction =
+  | 'once'
+  | 'trust'
+  | 'trust-server'
+  | 'trust-rule'
+  | 'trust-all'
+  | 'deny';
 
 const MAX_REMEMBERED = 256;
 const remember = (set: Set<string>, key: string) => {
@@ -255,7 +261,9 @@ export function ApprovalSheetProvider({
         overflow={[
           {
             key: 'allow-all-session',
-            label: 'Allow all for this session',
+            // Each listed request's own tool grant: narrower than "Allow
+            // everything for this session", which a request may also offer.
+            label: 'Allow these tools for this session',
             disabled: bulk !== null,
             onSelect: () => void allowAll('trust'),
           },

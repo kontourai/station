@@ -1,0 +1,7 @@
+{
+  "revision": "89c6d26f7f4c6b9ad4a9539beb68917af8b0ebb6",
+
+  "notes": [
+    {"path":"docs/design/settings-architecture.md","note":"Checked against the chat-24 transcript-marker change to ChatMessageList.tsx and MessageBubble.tsx (new derived model-change row, restyled handoff and context-boundary rows, previousEngine prop). This document makes no claim about those rows; its handoff, composer, placement, settings and checkpoint claims are unaffected.","inputs":["docs/design/settings-architecture.md","src-ui/src/components/chat/MessageBubble.tsx"]}
+  ]
+}

@@ -7,7 +7,7 @@ import { describe, expect, test } from 'vitest';
 // Vitest stubs stylesheets, so these cost nothing but put the test in the
 // graph.
 import '../components/chat/chat.css';
-import '../components/chat/ConversationHandoff.css';
+import '../components/chat/TranscriptChangeMarker.css';
 import '../components/chat/TaskPicker.css';
 import '../index.css';
 
@@ -17,8 +17,8 @@ const chatCss = readFileSync(
   join(uiRoot, 'components', 'chat', 'chat.css'),
   'utf8',
 );
-const handoffCss = readFileSync(
-  join(uiRoot, 'components', 'chat', 'ConversationHandoff.css'),
+const transcriptChangeCss = readFileSync(
+  join(uiRoot, 'components', 'chat', 'TranscriptChangeMarker.css'),
   'utf8',
 );
 const turnActionsMenu = readFileSync(
@@ -95,12 +95,14 @@ describe('chat message responsive layout contract (station#4241/#4244)', () => {
   });
 
   test('handoff cards and completed-answer controls use the same responsive flow instead of a centered long action', () => {
-    const handoff = rule(handoffCss, '.conversation-handoff-boundary');
+    // chat-24: the engine-switch row is a centred transcript marker now; it
+    // still spans the row and may shrink rather than overflow it.
+    const handoff = rule(transcriptChangeCss, '.transcript-change');
     const task = rule(taskPicker, '.task-picker');
 
     expect(handoff).toContain('width: 100%');
-    expect(handoff).toContain('margin: 12px 0');
-    expect(handoff).toContain('text-align: left');
+    expect(handoff).toContain('min-width: 0');
+    expect(handoff).toContain('box-sizing: border-box');
     // Anchor to the base rule. A descendant or media-query declaration
     // cannot prove the action cluster fits its own share of the footer.
     const actions = /\n\.turn-footer__actions\s*\{([^}]*)\}/.exec(chatCss)?.[1];

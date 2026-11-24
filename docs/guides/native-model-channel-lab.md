@@ -100,8 +100,12 @@ observations and cleanup state; the final output names that artifact directory.
 The scoped bridge key is retained in the private generated runner, so this is
 not key-erasure evidence.
 
-Add `--with-native-engines` to run pinned Linux Claude 2.1.322 and Codex 0.167.0
-binaries through the same channel. Downloads must match exact byte counts and
+Add `--with-native-engines` to run pinned Linux Claude 2.1.322 and Codex 0.167.0.
+Each binary gets its own verified namespace and model channel. The container
+owner admits one fixed text client per namespace and delivers the prompt through
+the caller's stdin writer. The prompt stays out of process arguments and
+environment variables. The owner bounds combined output to 1 MiB and tracks
+the program result, local exec settlement, and namespace removal separately. Downloads must match exact byte counts and
 SHA-256 digests. An explicit `CHILD_WORK_NATIVE_BINARY_CACHE_ROOT` may name an
 existing owned artifact directory containing `claude` and `codex`; copies pass
 the same integrity checks. A truncated download refuses before image creation.
@@ -148,6 +152,10 @@ terminal/accounting ownership. The relay test closes stdin while a valid RPC
 reply is blocked on unread stdout and verifies that the relay exits before
 forced cleanup. Bypassing only the body-delivery check exposed
 23 private bytes in the stronger test; later response failure could not hide it.
+
+The [simulated exec tests](../../src-server/services/connections/__tests__/native-model-container.test.ts)
+cover private stdin delivery under competing starts, preserving the result when
+exec settlement fails, and closing model admission during a pending exec stop.
 
 The isolated lab exercises real read-only-root and network refusal, private
 staging, synthetic model replies and owned cleanup. With native engines, it
