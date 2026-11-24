@@ -157,6 +157,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/browser/__tests__/chromium-server-host.test.ts',
   // Real Node sidecars verify native model relay framing, queued delivery and cancellation settlement.
   'src-server/services/connections/__tests__/native-model-stdio-channel.process.test.ts',
+  // In-memory ChildProcess streams exercise fixed native exec and channel retirement.
+  'src-server/services/connections/__tests__/native-model-container.test.ts',
   // #4828: short-lived `git init`, `git config` and `git status` children
   // prove the persistence protection reads the effective core.hooksPath from
   // git and runs no repository-named program; no wall-clock assertion.

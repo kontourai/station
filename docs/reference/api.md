@@ -6079,8 +6079,12 @@ instruction to execute a job.
 `GET /scheduler/jobs` returns `{success: true, data: jobs}`. Rows use the
 [SchedulerJob contract](../../packages/contracts/src/scheduler.ts), including
 job `name`, provider-neutral schedule information, an automation's `target`
-and `createdBy.userId`, and the derived `consecutiveFailures` and
-`lastSuccessAt`. An agent sees jobs targeting its own conversation; a person
+and `createdBy.userId`, and the derived `consecutiveFailures`,
+`lastSuccessAt`, `recentOutcomes` (the last 12 finished runs, oldest first,
+each `worked`, `failed`, `skipped` or `unknown`, and `more` when older ones
+exist) and `pausedItself` (`{failures, at}` while Station keeps the job
+turned off for repeated failures and no person has turned it back on). An
+agent sees jobs targeting its own conversation; a person
 sees jobs for conversations they can read, plus untargeted jobs. Project jobs
 require a person with current Project `view` or Station operator access.
 The same gate applies to their run records, including SSE and RunService
@@ -6105,7 +6109,8 @@ fields. Each diagnostic contains only the stored job name, immutable job ID,
 and reason. Healthy jobs continue to appear and can still be run or edited.
 SQLite file integrity failures keep their separate recovery outcome.
 
-The Schedule calendar uses the same authorized job list. An optional
+The Automations page's "Next 7 days" uses the same authorized job list,
+reading the week that holds today and the week after. An optional
 `weekStart=YYYY-MM-DD` Monday and optional `displayZone` add a per-day bounded `weekOccurrences` forecast in UTC
 to each returned job. The display time zone only groups and formats these
 instants. The scheduler's stored time zone continues to govern execution.

@@ -981,7 +981,10 @@ checked by `isSchedulerJobDisplayName`) is what people read and rename.
 display name suggests, up to `SCHEDULER_JOB_SLUG_ATTEMPTS`, and
 `SCHEDULER_JOB_NAME_TAKEN` is the refusal code for a taken slug.
 `SchedulerCreateResponse` is the create answer, with the stored slug as
-`name`.
+`name`. The list read's run summaries are `SchedulerJob.recentOutcomes` (the
+last `SCHEDULER_RECENT_OUTCOMES_LIMIT` finished runs, each a
+`SchedulerRunOutcome`) and `SchedulerJob.pausedItself`; both are absent when
+unknown to the reader.
 
 `@kontourai/station-contracts/coordinator` owns a person's coordinator Session
 (#3628): `CoordinatorDesignation`, the route bodies

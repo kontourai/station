@@ -89,7 +89,7 @@ const FRAMES: Record<NavigationView['type'], PageFrameSpec | null> = {
   developer: { eyebrow: 'Developer', width: 'full', body: 'fill' },
   schedule: {
     title: 'Automations',
-    subtitle: 'Recurring work and check-backs that run in a chat',
+    subtitle: 'Work an agent does on a schedule',
     firstRunAnchor: 'schedule',
   },
   settings: {

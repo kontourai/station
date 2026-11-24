@@ -1,0 +1,7 @@
+{
+  "revision": "03de6c5660ef56ad345fb6674700afaefb107b6f",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Checked the lab entry against its guide. The additional opt-in stdio relay keeps the lab's confined transport and authority limits.","inputs":["docs/README.md","docs/guides/native-model-channel-lab.md"]}
+  ]
+}

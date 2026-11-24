@@ -322,6 +322,20 @@ export function schedulerJobSlugCandidates(displayName: string): string[] {
  */
 export const SCHEDULER_JOB_NAME_TAKEN = 'job_name_taken';
 
+/**
+ * How many of a job's latest runs the list read carries in
+ * `SchedulerJob.recentOutcomes`.
+ */
+export const SCHEDULER_RECENT_OUTCOMES_LIMIT = 12;
+
+/**
+ * How one finished run ended, by occurrence (a run that retried is one):
+ * `worked`, `failed`, `skipped` (a late occurrence recorded missed instead
+ * of run, see `SchedulerLogEntry.skipped`), or `unknown` (Station cannot
+ * tell whether the run reached the engine).
+ */
+export type SchedulerRunOutcome = 'worked' | 'failed' | 'skipped' | 'unknown';
+
 export interface SchedulerJob {
   /** Internal slug: the identity routes, runs and stats are keyed by. */
   name: string;
@@ -359,6 +373,23 @@ export interface SchedulerJob {
   consecutiveFailures?: number;
   /** When the last successful run completed. Read-only. */
   lastSuccessAt?: string;
+  /**
+   * The latest finished runs, oldest first, at most
+   * `SCHEDULER_RECENT_OUTCOMES_LIMIT`; `more` says older ones exist. Absent
+   * when the outcomes are not known to this reader (an older Station, or
+   * runs it may not read). Read-only.
+   */
+  recentOutcomes?: Readonly<{
+    outcomes: readonly SchedulerRunOutcome[];
+    more: boolean;
+  }>;
+  /**
+   * Present while Station keeps the job turned off because its last
+   * `failures` runs failed (`AUTOMATION_RUN_POLICY.fatigueFailureThreshold`),
+   * from `at` until a person turns it back on. Absent on a job a person
+   * turned off. Read-only.
+   */
+  pausedItself?: Readonly<{ failures: number; at: string }>;
   enabled: boolean;
   /** Accepted for compatibility and ignored: Station sends no start notice. */
   notifyStart?: boolean;

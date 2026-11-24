@@ -23,7 +23,7 @@ export function SectionNavigation({
   const pickerId = useId();
   return (
     <div className="section-navigation section-nav--rail">
-      {children}
+      {children && <div className="section-navigation__tools">{children}</div>}
       <div className="section-navigation__picker">
         <label htmlFor={pickerId}>{pickerLabel}</label>
         <Select
