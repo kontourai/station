@@ -2610,7 +2610,7 @@ The Customize, Guidance and Tool-server URLs have a single canonical route per c
 
 | Concept | Canonical route | Aliases (still work) |
 |---|---|---|
-| Customize | `/customize` | `/connections` |
+| Customize | `/customize` | `/connections`, `/customize/` |
 | Model connections (the Providers item) | `/customize/providers` | `/connections/models`, `/connections/providers`, `/manage/providers` |
 | Engines, including custom local commands | `/customize/engines` | `/connections/engines`, `/connections/acp`, `/connections/agent-apps`, `/connections/agents` |
 | Knowledge | `/customize/knowledge` | `/connections/knowledge`, `/developer/storage` |

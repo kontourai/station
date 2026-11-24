@@ -685,7 +685,9 @@ live attention facts exist. The built-in application composition is
 
 **Contract.** Composition rejects empty or duplicate IDs, non-absolute routes, duplicate
 exact-route owners, duplicate management-view owners, and duplicate sidebar or palette
-order slots. Customize rows have unique order within each group and cannot also be
+order slots. A destination's `aliases` are retired ids published plugins may still name
+(`registry` for Apps, `connections` for Customize): `get` answers to them, no projection
+lists them, and an alias that is empty or already an id or another alias is rejected. Customize rows have unique order within each group and cannot also be
 sidebar entries or hidden from navigation. The Customize page's groups are
 `CUSTOMIZE_NAV_GROUP_ORDER` (Your agents, What they run on, What they can reach), and its
 projection orders by group, then by order within the group. `customizeItemForView`
