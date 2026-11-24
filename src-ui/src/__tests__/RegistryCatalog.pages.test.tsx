@@ -72,8 +72,6 @@ function makeActions(): RegistryCatalogActions {
     runLayoutAction: vi.fn(),
     onUseLayout: vi.fn(),
     manageSkills: vi.fn(),
-    managePlugins: vi.fn(),
-    openProjects: vi.fn(),
     retryInstalled: vi.fn(),
     retryCatalog: vi.fn(),
     openOwner: vi.fn(),

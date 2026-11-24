@@ -31,9 +31,7 @@ interface ItemActions {
     action: RegistryLayoutAction,
   ) => void;
   onUseLayout: (id: string) => void;
-  managePlugins?: () => void;
   openSkill?: (name: string) => void;
-  openProjects?: () => void;
 }
 
 export function RegistryCatalogDetail({
@@ -66,7 +64,6 @@ export function RegistryCatalogDetail({
         : 'Adds this skill to your workspace so agents can use it.'
       : null);
   const source = getRegistrySourceLabel(item);
-  const isInstalledPlugin = tab === 'plugins' && installed;
   return (
     <section
       className="page__card-loose registry-catalog__detail"
@@ -111,12 +108,6 @@ export function RegistryCatalogDetail({
         <RegistrySkillInstructions id={id} />
       )}
       {skillHint && <div className="page__subtitle">{skillHint}</div>}
-      {isInstalledPlugin && (
-        <div className="page__subtitle">
-          This plugin is installed. Add its enabled layout to a project, or
-          manage its settings in Apps › Library.
-        </div>
-      )}
       <div className="page__card-footer">
         {tab === 'layouts' ? (
           <RegistryLayoutActions
@@ -140,34 +131,6 @@ export function RegistryCatalogDetail({
               onClick={() => actions.runAction(item, id, true)}
             >
               Remove from workspace
-            </Button>
-          </>
-        ) : isInstalledPlugin ? (
-          <>
-            <Button variant="primary" size="sm" onClick={actions.openProjects}>
-              Open a Project to Add Layout
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={actions.managePlugins}
-            >
-              Manage Plugin
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={pending || checkingInstalled}
-              onClick={() => {
-                actions.clearMessage();
-                actions.runAction(item, id, true);
-              }}
-            >
-              {checkingInstalled
-                ? 'Checking installed status…'
-                : pending
-                  ? 'Working…'
-                  : 'Remove plugin'}
             </Button>
           </>
         ) : (

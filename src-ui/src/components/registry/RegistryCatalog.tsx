@@ -59,8 +59,6 @@ export interface RegistryCatalogActions {
   onUseLayout: (id: string) => void;
   manageSkills: () => void;
   openSkill?: (name: string) => void;
-  managePlugins: () => void;
-  openProjects: () => void;
   retryInstalled: () => void;
   retryCatalog: () => void;
   renderKits?: () => ReactNode;
@@ -100,9 +98,7 @@ export function RegistryCatalog({
     runAction: actions.runAction,
     runLayoutAction: actions.runLayoutAction,
     onUseLayout: actions.onUseLayout,
-    managePlugins: actions.managePlugins,
     openSkill: actions.openSkill,
-    openProjects: actions.openProjects,
   };
   // Each catalogue is a page of its own: the tab decides its title,
   // description and the place its eyebrow climbs back to.
@@ -243,18 +239,6 @@ function RegistryCatalogState({
             tab === 'layouts'
               ? 'Install a plugin that contributes a layout, then add that layout to a Project.'
               : 'Add a source, or ask the Station operator to add one.'
-          }
-          action={
-            tab === 'plugins' ? (
-              <a
-                href="https://github.com/kontourai/station/blob/main/docs/guides/plugins.md"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="page__empty-action"
-              >
-                Open plugin guidance
-              </a>
-            ) : undefined
           }
         />
       )}

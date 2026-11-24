@@ -313,14 +313,7 @@ vi.mock('@kontourai/station-connect', () => ({
 }));
 
 const navigateMock = vi.fn();
-const showSurfaceMock = vi.fn();
 const platformProfile = vi.hoisted(() => ({ isTauri: false }));
-
-// #928 C2a: "Open a Project to Add Layout" means Home by name and reveals
-// the Home surface through the shared command hook.
-vi.mock('../contexts/useShowSurface', () => ({
-  useShowSurface: () => showSurfaceMock,
-}));
 
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({
@@ -443,6 +436,23 @@ function expectInstalledToast(message: string, pluginName: string) {
   expect(navigateMock).toHaveBeenCalledWith(`/apps/library/${pluginName}`);
 }
 
+/**
+ * The one place this view installs a plugin: the tool picker opened on a
+ * named plugin (a tool request, the agent editor's tool library). No
+ * catalogue page lists plugins; Apps › Discover installs them on its own.
+ */
+function renderPluginInstall() {
+  return render(
+    <RegistryView initialTab="plugins" toolPicker installTarget="demo-layout" />,
+  );
+}
+
+function reviewPluginInstall() {
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Review Demo Layout permissions' }),
+  );
+}
+
 test('keeps an inspected catalog selection after a catalog refresh changes the available revision', async () => {
   const { RegistryView } = await import('../views/RegistryView');
   const view = render(<RegistryView initialTab="skills" />);
@@ -471,7 +481,7 @@ test('keeps an inspected catalog selection after a catalog refresh changes the a
 });
 
 describe('RegistryView', () => {
-  test.each(['skills', 'plugins'] as const)(
+  test.each(['skills', 'integrations'] as const)(
     'recovers the %s catalog after a failed read and a failed retry',
     async (tab) => {
       catalogRecovery.useItems.mockImplementation(useRegistryItemsQuery);
@@ -792,26 +802,6 @@ describe('RegistryView', () => {
       screen.getByText('Add a source, or ask the Station operator to add one.'),
     ).toBeTruthy();
     expect(screen.queryByText(/station plugin install/i)).toBeNull();
-    // Plugin guidance belongs to the Plugins tab only.
-    expect(
-      screen.queryByRole('link', { name: 'Open plugin guidance' }),
-    ).toBeNull();
-  });
-
-  test('offers plugin guidance on an empty Plugins tab', () => {
-    emptyTabs.add('plugins');
-    render(<RegistryView initialTab="plugins" />);
-    expect(screen.getByText('No apps in your sources yet.')).toBeTruthy();
-
-    const docsLink = screen.getByRole('link', { name: 'Open plugin guidance' });
-    expect(docsLink.getAttribute('href')).toBe(
-      'https://github.com/kontourai/station/blob/main/docs/guides/plugins.md',
-    );
-    expect(docsLink.getAttribute('target')).toBe('_blank');
-    expect(docsLink.getAttribute('rel')).toBe('noopener noreferrer');
-
-    fireEvent.click(docsLink);
-    expect(navigateMock).not.toHaveBeenCalledWith('/apps/library');
   });
 
   test('filters registry items and explains and clears a no-match state', () => {
@@ -845,13 +835,13 @@ describe('RegistryView', () => {
   });
 
   test('keeps the available catalog usable while installed status is refreshing', () => {
-    stalledInstalledTabs.add('plugins');
+    stalledInstalledTabs.add('integrations');
 
-    render(<RegistryView initialTab="plugins" />);
+    render(<RegistryView initialTab="integrations" />);
 
     expect(screen.queryByText('Loading...')).toBeNull();
     expect(
-      screen.getByRole('button', { name: 'View Demo Layout details' }),
+      screen.getByRole('button', { name: 'View Integration One details' }),
     ).toBeTruthy();
     expect(
       (
@@ -873,12 +863,8 @@ describe('RegistryView', () => {
       ...validDemoPreview(),
       hasBundle: false,
     });
-    render(<RegistryView initialTab="plugins" />);
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    renderPluginInstall();
+    reviewPluginInstall();
     const preview = screen.getByRole('dialog', { name: 'Install Preview' });
     expect(
       within(preview).queryByRole('button', { name: 'Review and enable' }),
@@ -900,12 +886,8 @@ describe('RegistryView', () => {
       ...validDemoPreview(),
       hasBundle: true,
     });
-    render(<RegistryView initialTab="plugins" />);
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    renderPluginInstall();
+    reviewPluginInstall();
     expect(
       screen.getByText(
         /You can install this plugin now. Its custom extension code stays off/,
@@ -933,65 +915,39 @@ describe('RegistryView', () => {
     expect(mutationCalls).toHaveLength(1);
   });
 
-  test('shows an installed plugin immediately while its refetch catches up', () => {
-    staleAfterMutationTabs.add('plugins');
-    previewResults.set('demo-layout', validDemoPreview());
+  // The optimistic state is the catalogue page's own, the same for every
+  // tab it shows; Tools' Browse tool servers is one of those pages.
+  test('shows an installed item immediately while its refetch catches up', () => {
+    staleAfterMutationTabs.add('integrations');
 
-    render(<RegistryView initialTab="plugins" />);
+    render(<RegistryView initialTab="integrations" />);
     fireEvent.click(
       within(screen.getByTestId('registry-detail')).getByRole('button', {
         name: 'Install',
       }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     const installedDetail = screen.getByTestId('registry-detail');
-    expectInstalledToast('Installed Demo Layout', 'demo-layout');
+    expect(screen.getByText('Installed Integration One')).toBeTruthy();
     expect(
-      within(installedDetail).getByRole('button', {
-        name: 'Open a Project to Add Layout',
-      }),
+      within(installedDetail).getByRole('button', { name: 'Remove' }),
     ).toBeTruthy();
-    expect(screen.getAllByText('Installed').length).toBeGreaterThan(0);
-  });
-
-  test('"Open a Project to Add Layout" reveals the Home surface instead of navigating to / (#928 C2a)', () => {
-    staleAfterMutationTabs.add('plugins');
-    previewResults.set('demo-layout', validDemoPreview());
-    navigateMock.mockClear();
-    showSurfaceMock.mockClear();
-
-    render(<RegistryView initialTab="plugins" />);
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Open a Project to Add Layout',
-      }),
-    );
-
-    expect(showSurfaceMock).toHaveBeenCalledWith('home');
-    expect(navigateMock).not.toHaveBeenCalledWith('/');
+    expect(within(installedDetail).getByText('Installed')).toBeTruthy();
+    expect(refetchInstalled).toHaveBeenCalledWith('integrations');
   });
 
   test('reconciles an optimistic install against contradictory fresh server state', async () => {
-    staleAfterMutationTabs.add('plugins');
-    reconciledRefetchTabs.add('plugins');
-    previewResults.set('demo-layout', validDemoPreview());
-    render(<RegistryView initialTab="plugins" />);
+    staleAfterMutationTabs.add('integrations');
+    reconciledRefetchTabs.add('integrations');
+    render(<RegistryView initialTab="integrations" />);
 
     fireEvent.click(
       within(screen.getByTestId('registry-detail')).getByRole('button', {
         name: 'Install',
       }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
-    expectInstalledToast('Installed Demo Layout', 'demo-layout');
+    expect(screen.getByText('Installed Integration One')).toBeTruthy();
     await waitFor(() =>
       expect(
         within(screen.getByTestId('registry-detail')).getByRole('button', {
@@ -999,12 +955,12 @@ describe('RegistryView', () => {
         }),
       ).toBeTruthy(),
     );
-    expect(refetchInstalled).toHaveBeenCalled();
+    expect(refetchInstalled).toHaveBeenCalledWith('integrations');
   });
 
   test('fails closed when installed status errors and offers a retry', () => {
-    installedErrorTabs.add('plugins');
-    render(<RegistryView initialTab="plugins" />);
+    installedErrorTabs.add('integrations');
+    render(<RegistryView initialTab="integrations" />);
 
     expect(
       (
@@ -1042,12 +998,8 @@ describe('RegistryView', () => {
         reason: 'saved',
       },
     };
-    render(<RegistryView initialTab="plugins" />);
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    renderPluginInstall();
+    reviewPluginInstall();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     await waitFor(() => expect(showToastMock).toHaveBeenCalled());
@@ -1078,12 +1030,8 @@ describe('RegistryView', () => {
         installationReadiness: { state: 'pending', recovery: 'review' },
       },
     ];
-    render(<RegistryView initialTab="plugins" />);
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    renderPluginInstall();
+    reviewPluginInstall();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     await waitFor(() => expect(showToastMock).toHaveBeenCalled());
@@ -1114,13 +1062,9 @@ describe('RegistryView', () => {
       ...validDemoPreview(),
       components: [{ type: 'provider', id: 'llm' }],
     });
-    render(<RegistryView initialTab="plugins" />);
+    renderPluginInstall();
 
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    reviewPluginInstall();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     // The action is derived from what the preview actually reviewed, so an
@@ -1133,41 +1077,6 @@ describe('RegistryView', () => {
     ];
     expect(text).toBe('Installed Demo Layout');
     expect(actions).toBeUndefined();
-  });
-
-  test('keeps installed plugin removal reachable through the full lifecycle', () => {
-    previewResults.set('demo-layout', validDemoPreview());
-    render(<RegistryView initialTab="plugins" />);
-
-    const detail = screen.getByTestId('registry-detail');
-    fireEvent.click(within(detail).getByRole('button', { name: 'Install' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
-    expectInstalledToast('Installed Demo Layout', 'demo-layout');
-
-    fireEvent.click(
-      within(detail).getByRole('button', { name: 'Remove plugin' }),
-    );
-    expect(screen.getByText('Removed Demo Layout')).toBeTruthy();
-    expect(
-      within(detail).getByRole('button', { name: 'Install' }),
-    ).toBeTruthy();
-
-    fireEvent.click(within(detail).getByRole('button', { name: 'Install' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
-    expectInstalledToast('Installed Demo Layout', 'demo-layout');
-    expect(mutationCalls).toEqual([
-      expect.objectContaining({
-        id: 'demo-layout',
-        action: 'install',
-        tab: 'plugins',
-      }),
-      { id: 'demo-layout', action: 'uninstall', tab: 'plugins' },
-      expect.objectContaining({
-        id: 'demo-layout',
-        action: 'install',
-        tab: 'plugins',
-      }),
-    ]);
   });
 
   /**
@@ -1186,13 +1095,9 @@ describe('RegistryView', () => {
    */
   test('installs a registry plugin from its preview with the operator decision attached', () => {
     previewResults.set('demo-layout', validDemoPreview());
-    render(<RegistryView initialTab="plugins" />);
+    renderPluginInstall();
 
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    reviewPluginInstall();
 
     // Nothing mutated yet: the preview modal is the decision point.
     expect(mutationCalls).toEqual([]);
@@ -1252,12 +1157,8 @@ describe('RegistryView', () => {
               ],
             };
       requestConsent.mockClear();
-      render(<RegistryView initialTab="plugins" />);
-      fireEvent.click(
-        within(screen.getByTestId('registry-detail')).getByRole('button', {
-          name: 'Install',
-        }),
-      );
+      renderPluginInstall();
+      reviewPluginInstall();
       fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
       await waitFor(() => expect(mutationCalls).toHaveLength(1));
       if (state === 'pending') {
@@ -1292,13 +1193,9 @@ describe('RegistryView', () => {
       },
     });
     requestInstallConsent.mockResolvedValueOnce(false);
-    render(<RegistryView initialTab="plugins" />);
+    renderPluginInstall();
 
-    fireEvent.click(
-      within(screen.getByTestId('registry-detail')).getByRole('button', {
-        name: 'Install',
-      }),
-    );
+    reviewPluginInstall();
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Install' }));
 
     await waitFor(() =>
@@ -1323,12 +1220,11 @@ describe('RegistryView', () => {
 
   test('renders a selected-card preview failure and keeps a repeat install click live', () => {
     previewResults.set('demo-layout', new Error('Preview staging failed'));
-    render(<RegistryView initialTab="plugins" />);
+    renderPluginInstall();
 
-    const install = within(screen.getByTestId('registry-detail')).getByRole(
-      'button',
-      { name: 'Install' },
-    );
+    const install = screen.getByRole('button', {
+      name: 'Review Demo Layout permissions',
+    });
     fireEvent.click(install);
 
     expect(screen.getByText('Preview staging failed')).toBeTruthy();

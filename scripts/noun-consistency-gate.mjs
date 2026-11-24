@@ -899,12 +899,23 @@ export function scanFileContent(
       end: tagMatch.index + tagMatch[0].length,
       text: tagMatch[0],
     });
+    // A tag whose attribute value holds JSX (`listIntro={<div>…</div>}`)
+    // matches as one span that hides the elements inside it. Resume the walk
+    // just inside that tag so those elements are tags too, and their text is
+    // scanned like any other. The outer tag overlaps them, so it pairs with
+    // none of them below.
+    if (tagMatch[0].indexOf('<', 1) !== -1) {
+      TAG_PATTERN.lastIndex = tagMatch.index + 1;
+    }
   }
 
   for (let i = 0; i < tags.length - 1; i++) {
     const current = tags[i];
-    const next = tags[i + 1];
-    if (current.end >= next.start) continue;
+    // The next tag after this one ends. For a tag that holds JSX in an
+    // attribute, that skips the elements inside it, so its own children
+    // are read exactly as before.
+    const next = tags.slice(i + 1).find((tag) => tag.start >= current.end);
+    if (!next || current.end >= next.start) continue;
     findings.push(
       ...scanChildrenBetweenTags(
         file,

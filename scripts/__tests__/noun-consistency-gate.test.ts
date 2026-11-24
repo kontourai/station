@@ -153,6 +153,43 @@ describe('noun-consistency-gate', () => {
       expect(findings[0].snippet).toBe('No runtime connections');
     });
 
+    // JSX handed to a component as an attribute (`listIntro={<div>…</div>}`)
+    // is copy like any other child. The whole outer tag used to match as one
+    // span, so the text inside it was never read.
+    it('flags a banned word in text inside JSX passed as an attribute', () => {
+      const source = `
+        export function Example() {
+          return (
+            <Page
+              listIntro={
+                <div>
+                  <p>Your playbooks live here.</p>
+                </div>
+              }
+            >
+              Runtime list
+            </Page>
+          );
+        }
+      `;
+      const findings = scanFileContent('Example.tsx', source);
+      expect(findings.map((finding) => finding.snippet).sort()).toEqual([
+        'Runtime list',
+        'Your playbooks live here.',
+      ]);
+      expect(
+        findings.find((finding) => finding.snippet.includes('playbooks'))?.line,
+      ).toBe(7);
+    });
+
+    it('passes clean text inside JSX passed as an attribute', () => {
+      const source =
+        'export function Example() {\n' +
+        '  return <Page listIntro={<p>Your skills live here.</p>}>Agents</Page>;\n' +
+        '}\n';
+      expect(scanFileContent('Example.tsx', source)).toHaveLength(0);
+    });
+
     // Review L: user-facing copy also travels as object-literal fields, and
     // the JSX-only scanners never read those.
     it('flags a banned word in an object-literal copy field', () => {

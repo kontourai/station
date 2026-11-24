@@ -22,7 +22,6 @@ import {
 } from '../components/registry/RegistryLayoutActions';
 import { getRegistrySkillInstallRefusal } from '../components/registry/registryCatalogModel';
 import { useNavigation } from '../contexts/NavigationContext';
-import { useShowSurface } from '../contexts/useShowSurface';
 import { AgentToolCatalog } from './agent-editor/AgentToolCatalog';
 import { usePluginCatalogInstall } from './plugin-management/usePluginCatalogInstall';
 import './PluginManagementView.css';
@@ -55,8 +54,6 @@ export function RegistryView({
   installTarget?: string;
 } = {}) {
   const { navigate } = useNavigation();
-  // #928 C2a: "Open a Project" means Home by name; reveal the surface.
-  const showSurface = useShowSurface();
   const invalidateQuery = useInvalidateQuery();
   const [activeTab, setActiveTab] = useState<RegistryCatalogTab>(
     initialTab ?? 'skills',
@@ -382,10 +379,6 @@ export function RegistryView({
                 tab: 'skills',
               }),
             manageSkills: () => navigate('/guidance?tab=skills'),
-            managePlugins: () => {
-              if (!toolPicker) navigate('/apps/library');
-            },
-            openProjects: () => showSurface('home'),
             retryInstalled: () => {
               void refetchInstalled();
             },
