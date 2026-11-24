@@ -1,0 +1,7 @@
+{
+  "revision": "36683b8654c8350f136b940061f39e8c761624b1",
+
+  "notes": [
+    {"path":"docs/guides/machine-relationships.md","note":"Kiro device login choices do not alter any connection or host authority claims.","inputs":["docs/guides/connections.md"]}
+  ]
+}
