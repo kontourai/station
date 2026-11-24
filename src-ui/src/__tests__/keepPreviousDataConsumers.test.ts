@@ -51,12 +51,22 @@ function parse(file: string): ts.SourceFile {
   );
 }
 
+function mayKeepPreviousData(node: ts.Node): boolean {
+  if (
+    ts.isPropertyAssignment(node) &&
+    (ts.isIdentifier(node.name) || ts.isStringLiteral(node.name)) &&
+    node.name.text === 'keepPreviousData' &&
+    node.initializer.kind !== ts.SyntaxKind.FalseKeyword
+  ) {
+    return true;
+  }
+  return node.forEachChild(mayKeepPreviousData) ?? false;
+}
+
 /**
- * Every exported hook in the SDK's query-domains that surfaces
- * `keepPreviousData` to `useApiQuery` at all — as a hardcoded/defaulted
- * `true`, or as a caller passthrough (`config?.keepPreviousData`). Scoped
- * per FUNCTION, not per file, so a second hook added to an
- * already-known-opted-in file is still caught individually.
+ * Every exported hook in the SDK's query domains that can enable
+ * `keepPreviousData`, including a caller passthrough. Literal `false`
+ * disables the hold. Check each hook independently.
  */
 function optedInHookNames(): string[] {
   const names = new Set<string>();
@@ -70,7 +80,7 @@ function optedInHookNames(): string[] {
           ?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword);
       if (!exported) continue;
       if (ts.isFunctionDeclaration(node) && node.name) {
-        if (/keepPreviousData\s*:/.test(node.getText(sourceFile))) {
+        if (mayKeepPreviousData(node)) {
           names.add(node.name.text);
         }
       } else if (ts.isVariableStatement(node)) {
@@ -81,7 +91,7 @@ function optedInHookNames(): string[] {
             decl.initializer &&
             (ts.isArrowFunction(decl.initializer) ||
               ts.isFunctionExpression(decl.initializer)) &&
-            /keepPreviousData\s*:/.test(decl.initializer.getText(sourceFile))
+            mayKeepPreviousData(decl.initializer)
           ) {
             names.add(decl.name.text);
           }
