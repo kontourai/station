@@ -469,8 +469,8 @@ export const APP_DESTINATION_REGISTRY = createDestinationRegistry([
     keywords: ['apps', 'discover', 'library', 'plugins', 'registry'],
     icon: 'plugins',
     // Apps is not a Customize item. Until it has a sidebar row, the palette,
-    // the links that point here and the redirects from `/plugins` and
-    // `/registry` are its doors. There is no Registry destination: each
+    // the Customize landing's note, the links that point here and the
+    // redirects from `/plugins` and `/registry` are its doors. There is no Registry destination: each
     // remaining catalogue is a page entered from where its kind is used.
     managementGroup: 'plugins',
     palette: { order: 60 },

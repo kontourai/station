@@ -1,8 +1,29 @@
+import type { MouseEvent, ReactNode } from 'react';
+import { APP_DESTINATION_REGISTRY } from '../../app-shell/destination-registry';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { COMPUTERS_PATH } from '../connections-hub/connection-sections';
 import { CustomizeItemLink } from './CustomizeItemLink';
 import { useCustomizeGroups } from './useCustomizeGroups';
 import './customize.css';
+
+/** Apps is not a Customize item; this page links to it from a note. */
+const APPS_PATH = APP_DESTINATION_REGISTRY.get('plugins')!.route;
+
+/** A link inside a note, opened in place unless a modifier asks otherwise. */
+function NoteLink({ to, children }: { to: string; children: ReactNode }) {
+  const { navigate } = useNavigation();
+  const onClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+      return;
+    event.preventDefault();
+    navigate(to);
+  };
+  return (
+    <a href={to} onClick={onClick}>
+      {children}
+    </a>
+  );
+}
 
 /**
  * The Customize landing: every item, grouped. On a phone this list is the
@@ -10,7 +31,6 @@ import './customize.css';
  */
 export function CustomizeLanding() {
   const groups = useCustomizeGroups();
-  const { navigate } = useNavigation();
   return (
     <div className="customize-landing">
       {groups.map((group) => (
@@ -49,24 +69,13 @@ export function CustomizeLanding() {
         </section>
       ))}
       <p className="customize-landing__note">
-        <a
-          href={COMPUTERS_PATH}
-          onClick={(event) => {
-            if (
-              event.metaKey ||
-              event.ctrlKey ||
-              event.shiftKey ||
-              event.altKey
-            )
-              return;
-            event.preventDefault();
-            navigate(COMPUTERS_PATH);
-          }}
-        >
-          Computers
-        </a>{' '}
-        lists paired devices and SSH computers. Pairing and other Stations are
-        in the Station menu at the top right.
+        <NoteLink to={APPS_PATH}>Apps</NoteLink> finds screens built for one job
+        and manages the ones you added.
+      </p>
+      <p className="customize-landing__note">
+        <NoteLink to={COMPUTERS_PATH}>Computers</NoteLink> lists paired devices
+        and SSH computers. Pairing and other Stations are in the Station menu at
+        the top right.
       </p>
     </div>
   );

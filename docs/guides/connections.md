@@ -7,7 +7,9 @@ as Codex or Claude Code that runs its own loop. They appear on the **Customize**
 next action. Tools and Knowledge are Customize items too. Connections is no longer a page of
 its own; its old addresses open the matching Customize item. Computers keeps its address,
 `/connections/computers`, until the Station page replaces it; pairing and other Stations are in
-the Station menu at the top right.
+the Station menu at the top right. The Customize landing also links to Apps (`/apps`),
+which finds screens built for one job and manages the ones you added; Apps is not a Customize
+item.
 
 For the precise vocabulary used below, see [docs/glossary.md](../glossary.md).
 
