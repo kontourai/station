@@ -1,0 +1,7 @@
+{
+  "revision": "35e4a07a35c312b4eeebffce5f676eb2913bd344",
+
+  "notes": [
+    {"path":"docs/design/outside-agent-mcp-r2b-evidence.md","note":"Reviewed production app construction and decoded nonce validation in the native guard control. This uses the framework that configureRuntimeHttp accepts and preserves the original approval and release-refusal assertions. The affected server-test typecheck passed. Historical evidence retains its original scope.","inputs":["src-server/routes/outside-agent/__tests__/consent-routes.test.ts"]}
+  ]
+}

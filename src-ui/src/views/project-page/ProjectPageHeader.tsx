@@ -1,6 +1,6 @@
 import { Button } from '../../components/Button';
 import { GitBadge } from '../../components/badges/GitBadge';
-import { SettingsGlyph } from '../../components/icons/Glyph';
+import { PeopleGlyph, SettingsGlyph } from '../../components/icons/Glyph';
 import { ProjectIcon } from '../../components/icons/ProjectIcon';
 
 export function ProjectPageHeader({
@@ -45,16 +45,23 @@ export function ProjectPageHeader({
         </div>
       </div>
       <Button
-        className="project-page__settings-btn"
+        className="project-page__header-action"
         aria-label="Project settings"
         onClick={navigateToSettings}
       >
         <SettingsGlyph />
-        <span className="project-page__settings-label">Settings</span>
+        <span className="project-page__header-action-label">Settings</span>
       </Button>
       {invitePeople && (
-        <Button className="project-page__invite-btn" onClick={invitePeople}>
-          Invite people
+        <Button
+          className="project-page__header-action"
+          aria-label="Invite people"
+          onClick={invitePeople}
+        >
+          <PeopleGlyph />
+          <span className="project-page__header-action-label">
+            Invite people
+          </span>
         </Button>
       )}
     </div>

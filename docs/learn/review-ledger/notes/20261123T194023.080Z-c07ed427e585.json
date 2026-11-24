@@ -1,0 +1,7 @@
+{
+  "revision": "3e1b6205bf83885827295179cac86c823d5ae127",
+
+  "notes": [
+    {"path":"docs/guides/native-model-channel-lab.md","note":"Traced the pinned lab option through separate namespaces, private stdin callbacks, bounded output, exact native result checks, and joined exec and namespace retirement. The simulated process controls cover those host owner behaviors. No real native binary or Docker run is claimed.","inputs":["docs/guides/native-model-channel-lab.md","scripts/child-work-native-model-channel-lab.ts","src-server/services/connections/native-model-container.ts","src-server/services/connections/__tests__/native-model-container.test.ts"]}
+  ]
+}

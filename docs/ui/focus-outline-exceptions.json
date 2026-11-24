@@ -152,11 +152,6 @@
       "reason": "Legacy suppression covered by the global keyboard-focus floor."
     },
     {
-      "path": "src-ui/src/views/ScheduleView.css",
-      "selector": ".schedule__filter-input",
-      "reason": "Legacy suppression covered by the global keyboard-focus floor."
-    },
-    {
       "path": "src-ui/src/views/SettingsView.css",
       "selector": ".settings__field input:focus, .settings__field textarea:focus, .settings__field select:focus, .voice-provider-section__select:focus",
       "reason": "Legacy suppression covered by the global keyboard-focus floor."

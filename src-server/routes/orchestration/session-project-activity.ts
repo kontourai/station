@@ -38,7 +38,6 @@
  */
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
-import { sessionLadderWord } from '@kontourai/station-contracts/session-attention';
 import {
   type HostedTenantRegistry,
   type SessionReadAuthority,
@@ -48,12 +47,19 @@ import { type Context, Hono } from 'hono';
 import { getTenantRequestContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import type { StationControlDispatchScope } from '../../runtime/mcp/station-control-dispatch-scope.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
-import { publicAgentIdFromRuntimeKey } from '../../services/agents/runtime-agent-identity.js';
 import {
   type EventStore,
   TurnDigestLineageTooLongError,
 } from '../../services/orchestration/event-store.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
+import {
+  type ActivityListViewer,
+  createSessionActivityReader,
+  decodeActivityCursor,
+  isRemoteActivitySession,
+  recordedActivityWorktree,
+  sessionActivityIdentity,
+} from '../../services/orchestration/session-activity-reader.js';
 import {
   type DigestDelegatedChild,
   DigestTurnTooLargeError,
@@ -65,11 +71,7 @@ import {
   fitDigestPage,
   sessionDigestLineage,
 } from '../../services/orchestration/session-digest.js';
-import {
-  type WorkClaimRecord,
-  type WorkClaimStore,
-  workClaimSessionEnded,
-} from '../../services/orchestration/work-claims.js';
+import type { WorkClaimStore } from '../../services/orchestration/work-claims.js';
 import {
   type StationControlScope,
   sameScope,
@@ -135,35 +137,6 @@ function callerOf(c: Context): StationControlCaller | Response {
   );
 }
 
-/** A delegated Session on a paired Station or an SSH Environment is another host's. */
-const isRemote = (session: {
-  delegation?: { environmentKind?: string };
-}): boolean =>
-  session.delegation?.environmentKind !== undefined &&
-  session.delegation.environmentKind !== 'current';
-
-/**
- * The worktree Station provisioned for a Session, from its start record: the
- * path and branch it stamped (`worktree`, or an isolation of mode `worktree`).
- * Absent for a Session whose folder nothing recorded as a worktree.
- */
-function recordedWorktree(
-  metadata: Record<string, unknown> | undefined,
-): { path: string; branch: string } | undefined {
-  for (const key of ['worktree', 'workspaceIsolation']) {
-    const value = metadata?.[key];
-    if (!value || typeof value !== 'object') continue;
-    const { mode, path, branch } = value as Record<string, unknown>;
-    if (
-      mode === 'worktree' &&
-      typeof path === 'string' &&
-      typeof branch === 'string'
-    )
-      return { path, branch };
-  }
-  return undefined;
-}
-
 /** Whether a Session is the caller's own, or of the caller's own conversation. */
 const isOwnSession = (
   caller: StationControlCaller,
@@ -198,72 +171,13 @@ function parseBoundedInteger(
   return parsed >= 1 && parsed <= max ? parsed : undefined;
 }
 
-interface ListCursor {
-  /** The previous page's last row: its activity time and its id. */
-  at: string;
-  id: string;
-}
-
-function encodeListCursor(cursor: ListCursor): string {
-  return Buffer.from(
-    JSON.stringify({ v: 1, t: cursor.at, i: cursor.id }),
-    'utf8',
-  ).toString('base64url');
-}
-
-function decodeListCursor(value: string): ListCursor | undefined {
-  if (value.length > 1024 || !/^[A-Za-z0-9_-]+$/u.test(value)) return undefined;
-  try {
-    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
-    if (
-      parsed?.v !== 1 ||
-      typeof parsed.t !== 'string' ||
-      typeof parsed.i !== 'string'
-    )
-      return undefined;
-    return { at: parsed.t, id: parsed.i };
-  } catch {
-    return undefined;
-  }
-}
-
-/**
- * Newest activity first, the id breaking a tie so a cursor names one position:
- * whether `position` comes strictly after `cursor` in that order.
- */
-function isAfter(cursor: ListCursor, position: ListCursor): boolean {
-  return (
-    position.at < cursor.at ||
-    (position.at === cursor.at && position.id > cursor.id)
-  );
-}
-
-/** A claim as a row in the list shows it: what, until when, and the note. */
-const activityClaim = (claim: WorkClaimRecord) => ({
-  claimId: claim.claimId,
-  ...(claim.workItemRef ? { workItemRef: claim.workItemRef } : {}),
-  ...(claim.paths.length > 0 ? { paths: claim.paths } : {}),
-  ...(claim.note ? { note: claim.note } : {}),
-  ...(claim.taskId ? { taskId: claim.taskId } : {}),
-  claimedAt: claim.claimedAt,
-  expiresAt: claim.expiresAt,
-});
-
 /**
  * Who is reading, as the list and the digest decide visibility for them. An
  * agent caller is held to its own Project by the scope rule; a person is held
  * to the Projects they may `view` (`createSessionPersonActivityRoutes`). Both
  * read through the same owner-scoped read model.
  */
-interface ActivityViewer {
-  /** The viewer's own conversation: listed and digested whatever its scope. */
-  isOwn(
-    session: Pick<OrchestrationSessionSummary, 'threadId' | 'conversationId'>,
-  ): boolean;
-  /** Whether a Session that is not the viewer's own is listed. */
-  listsSession(threadId: string): boolean;
-  /** Whether a claim on a listed Session that is not the viewer's own shows. */
-  showsClaim(claim: WorkClaimRecord): boolean;
+interface ActivityViewer extends ActivityListViewer {
   /** Whether a digest names a delegated child. */
   seesChild(threadId: string): boolean;
   /** Whether a digest's conversation (with its lineage) is the viewer's own. */
@@ -334,146 +248,13 @@ export function sessionPersonReadsDisabled(c: Context): Response {
 }
 
 function createSessionActivityCore(deps: SessionProjectActivityDeps) {
+  const activity = createSessionActivityReader(deps);
   const readAuthorityFor = (c: Context) =>
     sessionReadAuthorityFromRequest(
       resolveActorPrincipal(deps, c).userId,
       getTenantRequestContext(c.req.raw),
       deps.hostedTenantRegistry,
     );
-
-  /** What the list and the digest both say about a Session. */
-  const identityOf = (
-    summary: OrchestrationSessionSummary,
-    title: string | undefined,
-  ) => ({
-    ...(title ? { title } : {}),
-    ...(summary.projectSlug ? { projectSlug: summary.projectSlug } : {}),
-    engine: summary.provider,
-    ...(summary.assignedAgentSlug
-      ? { agent: publicAgentIdFromRuntimeKey(summary.assignedAgentSlug) }
-      : {}),
-    status: sessionLadderWord(summary),
-  });
-
-  /** One conversation per row (its current Session), never another host, newest first. */
-  const activityRows = (sessions: readonly OrchestrationSessionSummary[]) =>
-    sessions
-      .filter(
-        (session) =>
-          (session.currentSessionId === undefined ||
-            session.currentSessionId === session.threadId) &&
-          !isRemote(session),
-      )
-      .map((session) => ({
-        session,
-        at: session.lastEventAt ?? session.updatedAt,
-      }))
-      .sort((a, b) =>
-        a.at === b.at
-          ? a.session.threadId < b.session.threadId
-            ? -1
-            : 1
-          : a.at < b.at
-            ? 1
-            : -1,
-      );
-
-  /**
-   * The visibility rule is decided per row, newest first, over the candidates
-   * the request selected BEFORE the fold, so a call costs those Sessions, not
-   * the Station's. That narrowing is an optimization and never the check:
-   * every row still passes the viewer's rule here, except the viewer's own
-   * conversation, which is its own whatever its scope.
-   */
-  const visibleRowsPage = (
-    viewer: ActivityViewer,
-    rows: ReturnType<typeof activityRows>,
-    cursor: ListCursor | undefined,
-    limit: number,
-  ) => {
-    const page: typeof rows = [];
-    for (const row of rows) {
-      const position = { at: row.at, id: row.session.threadId };
-      if (cursor && !isAfter(cursor, position)) continue;
-      // The viewer's own conversation is listed whatever its scope, as its
-      // digest is read: the `host` and Project checks keep a scoped caller
-      // out of OTHER Sessions, and its own Session is not another.
-      if (
-        !viewer.isOwn(row.session) &&
-        !viewer.listsSession(row.session.threadId)
-      )
-        continue;
-      // One visible row past the page proves there is more.
-      if (page.length === limit) return { page, more: true };
-      page.push(row);
-    }
-    return { page, more: false };
-  };
-
-  /**
-   * The page's active claims, by row: a claim is its Session's, or its
-   * conversation's (a later Session of the same conversation keeps it). A row
-   * other than the viewer's own shows only claims the viewer may see.
-   */
-  const claimsByRow = (
-    viewer: ActivityViewer,
-    page: ReturnType<typeof activityRows>,
-  ): Map<string, WorkClaimRecord[]> => {
-    const byRow = new Map<string, WorkClaimRecord[]>();
-    if (!deps.workClaims || page.length === 0) return byRow;
-    const live = page.filter((row) => !workClaimSessionEnded(row.session));
-    const claims = deps.workClaims.listUnexpired({
-      claimants: {
-        sessionIds: live.map((row) => row.session.threadId),
-        conversationIds: live.flatMap((row) =>
-          row.session.conversationId ? [row.session.conversationId] : [],
-        ),
-      },
-    });
-    for (const row of live) {
-      const own = viewer.isOwn(row.session);
-      const mine = claims.filter(
-        (claim) =>
-          (claim.sessionId === row.session.threadId ||
-            (claim.conversationId !== undefined &&
-              claim.conversationId === row.session.conversationId)) &&
-          (own || viewer.showsClaim(claim)),
-      );
-      if (mine.length > 0) byRow.set(row.session.threadId, mine);
-    }
-    return byRow;
-  };
-
-  const listRow = (
-    viewer: ActivityViewer,
-    { session, at }: ReturnType<typeof activityRows>[number],
-    claims: readonly WorkClaimRecord[] | undefined,
-  ) => {
-    const title =
-      deps.eventStore.conversationTitle([
-        session.conversationId ?? session.threadId,
-        session.threadId,
-      ]) ?? session.displayTitle;
-    const worktree = recordedWorktree(
-      deps.orchestrationService.firstStartedMetadataOfThread(session.threadId),
-    );
-    const isSelf = viewer.isOwn(session);
-    return {
-      sessionId: session.threadId,
-      ...(session.conversationId
-        ? { conversationId: session.conversationId }
-        : {}),
-      ...identityOf(session, title),
-      turnRunning: session.hasActiveTurn === true,
-      lastActivityAt: at,
-      ...(session.cwd ? { workingDirectory: session.cwd } : {}),
-      ...(worktree ? { worktree } : {}),
-      ...(isSelf ? { self: true as const } : {}),
-      ...(claims && claims.length > 0
-        ? { claims: claims.map(activityClaim) }
-        : {}),
-    };
-  };
 
   /**
    * One page of the list. `candidates` are the Sessions the request selected
@@ -501,21 +282,13 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
       );
     const cursorValue = c.req.query('cursor');
     const cursor =
-      cursorValue === undefined ? undefined : decodeListCursor(cursorValue);
+      cursorValue === undefined ? undefined : decodeActivityCursor(cursorValue);
     if (cursorValue !== undefined && !cursor)
       return invalid(
         c,
         'cursor is not a cursor this read returned. Omit it to start from the newest.',
         'project_activity_cursor_invalid',
       );
-    const threadIds = candidates();
-    const sessions = await deps.orchestrationService.listSessionReadModel(
-      readAuthorityFor(c),
-      {
-        purpose: 'project-activity',
-        ...(threadIds === undefined ? {} : { threadIds }),
-      },
-    );
     const minutes = parseBoundedInteger(
       c.req.query('activeWithinMinutes'),
       ACTIVE_WORK_DEFAULT_MINUTES,
@@ -526,29 +299,15 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
         c,
         `activeWithinMinutes must be a whole number from 1 to ${ACTIVE_WORK_MAX_MINUTES}.`,
       );
-    const since =
-      Date.now() - (minutes ?? ACTIVE_WORK_DEFAULT_MINUTES) * 60_000;
-    const rows = activityRows(sessions).filter(
-      ({ session, at }) =>
-        !activeOnly ||
-        session.hasActiveTurn === true ||
-        Date.parse(at) >= since,
-    );
-    const { page, more } = visibleRowsPage(viewer, rows, cursor, limit);
-    const last = page.at(-1);
-    const claims = claimsByRow(viewer, page);
-    return c.json({
-      success: true,
-      data: {
-        sessions: page.map((row) =>
-          listRow(viewer, row, claims.get(row.session.threadId)),
-        ),
-        nextCursor:
-          more && last
-            ? encodeListCursor({ at: last.at, id: last.session.threadId })
-            : null,
-      },
+    const data = await activity.page({
+      authority: readAuthorityFor(c),
+      viewer,
+      threadIds: candidates(),
+      cursor,
+      limit,
+      activeWithinMinutes: activeOnly ? minutes : undefined,
     });
+    return c.json({ success: true, data });
   };
 
   /**
@@ -577,7 +336,8 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
           });
     const children: Array<DigestDelegatedChild & { startedAt: string }> = [];
     for (const child of summaries) {
-      if (isRemote(child) || !viewer.seesChild(child.threadId)) continue;
+      if (isRemoteActivitySession(child) || !viewer.seesChild(child.threadId))
+        continue;
       const title =
         deps.eventStore.conversationTitle([child.threadId]) ??
         child.displayTitle;
@@ -647,7 +407,7 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
       authority,
       { purpose: 'session-digest', threadIds: [subjectId] },
     );
-    if (!summary || isRemote(summary)) return undefined;
+    if (!summary || isRemoteActivitySession(summary)) return undefined;
     return { conversationId, lineage, subjectId, summary, authority };
   };
 
@@ -750,7 +510,7 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
     // page that fills early loses nothing.
     const lastIncluded = read.turns[fitted.turns.length - 1];
     const more = fitted.turns.length < turns.length || read.hasMore;
-    const worktree = recordedWorktree(
+    const worktree = recordedActivityWorktree(
       deps.orchestrationService.firstStartedMetadataOfThread(subjectId),
     );
     const title =
@@ -761,7 +521,7 @@ function createSessionActivityCore(deps: SessionProjectActivityDeps) {
         session: {
           sessionId: subjectId,
           conversationId,
-          ...identityOf(summary, title),
+          ...sessionActivityIdentity(summary, title),
           turnCount: read.totalTurns,
           ...(worktree ? { worktree } : {}),
         },

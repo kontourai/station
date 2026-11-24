@@ -1,4 +1,5 @@
 /** Read-only first-party SQLite execution. No EventStore, migrations, or authority construction. */
+import { randomUUID } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { parentPort, workerData } from 'node:worker_threads';
@@ -12,7 +13,9 @@ import {
 } from '../orchestration/transcript-search-queries.js';
 import { errorClassFields } from './search-read-refusal.js';
 import {
+  MAX_SCOPED_TRANSCRIPT_REQUEST_BYTES,
   parseTranscriptReadRequest,
+  type TranscriptReadRequest,
   type TranscriptReadResult,
 } from './transcript-search-protocol.js';
 
@@ -31,11 +34,63 @@ const database = new DatabaseSync(databasePath, {
   timeout: 1000,
 });
 database.exec('PRAGMA query_only = ON');
+const snapshotOwner = randomUUID();
+const readVersion = database.prepare('PRAGMA data_version');
+const version = () => Number(readVersion.get()?.data_version);
+
+function searchMessages(
+  request: Extract<TranscriptReadRequest, { type: 'message-search' }>,
+): TranscriptReadResult {
+  if (!request.snapshot) return readMessages(request);
+  database.exec('BEGIN');
+  try {
+    // Establish the SQLite read snapshot before comparing its revision.
+    database.prepare('SELECT name FROM sqlite_schema LIMIT 1').get();
+    if (
+      request.snapshot.owner !== snapshotOwner ||
+      request.snapshot.version !== version()
+    )
+      return { state: 'unavailable' };
+    return readMessages(request);
+  } finally {
+    database.exec('ROLLBACK');
+  }
+}
+
+function readMessages(
+  request: Extract<TranscriptReadRequest, { type: 'message-search' }>,
+): TranscriptReadResult {
+  return {
+    state: 'available',
+    rows: queryTranscriptMessages(database, request, true).map((row) => ({
+      conversationId: row.threadId,
+      matchedEventId: row.eventId,
+      messageId:
+        row.role === 'assistant' && row.turnAnchorId
+          ? `${row.turnAnchorId}:assistant`
+          : `${row.eventId}:user`,
+      role: row.role,
+      excerpt: messageSearchExcerpt(row.content, request.query),
+      ...(row.projectSlug ? { projectSlug: row.projectSlug } : {}),
+      ...(row.agentSlug ? { agentSlug: row.agentSlug } : {}),
+      ...(row.engine ? { engine: row.engine } : {}),
+    })),
+  };
+}
+
 port.on('message', (wire: unknown) => {
-  if (typeof wire !== 'string' || Buffer.byteLength(wire) > 2048)
+  if (typeof wire !== 'string')
+    throw new TypeError('Invalid transcript operation');
+  const bytes = Buffer.byteLength(wire);
+  if (bytes > MAX_SCOPED_TRANSCRIPT_REQUEST_BYTES)
     throw new TypeError('Invalid transcript operation');
   const request = parseTranscriptReadRequest(JSON.parse(wire));
-  if (!request) throw new TypeError('Invalid transcript operation');
+  if (
+    !request ||
+    (bytes > 2048 &&
+      !(request.type === 'message-search' && request.threadIds !== undefined))
+  )
+    throw new TypeError('Invalid transcript operation');
   let result: TranscriptReadResult = { state: 'unavailable' };
   try {
     result =
@@ -59,26 +114,12 @@ port.on('message', (wire: unknown) => {
                   state: 'available',
                   session: queryTranscriptSession(database, request),
                 }
-              : {
-                  state: 'available',
-                  rows: queryTranscriptMessages(database, request, true).map(
-                    (row) => ({
-                      conversationId: row.threadId,
-                      matchedEventId: row.eventId,
-                      messageId:
-                        row.role === 'assistant' && row.turnAnchorId
-                          ? `${row.turnAnchorId}:assistant`
-                          : `${row.eventId}:user`,
-                      role: row.role,
-                      excerpt: messageSearchExcerpt(row.content, request.query),
-                      ...(row.projectSlug
-                        ? { projectSlug: row.projectSlug }
-                        : {}),
-                      ...(row.agentSlug ? { agentSlug: row.agentSlug } : {}),
-                      ...(row.engine ? { engine: row.engine } : {}),
-                    }),
-                  ),
-                };
+              : request.type === 'search-snapshot'
+                ? {
+                    state: 'available',
+                    snapshot: { owner: snapshotOwner, version: version() },
+                  }
+                : searchMessages(request);
   } catch (error) {
     // Failure never becomes an authoritative empty/ownerless result. Its
     // CLASS (constructor name, `code`, SQLite `errcode`) travels with the

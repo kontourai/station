@@ -1,0 +1,7 @@
+{
+  "revision": "f2d6415d696614b022ead14ef662aabdbffa9398",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Reviewed against the contracts reference's new SchedulerJob.recentOutcomes and pausedItself sentence; the contracts scope rules are unchanged by it.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}
