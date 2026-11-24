@@ -45,22 +45,22 @@ function RegistryTrustBody({
   if (!trust)
     return (
       <p className="plugin-registry-trust__note">
-        Station did not report source verification for this {subject}. Treat
-        it as unverified.
+        Station did not report source verification for this {subject}. Treat it
+        as unverified.
       </p>
     );
   if (trust.state === 'unavailable')
     return (
       <p className="plugin-registry-trust__note">
-        The stored source verification for this installation could not be
-        read. Station does not treat it as verified.
+        The stored source verification for this installation could not be read.
+        Station does not treat it as verified.
       </p>
     );
   if (trust.state === 'none')
     return (
       <p className="plugin-registry-trust__note">
-        No verified source claim. Station has no verified source, signer or
-        pin for this {subject}.
+        No verified source claim. Station has no verified source, signer or pin
+        for this {subject}.
       </p>
     );
   const { receipt } = trust;
