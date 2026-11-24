@@ -14,10 +14,19 @@
  * family; station-control's raw-forwarding call sites need their own adapter
  * when migrated, Wave 2B.
  */
-import type { ToolServerEventCatalog } from '@kontourai/station-contracts/tool';
+import type {
+  ToolServerEventCatalog,
+  ToolServerEventPollInput,
+  ToolServerEventPollPage,
+  ToolServerEventStreamFrame,
+  ToolServerEventStreamInput,
+} from '@kontourai/station-contracts/tool';
+import { z } from 'zod';
 import {
   type ApiRequestScope,
   type ClientRequestOptions,
+  composeRequestSignals,
+  consumeSseResponse,
   getJson,
   mutateJson,
   readEnvelopeOrThrow,
@@ -57,6 +66,96 @@ export async function discoverIntegrationEvents(
   const catalog = await readEnvelopeOrThrow<ToolServerEventCatalog>(response);
   if (!catalog) throw new Error('Event catalog missing from response');
   return catalog;
+}
+
+export async function pollIntegrationEvents(
+  id: string,
+  input: ToolServerEventPollInput,
+  requestScope: ApiRequestScope,
+): Promise<ToolServerEventPollPage> {
+  const response = await mutateJson(
+    `${requestScope.apiBase}/integrations/${encodeURIComponent(id)}/events/poll`,
+    'POST',
+    { requestScope, readOnly: true, maxResponseBytes: 512 * 1024 },
+    input,
+  );
+  const page = await readEnvelopeOrThrow<ToolServerEventPollPage>(response);
+  if (!page) throw new Error('Event page missing from response');
+  return page;
+}
+
+const eventStreamFrame = z.discriminatedUnion('type', [
+  z.object({
+    type: z.literal('active'),
+    cursor: z.string().min(1).max(4096).nullable(),
+    truncated: z.boolean(),
+    heartbeatMs: z.number().int().positive(),
+  }),
+  z.object({
+    type: z.literal('event'),
+    cursor: z.string().min(1).max(4096).nullable(),
+    eventId: z.string().min(1).max(256),
+    timestamp: z.iso.datetime({ offset: true }),
+    data: z.json(),
+  }),
+  z.object({
+    type: z.literal('heartbeat'),
+    cursor: z.string().min(1).max(4096).nullable(),
+  }),
+  z.object({ type: z.literal('warning') }),
+  z.object({
+    type: z.literal('ended'),
+    reason: z.enum(['complete', 'unavailable']),
+  }),
+]);
+
+export async function streamIntegrationEvents(
+  id: string,
+  input: ToolServerEventStreamInput,
+  requestScope: ApiRequestScope,
+  signal: AbortSignal,
+  receive: (frame: ToolServerEventStreamFrame) => void,
+): Promise<void> {
+  const controller = new AbortController();
+  const { signal: lifetime, cleanup } = composeRequestSignals(
+    controller.signal,
+    signal,
+  );
+  try {
+    const response = await mutateJson(
+      `${requestScope.apiBase}/integrations/${encodeURIComponent(id)}/events/stream`,
+      'POST',
+      {
+        requestScope,
+        signal: lifetime,
+        readOnly: true,
+        maxResponseBytes: 3 * 1024 * 1024,
+      },
+      input,
+    );
+    if (
+      response.ok &&
+      !response.headers
+        .get('content-type')
+        ?.toLowerCase()
+        .startsWith('text/event-stream')
+    )
+      throw new Error('Event stream response is invalid.');
+    let ended = false;
+    await consumeSseResponse(response, lifetime, ({ data }) => {
+      lifetime.throwIfAborted();
+      if (ended) throw new Error('Event stream sent data after ending.');
+      const frame = eventStreamFrame.parse(JSON.parse(data));
+      receive(frame);
+      ended = frame.type === 'ended';
+    });
+    lifetime.throwIfAborted();
+    if (!ended)
+      throw new Error('Live events closed without a completion frame.');
+  } finally {
+    controller.abort();
+    cleanup();
+  }
 }
 
 /** `POST /integrations` — create an integration. */

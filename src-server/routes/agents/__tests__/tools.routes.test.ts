@@ -120,7 +120,7 @@ function enableReadOnlyInitialResult(
 
 describe('Tool Routes', () => {
   const makeTempDir = trackTempDirs();
-  test('refuses event discovery before calling upstream and after operator access is lost', async () => {
+  test('refuses event reads before upstream work and before returning results after operator loss', async () => {
     let operator = false;
     function deferred<T>() {
       let resolve!: (value: T) => void;
@@ -171,7 +171,110 @@ describe('Tool Routes', () => {
       success: false,
       error: 'Only the Station operator can check events.',
     });
+
+    operator = true;
+    const poll = vi.spyOn(service, 'pollMCPEvents');
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          operator = false;
+          controller.enqueue(
+            new TextEncoder().encode(
+              JSON.stringify({ name: 'work.settled', cursor: null }),
+            ),
+          );
+          controller.close();
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const init = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body,
+      duplex: 'half' as const,
+    };
+    expect((await app.request('/mcp-1/events/poll', init)).status).toBe(403);
+    expect(poll).not.toHaveBeenCalled();
   });
+
+  test.each(['operator', 'integration'] as const)(
+    'stops a held managed event frame when the %s loses authority before the consumer reads',
+    async (owner) => {
+      const service = new MCPService(
+        new ConfigLoader({
+          projectHomeDir: makeTempDir('event-stream-route-'),
+        }),
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        new Map(),
+        { warn: vi.fn() },
+      );
+      let operator = true;
+      let integration = true;
+      let stageFrame!: () => void;
+      const pendingFrame = new Promise<void>((resolve) => {
+        stageFrame = resolve;
+      });
+      let sourceSignal: AbortSignal | undefined;
+      vi.spyOn(service, 'readMCPEventStream').mockImplementation(
+        async (_server, _input, publish, signal) => {
+          sourceSignal = signal;
+          const assertCurrent = () => {
+            if (!integration) throw new Error('Integration changed');
+          };
+          await publish(
+            {
+              type: 'active',
+              cursor: 'approved-cursor',
+              truncated: false,
+              heartbeatMs: 5000,
+            },
+            assertCurrent,
+          );
+          const held = publish(
+            {
+              type: 'event',
+              cursor: 'private-cursor',
+              eventId: 'private-event',
+              timestamp: '2026-11-23T18:00:00Z',
+              data: { outcome: 'private-outcome' },
+            },
+            assertCurrent,
+          );
+          stageFrame();
+          await held;
+        },
+      );
+      const app = createToolRoutes(service, vi.fn(), {
+        async authorizeOperator() {
+          if (!operator) throw new Error('Operator required');
+        },
+      });
+      const response = await app.request('/mcp-1/events/stream', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ name: 'work.settled', cursor: null }),
+      });
+      expect(response.status).toBe(200);
+      const reader = response.body!.getReader();
+      try {
+        const active = await reader.read();
+        expect(new TextDecoder().decode(active.value)).toContain(
+          'approved-cursor',
+        );
+        await pendingFrame;
+        if (owner === 'operator') operator = false;
+        else integration = false;
+        expect(await reader.read()).toEqual({ done: true, value: undefined });
+        expect(sourceSignal?.aborted).toBe(true);
+      } finally {
+        await reader.cancel();
+      }
+    },
+  );
 
   test('serves only a resolver-approved local icon with private caching and nosniff', async () => {
     const asset = {

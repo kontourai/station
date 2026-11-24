@@ -12,6 +12,13 @@
   overflow-wrap: anywhere;
 }
 
+.integration-event-data {
+  max-height: 12rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .integration-trust-history {
   padding-inline-start: var(--k-space-5);
   font-size: var(--k-text-md);

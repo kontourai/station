@@ -188,6 +188,7 @@ export {
   useIntegrationsQuery,
   useKitLayoutQuery,
   useKitRegistryQuery,
+  usePollIntegrationEventsMutation,
   useReconnectIntegrationMutation,
   useRegistryAgentActionMutation,
   useRegistryIntegrationActionMutation,
@@ -202,6 +203,7 @@ export {
   useSetIntegrationEnabledMutation,
   useSetIntegrationRenderPermissionMutation,
   useStartIntegrationOAuthMutation,
+  useStreamIntegrationEventsMutation,
 } from './query-domains/catalog';
 export {
   type AcknowledgeConversationVariables,
