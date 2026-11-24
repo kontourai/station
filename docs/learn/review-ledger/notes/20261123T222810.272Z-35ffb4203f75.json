@@ -1,0 +1,141 @@
+{
+  "revision": "ae91bc7cf45f4ef0f6e1f4283b15750cfe9d032b",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["deploy/public-ingress/README.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/architecture.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/architecture.md","packages/sdk/src/index.ts","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the new guard-covered operator inventory and request review through the runtime authority boundary. The panel reads current grants and capped historical rows, and submits decisions only through the consent service.","inputs":["docs/architecture/module-map.md","src-server/routes/outside-agent/consent-routes.ts","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/design/connection-broker.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/design/connection-broker.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"Reviewed the additive scoped outside-client query exports against the cited SDK consumers. Package entry points and existing request contracts remain current.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/local-bootstrap-token.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/design/local-bootstrap-token.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/design/operator-device-access.md","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/consent/__tests__/operator-sessions.test.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r2b-evidence.md","note":"Reviewed existing consent targets and historical captures. Current global scope copy describes work outside Projects and approval can verify a selected stable Project ID. Historical evidence retains its recorded revision.","inputs":["docs/design/outside-agent-mcp-r2b-evidence.md","src-server/__test-utils__/outside-agent-consent-fixture.ts","src-server/routes/outside-agent/__tests__/consent-routes.test.ts","src-server/routes/outside-agent/consent-routes.ts","src-server/services/outside-agent/management-service.ts","src-server/services/outside-agent/oauth-store.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"The bounded management projection and stable Project preflight preserve the recorded PKCE, grant commitment and token lifecycle. The dated protocol evidence retains its recorded revision.","inputs":["docs/design/outside-agent-mcp-r3-evidence.md","src-server/services/outside-agent/management-service.ts","src-server/services/outside-agent/oauth-store.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r4a-evidence.md","note":"Reviewed which ingress leaves can prefer a verified operator session. The compiled release guard precedes that branch. The historical transport receipt retains its source and scope.","inputs":["docs/design/outside-agent-mcp-r4a-evidence.md","src-server/runtime/bootstrap/runtime-http.ts","src-server/services/outside-agent/oauth-store.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp.md","note":"The isolated operator inventory now has a bounded recent history and checks a selected Project's stable identity before preparing an approval. The release guard and later lifecycle scope remain in force.","inputs":["docs/design/outside-agent-mcp.md","src-server/services/outside-agent/management-service.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Reviewed the additive scoped outside-client query exports against the cited SDK consumers. Package entry points and existing request contracts remain current.","inputs":["docs/design/pane-host-contract.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Reviewed the guarded Tools-only operator row and dialog. The row shares the page inset with navigation. Settings status badges keep their prior label alignment.","inputs":["docs/guides/connections.md","src-server/runtime/bootstrap/runtime-http.ts","src-ui/src/views/ConnectionsSectionFrame.tsx","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/guides/deployment-authentication.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Reviewed the additive scoped outside-client query exports against the cited SDK consumers. Package entry points and existing request contracts remain current.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/knowledge.md","note":"Reviewed the cited surface against the shared PageRow label-status rule. The rule preserves the existing row spacing and control geometry on the documented workflow.","inputs":["docs/guides/knowledge.md","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/guides/local-collaboration-lab.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/machine-relationships.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/guides/machine-relationships.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/operator-passkeys.md","note":"Reviewed browser operator precedence for the exact outside-client session leaves, with ordinary Device and host fallback. The existing passkey ceremony and its other leaves keep their current route and decision authority.","inputs":["docs/guides/operator-passkeys.md","src-server/routes/outside-agent/consent-routes.ts","src-server/runtime/bootstrap/runtime-http.ts","src-server/runtime/consent/__tests__/operator-sessions.test.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/guides/responsive-ui.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Reviewed the cited surface against the shared PageRow label-status rule. The rule preserves the existing row spacing and control geometry on the documented workflow.","inputs":["docs/guides/starter-work.md","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/guides/theming.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/guides/theming.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/guides/walkthroughs.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/guides/web-push-notifications.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/guides/web-push-notifications.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Reviewed the cited surface against the shared PageRow label-status rule. The rule preserves the existing row spacing and control geometry on the documented workflow.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/ConnectionsSectionFrame.tsx","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/patterns/backend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/patterns/frontend.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/patterns/frontend.md","packages/sdk/src/index.ts","packages/sdk/src/queries.ts","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/runtime/bootstrap/runtime-http.ts","src-ui/src/views/ConnectionsSectionFrame.tsx","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/reference/api.md","packages/sdk/src/queries.ts","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/reference/config.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/connect.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/reference/connect.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/reference/env-vars.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"Reviewed the guarded Tools journey, exact Project identity selection, capped history projection, paired browser sign-in and transaction status refresh against the owning routes and tests.","inputs":["docs/reference/outside-agent-oauth.md","src-server/services/outside-agent/management-service.ts","src-server/services/outside-agent/oauth-store.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Reviewed the cited surface against the shared PageRow label-status rule. The rule preserves the existing row spacing and control geometry on the documented workflow.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/reference/sdk.md","note":"Traced the outside-client inventory, review mutation and decision status hooks through scope and URL validation. A Project selection carries both slug and stable ID. Queries are authority-partitioned and refreshed after operator decisions.","inputs":["docs/reference/sdk.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Reviewed the runtime change against the documented request path. Browser operator precedence is limited to the existing outside-client session leaves. Ordinary authentication, the cited route and the compiled outside-client guard keep their previous boundaries.","inputs":["docs/security/remote-access-threat-model.md","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Reviewed the cited surface against the shared PageRow label-status rule. The rule preserves the existing row spacing and control geometry on the documented workflow.","inputs":["docs/user/getting-started.md","src-ui/src/views/page-layout.css"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"Reviewed the cited surface against the shared PageRow label-status rule. The rule preserves the existing row spacing and control geometry on the documented workflow.","inputs":["examples/knowledge-library/README.md","src-ui/src/views/page-layout.css"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"Reviewed the additive scoped outside-client query exports against the cited SDK consumers. Package entry points and existing request contracts remain current.","inputs":["examples/meeting-transcription/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"Reviewed the additive scoped outside-client query exports against the cited SDK consumers. Package entry points and existing request contracts remain current.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/README.md","note":"Reviewed the additive scoped outside-client query exports against the cited SDK consumers. Package entry points and existing request contracts remain current.","inputs":["packages/sdk/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"Reviewed the captured surface against the shared PageRow change. Status beside a row label uses the shared alignment. This capture's content and layout owners keep their previous geometry.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Reviewed the captured surface against the shared PageRow change. Status beside a row label uses the shared alignment. This capture's content and layout owners keep their previous geometry.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"Reviewed the captured Connections route against the shared frame change. The added row needs the Tools route and guarded inventory. This capture retains its route, controls and tab placement.","inputs":["docs/learn/media/connections-models.png","src-ui/src/views/ConnectionsSectionFrame.tsx","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"Reviewed the captured surface against the shared PageRow change. Status beside a row label uses the shared alignment. This capture's content and layout owners keep their previous geometry.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Reviewed the captured surface against the shared PageRow change. Status beside a row label uses the shared alignment. This capture's content and layout owners keep their previous geometry.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"Reviewed the captured Connections route against the shared frame change. The added row needs the Tools route and guarded inventory. This capture retains its route, controls and tab placement.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/views/ConnectionsSectionFrame.tsx","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"Reviewed the captured surface against the shared PageRow change. Status beside a row label uses the shared alignment. This capture's content and layout owners keep their previous geometry.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"Reviewed the captured surface against the shared PageRow change. Status beside a row label uses the shared alignment. This capture's content and layout owners keep their previous geometry.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/views/page-layout.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"Reviewed the capture's operator and consent paths against the exact outside-client leaf addition. Its existing pairing, sign-in and decision paths keep their previous authority and presentation.","inputs":["docs/learn/media/operator-s3-paired-before-sign-in.png","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"Reviewed the capture's operator and consent paths against the exact outside-client leaf addition. Its existing pairing, sign-in and decision paths keep their previous authority and presentation.","inputs":["docs/learn/media/operator-s3-consent-sign-in.png","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"Reviewed the capture's operator and consent paths against the exact outside-client leaf addition. Its existing pairing, sign-in and decision paths keep their previous authority and presentation.","inputs":["docs/learn/media/operator-s3-paired-after-sign-in.png","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"Reviewed the capture's operator and consent paths against the exact outside-client leaf addition. Its existing pairing, sign-in and decision paths keep their previous authority and presentation.","inputs":["docs/learn/media/operator-s3-other-browser-refused.png","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"Reviewed the capture's operator and consent paths against the exact outside-client leaf addition. Its existing pairing, sign-in and decision paths keep their previous authority and presentation.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"Reviewed the capture's operator and consent paths against the exact outside-client leaf addition. Its existing pairing, sign-in and decision paths keep their previous authority and presentation.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"Reviewed the capture's operator and consent paths against the exact outside-client leaf addition. Its existing pairing, sign-in and decision paths keep their previous authority and presentation.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"Reviewed the capture's operator and consent paths against the exact outside-client leaf addition. Its existing pairing, sign-in and decision paths keep their previous authority and presentation.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-server/runtime/bootstrap/runtime-http.ts"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-cancelled.png","note":"Reviewed the capture's operator and consent paths against the exact outside-client leaf addition. Its existing pairing, sign-in and decision paths keep their previous authority and presentation.","inputs":["docs/learn/media/operator-s4-step-up-cancelled.png","src-server/runtime/consent/__tests__/operator-sessions.test.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-approve.png","note":"Reviewed the historical consent capture against the current endpoint and scope facts. The recorded ceremony and dated media retain their source revision. The current global label reads Work outside Projects.","inputs":["docs/learn/media/outside-agent-r2b-approve.png","src-server/__test-utils__/outside-agent-consent-fixture.ts","src-server/routes/outside-agent/consent-routes.ts","src-server/services/outside-agent/management-service.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-deny.png","note":"Reviewed the historical consent capture against the current endpoint and scope facts. The recorded ceremony and dated media retain their source revision. The current global label reads Work outside Projects.","inputs":["docs/learn/media/outside-agent-r2b-deny.png","src-server/__test-utils__/outside-agent-consent-fixture.ts","src-server/routes/outside-agent/consent-routes.ts","src-server/services/outside-agent/management-service.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-revoke.png","note":"Reviewed the historical consent capture against the current endpoint and scope facts. The recorded ceremony and dated media retain their source revision. The current global label reads Work outside Projects.","inputs":["docs/learn/media/outside-agent-r2b-revoke.png","src-server/__test-utils__/outside-agent-consent-fixture.ts","src-server/routes/outside-agent/consent-routes.ts","src-server/services/outside-agent/management-service.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-change.png","note":"Reviewed the historical consent capture against the current endpoint and scope facts. The recorded ceremony and dated media retain their source revision. The current global label reads Work outside Projects.","inputs":["docs/learn/media/outside-agent-r2b-change.png","src-server/__test-utils__/outside-agent-consent-fixture.ts","src-server/routes/outside-agent/consent-routes.ts","src-server/services/outside-agent/management-service.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-redirect-add.png","note":"Reviewed the historical consent capture against the current endpoint and scope facts. The recorded ceremony and dated media retain their source revision. The current global label reads Work outside Projects.","inputs":["docs/learn/media/outside-agent-r2b-redirect-add.png","src-server/__test-utils__/outside-agent-consent-fixture.ts","src-server/routes/outside-agent/consent-routes.ts","src-server/services/outside-agent/management-service.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-redirect-remove.png","note":"Reviewed the historical consent capture against the current endpoint and scope facts. The recorded ceremony and dated media retain their source revision. The current global label reads Work outside Projects.","inputs":["docs/learn/media/outside-agent-r2b-redirect-remove.png","src-server/__test-utils__/outside-agent-consent-fixture.ts","src-server/routes/outside-agent/consent-routes.ts","src-server/services/outside-agent/management-service.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-cors-add.png","note":"Reviewed the historical consent capture against the current endpoint and scope facts. The recorded ceremony and dated media retain their source revision. The current global label reads Work outside Projects.","inputs":["docs/learn/media/outside-agent-r2b-cors-add.png","src-server/__test-utils__/outside-agent-consent-fixture.ts","src-server/routes/outside-agent/consent-routes.ts","src-server/services/outside-agent/management-service.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-cors-remove.png","note":"Reviewed the historical consent capture against the current endpoint and scope facts. The recorded ceremony and dated media retain their source revision. The current global label reads Work outside Projects.","inputs":["docs/learn/media/outside-agent-r2b-cors-remove.png","src-server/__test-utils__/outside-agent-consent-fixture.ts","src-server/routes/outside-agent/consent-routes.ts","src-server/services/outside-agent/management-service.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-approve-desktop.png","note":"Reviewed the historical consent capture against the current endpoint and scope facts. The recorded ceremony and dated media retain their source revision. The current global label reads Work outside Projects.","inputs":["docs/learn/media/outside-agent-r2b-approve-desktop.png","src-server/__test-utils__/outside-agent-consent-fixture.ts","src-server/routes/outside-agent/consent-routes.ts","src-server/services/outside-agent/management-service.ts"]},
+
+    {"path":"docs/learn/media/outside-agent-r2b-approve-loopback.png","note":"Reviewed the historical consent capture against the current endpoint and scope facts. The recorded ceremony and dated media retain their source revision. The current global label reads Work outside Projects.","inputs":["docs/learn/media/outside-agent-r2b-approve-loopback.png","src-server/__test-utils__/outside-agent-consent-fixture.ts","src-server/routes/outside-agent/consent-routes.ts","src-server/services/outside-agent/management-service.ts"]}
+  ]
+}

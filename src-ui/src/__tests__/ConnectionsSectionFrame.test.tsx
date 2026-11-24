@@ -93,8 +93,13 @@ vi.mock('@kontourai/station-sdk', () => ({
 vi.mock('../contexts/ManagedPolicyContext', () => ({
   useManagedPolicySummary: () => undefined,
 }));
-vi.mock('@kontourai/station-connect', () => ({
-  useConnections: () => ({ connections: state.savedStations }),
+vi.mock('@kontourai/station-connect', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
+  useConnections: () => ({
+    connections: state.savedStations,
+    captureCredentialEvidence: () => null,
+    isCredentialEvidenceCurrent: () => false,
+  }),
 }));
 vi.mock('../contexts/NavigationContext', () => ({
   useNavigation: () => ({ navigate }),

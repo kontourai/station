@@ -363,6 +363,24 @@ for (const kind of kinds)
     });
   });
 
+test('approval refuses to review a replacement Project at the selected slug', async () => {
+  const h = await fixture();
+  const flow = h.start();
+  const approval = h.approval(flow);
+  if (approval.operation !== 'approve') throw new Error('fixture');
+  const action = {
+    ...approval,
+    project: {
+      kind: 'project' as const,
+      slug: 'alpha',
+      expectedId: 'project-alpha',
+    },
+  };
+  expect((await h.request(action)).status).toBe(202);
+  h.projects.set('alpha', 'project-replacement');
+  expect((await h.request(action)).status).toBe(409);
+});
+
 test('approval review binds selected Project/expiry/supersession and client metadata to the same host canonical target', async () => {
   const h = await fixture();
   const old = h.activate();
@@ -770,6 +788,61 @@ test('strict route inputs, 32 KiB cap, origin and initiating-session isolation p
       })
     ).status,
   ).toBe(403);
+});
+
+test('a paired Device receives an operator sign-in route without outside client data', async () => {
+  const h = await fixture();
+  const pending = h.start();
+  const response = await h.api.request('/api/outside-agent/clients', {
+    headers: { authorization: `Bearer ${h.other.credential}` },
+  });
+  expect(response.status).toBe(403);
+  expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(await response.json()).toEqual({
+    error: 'operator_session_required',
+    signInUrl: `${OUTSIDE_TEST_CONSENT}/operator/sign-in`,
+  });
+  const signed = await h.api.request('/api/outside-agent/clients', {
+    headers: { cookie: h.cookie },
+  });
+  expect(signed.status).toBe(200);
+  expect(await signed.json()).toMatchObject({
+    pending: [expect.objectContaining({ requestId: pending.request.id })],
+  });
+});
+
+test('operator inventory keeps current grants when retained history exceeds the page', async () => {
+  const h = await fixture();
+  const store = h.management.store;
+  const resource = `${OUTSIDE_TEST_APP}/mcp`;
+  const activate = () => {
+    const { tokens } = h.activate();
+    const grant = store.access(tokens.accessToken, resource);
+    if (!grant) throw new Error('fixture did not activate a grant');
+    return grant;
+  };
+  const active = activate();
+  const ended: string[] = [];
+  for (let index = 0; index < 51; index += 1) {
+    h.clock.now += 1;
+    const grant = activate();
+    store.revoke(grant.id, grant.version);
+    ended.push(grant.id);
+  }
+  const inventory = await h.api.request('/api/outside-agent/clients', {
+    headers: { cookie: h.cookie },
+  });
+  expect(inventory.status).toBe(200);
+  expect(await inventory.json()).toMatchObject({
+    olderGrantsOmitted: true,
+    grants: [
+      { grantId: active.id },
+      ...ended
+        .slice(1)
+        .reverse()
+        .map((grantId) => ({ grantId })),
+    ],
+  });
 });
 
 async function expectSameResponse(actual: Response, expected: Response) {

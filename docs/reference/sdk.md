@@ -500,6 +500,17 @@ require an SDK version and Station host containing them. See the
 [API](api.md#integration-capability-status-and-task-write-back) for authority,
 probe limits and the current lack of outbound producers.
 
+## Outside-client inventory and review
+
+`useOutsideClientsQuery(requestScope)` reads the bound Station's pending
+requests, grants and MCP URL. It distinguishes a guarded or older host from a
+Station that requires operator sign-in. `useOutsideClientReviewMutation(requestScope)`
+prepares a consent review with an exact request fingerprint or grant version
+and digest. Project selections include the stable Project ID. The returned
+review URL opens the passkey ceremony. `useOutsideClientReviewStatusQuery(requestScope, id)`
+reads the decision through the same operator's session. See the
+[outside-agent reference](outside-agent-oauth.md) for enablement and scope.
+
 ## Project tool library
 
 `@kontourai/station-sdk/tool-library` exposes `ToolLibraryClient` with explicit

@@ -84,7 +84,8 @@ vi.mock('@kontourai/station-sdk', () => ({
 vi.mock('../contexts/ManagedPolicyContext', () => ({
   useManagedPolicySummary: () => state.policy,
 }));
-vi.mock('@kontourai/station-connect', () => ({
+vi.mock('@kontourai/station-connect', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@kontourai/station-connect')>()),
   useConnections: () => ({ connections: state.savedStations }),
 }));
 vi.mock('../contexts/NavigationContext', () => ({

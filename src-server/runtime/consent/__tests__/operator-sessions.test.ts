@@ -1,7 +1,10 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { parsePairingScope } from '@kontourai/station-contracts/environment-security';
+import {
+  DEFAULT_GRANT_PAIRING_SCOPE,
+  parsePairingScope,
+} from '@kontourai/station-contracts/environment-security';
 import * as fileLocks from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -14,6 +17,7 @@ import { fetchPairedDevices } from '../../../../packages/sdk/src/query-domains/d
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { SoftwareAuthenticator } from '../../../__test-utils__/software-authenticator.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import * as outsideGuard from '../../../security/outside-agent-release-guard.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   isBoundRuntimeLocalOperator,
@@ -56,6 +60,7 @@ async function build(
     origin?: string | null;
     hosted?: boolean;
     accountBound?: boolean;
+    firstScope?: string;
   } = {},
 ) {
   const home = makeTemp('station-operator-session-');
@@ -122,7 +127,7 @@ async function build(
   }
   const first = pair(
     'Operator browser',
-    'orchestration:read',
+    options.firstScope ?? 'orchestration:read',
     'device',
     options.accountBound,
   );
@@ -534,6 +539,50 @@ describe('operator sign-in and device-bound reads (#3257 S3)', () => {
     expect(own.status).toBe(200);
     expect(await own.json()).toMatchObject({
       passkeys: [{ id: signed.passkey.id }],
+    });
+  });
+
+  test('outside review leaves prefer a current browser operator session over ordinary Device scope', async () => {
+    const clients = '/api/outside-agent/clients';
+    const revoke = '/api/outside-agent/grants/isolated-grant/revoke';
+    const guard = outsideGuard.outsideAgentReleaseGuard;
+    vi.spyOn(outsideGuard, 'outsideAgentReleaseGuard').mockImplementation(
+      async (c, next) => {
+        if (
+          (c.req.method === 'GET' && c.req.path === clients) ||
+          (c.req.method === 'POST' && c.req.path === revoke)
+        ) {
+          await next();
+          return;
+        }
+        return guard(c, next);
+      },
+    );
+    const h = await build({ firstScope: DEFAULT_GRANT_PAIRING_SCOPE });
+    const authority = (request: Request) => ({
+      authority: getRuntimeAuthenticatedRequestPrincipal(request)?.authority,
+    });
+    h.api.get(clients, (c) => c.json(authority(c.req.raw)));
+    h.api.post(revoke, (c) => c.json(authority(c.req.raw)));
+    const session = await h.signIn();
+    const deviceCookie = session.cookie.split(';')[0];
+    expect(await (await h.read(deviceCookie, clients)).json()).toEqual({
+      authority: 'device-credential',
+    });
+    expect(await (await h.read(session.cookie, clients)).json()).toEqual({
+      authority: 'operator-session',
+    });
+    expect(
+      await (
+        await h.api.request(revoke, {
+          method: 'POST',
+          headers: { cookie: session.cookie, origin: APP },
+        })
+      ).json(),
+    ).toEqual({ authority: 'operator-session' });
+    h.clock.now += OPERATOR_SESSION_IDLE_MS;
+    expect(await (await h.read(session.cookie, clients)).json()).toEqual({
+      authority: 'device-credential',
     });
   });
 

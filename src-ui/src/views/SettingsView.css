@@ -1373,18 +1373,6 @@
   accent-color: var(--k-action);
 }
 
-.settings__section .page-row__heading {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--k-space-1) var(--k-space-2);
-}
-.settings__section .page-row__heading .page-row__status {
-  display: inline-flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--k-space-2);
-}
 .settings__section .page-row__aside {
   min-width: 0;
   max-width: 100%;

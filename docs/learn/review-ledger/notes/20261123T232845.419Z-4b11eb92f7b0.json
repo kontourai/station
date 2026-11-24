@@ -1,0 +1,7 @@
+{
+  "revision": "8d520a3ed7545524b3b936b96720d254e6a1880d",
+
+  "notes": [
+    {"path":"docs/reference/sdk.md","note":"Reviewed the MCP access query-domain classification and its SDK root and query-barrel exports. The public-barrel suite passed all 15 tests on the updated inventory branch.","inputs":["docs/reference/sdk.md","packages/sdk/src/__tests__/publicBarrel.test.ts"]}
+  ]
+}

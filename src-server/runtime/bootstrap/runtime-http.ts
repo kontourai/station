@@ -1283,9 +1283,11 @@ function configureRuntimeSecurity(
     };
     const inventorySignIn =
       (c.req.method === 'GET' &&
-        ['/api/pairing/devices', '/api/pairing/requests'].includes(
-          c.req.path,
-        )) ||
+        [
+          '/api/pairing/devices',
+          '/api/pairing/requests',
+          '/api/outside-agent/clients',
+        ].includes(c.req.path)) ||
       (c.req.method === 'POST' &&
         /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path)) ||
       isAccountBindingConsentLeaf(c.req.method, c.req.path)
@@ -1456,8 +1458,9 @@ function configureRuntimeSecurity(
         permitted &&
         authority === 'device-credential' &&
         operatorCookiePresent &&
-        c.req.method === 'POST' &&
-        /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path)
+        ((cookieCredential && c.req.path.startsWith('/api/outside-agent/')) ||
+          (c.req.method === 'POST' &&
+            /^\/api\/pairing\/requests\/[^/]+\/confirm$/.test(c.req.path)))
       ) {
         const sessionResponse = await admitOperatorSession(true, true);
         if (sessionResponse) return sessionResponse;

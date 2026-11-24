@@ -186,6 +186,18 @@
   min-width: 0;
 }
 
+.page-row__heading:has(> .page-row__status) {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-1) var(--k-space-2);
+}
+.page-row__heading .page-row__status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-2);
+}
 .page-row__label {
   color: var(--text-primary);
   font-size: var(--k-text-md);
