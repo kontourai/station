@@ -258,7 +258,7 @@ function registryApproval(overrides: Partial<Notification> = {}): Notification {
     status: 'delivered',
     createdAt: now,
     updatedAt: now,
-    actions: [{ id: 'accept', label: 'Allow Once' }],
+    actions: [{ id: 'accept', label: 'Allow once' }],
     metadata: {
       requestKind: 'registry',
       approvalId: 'approval-registry-1',
@@ -345,7 +345,7 @@ describe('AttentionProjectionService', () => {
       status: 'delivered',
       createdAt: now,
       updatedAt: now,
-      actions: [{ id: 'accept', label: 'Allow Once' }],
+      actions: [{ id: 'accept', label: 'Allow once' }],
       metadata: { sessionId: 'thread/one', sessionKind: 'runtime' },
     };
     const projection = makeService({
@@ -852,7 +852,7 @@ describe('AttentionProjectionService', () => {
       status: 'delivered',
       createdAt: now,
       updatedAt: now,
-      actions: [{ id: 'accept', label: 'Allow Once' }],
+      actions: [{ id: 'accept', label: 'Allow once' }],
       metadata: { sessionId: 'thread-both', sessionKind: 'runtime' },
     };
     const projection = makeService({
@@ -1367,7 +1367,7 @@ describe('AttentionProjectionService', () => {
         createdAt: now,
         updatedAt: now,
         actions: [
-          { id: 'accept', label: 'Allow Once' },
+          { id: 'accept', label: 'Allow once' },
           { id: 'decline', label: 'Deny', variant: 'danger' },
         ],
         metadata: {
@@ -2251,7 +2251,7 @@ describe('AttentionProjectionService', () => {
         status: 'delivered',
         createdAt: now,
         updatedAt: now,
-        actions: [{ id: 'accept', label: 'Allow Once' }],
+        actions: [{ id: 'accept', label: 'Allow once' }],
         metadata: {
           requestKind: 'orchestration',
           requestId: `req-${threadId}`,

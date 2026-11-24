@@ -1,0 +1,7 @@
+{
+  "revision": "57b9fa9140c195c17e6de8bba1761e6d7764d36c",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Slice 4.10: tests/mobile-request-sheet.spec.ts changed only formatting of the renamed 'Allow for this session' menu locator. The session-grant section remains accurate. No prose change.","inputs":["docs/conformance/tool-policy-delivery.md","tests/mobile-request-sheet.spec.ts"]}
+  ]
+}

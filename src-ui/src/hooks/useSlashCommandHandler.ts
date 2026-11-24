@@ -51,7 +51,7 @@ export function useSlashCommandHandler() {
           role: 'system',
           content: `Could not load Station's commands, so ${command} was not sent. Try again. (${describeStationFailure(error).body})`,
         });
-        updateChat(sessionId, { input: '' });
+        // Not run: the line stays in the composer to send again.
         context.autocomplete.closeAll();
         return true;
       }

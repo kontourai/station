@@ -84,13 +84,12 @@ export function NotificationCard({
              * `actioned` is still something to clear — an `expired` or
              * still-`pending` notification included.
              *
-             * archive#3779: the label is read from the shared action model.
-             * `DELETE /notifications/:id` does NOT delete — it sets `status:
-             * 'dismissed'` and keeps the record — so the word stays "Dismiss".
+             * archive#3779: the label is read from the shared action model and
+             * reads "Mark done". `DELETE /notifications/:id` does NOT delete —
+             * it sets `status: 'dismissed'` and keeps the record.
              */}
             <RowMenu
               items={[
-                ...menuItems,
                 ...(dismissible
                   ? [
                       {
@@ -100,6 +99,7 @@ export function NotificationCard({
                       },
                     ]
                   : []),
+                ...menuItems,
               ]}
             />
           </span>

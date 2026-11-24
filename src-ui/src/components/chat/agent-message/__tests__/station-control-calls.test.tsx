@@ -163,7 +163,7 @@ describe('a send waiting on a grant keeps its approval row', () => {
         onApprove={() => undefined}
       />,
     );
-    expect(screen.getByRole('button', { name: 'Allow Once' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Allow once' })).toBeTruthy();
     expect(document.querySelector('.agent-outgoing')).toBeNull();
   });
 });

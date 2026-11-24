@@ -319,7 +319,7 @@ function approvalNotificationFor(
     title: 'Tool call awaiting approval: shell.exec',
     priority: 'high',
     actions: [
-      { id: 'accept', label: 'Allow Once', variant: 'primary' },
+      { id: 'accept', label: 'Allow once', variant: 'primary' },
       { id: 'decline', label: 'Deny', variant: 'danger' },
     ],
     dedupeTag: `orchestration:${threadId}:req-1`,
@@ -1602,7 +1602,7 @@ describe('OrchestrationService — read-time orphan projection (station#1284, st
         category: 'approval-request',
         title: 'Tool call awaiting approval: shell.exec',
         priority: 'high',
-        actions: [{ id: 'accept', label: 'Allow Once', variant: 'primary' }],
+        actions: [{ id: 'accept', label: 'Allow once', variant: 'primary' }],
         dedupeTag: `orchestration:${testCase.threadId}:req-1`,
         metadata: {
           provider: 'codex',

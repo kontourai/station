@@ -2010,7 +2010,7 @@ loader's original promise separate from the tracing promise React receives.
 This lets a caller reuse its settled promise across mounts. A rejected import
 can be retried through the boundary, which creates a fresh lazy attempt.
 
-The live first-run journey observes **Chat actions** and **Inbox** by their
+The live first-run journey observes **Chat actions** and **Chats** by their
 stable `data-lazy-surface` IDs on visible failure rows. An unrelated failure
 can appear, clear, or coexist without changing that observation. The displayed
 message names the affected surface, and the shared row offers Retry and Reload.

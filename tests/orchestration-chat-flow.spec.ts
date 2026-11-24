@@ -457,10 +457,10 @@ test.describe('Orchestration Chat Flow', () => {
       page.getByText('Approval request', { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole('button', { name: 'Allow Once' }),
+      page.getByRole('button', { name: 'Allow once' }),
     ).toBeVisible();
     const allowBox = await page
-      .getByRole('button', { name: 'Allow Once' })
+      .getByRole('button', { name: 'Allow once' })
       .boundingBox();
     expect(allowBox).not.toBeNull();
     expect(allowBox!.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
@@ -469,7 +469,7 @@ test.describe('Orchestration Chat Flow', () => {
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
-    await page.getByRole('button', { name: 'Allow Once' }).click();
+    await page.getByRole('button', { name: 'Allow once' }).click();
     await expect(approvalQueue).toBeHidden();
     await expect
       .poll(() =>
@@ -774,14 +774,14 @@ test.describe('Orchestration Chat Flow', () => {
       .getByRole('region', { name: 'Approvals waiting on you' })
       .locator('.tool-call');
     const allowOnce = card.getByRole('button', {
-      name: 'Allow Once',
+      name: 'Allow once',
       exact: true,
     });
     await expect(allowOnce).toBeVisible();
 
     // On a phone width (#3331) the row carries one Answer control and the
     // decisions move into the shared request sheet; the desktop row keeps
-    // Deny, Allow Once and the session-grant overflow trigger inline.
+    // Deny, Allow once and the session-grant overflow trigger inline.
     const expectClearLayout = async (
       context: string,
       controls = '.tool-call__actions .action-row button',
@@ -918,11 +918,11 @@ test.describe('Orchestration Chat Flow', () => {
 
     await answerControl.click();
     const sheetActions = sheet.getByRole('button', {
-      name: /^(Allow Once|Deny)$/,
+      name: /^(Allow once|Deny)$/,
     });
     await expect(sheetActions).toHaveCount(2);
     const sheetAllow = sheet.getByRole('button', {
-      name: 'Allow Once',
+      name: 'Allow once',
       exact: true,
     });
     await expect(sheetAllow).toBeVisible();
@@ -1027,7 +1027,7 @@ test.describe('Orchestration Chat Flow', () => {
         actionsBox.x + actionsBox.width,
         `${context}: actions inside the card`,
       ).toBeLessThanOrEqual(cardBox.x + cardBox.width + 0.5);
-      // Deny and Allow Once; the session choices sit in the overflow menu.
+      // Deny and Allow once; the session choices sit in the overflow menu.
       const decisionButtons = card.locator(
         '.tool-call__actions .action-row > button:not([aria-haspopup="menu"])',
       );
