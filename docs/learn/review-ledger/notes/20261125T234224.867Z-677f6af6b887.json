@@ -1,0 +1,7 @@
+{
+  "revision": "6f79b4bde6496a5dc171a5acd3f765548842c9d9",
+
+  "notes": [
+    {"path":"docs/design/session-tape-replay.md","note":"Reviewed the follow-up paragraph against ChatInputArea: it claimed native engines default to Steer, but #5194 made Queue the default for every engine, and it said mobile submit space stays reserved, which chat-composer and the code contradict. Corrected both and noted that the Send-mode picker appears only with a sendable draft on every screen. Adapter steer table unchanged. Checked with ChatInputArea and composer-running-turn-room browser tests.","inputs":["docs/design/session-tape-replay.md","src-ui/src/contexts/active-chats-state.ts"]}
+  ]
+}
