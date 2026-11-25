@@ -357,3 +357,50 @@
   font-size: 0.8125rem;
   margin: 0;
 }
+
+.float-over-chat__browser-handoff {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--k-space-2);
+}
+
+.float-over-chat__browser-handoff button,
+.float-over-chat__browser-dialog-header button {
+  min-height: 44px;
+}
+
+.float-over-chat__browser-dialog-overlay.responsive-surface-overlay {
+  padding: 0;
+}
+
+.float-over-chat__browser-dialog.responsive-surface-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+  background: var(--k-panel);
+  color: var(--k-text);
+  padding: var(--safe-top, 0px) var(--safe-right, 0px) var(--safe-bottom, 0px)
+    var(--safe-left, 0px);
+}
+
+.float-over-chat__browser-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
+  padding: var(--k-space-2);
+}
+
+.float-over-chat__browser-dialog-header strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.float-over-chat__browser-dialog-view {
+  flex: 1;
+  min-height: 0;
+}

@@ -1,0 +1,25 @@
+{
+  "revision": "3891e38802841c1e8d85c76e45a7c84a914a3b03",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Reviewed the explicit dialog layer against the Browser and Device presentation contracts. It selects the existing modal layer and leaves the session binding, ownership, frame transport, and viewer actions unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed the explicit dialog layer against the Browser and Device presentation contracts. It selects the existing modal layer and leaves the session binding, ownership, frame transport, and viewer actions unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the explicit dialog layer against the Browser and Device presentation contracts. It selects the existing modal layer and leaves the session binding, ownership, frame transport, and viewer actions unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Reviewed the explicit dialog layer against the Browser and Device presentation contracts. It selects the existing modal layer and leaves the session binding, ownership, frame transport, and viewer actions unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the explicit dialog layer against the Browser and Device presentation contracts. It selects the existing modal layer and leaves the session binding, ownership, frame transport, and viewer actions unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed the explicit dialog layer against the Browser and Device presentation contracts. It selects the existing modal layer and leaves the session binding, ownership, frame transport, and viewer actions unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed the explicit dialog layer against the Browser and Device presentation contracts. It selects the existing modal layer and leaves the session binding, ownership, frame transport, and viewer actions unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the explicit dialog layer against the Browser and Device presentation contracts. It selects the existing modal layer and leaves the session binding, ownership, frame transport, and viewer actions unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the explicit dialog layer against the Browser and Device presentation contracts. It selects the existing modal layer and leaves the session binding, ownership, frame transport, and viewer actions unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed the explicit dialog layer against the Browser and Device presentation contracts. It selects the existing modal layer and leaves the session binding, ownership, frame transport, and viewer actions unchanged.","inputs":["src-ui/src/float-over-chat/FloatOverChatHost.tsx"]}
+  ]
+}
