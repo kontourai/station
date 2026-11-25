@@ -1,0 +1,13 @@
+{
+  "revision": "55d4aebbc44176d6c117f3b6aef761dbd91ca020",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the updated Show chats example against the shared Needs-you counters. Placement and grouping logic retain their existing inputs.","inputs":["src-ui/src/components/chat-dock/useInboxGroups.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Checked the updated Show chats example against the shared Needs-you counters. Placement and grouping logic retain their existing inputs.","inputs":["src-ui/src/components/chat-dock/useInboxGroups.ts"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the updated Show chats example against the shared Needs-you counters. Placement and grouping logic retain their existing inputs.","inputs":["src-ui/src/components/chat-dock/useInboxGroups.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the updated Show chats example against the shared Needs-you counters. Placement and grouping logic retain their existing inputs.","inputs":["src-ui/src/components/chat-dock/useInboxGroups.ts"]}
+  ]
+}

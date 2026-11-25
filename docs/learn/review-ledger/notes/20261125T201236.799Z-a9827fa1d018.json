@@ -1,0 +1,11 @@
+{
+  "revision": "47cf0d6d52601b376eeb7682839354b67f691cfb",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Checked the mobile header control position in the collapsed drag preview and open state. The Chats title lands beside the same control during the preview and after release. Source-reviewed geometry remains pending browser or device validation.","inputs":["src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"Checked the mobile header control position in the collapsed drag preview and open state. The Chats title lands beside the same control during the preview and after release. Source-reviewed geometry remains pending browser or device validation.","inputs":["src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"Checked the mobile header control position in the collapsed drag preview and open state. The Chats title lands beside the same control during the preview and after release. Source-reviewed geometry remains pending browser or device validation.","inputs":["src-ui/src/components/chat-dock/ChatDockMobileHeader.tsx"]}
+  ]
+}
