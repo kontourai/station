@@ -2243,7 +2243,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     },
   );
   await switcher.click();
-  await page.getByRole('button', { name: 'Chats actions' }).click();
+  await page.getByRole('button', { name: 'Actions for Chats' }).click();
   await page
     .getByRole('menuitem', { name: 'Back to chat', exact: true })
     .click();
@@ -2309,7 +2309,7 @@ test('switches between mobile tasks and restores the exact active chat context',
       .getByRole('button', { name: /^Station Chat.*Default/i })
       .filter({ hasText: 'Waiting on you' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Chats actions' }).click();
+  await page.getByRole('button', { name: 'Actions for Chats' }).click();
   await page
     .getByRole('menuitem', { name: 'Back to chat', exact: true })
     .click();
@@ -2361,7 +2361,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect((compactBox?.x ?? 0) + (compactBox?.width ?? 0)).toBeLessThanOrEqual(
     320,
   );
-  const actions = page.getByRole('button', { name: 'Chats actions' });
+  const actions = page.getByRole('button', { name: 'Actions for Chats' });
   await actions.focus();
   await page.keyboard.press('Enter');
   const compactClose = page.getByRole('menuitem', {
@@ -4983,7 +4983,7 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
     )
     .toBeGreaterThan(15);
 
-  await page.getByRole('button', { name: 'Chats actions' }).click();
+  await page.getByRole('button', { name: 'Actions for Chats' }).click();
   const close = page.getByRole('menuitem', {
     name: 'Back to chat',
     exact: true,
@@ -5318,7 +5318,7 @@ test('the mobile Inbox lists chats beyond the first rows', async ({ page }) => {
   await expect(
     sheet.getByText('Overflow conversation 0', { exact: true }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Chats actions' }).click();
+  await page.getByRole('button', { name: 'Actions for Chats' }).click();
   await page
     .getByRole('menuitem', { name: 'Back to chat', exact: true })
     .click();

@@ -1168,7 +1168,7 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
         within(toolbar).getByRole('button', { name: 'New chat' }),
       ).toBeTruthy();
       expect(
-        screen.queryByRole('button', { name: 'Chats actions' }),
+        screen.queryByRole('button', { name: 'Actions for Chats' }),
       ).toBeNull();
       // The scope's visible label gave its width to search; its name stays.
       expect(
