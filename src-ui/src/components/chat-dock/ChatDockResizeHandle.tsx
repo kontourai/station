@@ -2,6 +2,7 @@ import { DEVICE_SETTINGS_REGISTRY } from '@kontourai/station-contracts/device-se
 import { useChatDockVerticalDrag } from '../../hooks/useChatDockVerticalDrag';
 import {
   DOCK_MIN_HEIGHT,
+  DOCK_SNAP_ORDER,
   type DockSnap,
   growDockSnap,
   nextDockSnap,
@@ -52,10 +53,11 @@ interface ChatDockResizeHandleProps {
  * `pointercancel` / the browser's own `lostpointercapture` event all release
  * the drag deterministically, so it can never strand in a dragging state.
  * Live height updates are coalesced to one `requestAnimationFrame` per
- * pointer move. Mobile releases resolve to Collapsed / Half / Full (a clear
- * downward release or flick puts the dock away); desktop releases
+ * pointer move. Mobile releases resolve to Collapsed / Half / Tall / Full (a
+ * clear downward release or flick puts the dock away); desktop releases
  * preserve the exact clamped height. A tap is a no-op; keyboard arrows
- * grow/shrink and Enter/Space retain explicit snap cycling for accessibility.
+ * grow/shrink one level and Enter/Space retain explicit snap cycling for
+ * accessibility.
  *
  * The dock grows as the handle moves *up*, so the live body height is measured
  * from the bottom of the viewport: `innerHeight - clientY`.
@@ -130,15 +132,11 @@ export function ChatDockResizeHandle({
       aria-label={ariaLabel}
       aria-valuetext={mode === 'desktop-free' ? `${currentHeight}px` : snap}
       aria-valuemin={mode === 'desktop-free' ? DOCK_MIN_HEIGHT : 0}
-      aria-valuemax={mode === 'desktop-free' ? desktopMaxHeight : 2}
+      aria-valuemax={
+        mode === 'desktop-free' ? desktopMaxHeight : DOCK_SNAP_ORDER.length - 1
+      }
       aria-valuenow={
-        mode === 'desktop-free'
-          ? currentHeight
-          : snap === 'collapsed'
-            ? 0
-            : snap === 'half'
-              ? 1
-              : 2
+        mode === 'desktop-free' ? currentHeight : DOCK_SNAP_ORDER.indexOf(snap)
       }
       tabIndex={0}
       title="Drag to resize · double-click to reset"

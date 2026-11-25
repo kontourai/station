@@ -1659,9 +1659,12 @@ with rename and delete actions. **History** opens the current conversation's
 read-only timeline. Chat actions also keeps background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**
 or **Exit full screen**; the open phone bar also shows the same switch as a
-44px **Full screen chat** / **Restore chat size** control (#4391). Collapse
-stays on the header control. No resize or
-navigation action requires a gesture.
+44px **Full screen chat** / **Restore chat size** control (#4391). Restore
+returns the chat to where it rested before it went full screen: its bar, or
+the size it was left at. Collapsing a chat that is not full screen stays on the
+header control. No resize or navigation action requires a gesture;
+[phone dock sizes](../guides/responsive-ui.md#phone-dock-sizes) lists the
+sizes a dragged bar rests on.
 
 Mobile message rows prioritize the authored text and essential live approval or
 error state. Each row with text has a 44px copy button beside a separate 44px

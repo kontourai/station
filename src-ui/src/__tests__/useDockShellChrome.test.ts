@@ -117,7 +117,6 @@ describe('useDockShellChrome', () => {
       }),
     );
     expect(result.current.dockHeight).toBe(320);
-    expect(result.current.previousDockHeight).toBe(320);
   });
 
   test('restores and clamps persisted dock geometry to the current viewport', async () => {
@@ -354,6 +353,70 @@ describe('useDockShellChrome', () => {
       act(() => result.current.applyDockSnap('full'));
       expect(setDockState).toHaveBeenCalledWith(true, true);
       expect(result.current.dockSnap).toBe('full');
+    });
+  });
+
+  // Restore returns the dock to where it last rested, however it was
+  // maximized. A phone `focusSession` opens the dock full screen through
+  // navigation alone (`setDockState(true, true)` in `useChatDockActions`),
+  // never through `applyDockSnap`, so the resting place is kept from every
+  // docked commit below rather than recorded by a control. The navigation
+  // mocks below are set by hand to stand in for that path.
+  describe('toggleDockMaximize', () => {
+    async function mountDocked() {
+      const useDockShellChrome = await freshUseDockShellChrome();
+      return renderHook(() =>
+        useDockShellChrome({
+          publishesDockSlotClearance: true,
+          registersDockShortcuts: true,
+        }),
+      );
+    }
+
+    test('returns a maximized dock to the level it was maximized from', async () => {
+      const { result, rerender } = await mountDocked();
+      act(() => result.current.applyDockSnap('tall'));
+      const tallHeight = result.current.dockHeight;
+
+      isDockMaximized = true;
+      rerender();
+      act(() => result.current.toggleDockMaximize());
+
+      expect(setDockState).toHaveBeenLastCalledWith(true, false);
+      expect(result.current.dockSnap).toBe('tall');
+      expect(result.current.dockHeight).toBe(tallHeight);
+      expect(localStorage.getItem('station.chatDock.snap')).toBe('tall');
+    });
+
+    test('closes a dock that was maximized while closed', async () => {
+      isDockOpen = false;
+      const { result, rerender } = await mountDocked();
+
+      isDockMaximized = true;
+      isDockOpen = true;
+      rerender();
+      act(() => result.current.toggleDockMaximize());
+
+      expect(setDockState).toHaveBeenLastCalledWith(false, false);
+      expect(result.current.dockSnap).toBe('collapsed');
+      expect(localStorage.getItem('station.chatDock.snap')).toBe('collapsed');
+    });
+
+    test('does not bring back a level from before the dock was collapsed', async () => {
+      const { result, rerender } = await mountDocked();
+      act(() => result.current.applyDockSnap('tall'));
+      act(() => result.current.applyDockSnap('collapsed'));
+      // The mock setter does not move navigation's flags; mirror the close.
+      isDockOpen = false;
+      rerender();
+
+      isDockMaximized = true;
+      isDockOpen = true;
+      rerender();
+      act(() => result.current.toggleDockMaximize());
+
+      expect(setDockState).toHaveBeenLastCalledWith(false, false);
+      expect(result.current.dockSnap).toBe('collapsed');
     });
   });
 

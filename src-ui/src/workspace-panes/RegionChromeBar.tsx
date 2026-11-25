@@ -322,7 +322,7 @@ function useRegionMenuActions({
     selectedTab && onMoveTab && !chrome.isMobile
       ? regionMoveTargets(chrome, selectedTab.surfaceId)
       : [];
-  const { applyDockSnap, isDockMaximized } = chrome;
+  const { toggleDockMaximize, isDockMaximized } = chrome;
   const rows: OverflowAction[] = [
     ...targets.map((region) => ({
       key: `region-move-${region}`,
@@ -347,7 +347,7 @@ function useRegionMenuActions({
             key: 'region-maximize',
             label: isDockMaximized ? 'Restore size' : 'Maximize',
             ...(maximizeShortcut ? { shortcut: maximizeShortcut } : {}),
-            onSelect: () => applyDockSnap(isDockMaximized ? 'half' : 'full'),
+            onSelect: () => toggleDockMaximize(),
           },
         ]
       : []),
@@ -756,6 +756,7 @@ export function RegionChromeBar({
       ? null
       : chrome.effectiveDockSlotPlacement;
   const applyDockSnap = chrome.applyDockSnap;
+  const toggleDockMaximize = chrome.toggleDockMaximize;
   const mobileChat = chrome.isMobile && selectedSurfaceId === 'chat';
   const addLabel = `Add pane to ${regionLabel(chrome.effectiveDockSlotPlacement)}`;
   const moveTargets = (surfaceId: string): RegionId[] =>
@@ -945,7 +946,7 @@ export function RegionChromeBar({
           <button
             type="button"
             className="chat-dock__maximize-btn"
-            onClick={() => applyDockSnap(isDockMaximized ? 'half' : 'full')}
+            onClick={() => toggleDockMaximize()}
             // The side and bottom bars both carry this button; the tip
             // names which region it sizes.
             title={withShortcutHint(

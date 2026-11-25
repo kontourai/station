@@ -2,21 +2,27 @@
  * Snap logic for the bottom chat dock's resize handle.
  *
  * The dock's top edge is draggable. While dragging the height tracks the
- * pointer; on release the height snaps to the nearest of three discrete states
- * — Collapsed (header only) / Half / Full (maximized). It is kept
+ * pointer; on release the height snaps to the nearest of four discrete states
+ * — Collapsed (header only) / Half / Tall / Full (maximized). It is kept
  * intentionally pure (no React, no DOM) so the snap math is unit-testable in
- * isolation. A parallel `coding-layout/treeSnap.ts` once carried the same
- * three-state shape for the mobile file tree; nothing mounted it and it has
- * been deleted, so this is the only snap implementation in the UI.
+ * isolation. The phone sheet gesture (`sheetSnap.ts`) reuses `nearestSnap` and
+ * the tap and fling thresholds from here, so the two gestures agree on what
+ * "nearest" and "fling" mean.
  *
  * Pixel resolution depends on the live viewport, so heights are resolved
  * against `viewportHeight` (and a toolbar offset for the Full state, which can
  * never exceed `viewport - toolbar`).
  */
 
-export type DockSnap = 'collapsed' | 'half' | 'full';
+export type DockSnap = 'collapsed' | 'half' | 'tall' | 'full';
 
-const DOCK_SNAP_ORDER: DockSnap[] = ['collapsed', 'half', 'full'];
+/** Smallest to largest: the order the release tie-break and keyboard steps follow. */
+export const DOCK_SNAP_ORDER: readonly DockSnap[] = [
+  'collapsed',
+  'half',
+  'tall',
+  'full',
+];
 
 export const DEFAULT_DOCK_SNAP: DockSnap = 'half';
 
@@ -37,6 +43,14 @@ export const DOCK_COLLAPSED_HEIGHT = 38;
 /** Half opens the dock to this fraction of the available viewport. */
 const DOCK_HALF_FRACTION = 0.45;
 
+/**
+ * Tall opens it to this fraction: most of the screen, with the page behind
+ * still showing. Half leaves too little transcript to read on a phone and
+ * Full hides everything else, so Tall is the level a conversation is read at
+ * while the page behind stays in view.
+ */
+const DOCK_TALL_FRACTION = 0.75;
+
 /** Movement threshold (px) below which a pointer interaction counts as a tap. */
 export const TAP_MOVE_THRESHOLD = 6;
 
@@ -45,12 +59,11 @@ export const MOBILE_DOCK_FLING_VELOCITY = 0.45;
 
 /**
  * Downward release speed (CSS px/ms) fast enough to collapse the dock
- * outright — the flick that opens the dock (Half → Full) must also be able
- * to put it away. Deliberately faster than `MOBILE_DOCK_FLING_VELOCITY` (the
- * Half↔Full swap fling) so a moderate downward fling still lands on Half;
- * only a decisive "throw it away" flick reaches Collapsed. Standard
- * bottom-sheet dismiss-fling feel, no prior constant in this module covered
- * a third (collapsing) tier.
+ * outright — the flick that opens the dock must also be able to put it away.
+ * Deliberately faster than `MOBILE_DOCK_FLING_VELOCITY` (the one-level fling)
+ * so a moderate downward fling only steps down one level; only a decisive
+ * "throw it away" flick reaches Collapsed. Standard bottom-sheet
+ * dismiss-fling feel.
  */
 export const MOBILE_DOCK_COLLAPSE_FLING_VELOCITY = 0.65;
 
@@ -77,15 +90,19 @@ export function dockFullHeight({
   return Math.max(DOCK_MIN_HEIGHT, viewportHeight - toolbarHeight);
 }
 
+function fractionOfViewport(fraction: number, viewportHeight: number): number {
+  return Math.round(Math.max(DOCK_MIN_HEIGHT, viewportHeight * fraction));
+}
+
 /** Resolve a snap state to an absolute pixel height for the given viewport. */
 export function dockSnapPixels(snap: DockSnap, metrics: SnapMetrics): number {
   switch (snap) {
     case 'collapsed':
       return metrics.collapsedHeight ?? DOCK_COLLAPSED_HEIGHT;
     case 'half':
-      return Math.round(
-        Math.max(DOCK_MIN_HEIGHT, metrics.viewportHeight * DOCK_HALF_FRACTION),
-      );
+      return fractionOfViewport(DOCK_HALF_FRACTION, metrics.viewportHeight);
+    case 'tall':
+      return fractionOfViewport(DOCK_TALL_FRACTION, metrics.viewportHeight);
     case 'full':
       return dockFullHeight(metrics);
   }
@@ -139,36 +156,38 @@ export function nearestSnap<Snap extends string>(
 }
 
 /**
- * Resolve a completed mobile drag to a snap state. The gesture that opens the
- * dock must also be able to put it away: a *net-downward* release that lands
- * clearly below the Half band, or a downward flick fast enough to clear
- * `MOBILE_DOCK_COLLAPSE_FLING_VELOCITY`, collapses the dock outright (from
- * Half *or* Full — a decisive flick skips Half entirely). Short of that, a
- * clear release direction (or the gentler Half↔Full fling) wins; otherwise
- * the geometric midpoint between Half and Full is a deterministic fallback.
- * This preserves the existing Half/Full hysteresis for slow drags: a slow
- * release at or above the Half band is never dismissed by accident.
+ * Resolve a completed mobile drag to a snap state.
+ *
+ * A decisive downward flick (`MOBILE_DOCK_COLLAPSE_FLING_VELOCITY`) collapses
+ * the dock outright from any open level: position never gets a veto over a
+ * clear "throw it away" gesture, which is what lets the gesture that opens
+ * the dock also put it away. An upward fling opens to Full. A moderate
+ * downward fling steps down ONE level from where the gesture began and never
+ * closes an open dock, so a casual flick cannot put it away by accident.
+ * Anything slower lands on the level nearest where it was released.
  *
  * The below-Half-band collapse is gated on net-downward motion
- * (`deltaY >= TAP_MOVE_THRESHOLD`, the same threshold the direction-wins
- * branches below use) because reopening from Collapsed necessarily *starts*
- * the drag near the Collapsed pixel height — an upward-opening gesture that
- * hasn't traveled far yet is still numerically "below the Half band" and
- * must not be reinterpreted as "collapse" just because of where it started.
- * Only a gesture that is actually heading down gets to end the drag early.
+ * (`deltaY >= TAP_MOVE_THRESHOLD`) because reopening from Collapsed
+ * necessarily *starts* the drag near the Collapsed pixel height — an
+ * upward-opening gesture that hasn't traveled far yet is still numerically
+ * "below the Half band" and must not be reinterpreted as "collapse" just
+ * because of where it started.
  *
  * `deltaY` and `velocityY` use pointer coordinates: negative means the user
- * moved upward (grow), positive means downward (shrink).
+ * moved upward (grow), positive means downward (shrink). `start` is the level
+ * the dock rested on when the gesture began.
  */
 export function resolveMobileDockSnap({
   pixels,
   deltaY,
   velocityY,
+  start,
   metrics,
 }: {
   pixels: number;
   deltaY: number;
   velocityY: number;
+  start: DockSnap;
   metrics: SnapMetrics;
 }): DockSnap {
   // A decisive downward flick collapses outright, even from Full — position
@@ -185,7 +204,9 @@ export function resolveMobileDockSnap({
     return 'full';
   }
   if (velocityY >= MOBILE_DOCK_FLING_VELOCITY) {
-    return 'half';
+    // One level down from where the gesture began, and never from Half to
+    // Collapsed: putting an open dock away takes the decisive flick above.
+    return start === 'full' || start === 'tall' ? shrinkDockSnap(start) : start;
   }
 
   // A net-downward release below the midpoint between Collapsed and Half has
@@ -227,7 +248,7 @@ export function resolveMobileDockSnap({
   return nearest;
 }
 
-/** Cycles Collapsed → Half → Full → Collapsed for explicit keyboard control. */
+/** Cycles Collapsed → Half → Tall → Full → Collapsed for explicit keyboard control. */
 export function nextDockSnap(snap: DockSnap): DockSnap {
   const idx = DOCK_SNAP_ORDER.indexOf(snap);
   return DOCK_SNAP_ORDER[(idx + 1) % DOCK_SNAP_ORDER.length];
@@ -249,7 +270,7 @@ export function shrinkDockSnap(snap: DockSnap): DockSnap {
 export function readDockSnap(): DockSnap {
   try {
     const raw = localStorage.getItem(DOCK_SNAP_STORAGE_KEY);
-    if (raw && (DOCK_SNAP_ORDER as string[]).includes(raw)) {
+    if (raw && (DOCK_SNAP_ORDER as readonly string[]).includes(raw)) {
       return raw as DockSnap;
     }
   } catch {
@@ -323,7 +344,18 @@ export function shouldCollapseDockOnMobileNavigation({
  * silently undo the restore (#869 review). `station.chatDock.snap` is also the
  * persisted "previous size", so leaving it at Full would reopen full-height
  * later while the flag says otherwise — the same incoherence #795 had to fix.
+ *
+ * A Full snap steps back to `dockedSnap`, the level the dock last rested on
+ * before it was maximized. Only an open level counts: one maximized from its
+ * bar returns to the default, because a navigation restore exists to leave
+ * the dock open at a docked size (#869), not to put it away.
  */
-export function snapAfterNavigationRestore(snap: DockSnap): DockSnap | null {
-  return snap === 'full' ? DEFAULT_DOCK_SNAP : null;
+export function snapAfterNavigationRestore(
+  snap: DockSnap,
+  dockedSnap: DockSnap = DEFAULT_DOCK_SNAP,
+): DockSnap | null {
+  if (snap !== 'full') return null;
+  return dockedSnap === 'half' || dockedSnap === 'tall'
+    ? dockedSnap
+    : DEFAULT_DOCK_SNAP;
 }

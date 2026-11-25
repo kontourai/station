@@ -118,7 +118,6 @@ const expectedDependencies = new Map(
     // pane and grants no workspace authority; classify the dependency at the
     // chat handoff seam so the inventory remains explicit.
     'src-ui/src/components/chat/FileMentionAutocomplete.tsx': 'chat-handoff',
-    'src-ui/src/components/chat-dock/dockSnap.ts': 'presentation',
     'src-ui/src/components/chat-dock/useChatDockViewModel.ts': 'navigation',
     'src-ui/src/components/coding-layout/CodingInspectorPanel.css':
       'presentation',

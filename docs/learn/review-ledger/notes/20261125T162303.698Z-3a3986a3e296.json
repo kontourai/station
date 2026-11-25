@@ -1,0 +1,7 @@
+{
+  "revision": "23890a1a282407f059299fd88c86562bff4215be",
+
+  "notes": [
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"task-first-home's phone journey now also attaches a screenshot of the dock at Half and at Tall in each theme at its width (375px, 412px); the mobile-chat-composer changes are the same as the previous note. The row names specs and scope only; no edit.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/task-first-home.spec.ts"]}
+  ]
+}
