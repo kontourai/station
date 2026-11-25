@@ -626,6 +626,7 @@ function MobileBrowserHandoff({
       {selectedId && (
         <ResponsiveDialogSurface
           ariaLabel="Browser"
+          layer="dialog"
           onClose={close}
           overlayClassName="float-over-chat__browser-dialog-overlay"
           panelClassName="float-over-chat__browser-dialog"
