@@ -1,0 +1,7 @@
+{
+  "revision": "abd7820c7eb74d1b3161f7214f9236785e23cd6e",
+
+  "notes": [
+    {"path":"docs/guides/agent-efficiency.md","note":"Rechecked the overlapping-episode completion fence and current dispatch binding. Native Task automation retains the existing limits. The isolated repair path and its documented evidence are unaffected.","inputs":["src-server/runtime/automation-actions-runtime.ts"]}
+  ]
+}
