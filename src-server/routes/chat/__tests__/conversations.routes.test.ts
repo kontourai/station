@@ -4025,6 +4025,73 @@ describe('Global Conversation Routes', () => {
     },
   );
 
+  test.each([
+    ['reader', 200],
+    ['parent-only-reader', 404],
+    ['session-only-reader', 404],
+  ])(
+    'GET /:id follows a notification Session for %s only with access to both records',
+    async (user, status) => {
+      const conversation = {
+        id: 'durable-chat',
+        agentSlug: agentId('current-agent'),
+        projectSlug: 'station',
+        title: 'Continue the history fix',
+        createdAt: '2026-07-23T00:00:00Z',
+        updatedAt: '2026-07-23T00:01:00Z',
+        messageCount: 2,
+      };
+      const app = createGlobalConversationRoutes(
+        new Map(),
+        { getConversation: () => null },
+        mockLogger,
+        undefined,
+        {
+          ...emptyHistoryReader(),
+          isRuntimeConversation: () => true,
+          successorConversationId: (id) =>
+            id === 'notification-session' ? conversation.id : undefined,
+          readSessionConversation: async (id, authority) =>
+            id === 'notification-session' &&
+            authority.userId !== 'parent-only-reader'
+              ? { ...conversation, agentSlug: 'previous-agent', mutable: false }
+              : null,
+          resolveConversationOpen: async (id, authority) =>
+            id === conversation.id && authority.userId !== 'session-only-reader'
+              ? {
+                  status: 'resolved',
+                  conversation: {
+                    ...conversation,
+                    source: 'runtime',
+                    mutable: false,
+                    answerability: { answerable: true },
+                  },
+                  currentSessionId: 'current-session',
+                  transcript: {
+                    available: true,
+                    owner: 'runtime',
+                    messageCount: 2,
+                  },
+                  canContinue: false,
+                  answerability: { answerable: true },
+                  recoveryActions: [],
+                }
+              : null,
+        },
+        () => user,
+      );
+      const response = await app.request('/notification-session');
+      expect(response.status).toBe(status);
+      if (status === 200)
+        expect((await json(response)).data).toMatchObject(conversation);
+      else
+        expect(await json(response)).toEqual({
+          success: false,
+          error: 'Conversation not found',
+        });
+    },
+  );
+
   test('GET /:id resolves an orchestration-owned conversation', async () => {
     const adapter = createMockAdapter();
     adapter.getConversation.mockResolvedValue(null);

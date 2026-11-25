@@ -9,6 +9,7 @@
 import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { AuthorityPersistenceContext } from '../../../contexts/AuthorityPersistenceContext';
+import { toastStore } from '../../../contexts/ToastContext';
 import { subscribeToNotificationOpen } from '../../../lib/notificationOpen';
 import {
   requestNotificationOpen,
@@ -99,6 +100,24 @@ afterEach(() => {
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe('NotificationStationOpener', () => {
+  test('a missing conversation uses a transient toast', () => {
+    render(<NotificationStationOpener />);
+    try {
+      act(() => setNotificationOpenNotice({ kind: 'not-found' }));
+      expect(toastStore.getSnapshot()).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            message: 'Conversation not found',
+            duration: 5000,
+          }),
+        ]),
+      );
+      expect(screen.queryByRole('button', { name: 'OK' })).toBeNull();
+    } finally {
+      toastStore.clear();
+    }
+  });
+
   test('desktop: an alert from Station A clicked while Station B is active opens on A', async () => {
     connections.active = B;
     render(<NotificationStationOpener />);

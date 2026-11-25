@@ -1162,13 +1162,13 @@ describe('ChatDockInboxPanel exit presentation (#3309)', () => {
         within(toolbar).getByRole('searchbox', { name: 'Search chats' }),
       ).toBeTruthy();
       expect(
-        within(toolbar).getByRole('combobox', { name: 'Chat list scope' }),
+        within(toolbar).getByRole('combobox', { name: 'Scope for Chats' }),
       ).toBeTruthy();
       expect(
         within(toolbar).getByRole('button', { name: 'New chat' }),
       ).toBeTruthy();
       expect(
-        screen.queryByRole('button', { name: 'Chat list actions' }),
+        screen.queryByRole('button', { name: 'Actions for Chats' }),
       ).toBeNull();
       // The scope's visible label gave its width to search; its name stays.
       expect(

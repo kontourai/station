@@ -88,7 +88,7 @@ describe('ChatDockHeaderMoreMenu', () => {
         actions={[
           {
             key: 'list',
-            label: 'Collapse chat list',
+            label: 'Hide chats',
             checked: true,
             onSelect: vi.fn(),
           },
@@ -97,7 +97,7 @@ describe('ChatDockHeaderMoreMenu', () => {
     );
     expect(
       screen
-        .getByRole('button', { name: 'Collapse chat list' })
+        .getByRole('button', { name: 'Hide chats' })
         .getAttribute('aria-pressed'),
     ).toBe('true');
   });
@@ -164,7 +164,7 @@ describe('ChatDockHeaderMoreMenu', () => {
         actions={[
           {
             key: 't',
-            label: 'Collapse chat list',
+            label: 'Hide chats',
             checked: true,
             onSelect: vi.fn(),
           },
@@ -183,7 +183,7 @@ describe('ChatDockHeaderMoreMenu', () => {
 
     expect(
       screen
-        .getByRole('menuitemcheckbox', { name: 'Collapse chat list' })
+        .getByRole('menuitemcheckbox', { name: 'Hide chats' })
         .getAttribute('aria-checked'),
     ).toBe('true');
     const command = screen.getByRole('menuitem', { name: 'Chat settings' });

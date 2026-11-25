@@ -3636,9 +3636,25 @@ export function createGlobalConversationRoutes(
       }
 
       if (sessionConversationReader.isRuntimeConversation?.(id)) {
+        const successorOf =
+          sessionConversationReader.successorConversationId?.(id);
+        if (successorOf) {
+          // Notification links can name an execution Session. Authorize that
+          // exact Session before following its conversation.
+          const session =
+            await sessionConversationReader.readSessionConversation(
+              id,
+              authority,
+            );
+          if (session?.id !== successorOf)
+            return c.json(
+              { success: false, error: 'Conversation not found' },
+              404,
+            );
+        }
         const resolved =
           await sessionConversationReader.resolveConversationOpen?.(
-            id,
+            successorOf ?? id,
             authority,
           );
         if (!resolved)
@@ -3655,7 +3671,9 @@ export function createGlobalConversationRoutes(
             ),
             ...(eventStore
               ? {
-                  forkProvenance: eventStore.readConversationForkProvenance(id),
+                  forkProvenance: eventStore.readConversationForkProvenance(
+                    resolved.conversation.id,
+                  ),
                 }
               : {}),
           },

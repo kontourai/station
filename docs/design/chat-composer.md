@@ -704,8 +704,8 @@ that far down (12 pages of 20 turns), and the rest of the gap is left to Load
 older with no marker where it lies in the transcript; that limit predates
 reader-place keeping and applies equally once older pages are loaded.
 Scroll-button hover changes its background
-without enlarging its target. The desktop header exposes Hide chat list /
-Show chat list directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
+without enlarging its target. The desktop header exposes **Hide chats** and
+**Show chats** directly, as an icon button whose pressed state is available to assistive technology; its one labelled action is New, and "Open chat…" is the first row of its ⋯ menu.
 
 Pending tool permissions feed Needs approval; questions and forms feed Needs
 answer. Permission takes priority when both wait. The action opens the

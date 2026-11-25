@@ -153,7 +153,7 @@ test('deferred Chat renderer failures keep the region pane recovery actions', as
   await screen.findByTestId('chat-list');
 });
 
-test('a crashed Chat pane names the conversation, shows the error, and goes back to the chat list', async () => {
+test('a crashed Chat pane names the conversation, shows the error, and goes back to Chats', async () => {
   navigationStore.setActiveChat(null);
   render(
     <RegionPaneHost

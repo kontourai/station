@@ -242,7 +242,7 @@ async function openChatThroughRegionControl(page: Page): Promise<boolean> {
  * Phone chrome does not always render the desktop region toolbar, so it falls
  * back only to the named mobile/legacy Chat expander. The anchored label
  * deliberately excludes sidebar actions such as "Open chats" and
- * "Expand chat list".
+ * "Show chats".
  */
 export async function openChatRegion(page: Page): Promise<void> {
   // The Coding layout's centre owns Chat on a wide fine-pointer screen (#928

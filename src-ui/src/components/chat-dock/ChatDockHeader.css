@@ -84,26 +84,27 @@
   color: var(--k-text);
   font: inherit;
 }
-.chat-dock__mobile-header:has(.chat-dock__open-inbox-label)
-  .chat-dock__mobile-identity {
+.chat-dock__mobile-header[data-center-chats] .chat-dock__mobile-identity {
   justify-content: center;
 }
 .chat-dock__open-inbox-label {
   min-height: 44px;
-  padding: 0 var(--k-space-2);
+  padding: 0;
   font: inherit;
   color: inherit;
   border: 0;
   background: transparent;
 }
-.chat-dock__mobile-header:not(:has(.chat-dock__open-inbox-label)) {
+.chat-dock__mobile-header[data-center-chats] .chat-dock__open-inbox-label {
+  padding-inline: var(--k-space-2);
+}
+.chat-dock__mobile-header:not([data-center-chats]) {
   display: flex;
   align-items: center;
   gap: var(--k-space-1);
   padding-inline: var(--k-space-2);
 }
-.chat-dock__mobile-header:not(:has(.chat-dock__open-inbox-label))
-  .chat-dock__mobile-identity {
+.chat-dock__mobile-header:not([data-center-chats]) .chat-dock__mobile-identity {
   flex: 1 1 0;
   min-width: 0;
 }

@@ -410,7 +410,7 @@ describe('useDerivedSessions — ChatDock identity stability (station#726)', () 
     expect(sessionBAfter).toBe(sessionBBefore);
   });
 
-  test("#2304: the open turn's server start reaches the derived session the chat list renders", () => {
+  test("#2304: the open turn's server start reaches the derived session Chats renders", () => {
     const { result } = renderHook(() => useDerivedSessions('', null, null));
     const serverStart = Date.parse('2026-09-22T12:00:00.000Z');
 

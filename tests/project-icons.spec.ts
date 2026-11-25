@@ -71,8 +71,8 @@ async function setConnectionsEnabled(
  * panel-level test reaches.
  */
 async function dockInboxRow(page: Page, projectSlug: string) {
-  const hide = page.getByRole('button', { name: /^Hide chat list(?:,|$)/ });
-  const show = page.getByRole('button', { name: /^Show chat list/ });
+  const hide = page.getByRole('button', { name: /^Hide chats(?:,|$)/ });
+  const show = page.getByRole('button', { name: /^Show chats/ });
   await expect(hide.or(show)).toBeVisible({ timeout: 20_000 });
   if (await show.isVisible()) await show.click();
   const row = page
