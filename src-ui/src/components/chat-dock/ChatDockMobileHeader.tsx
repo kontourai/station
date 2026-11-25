@@ -208,6 +208,7 @@ export function ChatDockMobileHeader({
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const activityDescriptionId = useId();
   const collapsed = dockToggle?.state === 'collapsed';
+  const showExpandControl = collapsed && !isCollapsedDragPreview;
   const collapsedInbox =
     collapsed && (inboxActive || !(hasConversation || childTrail));
   const resumeChat = collapsed && !collapsedInbox;
@@ -268,18 +269,16 @@ export function ChatDockMobileHeader({
           >
             <ArrowLeftGlyph />
           </Button>
-        ) : dockToggle && !(collapsed && extentToggle) && !childTrail ? (
+        ) : dockToggle &&
+          !(showExpandControl && extentToggle) &&
+          !childTrail ? (
           <button
             type="button"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
-            aria-label={
-              dockToggle.state === 'collapsed' ? 'Expand chat' : 'Collapse chat'
-            }
+            aria-label={showExpandControl ? 'Expand chat' : 'Collapse chat'}
             data-no-dock-drag=""
             onClick={
-              dockToggle.state === 'collapsed'
-                ? dockToggle.onExpand
-                : dockToggle.onCollapse
+              showExpandControl ? dockToggle.onExpand : dockToggle.onCollapse
             }
           >
             <ArrowDownGlyph />
