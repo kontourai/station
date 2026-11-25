@@ -215,5 +215,5 @@ For triage rules where a green run is the completion criterion, also set
 `episode.completeOnRecovery` to `true`. Station can then move a Task from
 **In progress** or **Review** to **Done** after the episode closes and its
 agent completes, provided there is no newer episode, open Task question,
-or declared or kept pull request. Use manual
+review thread, or declared or kept pull request. Use manual
 completion when the rule also owns remediation or review.

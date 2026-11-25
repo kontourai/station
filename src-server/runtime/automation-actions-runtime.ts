@@ -95,6 +95,7 @@ interface AutomationActionsOptions {
     | 'readProjectTaskRoomExecutionBinding'
     | 'taskMemoryStore'
     | 'readTurnDigestFacts'
+    | 'taskReviewStore'
   >;
   eventBus: EventBus;
   inbox: () => Pick<ThreadInboxDelivery, 'submit' | 'entry'> | undefined;
@@ -852,12 +853,10 @@ class AutomationActionsRuntime implements AutomationActions {
                       previous.sessionId!,
                       previous.turnId!,
                     ) &&
-                    this.options.eventStore
-                      .taskMemoryStore()
-                      .listOpenQuestions({
-                        taskId: observation.taskId,
-                        taskCreatedAt: previous.taskCreatedAt!,
-                      }).length === 0,
+                    !this.recoveryHasPendingReview(
+                      observation.taskId,
+                      previous.taskCreatedAt!,
+                    ),
                 },
               }
             : {}),
@@ -865,6 +864,19 @@ class AutomationActionsRuntime implements AutomationActions {
       }
       ledger.settleTaskObservation(observation.deliveryKey, observation.ruleId);
     }
+  }
+
+  private recoveryHasPendingReview(
+    taskId: string,
+    taskCreatedAt: string,
+  ): boolean {
+    const incarnation = { taskId, taskCreatedAt };
+    return (
+      this.options.eventStore.taskMemoryStore().listOpenQuestions(incarnation)
+        .length > 0 ||
+      this.options.eventStore.taskReviewStore().listThreadEntries(incarnation)
+        .length > 0
+    );
   }
 
   private recoveryHasNoDeclaredPullRequest(
@@ -1015,7 +1027,8 @@ class AutomationActionsRuntime implements AutomationActions {
           previous.ruleId !== intent.ruleId ||
           previous.episodeKey !== intent.episodeKey ||
           previous.sourceId !== intent.sourceId ||
-          previous.personTakeoverAt !== undefined)
+          (previous.personTakeoverAt !== undefined &&
+            standingTask.status !== 'done'))
       ) {
         claim.release();
         ledger.updateIntent(
