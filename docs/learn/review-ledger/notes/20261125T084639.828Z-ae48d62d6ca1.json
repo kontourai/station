@@ -1,0 +1,7 @@
+{
+  "revision": "8ac71edd1d55068a5cbe61190ab9cbd21fdef1ee",
+
+  "notes": [
+    {"path":"docs/guides/browser-workspace.md","note":"Verified the phone dialog opens its exact session in the Browser pane and the pane can filter the authorized list to the chat. Focused caller tests cover exact selection and exclusion of unrelated tabs.","inputs":["docs/guides/browser-workspace.md","src-ui/src/float-over-chat/FloatOverChatHost.tsx"]}
+  ]
+}
