@@ -1709,7 +1709,8 @@ for actual captures and remaining Terminal and pairing work.
 The `conversation-resolution` Feature Preview groups actionable work under
 Needs attention, Working, Open, Snoozed, Third-party and Settled. An owed
 decision takes precedence over Working; running turns and monitoring work stay
-in Working. An unsent draft is an indicator on its chat row and does not change
+in Working. Unknown cleanup alone leaves a conversation in Open or Settled,
+with the cleanup reason visible. An unsent draft is an indicator on its chat row and does not change
 its status. A chat that has never started stays in Open. A completed or failed
 agent turn leaves a standalone conversation Open. Settle and Reopen record the person's explicit decision on
 the host, shared across their owner devices, separately from last-viewed state,

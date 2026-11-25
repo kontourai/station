@@ -100,7 +100,9 @@ custody (`local`, `peer`, `unknown`), reason and count without exposing child ID
 use it when cleanup is pending. The shared status ladder renders **Stopping**,
 **Waiting on another Station process**, or **Unknown**, including a closed
 parent whose child cleanup remains pending. Unknown cleanup stays visible after
-an ancestor's own Stop completes. The counts cover verified,
+an ancestor's own Stop completes. In Chats, unknown cleanup appears under
+**Open** (or **Settled** when marked done) when no turn, child work or cleanup
+with a known owner is in flight. The counts cover verified,
 non-background descendants and pending stop obligations.
 
 `releaseUnknownOwnedWork` is an orchestration command with `threadId` and
