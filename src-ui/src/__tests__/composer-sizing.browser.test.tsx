@@ -18,7 +18,7 @@ const controls: Plugin = {
   name: 'composer-controls',
   setup(builder) {
     const modules: Record<string, string> = {
-      useAgentSchedule: `export const useAgentSchedule=()=>({schedule:{wakeUps:[{id:'wake',dueAt:'2026-11-15T23:00:00Z',state:'pending',note:'Check results'}],jobProposals:[],automationProposals:[]},loaded:true,cancelWakeUp:{mutate(){}},approveWakeUp:{},declineWakeUp:{},declineProposal:{},approveProposal:{},confirmAutomationProposal:{},declineAutomationProposal:{}});`,
+      useAgentSchedule: `export const useAgentSchedule=()=>({schedule:{wakeUps:[{id:'wake',dueAt:'2026-11-15T23:00:00Z',state:window.checkBackNeedsApproval?'needs_approval':'pending',note:'Check results'}],jobProposals:[],automationProposals:[]},loaded:true,cancelWakeUp:{mutate(){}},approveWakeUp:{},declineWakeUp:{},declineProposal:{},approveProposal:{},confirmAutomationProposal:{},declineAutomationProposal:{}});`,
       DeviceSettingsContext:
         'export const useDeviceSettings = () => ({chatReturnBehavior:"newline"});',
       KeyboardShortcutsContext: 'export const setShortcutContext = () => {};',
@@ -129,7 +129,16 @@ test('sizes draft content without transiently clamping the pinned transcript', a
   }
 });
 
-test('scheduled check-backs share the composer activity row with Scroll to bottom in both themes and widths', async () => {
+test.each([
+  {
+    needsApproval: false,
+    name: 'scheduled check-back shares the activity row with Scroll to bottom',
+  },
+  {
+    needsApproval: true,
+    name: 'check-back approval keeps its button styles inside the composer',
+  },
+])('$name in both themes and widths', async ({ needsApproval }) => {
   const artifacts = resolve('.surface/inbox-chat-polish');
   await mkdir(artifacts, { recursive: true });
   for (const width of [390, 1440])
@@ -138,6 +147,10 @@ test('scheduled check-backs share the composer activity row with Scroll to botto
         composerFixture,
         [controls],
         { viewport: { width, height: 900 } },
+        async (page) => {
+          if (needsApproval)
+            await page.addInitScript('window.checkBackNeedsApproval = true;');
+        },
       );
       try {
         await page.addStyleTag({ content: cascade });
@@ -145,15 +158,52 @@ test('scheduled check-backs share the composer activity row with Scroll to botto
           (value) => (document.documentElement.dataset.theme = value),
           theme,
         );
-        const note = page.getByText(/Checking back at/);
-        await note.waitFor();
-        const noteBox = (await note.boundingBox())!;
-        const scroll = (await page
-          .getByRole('button', { name: 'Scroll to bottom' })
-          .boundingBox())!;
-        expect(scroll.y).toBeLessThan(noteBox.y + noteBox.height);
-        expect(scroll.y + scroll.height).toBeGreaterThan(noteBox.y);
-        expect(scroll.x).toBeGreaterThan(noteBox.x + noteBox.width);
+        if (needsApproval) {
+          const approve = page.getByRole('button', {
+            name: 'Approve',
+            exact: true,
+          });
+          const decline = page.getByRole('button', {
+            name: 'Decline',
+            exact: true,
+          });
+          await approve.waitFor();
+          expect(
+            await approve.evaluate(
+              (button) => getComputedStyle(button).backgroundColor,
+            ),
+          ).not.toBe('rgba(0, 0, 0, 0)');
+          expect(
+            await decline.evaluate(
+              (button) => getComputedStyle(button).borderTopStyle,
+            ),
+          ).toBe('solid');
+          await page.keyboard.press('Tab');
+          await approve.focus();
+          expect(
+            await approve.evaluate((button) =>
+              button.matches(':focus-visible'),
+            ),
+          ).toBe(true);
+          if (width === 390) {
+            expect(
+              (await approve.boundingBox())!.height,
+            ).toBeGreaterThanOrEqual(44);
+            expect(
+              (await decline.boundingBox())!.height,
+            ).toBeGreaterThanOrEqual(44);
+          }
+        } else {
+          const note = page.getByText(/Checking back at/);
+          await note.waitFor();
+          const noteBox = (await note.boundingBox())!;
+          const scroll = (await page
+            .getByRole('button', { name: 'Scroll to bottom' })
+            .boundingBox())!;
+          expect(scroll.y).toBeLessThan(noteBox.y + noteBox.height);
+          expect(scroll.y + scroll.height).toBeGreaterThan(noteBox.y);
+          expect(scroll.x).toBeGreaterThan(noteBox.x + noteBox.width);
+        }
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth > innerWidth,
@@ -161,7 +211,10 @@ test('scheduled check-backs share the composer activity row with Scroll to botto
         ).toBe(false);
         expect(errors).toEqual([]);
         await page.screenshot({
-          path: resolve(artifacts, `scheduled-${width}-${theme}.png`),
+          path: resolve(
+            artifacts,
+            `${needsApproval ? 'approval' : 'scheduled'}-${width}-${theme}.png`,
+          ),
           animations: 'disabled',
         });
       } finally {

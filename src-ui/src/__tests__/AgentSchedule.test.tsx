@@ -397,6 +397,7 @@ describe('an Automation proposal waits for the person (#4830)', () => {
       toggle.focus();
       await user.keyboard(' ');
       await user.tab();
+      await user.tab();
       expect(document.activeElement).toBe(
         screen.getByRole('button', { name: 'Confirm' }),
       );
@@ -917,7 +918,13 @@ describe('when the chat re-reads its schedule', () => {
     await waitFor(() => expect(gets()).toBe(2));
   });
 
-  test('the key moves with a turn boundary or a finished scheduling call, not with streamed output', async () => {
+  test.each([
+    { toolName: 'mcp__station-control__schedule_wake_up' },
+    {
+      toolName: 'functions.exec',
+      args: 'await tools.schedule_wake_up({minutes: 20})',
+    },
+  ])('refreshes after $toolName finishes a scheduling call', async (call) => {
     const { agentScheduleRefreshKey } = await import(
       '../components/chat-dock/ChatDockBody'
     );
@@ -925,7 +932,7 @@ describe('when the chat re-reads its schedule', () => {
       { type: 'text' },
       {
         type: 'tool-invocation',
-        toolName: 'mcp__station-control__schedule_wake_up',
+        ...call,
         state: 'running',
       },
     ];
