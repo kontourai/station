@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-25T02:02:58Z | nightly-desktop | 0.2.0-nightly.20261125 | `6e87001` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45523135847) |
+| 2026-11-25T02:02:58Z | nightly-android | 0.2.0-nightly.20261125 | `6e87001` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45523135847) |
+| 2026-11-25T01:13:15Z | nightly-npm | 0.12.0-nightly.20261125.45523135847 | `6e87001` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45523135847) |
 | 2026-11-24T13:00:13Z | nightly-desktop | 0.2.0-nightly.20261124.1 | `d64a21a` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45387969449) |
 | 2026-11-24T13:00:13Z | nightly-android | 0.2.0-nightly.20261124.1 | `d64a21a` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45387969449) |
 | 2026-11-24T12:06:16Z | nightly-npm | 0.12.0-nightly.20261124.45387969449 | `d64a21a` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45387969449) |
@@ -555,6 +558,108 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-25T02:02:58Z · nightly-desktop · 0.2.0-nightly.20261125
+
+- Ship SHA: `6e8700142864c277d12995a0ddf4d8f2afa5c13c`
+- Artifact built at: `2026-11-25T01:13:22.904Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 45523135847)
+
+### Changelog
+
+Commits since `d64a21a` ([full sha](https://github.com/kontourai/station/commit/d64a21a522c67affa19d89600386a8a5f594103c)):
+
+**Features**
+
+- [#5543](https://github.com/kontourai/station/pull/5543) feat(connections): manage MCP access
+- [#5533](https://github.com/kontourai/station/pull/5533) feat: prepare bounded native brokered tool requests
+- [#5556](https://github.com/kontourai/station/pull/5556) feat(mcp): poll and stream integration events
+- [#5530](https://github.com/kontourai/station/pull/5530) feat: configure explicit confined native broker launches
+- [#5522](https://github.com/kontourai/station/pull/5522) feat: add credential-owned Session-group preview
+- [#5537](https://github.com/kontourai/station/pull/5537) feat(contracts): expose versioned Ensemble presets
+- [#5538](https://github.com/kontourai/station/pull/5538) feat(mcp): list layouts within an approved Project
+- [#5519](https://github.com/kontourai/station/pull/5519) feat: prepare bounded fixed native text requests
+
+**Fixes**
+
+- [#5564](https://github.com/kontourai/station/pull/5564) fix(chat): carry recorded work across engine handoffs
+- [#5563](https://github.com/kontourai/station/pull/5563) fix(chat,attention): start Ask Station prompts on the Station Assistant and open session rows in chat
+- [#5559](https://github.com/kontourai/station/pull/5559) fix(acp): bind the native Antigravity diagnostics directory
+- [#5558](https://github.com/kontourai/station/pull/5558) fix: retain durable Task allocation provenance
+- [#5527](https://github.com/kontourai/station/pull/5527) fix: settle retained Session activation after caller expiry
+
+**Docs**
+
+- [#5557](https://github.com/kontourai/station/pull/5557) docs: prefer live acceptance before merge
+
+## 2026-11-25T02:02:58Z · nightly-android · 0.2.0-nightly.20261125
+
+- Ship SHA: `6e8700142864c277d12995a0ddf4d8f2afa5c13c`
+- Artifact built at: `2026-11-25T01:11:26.461Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 45523135847)
+
+### Changelog
+
+Commits since `d64a21a` ([full sha](https://github.com/kontourai/station/commit/d64a21a522c67affa19d89600386a8a5f594103c)):
+
+**Features**
+
+- [#5543](https://github.com/kontourai/station/pull/5543) feat(connections): manage MCP access
+- [#5533](https://github.com/kontourai/station/pull/5533) feat: prepare bounded native brokered tool requests
+- [#5556](https://github.com/kontourai/station/pull/5556) feat(mcp): poll and stream integration events
+- [#5530](https://github.com/kontourai/station/pull/5530) feat: configure explicit confined native broker launches
+- [#5522](https://github.com/kontourai/station/pull/5522) feat: add credential-owned Session-group preview
+- [#5537](https://github.com/kontourai/station/pull/5537) feat(contracts): expose versioned Ensemble presets
+- [#5538](https://github.com/kontourai/station/pull/5538) feat(mcp): list layouts within an approved Project
+- [#5519](https://github.com/kontourai/station/pull/5519) feat: prepare bounded fixed native text requests
+
+**Fixes**
+
+- [#5564](https://github.com/kontourai/station/pull/5564) fix(chat): carry recorded work across engine handoffs
+- [#5563](https://github.com/kontourai/station/pull/5563) fix(chat,attention): start Ask Station prompts on the Station Assistant and open session rows in chat
+- [#5559](https://github.com/kontourai/station/pull/5559) fix(acp): bind the native Antigravity diagnostics directory
+- [#5558](https://github.com/kontourai/station/pull/5558) fix: retain durable Task allocation provenance
+- [#5527](https://github.com/kontourai/station/pull/5527) fix: settle retained Session activation after caller expiry
+
+**Docs**
+
+- [#5557](https://github.com/kontourai/station/pull/5557) docs: prefer live acceptance before merge
+
+## 2026-11-25T01:13:15Z · nightly-npm · 0.12.0-nightly.20261125.45523135847
+
+- Ship SHA: `6e8700142864c277d12995a0ddf4d8f2afa5c13c`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261125.45523135847 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `d64a21a` ([full sha](https://github.com/kontourai/station/commit/d64a21a522c67affa19d89600386a8a5f594103c)):
+
+**Features**
+
+- [#5543](https://github.com/kontourai/station/pull/5543) feat(connections): manage MCP access
+- [#5533](https://github.com/kontourai/station/pull/5533) feat: prepare bounded native brokered tool requests
+- [#5556](https://github.com/kontourai/station/pull/5556) feat(mcp): poll and stream integration events
+- [#5530](https://github.com/kontourai/station/pull/5530) feat: configure explicit confined native broker launches
+- [#5522](https://github.com/kontourai/station/pull/5522) feat: add credential-owned Session-group preview
+- [#5537](https://github.com/kontourai/station/pull/5537) feat(contracts): expose versioned Ensemble presets
+- [#5538](https://github.com/kontourai/station/pull/5538) feat(mcp): list layouts within an approved Project
+- [#5519](https://github.com/kontourai/station/pull/5519) feat: prepare bounded fixed native text requests
+
+**Fixes**
+
+- [#5564](https://github.com/kontourai/station/pull/5564) fix(chat): carry recorded work across engine handoffs
+- [#5563](https://github.com/kontourai/station/pull/5563) fix(chat,attention): start Ask Station prompts on the Station Assistant and open session rows in chat
+- [#5559](https://github.com/kontourai/station/pull/5559) fix(acp): bind the native Antigravity diagnostics directory
+- [#5558](https://github.com/kontourai/station/pull/5558) fix: retain durable Task allocation provenance
+- [#5527](https://github.com/kontourai/station/pull/5527) fix: settle retained Session activation after caller expiry
+
+**Docs**
+
+- [#5557](https://github.com/kontourai/station/pull/5557) docs: prefer live acceptance before merge
 
 ## 2026-11-24T13:00:13Z · nightly-desktop · 0.2.0-nightly.20261124.1
 
