@@ -2206,6 +2206,28 @@ test.describe('Task-first Home (#332, mocked)', () => {
           });
         }
 
+        // Resting evidence for review: each level in both themes at this width.
+        const dataTheme = await page.evaluate(() =>
+          document.documentElement.getAttribute('data-theme'),
+        );
+        const attachView = async (name: string) => {
+          for (const theme of ['dark', 'light'] as const) {
+            await page.evaluate((value) => {
+              document.documentElement.setAttribute('data-theme', value);
+            }, theme);
+            await testInfo.attach(`${name}, ${theme}`, {
+              body: await page.screenshot(),
+              contentType: 'image/png',
+            });
+          }
+          await page.evaluate((value) => {
+            if (value)
+              document.documentElement.setAttribute('data-theme', value);
+            else document.documentElement.removeAttribute('data-theme');
+          }, dataTheme);
+        };
+        await attachView('phone chat at Half');
+
         // Tall is the level between Half and Full: most of the screen for the
         // conversation, with the page behind still in view. A slow drag up
         // from Half lands on it, and Restore then returns to it.
@@ -2229,6 +2251,8 @@ test.describe('Task-first Home (#332, mocked)', () => {
         const tallTranscript = (await transcript.boundingBox())?.height ?? 0;
         expect(tallTranscript).toBeGreaterThan(halfTranscript);
         expect((await dock.boundingBox())?.y ?? 0).toBeGreaterThanOrEqual(100);
+        await attachView('phone chat at Tall');
+
 
         await dock.getByRole('button', { name: 'Full screen chat' }).click();
         await expect(dock).toHaveClass(/is-maximized/);
