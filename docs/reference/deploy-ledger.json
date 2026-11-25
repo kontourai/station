@@ -1,5 +1,92 @@
 [
   {
+    "timestampUtc": "2026-11-25T11:38:37Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261125.1",
+    "sha": "7dc821617421098c34e1656b1ed3ed9a72496db4",
+    "artifactBuiltAt": "2026-11-25T10:36:02.536Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45595492829",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45595492829)"
+    ],
+    "changelog": {
+      "previousSha": "6e8700142864c277d12995a0ddf4d8f2afa5c13c",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5566](https://github.com/kontourai/station/pull/5566) fix(browser): open the conversation browser on phones"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-11-25T11:38:37Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261125.1",
+    "sha": "7dc821617421098c34e1656b1ed3ed9a72496db4",
+    "artifactBuiltAt": "2026-11-25T10:34:42.281Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45595492829",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45595492829)"
+    ],
+    "changelog": {
+      "previousSha": "6e8700142864c277d12995a0ddf4d8f2afa5c13c",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5566](https://github.com/kontourai/station/pull/5566) fix(browser): open the conversation browser on phones"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
+    "timestampUtc": "2026-11-25T10:36:21Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261125.45595492829",
+    "sha": "7dc821617421098c34e1656b1ed3ed9a72496db4",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45595492829",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261125.45595492829 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "6e8700142864c277d12995a0ddf4d8f2afa5c13c",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#5566](https://github.com/kontourai/station/pull/5566) fix(browser): open the conversation browser on phones"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 1
+    }
+  },
+  {
     "timestampUtc": "2026-11-25T02:02:58Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261125",
