@@ -4034,7 +4034,7 @@ describe('Global Conversation Routes', () => {
     async (user, status) => {
       const conversation = {
         id: 'durable-chat',
-        agentSlug: 'current-agent',
+        agentSlug: agentId('current-agent'),
         projectSlug: 'station',
         title: 'Continue the history fix',
         createdAt: '2026-07-23T00:00:00Z',
