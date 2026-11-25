@@ -1,0 +1,43 @@
+{
+  "revision": "d0fb9e5b7b7c8fa1ff20dab1015ca526e8598ef7",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Checked the dispatcher and Task graph boundary, GitHub intake and Task workspace composition. Recurrence uses the existing dispatcher, reservation and graph read. Intake atomically retains observations, and Task Overview uses the existing graph references. The same Task room owns the collaboration path.","inputs":["docs/architecture/module-map.md","src-server/services/automation/automation-intake.ts","src-server/services/projects/task-dispatcher.ts","src-server/services/projects/task-graph-service.ts","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"Reviewed the mounted Task workspace and its new Overview test. Workflow history adds graph-backed observations to Overview; the Task tabs, document editor, work chats and collaboration authority still follow the documented paths.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/__tests__/TaskWorkspaceView.test.tsx","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/design/automations.md","note":"Traced standing Task selection, live-rule admission, atomic observation retention, provider dispatch, recovery completion and the focused red-green-red integration test. The opt-in reuses the keyed episode and dispatch limits.","inputs":["docs/design/automations.md","src-server/services/automation/automation-intake.ts"]},
+
+    {"path":"docs/design/channel-home-authority.md","note":"Checked the recurring dispatch envelope against Task room authority. It still reserves through TaskGraph and passes the same Task/Project execution binding and provider admission checks.","inputs":["docs/design/channel-home-authority.md","src-server/services/projects/task-dispatcher.ts"]},
+
+    {"path":"docs/design/task-dispatcher.md","note":"Checked private dispatch admission, worktree provisioning and terminal reservation handling. The caller operation and provider-start authority remain the same, with a server-only recurring Task witness for reopening.","inputs":["docs/design/task-dispatcher.md","src-server/services/projects/task-dispatcher.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"Checked the TaskWorkspaceView test addition. It exercises Overview's graph-backed workflow links and does not change Task room request, workspace composer, or provider flow coverage.","inputs":["docs/design/task-room-agent-requests.md","src-ui/src/__tests__/TaskWorkspaceView.test.tsx"]},
+
+    {"path":"docs/design/work-plane-composition.md","note":"Checked the new dispatch intent field against the dispatcher interface. The existing Task dispatcher remains the execution owner; reuse stays within the TaskGraph adapter.","inputs":["docs/design/work-plane-composition.md","src-server/services/projects/task-dispatcher.ts"]},
+
+    {"path":"docs/glossary.md","note":"Checked Task workspace views against the mounted additions. Workflow history is an optional section in Overview; Task status and workflow evidence stay separate.","inputs":["docs/glossary.md","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Checked automation admission, retained authority and recovery. Native recurring Task behavior uses the same bounds; isolated repair and publication use separate action handling.","inputs":["docs/guides/agent-efficiency.md","src-server/runtime/automation-actions-runtime.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Checked Overview composition and the graph-backed rendering. A Workflow history section appears only with retained observations; ordinary starter Tasks keep the documented flow.","inputs":["docs/guides/starter-work.md","src-server/services/projects/task-graph-service.ts","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"Checked Task tabs and Plan against Overview's workflow history addition. The shared document walkthrough still exercises the same Plan and editor route.","inputs":["docs/learn/walkthroughs.md","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"Checked the Task graph service changes against existing routes. Workflow observations use system-owned external graph links. Task status mutations and dispatch authorization routes keep their existing request shapes.","inputs":["docs/reference/api.md","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Checked TaskGraph dispatch and read shapes. The recurring dispatch witness is server-private, and the workflow references use the existing external graph link contract.","inputs":["docs/reference/contracts.md","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"Checked the Overview addition and Task graph changes against the two-person Plan journey. Workflow history is conditional on automation observations and uses graph links independently of collaborative document writes.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-server/services/projects/task-graph-service.ts","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/reference/sdk.md","note":"Checked graph read, ordinary Task status mutation and dispatch inputs. The workflow references use the existing graph read path; the recurring dispatch witness is server-private.","inputs":["docs/reference/sdk.md","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Checked TaskDispatcher and TaskGraph owner references. The standing Task lifecycle keeps the same dispatcher and graph ownership; the shipped documentation bundle check uses unchanged topic membership.","inputs":["docs/reference/station-docs.md","src-server/services/projects/task-dispatcher.ts","src-server/services/projects/task-graph-service.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Checked the Task workspace navigation and dispatch explanation. The optional workflow history section retains links on Overview and leaves the existing Task views and tracked-work path intact.","inputs":["docs/user/concepts.md","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/user/settings.md","note":"Checked the Task Overview capability preview mount and Task controls. Recurrence uses the existing GitHub automation Tasks preview and introduces no additional global setting.","inputs":["docs/user/settings.md","src-ui/src/views/TaskWorkspaceView.tsx"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"Checked the capture's Plan view against the change. Workflow history is in Overview and requires automation run references. The captured shared Task Plan and document history do not display this feature.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/views/TaskWorkspaceView.tsx"]}
+  ]
+}
