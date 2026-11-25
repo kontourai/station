@@ -4,7 +4,10 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/o
 import { sessionLadderWord } from '@kontourai/station-contracts/session-attention';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, expect, test } from 'vitest';
+import { groupMobileActivity } from '../components/chat-dock/mobile-activity-groups';
 import { InboxRowStatusLine } from '../components/inbox-row/InboxRowStatus';
+import { buildOrchestrationItems } from '../views/home/home-view-model';
+import { buildWorkFacts } from '../views/home/work-facts';
 import {
   partitionSessionLanes,
   sessionWorkStatus,
@@ -14,18 +17,25 @@ afterEach(cleanup);
 const now = Date.parse('2026-11-01T00:00:00Z');
 
 test.each([
-  ['stopping', 'local', 'Stopping'],
-  ['waiting-on-peer', 'peer', 'Waiting on another Station process'],
-  ['unknown', 'unknown', 'Unknown'],
+  ['stopping', 'local', 'Stopping', false, 'running'],
+  [
+    'waiting-on-peer',
+    'peer',
+    'Waiting on another Station process',
+    false,
+    'running',
+  ],
+  ['unknown', 'unknown', 'Unknown', false, 'idle'],
+  ['unknown', 'unknown', 'Unknown', true, 'running'],
 ] as const)(
-  'owned cleanup renders %s after the parent stops',
-  (state, custody, word) => {
+  'owned cleanup %s (%s) with label %s and active turn %s appears under %s',
+  (state, custody, word, hasActiveTurn, laneId) => {
     const summary: OrchestrationSessionSummary = {
       threadId: 'parent',
       provider: 'claude',
-      status: 'closed',
+      status: hasActiveTurn ? 'running' : 'closed',
       lifecycleState: 'running',
-      hasActiveTurn: false,
+      hasActiveTurn,
       controlMode: 'station-owned',
       answerability: { answerable: true },
       isLoaded: false,
@@ -58,6 +68,16 @@ test.each([
       partitionSessionLanes({ sessions: [summary], agents: [], now }).find(
         (lane) => lane.sessions.includes(summary),
       )?.id,
-    ).toBe('running');
+    ).toBe(laneId);
+    const items = buildOrchestrationItems([summary], []);
+    const facts = buildWorkFacts({ items, sessions: [summary] });
+    const inboxLane = (resolution: ReadonlySet<string>) =>
+      groupMobileActivity(items, now, {}, facts, resolution).find((group) =>
+        group.items.some(({ id }) => id === summary.threadId),
+      )?.id;
+    expect(inboxLane(new Set())).toBe(laneId === 'idle' ? 'open' : 'running');
+    expect(inboxLane(new Set([summary.threadId]))).toBe(
+      laneId === 'idle' ? 'settled' : 'running',
+    );
   },
 );

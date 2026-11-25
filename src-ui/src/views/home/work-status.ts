@@ -24,10 +24,11 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *   files an awaiting session ahead of an active one even while its turn is
  *   still open, and a chat's pending approval is read before its running
  *   state. This function does not re-decide it.
- * - THE FACTS (`WorkFacts`, derived beside the item) only choose the words
- *   inside that family: which thing is owed, which tool is running. They
+ * - THE FACTS (`WorkFacts`, derived beside the item) refine the status:
+ *   which thing is owed, which tool is running, and which cleanup is in flight. They
  *   also identify a resumable delegation whose completed result has been read.
- *   Its Done status stays intact when it returns to open work.
+ *   Its Done status stays intact when it returns to open work. Unknown
+ *   cleanup stays visible in the idle lane when nothing is in flight.
  *
  * Rungs, in the order a reader should expect them down an inbox:
  *
@@ -38,7 +39,7 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *  N sub-agents, owned cleanup, no progress, running, scheduled (Running)
  *  draft                                         (Drafts)
  *  done                       (finished, or idle after a resumable result is read)
- *  idle                                          (Idle)
+ *  idle, unknown cleanup alone                  (Idle)
  *
  * THE ONLY SOURCE OF STATUS WORDS. Every list, card, sheet, pane, banner and
  * strip that names a conversation's state renders `word` (or `line`) from
@@ -215,7 +216,12 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
       if (ownedState && ownedState !== 'running')
         return {
           rung: 'childWork',
-          lane: 'running',
+          lane:
+            ownedState === 'unknown' &&
+            !facts?.ownedWorkInFlight &&
+            !facts?.activity
+              ? 'idle'
+              : 'running',
           tone: ownedState === 'unknown' ? 'caution' : 'active',
           word: OWNED_WORK_STATUS_WORDS[ownedState],
           detail:

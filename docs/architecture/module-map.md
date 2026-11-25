@@ -2669,8 +2669,9 @@ Turn coordination continues to describe the parent's own turn.
 `unknown`. The shared status ladder carries custody through its existing fact
 record and shows **Stopping**, **Waiting on another Station process**, or
 **Unknown** in Session lists, detail headers, project work and Inbox status
-lines. A closed parent with pending cleanup stays in the busy lane; the own
-lifecycle remains separate. Approval and failure retain their existing priority.
+lines. Unknown cleanup alone goes in the idle lane. Live turns, child work and
+cleanup with known custody stay in the busy lane. Approval and failure retain
+their existing priority.
 Unknown custody also names its reason in plain words. Session detail offers
 **Release and remove**, with explicit confirmation that child processes may
 still be running and will no longer be tracked by this Session. The command

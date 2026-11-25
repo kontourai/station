@@ -105,6 +105,7 @@ export interface WorkFacts {
   ownedWorkState?: NonNullable<
     OrchestrationSessionSummary['ownedWork']
   >['state'];
+  ownedWorkInFlight?: boolean;
   ownedStopReasons?: readonly string[];
   /**
    * The conversation's open or latest turn is one the engine opened on its
@@ -375,6 +376,12 @@ export function buildWorkFacts({
     if (item.lifecycleLabel === 'Running') {
       if (session?.ownedWork) {
         entry.ownedWorkState = session.ownedWork.state;
+        entry.ownedWorkInFlight =
+          session.hasActiveTurn === true ||
+          session.ownedWork.runningChildCount > 0 ||
+          session.ownedWork.pendingStops.some(
+            ({ custody }) => custody !== 'unknown',
+          );
         entry.ownedStopReasons = ownedWorkUnknownReasons(session.ownedWork);
       }
       const activity =
