@@ -105,12 +105,11 @@ describe('useChatDockVerticalDrag mobile bar', () => {
     expect(onSnap).not.toHaveBeenCalled();
   });
 
-  // archive#795: the original input released at clientY 260 — a 584px body,
-  // which is *exactly* the Half/Full midpoint. Keeping that input and
-  // asserting the corrected outcome is the honest regression guard, so it has
-  // its own test below; this one keeps the same gesture but releases somewhere
-  // unambiguous, because its actual subject is that non-interactive bar space
-  // starts a drag at all.
+  // archive#795: the original input released at clientY 260 — a 584px body.
+  // Keeping that input and asserting where it lands now is the honest
+  // regression guard, so it has its own test below; this one keeps the same
+  // gesture but releases somewhere unambiguously Full, because its actual
+  // subject is that non-interactive bar space starts a drag at all.
   test('non-interactive bar space drags upward to full', () => {
     const onSnap = vi.fn<(snap: DockSnap) => void>();
     render(<MobileDockBar onSnap={onSnap} />);
@@ -125,16 +124,17 @@ describe('useChatDockVerticalDrag mobile bar', () => {
       pointerId: 1,
       clientY: 400,
     });
-    fireEvent.pointerMove(window, { pointerId: 1, clientY: 150 });
-    fireEvent.pointerUp(window, { pointerId: 1, clientY: 150 });
+    fireEvent.pointerMove(window, { pointerId: 1, clientY: 80 });
+    fireEvent.pointerUp(window, { pointerId: 1, clientY: 80 });
 
     expect(onSnap).toHaveBeenCalledWith('full');
   });
 
-  // archive#795: the exact-midpoint release the original assertion used. A tie
-  // in `nearestDockSnap` favours the smaller state, so this is Half — the
-  // behaviour that replaced "any upward drag means Full".
-  test('a release exactly on the Half/Full midpoint resolves to Half, not Full', () => {
+  // archive#795: the exact-midpoint release the original assertion used, on
+  // the 390x844 phone it was reported from (Half 380, Tall 633, Full 844). A
+  // 584px body is 49px below Tall and 204px above Half, so it lands on Tall:
+  // where the finger is, not Full.
+  test('the archive#795 release lands on the nearest level, not Full', () => {
     const onSnap = vi.fn<(snap: DockSnap) => void>();
     render(<MobileDockBar onSnap={onSnap} />);
     const bar = screen.getByTestId('bar');
@@ -151,7 +151,77 @@ describe('useChatDockVerticalDrag mobile bar', () => {
     fireEvent.pointerMove(window, { pointerId: 1, clientY: 260 });
     fireEvent.pointerUp(window, { pointerId: 1, clientY: 260 });
 
-    expect(onSnap).toHaveBeenCalledWith('half');
+    expect(onSnap).toHaveBeenCalledWith('tall');
+  });
+
+  // A tie in `nearestSnap` favours the earlier candidate, and the dock lists
+  // its levels smallest first. 840 puts both midpoints on whole pixels
+  // (Half 378, Tall 630, Full 840).
+  test('a release exactly on a midpoint resolves to the smaller level', () => {
+    Object.defineProperty(window, 'visualViewport', {
+      configurable: true,
+      value: { height: 840 },
+    });
+    const onSnap = vi.fn<(snap: DockSnap) => void>();
+    render(<MobileDockBar onSnap={onSnap} />);
+    const bar = screen.getByTestId('bar');
+    Object.assign(bar, {
+      setPointerCapture: vi.fn(),
+      hasPointerCapture: vi.fn(() => true),
+      releasePointerCapture: vi.fn(),
+    });
+
+    const releaseAt = (clientY: number) => {
+      fireEvent.pointerDown(screen.getByTestId('drag-space'), {
+        pointerId: 1,
+        clientY: 400,
+      });
+      fireEvent.pointerMove(window, { pointerId: 1, clientY });
+      fireEvent.pointerUp(window, { pointerId: 1, clientY });
+    };
+
+    releaseAt(336); // Half/Tall midpoint (504)
+    expect(onSnap).toHaveBeenLastCalledWith('half');
+    releaseAt(105); // Tall/Full midpoint (735)
+    expect(onSnap).toHaveBeenLastCalledWith('tall');
+  });
+
+  // A fling is a statement of intent, so it steps down from where the gesture
+  // BEGAN, not from where the finger released. Reading the start from the
+  // release instead would answer Half here.
+  test('a moderate downward fling from Full steps down to Tall even when released near Half', () => {
+    const onSnap = vi.fn<(snap: DockSnap) => void>();
+    render(<MobileDockBar onSnap={onSnap} />);
+    withPointerCapture(screen.getByTestId('bar'));
+
+    // Real clocks make two synthetic events land in the same millisecond, so
+    // each carries the timestamp the gesture's velocity is read from.
+    const send = (
+      type: string,
+      target: EventTarget,
+      clientY: number,
+      timeStamp: number,
+    ) => {
+      const event = new MouseEvent(type, {
+        bubbles: true,
+        cancelable: true,
+        button: 0,
+        clientY,
+      });
+      Object.defineProperties(event, {
+        pointerId: { value: 1 },
+        timeStamp: { value: timeStamp },
+      });
+      target.dispatchEvent(event);
+    };
+
+    // A Full dock: its bar is at the top of the 844px viewport.
+    send('pointerdown', screen.getByTestId('drag-space'), 100, 1000);
+    send('pointermove', window, 460, 1040);
+    // 5px in 10ms (0.5 px/ms): a fling, and under the collapse flick.
+    send('pointerup', window, 465, 1050);
+
+    expect(onSnap).toHaveBeenCalledWith('tall');
   });
 
   // archive#751: the gesture that opens the dock must also be able to put it away —

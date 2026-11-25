@@ -4333,13 +4333,14 @@ test('drags the mobile dock bar between half and full without stealing taps', as
     Math.round(beforeTap?.height ?? 0),
   );
 
-  const collapseControl = page.getByRole('button', {
-    name: 'Collapse chat',
-    exact: true,
-  });
-  await expect(collapseControl).toBeVisible();
-  await expectSettledTouchTargetHeight(collapseControl);
-  await collapseControl.click();
+  // With a conversation open the header's leading slot is Chat list, so the
+  // dock is put away by its gesture: a slow drag down the header, past the
+  // midpoint between the bar and Half. The header is the touch target.
+  await expectSettledTouchTargetHeight(header);
+  await page.mouse.move(headerBox.x + 4, headerBox.y + 30);
+  await page.mouse.down();
+  await page.mouse.move(headerBox.x + 4, headerBox.y + 330, { steps: 4 });
+  await page.mouse.up();
   await expect(dock).toHaveClass(/is-collapsed/);
   await expectVisibleGeometry(false);
 
@@ -4444,12 +4445,12 @@ test('preserves desktop dock geometry', async ({ page }) => {
   expect(maximizedDock?.x).toBe(sidebar.x + sidebar.width);
   expect(maximizedDock?.width).toBe(inlineDockWidth);
   await chooseChatRegionRow(page, 'Restore size');
-  // Restore now returns to the named Half snap, whose 45% viewport contract
-  // resolves to 360px at this 800px desktop viewport (rather than reviving
-  // the older fixed 320px default).
+  // Restore returns the dock to where it was before it was maximized (owner
+  // decision, 2026-11-25): the height it was opened or dragged at, here 320px,
+  // rather than the Half snap's 45% (360px at this 800px viewport).
   await expect
     .poll(async () => (await page.locator('.chat-dock').boundingBox())?.height)
-    .toBe(360);
+    .toBe(320);
   const resizeHandle = page.getByRole('separator', {
     name: 'Resize chat dock',
   });
@@ -4462,6 +4463,19 @@ test('preserves desktop dock geometry', async ({ page }) => {
   await page.mouse.down();
   await page.mouse.move(handleBox.x + handleBox.width / 2, 365, { steps: 4 });
   await page.mouse.up();
+  await expect
+    .poll(async () =>
+      Math.round((await page.locator('.chat-dock').boundingBox())?.height ?? 0),
+    )
+    .toBe(435);
+  // Maximized again from that dragged height, Restore brings the height back.
+  await chooseChatRegionRow(page, 'Maximize');
+  await expect
+    .poll(async () =>
+      Math.round((await page.locator('.chat-dock').boundingBox())?.height ?? 0),
+    )
+    .toBeGreaterThan(600);
+  await chooseChatRegionRow(page, 'Restore size');
   await expect
     .poll(async () =>
       Math.round((await page.locator('.chat-dock').boundingBox())?.height ?? 0),

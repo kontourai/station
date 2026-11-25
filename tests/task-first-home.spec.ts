@@ -2057,7 +2057,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       { width: 375, height: 667 },
       { width: 412, height: 915 },
     ]) {
-      test(`phone chat opens full and restores its snap after rotation at ${portrait.width}px`, async ({
+      test(`phone chat opens full, restores to where it was, and keeps its snap after rotation at ${portrait.width}px`, async ({
         page,
       }, testInfo) => {
         await page.setViewportSize(portrait);
@@ -2143,8 +2143,25 @@ test.describe('Task-first Home (#332, mocked)', () => {
           exact: true,
         });
         await composer.fill(draft);
+
+        // Restore returns the chat to where it was before it went full screen
+        // (owner decision, 2026-11-25). This chat opened full from Home, so it
+        // goes back to its bar over Home; it used to shrink to Half instead.
+        const snap = () =>
+          page.evaluate(() => localStorage.getItem('station.chatDock.snap'));
+        const dockHeight = async () =>
+          Math.round((await dock.boundingBox())?.height ?? 0);
         await restore.click();
         await expect(dock).not.toHaveClass(/is-maximized/);
+        await expect(dock).toHaveClass(/is-collapsed/);
+        await expect.poll(snap).toBe('collapsed');
+        await expect(
+          page.getByRole('region', { name: 'Home', exact: true }),
+        ).toBeInViewport();
+
+        // Opened from the bar, the chat rests on Half with its draft intact.
+        await dock.getByRole('button', { name: /^Open chat:/ }).click();
+        await expect(composer).toHaveValue(draft);
 
         const geometry = [];
         for (const viewport of [
@@ -2161,7 +2178,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
               ? viewport.height
               : Math.round(viewport.height * 0.45);
           await expect
-            .poll(() =>
+            .poll(async () =>
               page.evaluate(() =>
                 localStorage.getItem('station.chatDock.snap'),
               ),
@@ -2189,10 +2206,43 @@ test.describe('Task-first Home (#332, mocked)', () => {
           });
         }
 
+        // Tall is the level between Half and Full: most of the screen for the
+        // conversation, with the page behind still in view. A slow drag up
+        // from Half lands on it, and Restore then returns to it.
+        const tallHeight = Math.round(portrait.height * 0.75);
+        const halfTranscript =
+          geometry[geometry.length - 1]?.transcriptHeight ?? 0;
+        const headerBox = await dock
+          .getByTestId('chat-dock-mobile-header')
+          .boundingBox();
+        if (!headerBox) throw new Error('Mobile dock header is not measurable');
+        await page.mouse.move(headerBox.x + 4, headerBox.y + 30);
+        await page.mouse.down();
+        await page.mouse.move(
+          headerBox.x + 4,
+          portrait.height - tallHeight + 30,
+          { steps: 4 },
+        );
+        await page.mouse.up();
+        await expect.poll(snap).toBe('tall');
+        await expect.poll(dockHeight).toBe(tallHeight);
+        const tallTranscript = (await transcript.boundingBox())?.height ?? 0;
+        expect(tallTranscript).toBeGreaterThan(halfTranscript);
+        expect((await dock.boundingBox())?.y ?? 0).toBeGreaterThanOrEqual(100);
+
         await dock.getByRole('button', { name: 'Full screen chat' }).click();
         await expect(dock).toHaveClass(/is-maximized/);
         await expect(composer).toHaveValue(draft);
-        await dock.getByRole('button', { name: 'Toggle menu' }).click();
+        await restore.click();
+        await expect(dock).not.toHaveClass(/is-maximized/);
+        await expect.poll(snap).toBe('tall');
+        await expect.poll(dockHeight).toBe(tallHeight);
+
+        await dock.getByRole('button', { name: 'Full screen chat' }).click();
+        await expect(dock).toHaveClass(/is-maximized/);
+        await expect(composer).toHaveValue(draft);
+        // The drawer toggle is the app toolbar's; the dock header carries none.
+        await page.getByRole('button', { name: 'Toggle menu' }).click();
         await page
           .getByRole('navigation', { name: 'Mobile navigation' })
           .getByRole('button', { name: 'Home', exact: true })
