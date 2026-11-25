@@ -298,10 +298,10 @@ test('a hidden inbox’s toggle says how many need you, and a snooze takes the r
     );
     const toggle = await screen.findByRole(
       'button',
-      { name: 'Show chat list, 1 needs you' },
+      { name: 'Show chats, 1 needs you' },
       { timeout: 15_000 },
     );
-    expect(toggle.getAttribute('title')).toBe('Show chat list, 1 needs you');
+    expect(toggle.getAttribute('title')).toBe('Show chats, 1 needs you');
 
     // The panel's snooze writes this store; the toggle reads the same live
     // groups, so the count drops without waiting for the item list to move.
@@ -309,11 +309,9 @@ test('a hidden inbox’s toggle says how many need you, and a snooze takes the r
       writeSnooze('conv-owed', Date.now() + 60 * 60_000, Date.now());
     });
     expect(
-      await screen.findByRole('button', { name: 'Show chat list' }),
+      await screen.findByRole('button', { name: 'Show chats' }),
     ).toBeTruthy();
-    expect(
-      screen.queryByRole('button', { name: /^Show chat list, / }),
-    ).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Show chats, / })).toBeNull();
   } finally {
     clearSnooze('conv-owed', Date.now());
     deviceSettingsStore.reset('inboxOpen');
@@ -366,7 +364,7 @@ test('the toggle’s working count is the inbox’s Running rows', async () => {
     );
     const toggle = await screen.findByRole(
       'button',
-      { name: 'Show chat list, 2 working' },
+      { name: 'Show chats, 2 working' },
       { timeout: 15_000 },
     );
     expect(toggle.querySelector('.chat-dock__inbox-working')?.textContent).toBe(

@@ -172,7 +172,7 @@ export function InboxScopeFilter({
         <span className={inline ? 'sr-only' : undefined}>Show work</span>
         <select
           className="choice-trigger"
-          aria-label="Chat list scope"
+          aria-label="Scope for Chats"
           value={scope.value}
           onChange={(event) => scope.onChange(event.target.value)}
         >

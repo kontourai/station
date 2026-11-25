@@ -322,7 +322,7 @@ describe('ChatWorkspacePane engine-switch gate', () => {
 
     // Opened from the bar (to Half), then full screen: Restore comes back to
     // the open dock.
-    fireEvent.click(screen.getByRole('button', { name: 'Chat list' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Chats' }));
     expect(await screen.findByTestId('content-area')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Full screen chat' }));
     fireEvent.click(

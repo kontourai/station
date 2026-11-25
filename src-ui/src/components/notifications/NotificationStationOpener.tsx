@@ -3,6 +3,7 @@ import { Spinner } from '@kontourai/ui/react';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
+import { toastStore } from '../../contexts/ToastContext';
 import { openConnectionsModal } from '../../lib/connectionModalEvents';
 import {
   getNotificationOpenNotice,
@@ -148,13 +149,22 @@ export function NotificationStationOpener() {
     getNotificationOpenNotice,
     () => null,
   );
-  return notice ? <NotificationOpenNoticeView notice={notice} /> : null;
+  useEffect(() => {
+    if (notice?.kind !== 'not-found' || getNotificationOpenNotice() !== notice)
+      return;
+    setNotificationOpenNotice(null);
+    toastStore.show('Conversation not found');
+  }, [notice]);
+
+  return notice && notice.kind !== 'not-found' ? (
+    <NotificationOpenNoticeView notice={notice} />
+  ) : null;
 }
 
-export function NotificationOpenNoticeView({
+function NotificationOpenNoticeView({
   notice,
 }: {
-  notice: NotificationOpenNotice;
+  notice: Exclude<NotificationOpenNotice, { kind: 'not-found' }>;
 }) {
   const dismiss = () => setNotificationOpenNotice(null);
   const manage = () => {
@@ -199,26 +209,16 @@ export function NotificationOpenNoticeView({
                 <Button variant="primary" size="sm" onClick={retry}>
                   Retry
                 </Button>
-              ) : copy.manage ? (
+              ) : (
                 <Button variant="primary" size="sm" onClick={manage}>
                   Manage Stations
-                </Button>
-              ) : (
-                <Button variant="primary" size="sm" onClick={dismiss}>
-                  OK
                 </Button>
               )
             }
             secondary={
-              retry && copy.manage ? (
-                <Button size="sm" onClick={manage}>
-                  Manage Stations
-                </Button>
-              ) : retry || copy.manage ? (
-                <Button size="sm" onClick={dismiss}>
-                  Dismiss
-                </Button>
-              ) : undefined
+              <Button size="sm" onClick={retry ? manage : dismiss}>
+                {retry ? 'Manage Stations' : 'Dismiss'}
+              </Button>
             }
           />
         }
@@ -228,46 +228,35 @@ export function NotificationOpenNoticeView({
 }
 
 function noticeCopy(
-  notice: Exclude<NotificationOpenNotice, { kind: 'switching' }>,
-): { title: string; description: string; manage: boolean } {
+  notice: Exclude<NotificationOpenNotice, { kind: 'switching' | 'not-found' }>,
+): { title: string; description: string } {
   switch (notice.kind) {
     case 'not-saved':
       return {
         title: 'Station not on this device',
         description:
           "The notification came from a Station that isn't saved here.",
-        manage: true,
       };
     case 'unconfirmed':
       return {
         title: "Couldn't confirm the Station",
         description:
           "This Station's identity isn't known yet, so the conversation was not opened.",
-        manage: true,
       };
     case 'switch-failed':
       return {
         title: `Couldn't switch to ${notice.stationName}`,
         description: 'The conversation was not opened.',
-        manage: true,
-      };
-    case 'not-found':
-      return {
-        title: 'Conversation not found',
-        description: 'It may have been deleted, or it is on another Station.',
-        manage: false,
       };
     case 'forbidden':
       return {
         title: 'No access to this conversation',
         description: 'This device is not allowed to read it.',
-        manage: true,
       };
     case 'unreachable':
       return {
         title: "Couldn't open the conversation",
         description: 'The Station did not answer.',
-        manage: true,
       };
   }
 }

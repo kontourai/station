@@ -207,7 +207,7 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
       );
     const status = inbox.locator('.list-refresh__status');
     const pill = status.locator('.list-refresh__pill');
-    const menu = inbox.getByRole('button', { name: 'Chat list actions' });
+    const menu = inbox.getByRole('button', { name: 'Chats actions' });
     const target = await menu.boundingBox();
     expect(target?.height).toBeGreaterThanOrEqual(44);
     expect(target?.width).toBeGreaterThanOrEqual(44);
@@ -307,7 +307,7 @@ test('Inbox pulls and its menu join one refresh while keeping rows usable', asyn
     await expectBrowser(pill).toHaveText('Updated');
     await expectBrowser(row).toBeVisible();
 
-    await inbox.getByRole('button', { name: 'Chat list actions' }).click();
+    await inbox.getByRole('button', { name: 'Chats actions' }).click();
     await page.getByRole('menuitem', { name: 'Refresh chats' }).click();
     await expectBrowser(pill).toHaveText('Refreshing chats…');
     await page.evaluate(() => Reflect.get(window, 'finishInboxRefresh')(false));

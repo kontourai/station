@@ -1327,15 +1327,16 @@ and the right conversation.
   still switching away re-selects the active Station, so the last tap wins.
   A Station not saved on this device, or a failed or overtaken switch,
   shows a notice with Manage Stations (and Retry for a failed switch)
-  instead of dropping the tap. On a phone-width screen the notice sits just
-  above the collapsed dock rather than over the top of the page.
+  instead of dropping the tap. The notice sits below the toolbar at every dock height.
 - **Cold loads.** A tab loaded on a link that names a Station has `chat`,
   `dock`, `openedNotification` and `station` taken off the URL before the
   first render, and the request waits for the opener: the dock never looks
   the conversation up on whichever Station happened to be active, and the
   read marker is sent to the right one. A request that waited is dropped
   when the person navigated (or went Back) before the opener mounted
-  (`installNavigationPosition`, the navigation store's history index).
+  (`installNavigationPosition`, the navigation store's history index). A cold
+  chat link with `openedNotification` also uses this opener on older Stations
+  whose links omit the Station id.
 - **No reload where the app runs.** The service worker posts
   `station-notification-open` with the link's on-origin URL to the focused
   tab and waits up to 1.5 seconds for its acknowledgement
@@ -1349,9 +1350,10 @@ and the right conversation.
   conversation on <Station>" after a switch) over the conversation it showed
   before, which stays mounted hidden and inert; the header names the open,
   and the inbox selection and This Chat card stand down until it lands.
-  When a notification asked for the conversation, a miss is said rather
-  than only cleared: not found (also what an unreadable session answers),
-  no access (403, at once: a refusal is the Station's answer), or the
+  A link can name an execution Session. The Station checks access to that
+  Session and resolves its conversation using the current execution. A missing
+  conversation from a notification open shows a transient toast below the
+  toolbar. Other notification lookup failures keep their notice: no access (403, at once: a refusal is the Station's answer), or the
   Station did not answer, with Retry. That Retry belongs to the Station that
   did not answer: once another Station is active the notice is retired and
   its Retry does nothing. A `?chat=` that no notification opened (a reload

@@ -2243,7 +2243,7 @@ test('switches between mobile tasks and restores the exact active chat context',
     },
   );
   await switcher.click();
-  await page.getByRole('button', { name: 'Chat list actions' }).click();
+  await page.getByRole('button', { name: 'Chats actions' }).click();
   await page
     .getByRole('menuitem', { name: 'Back to chat', exact: true })
     .click();
@@ -2309,7 +2309,7 @@ test('switches between mobile tasks and restores the exact active chat context',
       .getByRole('button', { name: /^Station Chat.*Default/i })
       .filter({ hasText: 'Waiting on you' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Chat list actions' }).click();
+  await page.getByRole('button', { name: 'Chats actions' }).click();
   await page
     .getByRole('menuitem', { name: 'Back to chat', exact: true })
     .click();
@@ -2361,7 +2361,7 @@ test('switches between mobile tasks and restores the exact active chat context',
   expect((compactBox?.x ?? 0) + (compactBox?.width ?? 0)).toBeLessThanOrEqual(
     320,
   );
-  const actions = page.getByRole('button', { name: 'Chat list actions' });
+  const actions = page.getByRole('button', { name: 'Chats actions' });
   await actions.focus();
   await page.keyboard.press('Enter');
   const compactClose = page.getByRole('menuitem', {
@@ -3470,7 +3470,7 @@ test('the maximized phone dock header clears the status bar once, not twice', as
     .boundingBox())!;
   expect(identity.width).toBeGreaterThanOrEqual(180);
   const back = (await header
-    .getByRole('button', { name: 'Chat list', exact: true })
+    .getByRole('button', { name: 'Chats', exact: true })
     .boundingBox())!;
   expect(back.width).toBeGreaterThanOrEqual(44);
   expect(back.x + back.width).toBeLessThanOrEqual(identity.x + 1);
@@ -3798,7 +3798,7 @@ for (const viewport of [
     // header's overflow sheet, where each is a real menuitem.
     const mobileActions = page.getByRole('menu', { name: 'Chat actions' });
     await expect(mobileActions).toBeVisible();
-    for (const name of ['New chat', 'Chat list', 'Agent & model']) {
+    for (const name of ['New chat', 'Chats', 'Agent & model']) {
       await expect(mobileActions.getByRole('menuitem', { name })).toBeVisible();
     }
     const mobileActionsBox = await mobileActions.boundingBox();
@@ -4333,7 +4333,7 @@ test('drags the mobile dock bar between half and full without stealing taps', as
     Math.round(beforeTap?.height ?? 0),
   );
 
-  // With a conversation open the header's leading slot is Chat list, so the
+  // With a conversation open the header's leading slot is Chats, so the
   // dock is put away by its gesture: a slow drag down the header, past the
   // midpoint between the bar and Half. The header is the touch target.
   await expectSettledTouchTargetHeight(header);
@@ -4983,7 +4983,7 @@ test('a full-height task switcher keeps its dismiss header visible and tappable 
     )
     .toBeGreaterThan(15);
 
-  await page.getByRole('button', { name: 'Chat list actions' }).click();
+  await page.getByRole('button', { name: 'Chats actions' }).click();
   const close = page.getByRole('menuitem', {
     name: 'Back to chat',
     exact: true,
@@ -5311,14 +5311,14 @@ test('the mobile Inbox lists chats beyond the first rows', async ({ page }) => {
     exact: true,
   });
   const menu = page.getByRole('menu', { name: 'Chat actions' });
-  await page.getByRole('button', { name: 'Chat list', exact: true }).click();
+  await page.getByRole('button', { name: 'Chats', exact: true }).click();
   const sheet = page.getByRole('region', { name: 'Chats', exact: true });
   await expect(sheet).toBeVisible();
   await expect(navigation).not.toBeVisible();
   await expect(
     sheet.getByText('Overflow conversation 0', { exact: true }),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Chat list actions' }).click();
+  await page.getByRole('button', { name: 'Chats actions' }).click();
   await page
     .getByRole('menuitem', { name: 'Back to chat', exact: true })
     .click();
@@ -5345,7 +5345,7 @@ for (const width of [320, 431]) {
     const input = await openComposer(page);
     const header = page.getByTestId('chat-dock-mobile-header');
     const back = (await header
-      .getByRole('button', { name: 'Chat list', exact: true })
+      .getByRole('button', { name: 'Chats', exact: true })
       .boundingBox())!;
     const actions = (await header
       .locator('.chat-dock__mobile-actions')

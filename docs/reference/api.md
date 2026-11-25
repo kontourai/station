@@ -6913,7 +6913,9 @@ external-engine approval.
 
 `GET /api/conversations/:id` returns `{success: true, data}` or 404 when not found.
 The [lookup handler](../../src-server/routes/chat/conversations.ts) first resolves runtime-owned conversations under the request authority, returning
-404 when that read is denied. Other personal conversations use Project storage,
+404 when that read is denied. A successor Session ID must also pass the exact
+Session read check before returning its conversation and current execution
+metadata. Other personal conversations use Project storage,
 then file-memory adapters, then the authorized orchestration reader. Hosted
 mode skips the two personal storage branches. File-memory Agent
 attribution comes from the stored resource ID, with the adapter key as fallback;

@@ -112,7 +112,7 @@ export function MobileInboxTools({
         </>
       )}
       <ActionOverflowMenu
-        label="Chat list actions"
+        label="Chats actions"
         triggerClassName="app-toolbar__icon-btn mobile-inbox__more"
         actions={[
           { key: 'search', label: 'Search chats', onSelect: onSearch },
