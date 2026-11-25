@@ -569,6 +569,77 @@ test('a normalized intent reaches a real Task, Session and first provider turn o
   expect(w.adapter.sends).toHaveLength(1);
 });
 
+test('a recurring rule reopens its original Task and retains workflow evidence across episodes', async () => {
+  const w = await world();
+  const first = await running(w);
+  const taskId = first.taskId!;
+  await editRule(w, (rule) => ({
+    episode: {
+      ...rule.episode!,
+      recurringTaskId: taskId,
+      completeOnRecovery: true,
+    },
+  }));
+  w.adapter.events.push({
+    method: 'turn.completed',
+    eventId: 'recurring-first-turn-done',
+    provider: w.adapter.provider,
+    threadId: first.sessionId!,
+    turnId: first.turnId!,
+    createdAt: new Date().toISOString(),
+    finishReason: 'stop',
+    invocationId: w.adapter.sends[0]?.invocationId,
+  } as CanonicalRuntimeEvent);
+  await vi.waitFor(() =>
+    expect(
+      w.eventStore.latestEventByMethods(first.sessionId!, ['turn.completed']),
+    ).toBeTruthy(),
+  );
+  await w.runtime.tick();
+  expect(w.ledger.readIntent(first.intentId)?.state).toBe('completed');
+  const green = normalizeGitHubWorkflowRun(
+    workflowRun({
+      id: 37423043599,
+      conclusion: 'success',
+      updatedAt: new Date(Date.now() - 500).toISOString(),
+    }),
+    { source: w.store.read().sources[0]!, receivedAt: Date.now() },
+  );
+  if (green.kind !== 'event') throw new Error(green.reason);
+  expect(w.intake(green.event).closedEpisodeIds).toEqual([first.episodeId]);
+  w.rebootController();
+  await w.runtime.tick();
+  expect(w.graph.readTaskView(taskId)?.status).toBe('done');
+  const second = laterFailure(w);
+  w.intake(second);
+  w.rebootController();
+  await w.runtime.tick();
+  await vi.waitFor(() => expect(w.adapter.sends).toHaveLength(2));
+  expect(w.graph.listTasks()).toEqual([
+    expect.objectContaining({ id: taskId, status: 'in_progress' }),
+  ]);
+  expect(w.graph.listTaskDispatchSessions(taskId)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ sessionId: first.sessionId }),
+      expect.objectContaining({
+        sessionId: w.ledger.intentForTask(taskId)?.sessionId,
+      }),
+    ]),
+  );
+  expect((await w.graph.readTaskGraph(taskId))?.links).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        targetId: green.event.fields['run.html_url'],
+        metadata: { label: 'Recovered', automationRun: true },
+      }),
+      expect.objectContaining({
+        targetId: second.fields['run.html_url'],
+        metadata: { label: 'Workflow failed', automationRun: true },
+      }),
+    ]),
+  );
+});
+
 test('revoking the source before dispatch refuses the retained intent without creating a Task or provider turn', async () => {
   const w = await world();
   await w.previews.setEnabled('github-automation-actions', true);

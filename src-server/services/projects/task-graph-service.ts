@@ -3272,6 +3272,99 @@ export class TaskGraphService {
     return persisted;
   }
 
+  async recordAutomationTaskRun(input: {
+    taskId: string;
+    createdAt: string;
+    url: string;
+    label: string;
+    priorTasks: { taskId: string; createdAt: string }[];
+    authorize: () => boolean;
+    complete?: { sessionId: string; authorize: () => boolean };
+  }): Promise<void> {
+    const completed = await this.mutateStore((data) => {
+      const task = data.tasks.find((item) => item.id === input.taskId);
+      if (
+        task?.createdAt !== input.createdAt ||
+        task.createdBy !== 'automation-rule' ||
+        !input.authorize()
+      )
+        return { data, result: false };
+      const reference = {
+        ...taskReferenceToRelationGraphLinkInput(task.id, {
+          kind: 'external',
+          targetId: input.url,
+          metadata: { label: input.label, automationRun: true },
+        }),
+        source: 'system' as const,
+      };
+      const prior = new Map(
+        input.priorTasks.map(({ taskId, createdAt }) => [taskId, createdAt]),
+      );
+      const references = [
+        reference,
+        ...data.tasks.flatMap((previous) =>
+          previous.projectId === task.projectId &&
+          previous.createdBy === 'automation-rule' &&
+          previous.createdAt === prior.get(previous.id)
+            ? [
+                {
+                  ...taskReferenceToRelationGraphLinkInput(task.id, {
+                    kind: 'external',
+                    targetId: `/tasks/${encodeURIComponent(previous.id)}`,
+                    metadata: {
+                      automationPriorTask: true,
+                      label: previous.title,
+                    },
+                  }),
+                  source: 'system' as const,
+                },
+              ]
+            : [],
+        ),
+      ];
+      const existing = new Set(data.links.map(linkIdentity));
+      const added = references.filter(
+        (link) => !existing.has(linkIdentity(link)),
+      );
+      const completed =
+        input.complete?.sessionId === task.sessionId &&
+        (task.status === 'in_progress' || task.status === 'review') &&
+        !task.dispatchReservation &&
+        keepsOf(data, task).length === 0 &&
+        input.complete?.authorize() === true;
+      if (added.length === 0 && !completed) return { data, result: false };
+      const now = new Date().toISOString();
+      return {
+        data: {
+          ...data,
+          ...(completed
+            ? {
+                tasks: data.tasks.map((item) =>
+                  item === task
+                    ? { ...item, status: 'done' as const, updatedAt: now }
+                    : item,
+                ),
+              }
+            : {}),
+          links: [
+            ...data.links,
+            ...added.map((link) => ({
+              ...link,
+              id: crypto.randomUUID(),
+              confidence: 1,
+              createdAt: now,
+            })),
+          ],
+        },
+        result: completed,
+      };
+    });
+    if (completed) {
+      await this.releaseClaimForTask(input.taskId, 'task status -> done');
+      void this.finalizeTaskWorktree(input.taskId);
+    }
+  }
+
   async createTaskReference(
     taskId: string,
     input: TaskReferenceInput,
@@ -4331,7 +4424,11 @@ export class TaskGraphService {
         if (agentStart.workspaceIsolation?.mode === 'worktree') {
           let worktree: WorktreeSessionMetadata;
           try {
-            worktree = await this.provisionTaskWorktree(task.id, agentStart);
+            worktree = await this.provisionTaskWorktree(
+              task.id,
+              agentStart,
+              input.recurringAutomationTaskCreatedAt,
+            );
           } catch (error) {
             return {
               kind: 'refused' as const,
@@ -4586,7 +4683,7 @@ export class TaskGraphService {
    */
   private async reserveTaskDispatch(
     taskId: string,
-    input: TaskDispatchInput,
+    input: DispatchIntent,
     agentStart?: TaskDispatchAgentStart,
   ): Promise<TaskDispatchReservation> {
     return await this.mutateStore((data) => {
@@ -4607,7 +4704,11 @@ export class TaskGraphService {
             : 'Task dispatch start is indeterminate; explicit reconciliation is required',
         );
       }
-      if (!canTransitionTaskStatus(task.status, 'ready')) {
+      const recurring =
+        input.recurringAutomationTaskCreatedAt === task.createdAt &&
+        task.createdBy === 'automation-rule' &&
+        (task.status === 'done' || task.status === 'in_progress');
+      if (!recurring && !canTransitionTaskStatus(task.status, 'ready')) {
         throw new TaskDispatchAdmissionError(
           'terminal',
           `Task cannot be dispatched from ${task.status}`,
@@ -5293,11 +5394,16 @@ export class TaskGraphService {
   private async provisionTaskWorktree(
     taskId: string,
     agentStart: TaskDispatchAgentStart,
+    recurringCreatedAt?: string,
   ): Promise<WorktreeSessionMetadata> {
     return await this.withTaskWorktreeCustody(taskId, async () => {
       const task = this.readStore().tasks.find((item) => item.id === taskId);
       if (!task) throw new Error(`Task not found: ${taskId}`);
-      if (isTerminalTaskStatus(task.status))
+      const mayReopen = (candidate: TaskRecord) =>
+        candidate.status === 'done' &&
+        candidate.createdBy === 'automation-rule' &&
+        candidate.createdAt === recurringCreatedAt;
+      if (isTerminalTaskStatus(task.status) && !mayReopen(task))
         throw new Error(`Task is ${task.status}`);
       const recorded = this.taskWorktrees.read(taskId, task.createdAt);
       const provisioned = await this.worktreeProvisioning.provisionForTask({
@@ -5316,7 +5422,7 @@ export class TaskGraphService {
       if (
         !current ||
         current.createdAt !== task.createdAt ||
-        isTerminalTaskStatus(current.status)
+        (isTerminalTaskStatus(current.status) && !mayReopen(current))
       ) {
         await this.finalizeRecordedTaskWorktree(
           taskId,

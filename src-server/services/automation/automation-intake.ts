@@ -140,6 +140,36 @@ export function recordAutomationEvent(input: {
       outcome,
       ...(rowRule ? { ruleId: rowRule.id } : {}),
     },
+    taskObservations: rules.flatMap((rule) => {
+      const taskId = rule.episode?.recurringTaskId;
+      const episodeKey = automationEpisodeKey(rule, event);
+      const url = event.fields['run.html_url'];
+      const recovered = closing.includes(rule);
+      if (
+        !taskId ||
+        !episodeKey ||
+        !url ||
+        rule.mode !== 'live' ||
+        (!acting.includes(rule) && !recovered)
+      )
+        return [];
+      return [
+        {
+          ruleId: rule.id,
+          episodeKey,
+          taskId,
+          url:
+            event.fields['run.run_attempt'] === '1'
+              ? url
+              : `${url}/attempts/${event.fields['run.run_attempt']}`,
+          label: recovered
+            ? 'Recovered'
+            : event.fields['run.conclusion'] === 'failure'
+              ? 'Workflow failed'
+              : `Workflow ${event.fields['run.conclusion']?.replaceAll('_', ' ') ?? 'matched'}`,
+        },
+      ];
+    }),
     openings: acting.flatMap((rule) => {
       const episodeKey =
         automationEpisodeKey(rule, event) ??
