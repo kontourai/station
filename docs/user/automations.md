@@ -209,7 +209,7 @@ agent sessions from **Workflow history**. When the next run is recorded,
 **Previous Tasks** links earlier Tasks that Station can match to the same
 rule and episode key. Use the Task status menu to mark it
 **Done** after reviewing the outcome. A later failure can reopen it.
-A Task in review or blocked keeps its status. Canceled Tasks cannot reopen.
+New episodes wait while the standing Task is in review or blocked. Mark the Task **Done** when that work is resolved. Canceled Tasks cannot reopen.
 
 For triage rules where a green run is the completion criterion, also set
 `episode.completeOnRecovery` to `true`. Station can then move a Task from

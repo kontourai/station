@@ -144,6 +144,7 @@ export function recordAutomationEvent(input: {
       const taskId = rule.episode?.recurringTaskId;
       const episodeKey = automationEpisodeKey(rule, event);
       const url = event.fields['run.html_url'];
+      const attempt = event.fields['run.run_attempt'];
       const recovered = closing.includes(rule);
       if (
         !taskId ||
@@ -158,10 +159,7 @@ export function recordAutomationEvent(input: {
           ruleId: rule.id,
           episodeKey,
           taskId,
-          url:
-            event.fields['run.run_attempt'] === '1'
-              ? url
-              : `${url}/attempts/${event.fields['run.run_attempt']}`,
+          url: attempt && attempt !== '1' ? `${url}/attempts/${attempt}` : url,
           label: recovered
             ? 'Recovered'
             : event.fields['run.conclusion'] === 'failure'

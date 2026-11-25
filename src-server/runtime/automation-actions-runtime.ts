@@ -620,6 +620,7 @@ class AutomationActionsRuntime implements AutomationActions {
       if (
         task &&
         task.createdAt === intent.taskCreatedAt &&
+        task.sessionId === intent.sessionId &&
         task.status === 'in_progress'
       )
         await this.options.taskGraph.updateTaskStatus(intent.taskId, 'review');
@@ -807,7 +808,24 @@ class AutomationActionsRuntime implements AutomationActions {
     ledger: AutomationLedger,
   ): Promise<void> {
     for (const observation of ledger.listTaskObservations()) {
-      const previous = ledger.intentForTask(observation.taskId);
+      if (!this.enabled()) return;
+      const task = this.options.taskGraph.readTaskView(observation.taskId);
+      const previous = ledger.intentForTask(
+        observation.taskId,
+        task?.sessionId,
+      );
+      const recoveryMatches =
+        observation.closedEpisodeId !== null &&
+        observation.closedEpisodeId !== undefined &&
+        previous?.episodeId === observation.closedEpisodeId;
+      if (
+        recoveryMatches &&
+        previous &&
+        ['pending', 'queued', 'running', 'indeterminate'].includes(
+          previous.state,
+        )
+      )
+        continue;
       const authorize = () => {
         const config = this.options.store.read();
         const rule = config.rules.find(
@@ -831,7 +849,7 @@ class AutomationActionsRuntime implements AutomationActions {
           createdAt: previous.taskCreatedAt,
           priorTasks: ledger.listPriorEpisodeTasks(previous),
           authorize,
-          ...(observation.closedEpisodeId === previous.episodeId &&
+          ...(recoveryMatches &&
           previous.state === 'completed' &&
           previous.sessionId &&
           previous.turnId &&
@@ -839,7 +857,7 @@ class AutomationActionsRuntime implements AutomationActions {
             ? {
                 complete: {
                   sessionId: previous.sessionId,
-                  authorize: () =>
+                  authorize: (sessionIds) =>
                     authorize() &&
                     this.options.store
                       .read()
@@ -849,7 +867,15 @@ class AutomationActionsRuntime implements AutomationActions {
                           rule.episode?.completeOnRecovery,
                       ) &&
                     !ledger.episode(observation.episodeKey) &&
+                    sessionIds.every((id) => {
+                      const sessionIntent = ledger.intentForTask(
+                        observation.taskId,
+                        id,
+                      );
+                      return sessionIntent && !sessionIntent.personTakeoverAt;
+                    }) &&
                     this.recoveryHasNoDeclaredPullRequest(
+                      sessionIds,
                       previous.sessionId!,
                       previous.turnId!,
                     ) &&
@@ -862,6 +888,7 @@ class AutomationActionsRuntime implements AutomationActions {
             : {}),
         });
       }
+      if (!this.enabled()) return;
       ledger.settleTaskObservation(observation.deliveryKey, observation.ruleId);
     }
   }
@@ -880,15 +907,19 @@ class AutomationActionsRuntime implements AutomationActions {
   }
 
   private recoveryHasNoDeclaredPullRequest(
+    sessionIds: string[],
     sessionId: string,
     turnId: string,
   ): boolean {
-    const facts = this.options.eventStore.readTurnDigestFacts([sessionId], {
+    if (sessionIds.length === 0 || sessionIds.length > 20) return false;
+    const facts = this.options.eventStore.readTurnDigestFacts(sessionIds, {
       turnLimit: 20,
     });
     return (
       !facts.hasMore &&
-      facts.turns.some((turn) => turn.turnId === turnId) &&
+      facts.turns.some(
+        (turn) => turn.threadId === sessionId && turn.turnId === turnId,
+      ) &&
       facts.turns.every(
         (turn) => turn.terminal && turn.declaredPullRequests.length === 0,
       )
@@ -1010,13 +1041,20 @@ class AutomationActionsRuntime implements AutomationActions {
       }
       // Authority holds the id; the Task names its Project by slug, the
       // identity TaskGraph and the Agent start resolve a Project by.
-      const recurringTaskId = rule.episode?.recurringTaskId;
-      const previous = recurringTaskId
-        ? ledger.intentForTask(recurringTaskId)
+      const configuredTaskId = rule.episode?.recurringTaskId;
+      const binding = configuredTaskId
+        ? ledger.intentForTask(configuredTaskId)
         : undefined;
+      const recurringTaskId =
+        binding && binding.episodeKey !== intent.episodeKey
+          ? undefined
+          : configuredTaskId;
       const standingTask = recurringTaskId
         ? this.options.taskGraph.readTaskView(recurringTaskId)
         : undefined;
+      const previous = standingTask?.sessionId
+        ? ledger.intentForTask(standingTask.id, standingTask.sessionId)
+        : binding;
       if (
         recurringTaskId &&
         (standingTask?.createdBy !== 'automation-rule' ||
@@ -1026,9 +1064,7 @@ class AutomationActionsRuntime implements AutomationActions {
           previous.taskCreatedAt !== standingTask.createdAt ||
           previous.ruleId !== intent.ruleId ||
           previous.episodeKey !== intent.episodeKey ||
-          previous.sourceId !== intent.sourceId ||
-          (previous.personTakeoverAt !== undefined &&
-            standingTask.status !== 'done'))
+          previous.sourceId !== intent.sourceId)
       ) {
         claim.release();
         ledger.updateIntent(
@@ -1046,9 +1082,12 @@ class AutomationActionsRuntime implements AutomationActions {
         return;
       }
       if (
-        previous &&
-        previous.intentId !== intent.intentId &&
-        !['completed', 'failed', 'stopped', 'refused'].includes(previous.state)
+        standingTask &&
+        (standingTask.status !== 'done' ||
+          !previous ||
+          !['completed', 'failed', 'stopped', 'refused'].includes(
+            previous.state,
+          ))
       ) {
         claim.release();
         return;
@@ -1083,14 +1122,26 @@ class AutomationActionsRuntime implements AutomationActions {
         intent) as NativeAutomationIntent;
       const bindingCurrent = (candidate: AutomationActionIntent) => {
         const current = this.currentRule(candidate);
-        return current && current.episode?.recurringTaskId === recurringTaskId;
+        return current && current.episode?.recurringTaskId === configuredTaskId;
       };
       if (!bindingCurrent(intent)) {
         // Authority changed while the Task was being created: nothing ran,
         // so the Task is canceled rather than left for a person to start.
         claim.release();
-        if (!standingTask)
+        if (standingTask) {
+          ledger.updateIntent(
+            intent.intentId,
+            {
+              taskId: undefined,
+              taskCreatedAt: undefined,
+              state: 'refused',
+              reason: 'policy_changed',
+            },
+            Date.now(),
+          );
+        } else {
           await this.cancelUnstartedTask(task.id, intent.intentId);
+        }
         return;
       }
       const deadlineAt = Date.now() + intent.action.budget.maxWallRuntimeMs;
@@ -1108,7 +1159,12 @@ class AutomationActionsRuntime implements AutomationActions {
             ownerAttribution: UNATTRIBUTED_AGENT_OWNER_ATTRIBUTION,
             sourceSurface: 'automation-rule',
             ...(standingTask
-              ? { recurringAutomationTaskCreatedAt: standingTask.createdAt }
+              ? {
+                  recurringAutomationTask: {
+                    createdAt: standingTask.createdAt,
+                    sessionId: standingTask.sessionId,
+                  },
+                }
               : {}),
             signal: controller.signal,
             ...(start.modelOptions

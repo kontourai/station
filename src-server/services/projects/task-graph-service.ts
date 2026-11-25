@@ -3279,7 +3279,10 @@ export class TaskGraphService {
     label: string;
     priorTasks: { taskId: string; createdAt: string }[];
     authorize: () => boolean;
-    complete?: { sessionId: string; authorize: () => boolean };
+    complete?: {
+      sessionId: string;
+      authorize: (sessionIds: string[]) => boolean;
+    };
   }): Promise<void> {
     const completed = await this.mutateStore((data) => {
       const task = data.tasks.find((item) => item.id === input.taskId);
@@ -3305,6 +3308,7 @@ export class TaskGraphService {
         ...data.tasks.flatMap((previous) =>
           previous.projectId === task.projectId &&
           previous.createdBy === 'automation-rule' &&
+          previous.status !== 'canceled' &&
           previous.createdAt === prior.get(previous.id)
             ? [
                 {
@@ -3331,7 +3335,11 @@ export class TaskGraphService {
         (task.status === 'in_progress' || task.status === 'review') &&
         !task.dispatchReservation &&
         keepsOf(data, task).length === 0 &&
-        input.complete?.authorize() === true;
+        input.complete?.authorize(
+          data.dispatches
+            .filter((dispatch) => dispatch.taskId === task.id)
+            .map((dispatch) => dispatch.sessionId),
+        ) === true;
       if (added.length === 0 && !completed) return { data, result: false };
       const now = new Date().toISOString();
       return {
@@ -4292,10 +4300,16 @@ export class TaskGraphService {
         this.markDispatchReservationIndeterminate(
           reservation as TaskDispatchReservation,
         ),
-      releaseReservation: (reservation) =>
-        this.releaseTaskDispatchReservation(
-          reservation as TaskDispatchReservation,
-        ),
+      releaseReservation: async (reservation) => {
+        const retained = reservation as TaskDispatchReservation;
+        const outcome = await this.releaseTaskDispatchReservation(retained);
+        if (
+          outcome.kind === 'released' &&
+          retained.persisted.priorStatus === 'done'
+        )
+          void this.finalizeTaskWorktree(retained.task.id);
+        return outcome;
+      },
     };
     const claims = {
       claim: (
@@ -4421,14 +4435,13 @@ export class TaskGraphService {
         // checkout that cannot be made refuses the dispatch as `failed`.
         // Setup commands for a new checkout (#3759) would run here, after
         // provisioning and before the start; none run today.
-        if (agentStart.workspaceIsolation?.mode === 'worktree') {
+        if (
+          agentStart.workspaceIsolation?.mode === 'worktree' &&
+          !input.recurringAutomationTask
+        ) {
           let worktree: WorktreeSessionMetadata;
           try {
-            worktree = await this.provisionTaskWorktree(
-              task.id,
-              agentStart,
-              input.recurringAutomationTaskCreatedAt,
-            );
+            worktree = await this.provisionTaskWorktree(task.id, agentStart);
           } catch (error) {
             return {
               kind: 'refused' as const,
@@ -4455,6 +4468,25 @@ export class TaskGraphService {
           // the Session would have no binding, so never start one.
           if (!agentStart)
             throw new Error('Task dispatch has no resolved Agent to start');
+          if (
+            input.recurringAutomationTask &&
+            agentStart.workspaceIsolation?.mode === 'worktree'
+          ) {
+            try {
+              const worktree = await this.provisionTaskWorktree(
+                reservation.task.id,
+                agentStart,
+              );
+              agentStart = {
+                ...agentStart,
+                cwd: worktree.path,
+                worktree,
+                metadata: { ...agentStart.metadata, worktree },
+              };
+            } catch (error) {
+              throw new TaskDispatchStartRefusedError(errorMessage(error));
+            }
+          }
           const taskSlug = this.resolveDispatchTaskSlug(
             reservation.task,
             input.runtimeConfig?.cwd,
@@ -4704,11 +4736,13 @@ export class TaskGraphService {
             : 'Task dispatch start is indeterminate; explicit reconciliation is required',
         );
       }
-      const recurring =
-        input.recurringAutomationTaskCreatedAt === task.createdAt &&
-        task.createdBy === 'automation-rule' &&
-        (task.status === 'done' || task.status === 'in_progress');
-      if (!recurring && !canTransitionTaskStatus(task.status, 'ready')) {
+      const allowed = input.recurringAutomationTask
+        ? task.status === 'done' &&
+          task.createdBy === 'automation-rule' &&
+          task.createdAt === input.recurringAutomationTask.createdAt &&
+          task.sessionId === input.recurringAutomationTask.sessionId
+        : canTransitionTaskStatus(task.status, 'ready');
+      if (!allowed) {
         throw new TaskDispatchAdmissionError(
           'terminal',
           `Task cannot be dispatched from ${task.status}`,
@@ -5394,16 +5428,11 @@ export class TaskGraphService {
   private async provisionTaskWorktree(
     taskId: string,
     agentStart: TaskDispatchAgentStart,
-    recurringCreatedAt?: string,
   ): Promise<WorktreeSessionMetadata> {
     return await this.withTaskWorktreeCustody(taskId, async () => {
       const task = this.readStore().tasks.find((item) => item.id === taskId);
       if (!task) throw new Error(`Task not found: ${taskId}`);
-      const mayReopen = (candidate: TaskRecord) =>
-        candidate.status === 'done' &&
-        candidate.createdBy === 'automation-rule' &&
-        candidate.createdAt === recurringCreatedAt;
-      if (isTerminalTaskStatus(task.status) && !mayReopen(task))
+      if (isTerminalTaskStatus(task.status))
         throw new Error(`Task is ${task.status}`);
       const recorded = this.taskWorktrees.read(taskId, task.createdAt);
       const provisioned = await this.worktreeProvisioning.provisionForTask({
@@ -5422,7 +5451,7 @@ export class TaskGraphService {
       if (
         !current ||
         current.createdAt !== task.createdAt ||
-        (isTerminalTaskStatus(current.status) && !mayReopen(current))
+        isTerminalTaskStatus(current.status)
       ) {
         await this.finalizeRecordedTaskWorktree(
           taskId,
