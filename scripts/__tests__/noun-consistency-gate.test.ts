@@ -466,7 +466,7 @@ describe('noun-consistency-gate', () => {
       'Discard unsent draft': 'Discard unsent draft',
       Unsnooze: 'Unsnooze',
       'Show inbox': 'Show inbox',
-      'Show chats': 'Show chats',
+      'Chat list': 'Chat list',
       'Inbox chats': 'Inbox chats',
     };
     // Plural and lowercase forms of the same terms.
@@ -499,7 +499,7 @@ describe('noun-consistency-gate', () => {
       'Discard unsent draft': 'discard unsent drafts',
       Unsnooze: 'Unsnoozing…',
       'Show inbox': 'Hide inbox, 2 need you',
-      'Show chats': 'Hide chats, 2 working',
+      'Chat list': 'Hide chat list, 2 working',
       'Inbox chats': 'inbox chats',
     };
     /** Retired by a slice that removed every use, so enforced now. */
@@ -511,7 +511,7 @@ describe('noun-consistency-gate', () => {
       'Discard unsent draft',
       'Unsnooze',
       'Show inbox',
-      'Show chats',
+      'Chat list',
       'Inbox chats',
     ];
 
@@ -610,6 +610,8 @@ describe('noun-consistency-gate', () => {
         '<p>Repair a device</p>',
         '<p>Add a view</p>',
         '<p>Files</p>',
+        '<p>Show chats</p>',
+        '<p>Hide chats, 2 working</p>',
         '<p>Usage</p>',
         '<p>Work</p>',
         '<p>Setup</p>',

@@ -4054,7 +4054,7 @@ describe('Global Conversation Routes', () => {
           readSessionConversation: async (id, authority) =>
             id === 'notification-session' &&
             authority.userId !== 'parent-only-reader'
-              ? { ...conversation, agentSlug: 'previous-agent' }
+              ? { ...conversation, agentSlug: 'previous-agent', mutable: false }
               : null,
           resolveConversationOpen: async (id, authority) =>
             id === conversation.id && authority.userId !== 'session-only-reader'
@@ -4064,6 +4064,7 @@ describe('Global Conversation Routes', () => {
                     ...conversation,
                     source: 'runtime',
                     mutable: false,
+                    answerability: { answerable: true },
                   },
                   currentSessionId: 'current-session',
                   transcript: {

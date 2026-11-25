@@ -373,6 +373,11 @@ export const RETIRED_USER_TERMS = Object.freeze([
     pattern: /\b(?:show|hide) inbox\b/i,
   },
   {
+    term: 'Chat list',
+    use: 'Chats',
+    pattern: /\bchat list\b/i,
+  },
+  {
     term: 'Inbox chats',
     use: 'Chats',
     pattern: /\binbox chats\b/i,
