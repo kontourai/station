@@ -51,22 +51,64 @@ describe('dockSnap', () => {
     expect(clampDockHeight(5, mobile)).toBe(52);
   });
 
+  // A desktop dock is dragged freely; Half is only the size it opens at, so
+  // it keeps a plain 45% however short the window is.
   test('half resolves to ~45% of viewport', () => {
     expect(dockSnapPixels('half', metrics)).toBe(450);
+    expect(dockSnapPixels('half', { ...metrics, viewportHeight: 667 })).toBe(
+      300,
+    );
   });
+
+  // At 300px on a 667px-tall phone the bar and a three-line composer left
+  // about 105px of transcript, less than one message, so a phone's Half is
+  // never shorter than a 390x844 phone's.
+  test.each([
+    [667, 380],
+    [740, 380],
+    [780, 380],
+    [812, 380],
+    [844, 380],
+    [915, 412],
+  ] as const)('on a phone %ipx tall, Half is %ipx', (viewportHeight, half) => {
+    expect(dockSnapPixels('half', { viewportHeight, phone: true })).toBe(half);
+  });
+
+  // The floor stops a level's gap short of Tall, so it tapers away on a short
+  // viewport instead of putting Half on or above Tall. Landscape phones are
+  // the short case; a window that short shows an open dock at full height
+  // anyway (index.css, max-height 540px).
+  test.each([
+    [600, 350],
+    [500, 275],
+    [412, 209],
+    [375, 200],
+  ] as const)(
+    'on a phone %ipx tall, the floor leaves Half at %ipx, below Tall',
+    (viewportHeight, half) => {
+      const phone = { viewportHeight, phone: true };
+      expect(dockSnapPixels('half', phone)).toBe(half);
+      expect(dockSnapPixels('tall', phone)).toBeGreaterThan(half);
+    },
+  );
 
   test('tall resolves to ~75% of viewport, between Half and Full', () => {
     expect(dockSnapPixels('tall', metrics)).toBe(750);
   });
 
   // A level is only reachable by drag while its band is wide enough to land
-  // in. On every phone height the three open levels stay at least 100px
-  // apart, so the 200px floor never folds Tall onto Half and the toolbar
-  // never folds Full onto Tall.
+  // in. On every portrait phone height the three open levels stay at least
+  // 100px apart, so Half's 380px floor never folds Tall onto Half and the
+  // toolbar never folds Full onto Tall.
   test.each([640, 667, 780, 812, 915])(
     'keeps the open levels at least 100px apart on a %ipx-tall phone',
     (viewportHeight) => {
-      const phone = { viewportHeight, toolbarHeight: 52, collapsedHeight: 53 };
+      const phone = {
+        viewportHeight,
+        toolbarHeight: 52,
+        collapsedHeight: 53,
+        phone: true,
+      };
       const [half, tall, full] = (['half', 'tall', 'full'] as const).map(
         (snap) => dockSnapPixels(snap, phone),
       );

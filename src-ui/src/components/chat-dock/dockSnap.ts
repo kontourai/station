@@ -51,6 +51,20 @@ const DOCK_HALF_FRACTION = 0.45;
  */
 const DOCK_TALL_FRACTION = 0.75;
 
+/**
+ * On a phone, Half is never shorter than this: 45% of a 390×844 screen. At
+ * 300px on a 667px-tall phone the bar and a three-line composer left about
+ * 105px of transcript, less than one message.
+ */
+const DOCK_HALF_MIN_HEIGHT = 380;
+
+/**
+ * The least distance between two open levels. Each level's release band is
+ * only as wide as this gap lets it be, so Half's floor stops short of Tall
+ * instead of meeting or passing it on a short viewport.
+ */
+const DOCK_LEVEL_GAP = 100;
+
 /** Movement threshold (px) below which a pointer interaction counts as a tap. */
 export const TAP_MOVE_THRESHOLD = 6;
 
@@ -70,7 +84,7 @@ export const MOBILE_DOCK_COLLAPSE_FLING_VELOCITY = 0.65;
 /** Minimum draggable body height (used to clamp the live drag). */
 export const DOCK_MIN_HEIGHT = 200;
 
-interface SnapMetrics {
+export interface SnapMetrics {
   viewportHeight: number;
   toolbarHeight?: number;
   /**
@@ -80,6 +94,12 @@ interface SnapMetrics {
    * snap/clamp logic snaps to the real bar height instead of the 38px literal.
    */
   collapsedHeight?: number;
+  /**
+   * Whether this is a phone (narrow or coarse), where Half has a floor. Off by
+   * default: a desktop dock is dragged freely and uses Half only as the size
+   * it opens at, which stays 45% of the viewport.
+   */
+  phone?: boolean;
 }
 
 /** Largest height the dock body may occupy (full minus the app toolbar). */
@@ -94,13 +114,26 @@ function fractionOfViewport(fraction: number, viewportHeight: number): number {
   return Math.round(Math.max(DOCK_MIN_HEIGHT, viewportHeight * fraction));
 }
 
+function halfHeight({ phone, viewportHeight }: SnapMetrics): number {
+  if (!phone) return fractionOfViewport(DOCK_HALF_FRACTION, viewportHeight);
+  return Math.round(
+    Math.max(
+      DOCK_MIN_HEIGHT,
+      Math.min(
+        Math.max(DOCK_HALF_MIN_HEIGHT, viewportHeight * DOCK_HALF_FRACTION),
+        viewportHeight * DOCK_TALL_FRACTION - DOCK_LEVEL_GAP,
+      ),
+    ),
+  );
+}
+
 /** Resolve a snap state to an absolute pixel height for the given viewport. */
 export function dockSnapPixels(snap: DockSnap, metrics: SnapMetrics): number {
   switch (snap) {
     case 'collapsed':
       return metrics.collapsedHeight ?? DOCK_COLLAPSED_HEIGHT;
     case 'half':
-      return fractionOfViewport(DOCK_HALF_FRACTION, metrics.viewportHeight);
+      return halfHeight(metrics);
     case 'tall':
       return fractionOfViewport(DOCK_TALL_FRACTION, metrics.viewportHeight);
     case 'full':

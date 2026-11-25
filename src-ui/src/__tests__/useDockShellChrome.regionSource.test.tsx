@@ -837,6 +837,7 @@ describe('a page open at / shows the page past a full-screen phone dock (#4399)'
           viewportHeight: result.current.chrome.visualViewport.height,
           toolbarHeight: result.current.chrome.toolbarHeight,
           collapsedHeight: result.current.chrome.collapsedHeight,
+          phone: result.current.chrome.isMobile,
         };
 
         act(() => result.current.chrome.applyDockSnap(level));

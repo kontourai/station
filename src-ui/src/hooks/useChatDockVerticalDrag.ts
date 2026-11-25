@@ -222,6 +222,7 @@ export function useChatDockVerticalDrag({
         viewportHeight: gestureViewportHeight,
         toolbarHeight,
         collapsedHeight,
+        phone: mode === 'mobile-snap',
       });
       const heightFor = (clientY: number) => {
         const clamped = clampDockHeight(

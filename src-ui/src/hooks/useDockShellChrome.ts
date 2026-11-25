@@ -12,6 +12,7 @@ import {
   type DockSnap,
   dockSnapPixels,
   readDockSnap,
+  type SnapMetrics,
   shouldCollapseDockOnMobileNavigation,
   shouldRestoreDockOnNavigation,
   snapAfterNavigationRestore,
@@ -520,6 +521,17 @@ export function useDockShellChrome({
     );
     return parseInt(raw, 10) || DOCK_COLLAPSED_HEIGHT;
   }, [isMobile]);
+  // One set of metrics for every height this hook resolves, so a control's
+  // level and the level a drag lands on are always the same pixels.
+  const snapMetrics = useMemo<SnapMetrics>(
+    () => ({
+      viewportHeight: visualViewport.height,
+      toolbarHeight,
+      collapsedHeight,
+      phone: isMobile,
+    }),
+    [collapsedHeight, isMobile, toolbarHeight, visualViewport.height],
+  );
 
   // Open and maximize are written to the shell's region; the provider's
   // mirror carries Chat's into navigation. Only the model-less mount writes
@@ -539,11 +551,7 @@ export function useDockShellChrome({
     (next: DockSnap) => {
       setDockSnap(next);
       if (shellHoldsChat) writeDockSnap(next);
-      const px = dockSnapPixels(next, {
-        viewportHeight: visualViewport.height,
-        toolbarHeight,
-        collapsedHeight,
-      });
+      const px = dockSnapPixels(next, snapMetrics);
       if (next === 'collapsed') {
         setShellDockState(false, false);
       } else if (next === 'full') {
@@ -554,14 +562,7 @@ export function useDockShellChrome({
         setShellDockState(true, false);
       }
     },
-    [
-      toolbarHeight,
-      collapsedHeight,
-      setDockHeight,
-      setShellDockState,
-      shellHoldsChat,
-      visualViewport.height,
-    ],
+    [snapMetrics, setDockHeight, setShellDockState, shellHoldsChat],
   );
 
   const restoreDockFromMaximized = useCallback(() => {
@@ -573,23 +574,11 @@ export function useDockShellChrome({
     // dragged to.
     setDockHeight(
       isMobile && docked.snap !== 'collapsed'
-        ? dockSnapPixels(docked.snap, {
-            viewportHeight: visualViewport.height,
-            toolbarHeight,
-            collapsedHeight,
-          })
+        ? dockSnapPixels(docked.snap, snapMetrics)
         : docked.height,
     );
     setShellDockState(docked.open, false);
-  }, [
-    collapsedHeight,
-    isMobile,
-    setDockHeight,
-    setShellDockState,
-    shellHoldsChat,
-    toolbarHeight,
-    visualViewport.height,
-  ]);
+  }, [isMobile, snapMetrics, setDockHeight, setShellDockState, shellHoldsChat]);
 
   const toggleDockMaximize = useCallback(() => {
     if (effectiveIsDockMaximized) restoreDockFromMaximized();
@@ -785,23 +774,15 @@ export function useDockShellChrome({
     if (!publishesDockSlotClearance || !isMobile || !readerIsDockOpen) return;
     const next = effectiveIsDockMaximized ? 'full' : dockSnap;
     if (next === 'collapsed') return;
-    setDockHeight(
-      dockSnapPixels(next, {
-        viewportHeight: visualViewport.height,
-        toolbarHeight,
-        collapsedHeight,
-      }),
-    );
+    setDockHeight(dockSnapPixels(next, snapMetrics));
   }, [
-    collapsedHeight,
+    snapMetrics,
     dockSnap,
     effectiveIsDockMaximized,
     readerIsDockOpen,
     isMobile,
     publishesDockSlotClearance,
     setDockHeight,
-    toolbarHeight,
-    visualViewport.height,
   ]);
 
   // Single geometry authority: whoever renders this hook (the ambient

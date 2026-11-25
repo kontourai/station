@@ -128,8 +128,14 @@ the sheet scrolls or activates what it started on.
 
 A phone dock dragged by its bar rests on one of four levels, resolved in
 [`dockSnap.ts`](../../src-ui/src/components/chat-dock/dockSnap.ts): Collapsed
-(the bar), Half (45% of the viewport), Tall (75%) and Full (the viewport minus
-the toolbar). A slow release lands on the level nearest where it was released.
+(the bar), Half, Tall (75%) and Full (the viewport minus the toolbar). Half is
+45% of the viewport and never under 380px, which is what it is on a 390×844
+phone: at 300px on a 667px-tall phone the bar and a three-line composer left
+about 105px of transcript. The floor stops 100px short of Tall, so it tapers
+away on a shorter viewport instead of putting Half on or above Tall. A desktop
+dock has no levels of this kind: it is dragged freely and uses Half only as
+the size it opens at, a plain 45%. A slow release lands on the level nearest
+where it was released.
 A flick up opens Full, a moderate flick down moves down one level and never
 closes an open dock, and a fast flick down collapses it. The resize grip's
 arrow keys move one level for keyboards and assistive technology.

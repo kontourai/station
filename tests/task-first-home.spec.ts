@@ -2173,10 +2173,12 @@ test.describe('Task-first Home (#332, mocked)', () => {
           portrait,
         ]) {
           await page.setViewportSize(viewport);
+          // A short window shows an open dock at its full height. Otherwise
+          // Half is 45% of the viewport and never under 380px on a phone.
           const expectedHeight =
             viewport.height <= 540
               ? viewport.height
-              : Math.round(viewport.height * 0.45);
+              : Math.max(380, Math.round(viewport.height * 0.45));
           await expect
             .poll(async () =>
               page.evaluate(() =>

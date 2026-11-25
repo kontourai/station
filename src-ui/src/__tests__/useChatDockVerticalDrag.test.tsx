@@ -155,8 +155,9 @@ describe('useChatDockVerticalDrag mobile bar', () => {
   });
 
   // A tie in `nearestSnap` favours the earlier candidate, and the dock lists
-  // its levels smallest first. 840 puts both midpoints on whole pixels
-  // (Half 378, Tall 630, Full 840).
+  // its levels smallest first. 840 puts both midpoints on whole pixels (Half
+  // 380, which is its floor rather than 45%, Tall 630, Full 840). The tie only
+  // exists if the drag resolves Half on the phone rule.
   test('a release exactly on a midpoint resolves to the smaller level', () => {
     Object.defineProperty(window, 'visualViewport', {
       configurable: true,
@@ -180,7 +181,7 @@ describe('useChatDockVerticalDrag mobile bar', () => {
       fireEvent.pointerUp(window, { pointerId: 1, clientY });
     };
 
-    releaseAt(336); // Half/Tall midpoint (504)
+    releaseAt(335); // Half/Tall midpoint (505)
     expect(onSnap).toHaveBeenLastCalledWith('half');
     releaseAt(105); // Tall/Full midpoint (735)
     expect(onSnap).toHaveBeenLastCalledWith('tall');
