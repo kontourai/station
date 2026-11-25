@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-25T21:13:39Z | nightly-desktop | 0.2.0-nightly.20261125.2 | `b197056` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45692650877) |
+| 2026-11-25T21:13:39Z | nightly-android | 0.2.0-nightly.20261125.2 | `b197056` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45692650877) |
+| 2026-11-25T20:18:41Z | nightly-npm | 0.12.0-nightly.20261125.45692650877 | `b197056` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45692650877) |
 | 2026-11-25T11:38:37Z | nightly-desktop | 0.2.0-nightly.20261125.1 | `7dc8216` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45595492829) |
 | 2026-11-25T11:38:37Z | nightly-android | 0.2.0-nightly.20261125.1 | `7dc8216` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45595492829) |
 | 2026-11-25T10:36:21Z | nightly-npm | 0.12.0-nightly.20261125.45595492829 | `7dc8216` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45595492829) |
@@ -561,6 +564,66 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-25T21:13:39Z · nightly-desktop · 0.2.0-nightly.20261125.2
+
+- Ship SHA: `b1970563c7d38992c0aa1124ee2b21d7b52c317c`
+- Artifact built at: `2026-11-25T20:18:14.197Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 45692650877)
+
+### Changelog
+
+Commits since `7dc8216` ([full sha](https://github.com/kontourai/station/commit/7dc821617421098c34e1656b1ed3ed9a72496db4)):
+
+**Features**
+
+- [#5570](https://github.com/kontourai/station/pull/5570) feat(automation): keep recurring GitHub episodes in one Task
+- [#5568](https://github.com/kontourai/station/pull/5568) feat(ui): add a Tall phone dock level and make Restore return to where the dock rested
+
+**Fixes**
+
+- [#5569](https://github.com/kontourai/station/pull/5569) fix(inbox): keep unverified cleanup out of Working
+
+## 2026-11-25T21:13:39Z · nightly-android · 0.2.0-nightly.20261125.2
+
+- Ship SHA: `b1970563c7d38992c0aa1124ee2b21d7b52c317c`
+- Artifact built at: `2026-11-25T20:17:18.520Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 45692650877)
+
+### Changelog
+
+Commits since `7dc8216` ([full sha](https://github.com/kontourai/station/commit/7dc821617421098c34e1656b1ed3ed9a72496db4)):
+
+**Features**
+
+- [#5570](https://github.com/kontourai/station/pull/5570) feat(automation): keep recurring GitHub episodes in one Task
+- [#5568](https://github.com/kontourai/station/pull/5568) feat(ui): add a Tall phone dock level and make Restore return to where the dock rested
+
+**Fixes**
+
+- [#5569](https://github.com/kontourai/station/pull/5569) fix(inbox): keep unverified cleanup out of Working
+
+## 2026-11-25T20:18:41Z · nightly-npm · 0.12.0-nightly.20261125.45692650877
+
+- Ship SHA: `b1970563c7d38992c0aa1124ee2b21d7b52c317c`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261125.45692650877 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `7dc8216` ([full sha](https://github.com/kontourai/station/commit/7dc821617421098c34e1656b1ed3ed9a72496db4)):
+
+**Features**
+
+- [#5570](https://github.com/kontourai/station/pull/5570) feat(automation): keep recurring GitHub episodes in one Task
+- [#5568](https://github.com/kontourai/station/pull/5568) feat(ui): add a Tall phone dock level and make Restore return to where the dock rested
+
+**Fixes**
+
+- [#5569](https://github.com/kontourai/station/pull/5569) fix(inbox): keep unverified cleanup out of Working
 
 ## 2026-11-25T11:38:37Z · nightly-desktop · 0.2.0-nightly.20261125.1
 

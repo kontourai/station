@@ -1,5 +1,101 @@
 [
   {
+    "timestampUtc": "2026-11-25T21:13:39Z",
+    "channel": "nightly-desktop",
+    "version": "0.2.0-nightly.20261125.2",
+    "sha": "b1970563c7d38992c0aa1124ee2b21d7b52c317c",
+    "artifactBuiltAt": "2026-11-25T20:18:14.197Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45692650877",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45692650877)"
+    ],
+    "changelog": {
+      "previousSha": "7dc821617421098c34e1656b1ed3ed9a72496db4",
+      "groups": {
+        "feat": [
+          "[#5570](https://github.com/kontourai/station/pull/5570) feat(automation): keep recurring GitHub episodes in one Task",
+          "[#5568](https://github.com/kontourai/station/pull/5568) feat(ui): add a Tall phone dock level and make Restore return to where the dock rested"
+        ],
+        "fix": [
+          "[#5569](https://github.com/kontourai/station/pull/5569) fix(inbox): keep unverified cleanup out of Working"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
+    "timestampUtc": "2026-11-25T21:13:39Z",
+    "channel": "nightly-android",
+    "version": "0.2.0-nightly.20261125.2",
+    "sha": "b1970563c7d38992c0aa1124ee2b21d7b52c317c",
+    "artifactBuiltAt": "2026-11-25T20:17:18.520Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45692650877",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 45692650877)"
+    ],
+    "changelog": {
+      "previousSha": "7dc821617421098c34e1656b1ed3ed9a72496db4",
+      "groups": {
+        "feat": [
+          "[#5570](https://github.com/kontourai/station/pull/5570) feat(automation): keep recurring GitHub episodes in one Task",
+          "[#5568](https://github.com/kontourai/station/pull/5568) feat(ui): add a Tall phone dock level and make Restore return to where the dock rested"
+        ],
+        "fix": [
+          "[#5569](https://github.com/kontourai/station/pull/5569) fix(inbox): keep unverified cleanup out of Working"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
+    "timestampUtc": "2026-11-25T20:18:41Z",
+    "channel": "nightly-npm",
+    "version": "0.12.0-nightly.20261125.45692650877",
+    "sha": "b1970563c7d38992c0aa1124ee2b21d7b52c317c",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/45692650877",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.12.0-nightly.20261125.45692650877 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "7dc821617421098c34e1656b1ed3ed9a72496db4",
+      "groups": {
+        "feat": [
+          "[#5570](https://github.com/kontourai/station/pull/5570) feat(automation): keep recurring GitHub episodes in one Task",
+          "[#5568](https://github.com/kontourai/station/pull/5568) feat(ui): add a Tall phone dock level and make Restore return to where the dock rested"
+        ],
+        "fix": [
+          "[#5569](https://github.com/kontourai/station/pull/5569) fix(inbox): keep unverified cleanup out of Working"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 3
+    }
+  },
+  {
     "timestampUtc": "2026-11-25T11:38:37Z",
     "channel": "nightly-desktop",
     "version": "0.2.0-nightly.20261125.1",
