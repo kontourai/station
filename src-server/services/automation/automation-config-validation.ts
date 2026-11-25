@@ -55,7 +55,13 @@ const RULE_KEYS = [
   'rateLimit',
 ] as const;
 const MATCHER_KEYS = ['type', 'where'] as const;
-const EPISODE_KEYS = ['keyFields', 'closeOn', 'maxAttempts'] as const;
+const EPISODE_KEYS = [
+  'keyFields',
+  'closeOn',
+  'maxAttempts',
+  'recurringTaskId',
+  'completeOnRecovery',
+] as const;
 const DISPATCH_KEYS = [
   'kind',
   'projectId',
@@ -440,6 +446,26 @@ function validateRule(
     validateEpisode(value.episode, type, `${where}.episode`, problems);
   }
   validateAction(value.action, `${where}.action`, problems);
+  if (
+    isRecord(value.episode) &&
+    value.episode.completeOnRecovery !== undefined &&
+    (typeof value.episode.completeOnRecovery !== 'boolean' ||
+      !boundedId(value.episode.recurringTaskId))
+  )
+    problems.push(
+      `${where}.episode.completeOnRecovery requires a standing Task and a boolean value`,
+    );
+  if (isRecord(value.episode) && value.episode.recurringTaskId !== undefined) {
+    if (
+      !boundedId(value.episode.recurringTaskId) ||
+      !value.episode.closeOn ||
+      !isRecord(value.action) ||
+      value.action.kind !== 'dispatch-task'
+    )
+      problems.push(
+        `${where}.episode.recurringTaskId requires a Task id, a close matcher and a dispatch-task action`,
+      );
+  }
   if (
     isRecord(value.action) &&
     value.action.kind === 'isolated-repair' &&

@@ -359,6 +359,10 @@ export type AutomationEpisodePolicy = Readonly<{
   /** Event fields whose values, with the rule id, form the episode key. */
   keyFields: readonly string[];
   closeOn?: AutomationMatcher;
+  /** Reuse this rule’s existing Task for subsequent episodes. */
+  recurringTaskId?: string;
+  /** Recovery is the completion criterion for this triage-only Task. */
+  completeOnRecovery?: boolean;
   maxAttempts: number;
 }>;
 

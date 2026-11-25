@@ -190,3 +190,30 @@ overnight"): the agent proposes an automation for you to approve.
 
 See [the decision record](https://github.com/kontourai/station/blob/main/docs/decisions/automations-unify-schedules.md) for
 the rules behind this behaviour.
+
+## Keep a recurring GitHub workflow in one Task
+
+With the **GitHub automation Tasks** feature preview enabled, a Station
+operator can choose a standing Task for a GitHub workflow rule. Pick an
+existing Task created by that rule for the same workflow and branch. Use
+`station automation rules` to find the rule and
+`station automation rule-update <rule-id> --file=<path>` to update it.
+Keep its existing rule fields and set `episode.recurringTaskId` to the
+Task ID in the rule file. The episode must already have a recovery matcher
+in `episode.closeOn`.
+
+Future episodes reuse that Task and start a fresh session under the existing
+attempt and rate limits. The Task Overview shows **Workflow history** with
+links to observed failures and the run that closed each episode. Open prior
+agent sessions from **Workflow history**. When the next run is recorded,
+**Previous Tasks** links earlier Tasks that Station can match to the same
+rule and episode key. Use the Task status menu to mark it
+**Done** after reviewing the outcome. A later failure can reopen it.
+New episodes wait while the standing Task is in review or blocked. Mark the Task **Done** when that work is resolved. Canceled Tasks cannot reopen.
+
+For triage rules where a green run is the completion criterion, also set
+`episode.completeOnRecovery` to `true`. Station can then move a Task from
+**In progress** or **Review** to **Done** after the episode closes and its
+agent completes, provided there is no newer episode, open Task question,
+review thread, or declared or kept pull request. Use manual
+completion when the rule also owns remediation or review.
