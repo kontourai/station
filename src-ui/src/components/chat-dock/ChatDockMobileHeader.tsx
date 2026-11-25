@@ -141,6 +141,7 @@ interface ChatDockMobileHeaderProps {
    * offers New chat, not a pressed "Back to chat" or chat actions.
    */
   hasConversation?: boolean;
+  isCollapsedDragPreview?: boolean;
   showDrawerToggle: boolean;
   showConnection: boolean;
   sessionTitle: string;
@@ -168,6 +169,7 @@ export function ChatDockMobileHeader({
   inboxActive = false,
   inboxToolsHostRef,
   hasConversation = true,
+  isCollapsedDragPreview = false,
   showDrawerToggle,
   showConnection,
   sessionTitle,
@@ -191,7 +193,9 @@ export function ChatDockMobileHeader({
 }: ChatDockMobileHeaderProps) {
   const motion = useMobileDockHeaderMotion(
     dockToggle?.state === 'collapsed'
-      ? 'collapsed'
+      ? isCollapsedDragPreview
+        ? 'preview'
+        : 'collapsed'
       : extentToggle?.maximized
         ? 'full'
         : 'open',
@@ -204,13 +208,14 @@ export function ChatDockMobileHeader({
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const activityDescriptionId = useId();
   const collapsed = dockToggle?.state === 'collapsed';
+  const showExpandControl = collapsed && !isCollapsedDragPreview;
   const collapsedInbox =
     collapsed && (inboxActive || !(hasConversation || childTrail));
   const resumeChat = collapsed && !collapsedInbox;
   const Identity = resumeChat && !childTrail ? 'button' : 'div';
   // The dot on ⋯ used to be decoration only: an unexplained orange mark on
   // the chat-actions button. It means chats (this one included) are working
-  // or have unread replies — the sheet's Chat list row is where they are — so it
+  // or have unread replies — the sheet's Chats row is where they are — so it
   // says so, as the button's description rather than its name.
   const activitySummary = [
     activeCount > 0
@@ -223,7 +228,14 @@ export function ChatDockMobileHeader({
   return (
     <div
       className={`chat-dock__header chat-dock__mobile-header${childTrail ? ' chat-dock__mobile-header--child' : ''}`}
-      onPointerDown={onDragPointerDown}
+      data-center-chats={
+        (collapsedInbox && !hasConversation && !isCollapsedDragPreview) ||
+        undefined
+      }
+      onPointerDown={(event) => {
+        if (collapsedInbox) motion.capture();
+        onDragPointerDown(event);
+      }}
       onClickCapture={onDragClickCapture}
       ref={motion.headerRef}
       data-dock-drag-surface=""
@@ -250,25 +262,23 @@ export function ChatDockMobileHeader({
             ref={inboxTriggerRef}
             variant="ghost"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
-            aria-label="Chat list"
-            title="Back to the chat list"
+            aria-label="Chats"
+            title="Back to Chats"
             data-no-dock-drag=""
             onClick={onToggleInbox}
           >
             <ArrowLeftGlyph />
           </Button>
-        ) : dockToggle && !(collapsed && extentToggle) && !childTrail ? (
+        ) : dockToggle &&
+          !(showExpandControl && extentToggle) &&
+          !childTrail ? (
           <button
             type="button"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
-            aria-label={
-              dockToggle.state === 'collapsed' ? 'Expand chat' : 'Collapse chat'
-            }
+            aria-label={showExpandControl ? 'Expand chat' : 'Collapse chat'}
             data-no-dock-drag=""
             onClick={
-              dockToggle.state === 'collapsed'
-                ? dockToggle.onExpand
-                : dockToggle.onCollapse
+              showExpandControl ? dockToggle.onExpand : dockToggle.onCollapse
             }
           >
             <ArrowDownGlyph />
@@ -300,13 +310,12 @@ export function ChatDockMobileHeader({
                 type="button"
                 className="chat-dock__open-inbox-label"
                 ref={inboxTriggerRef}
-                data-no-dock-drag=""
                 onClick={() => {
                   motion.capture();
                   onToggleInbox();
                 }}
               >
-                Chat list
+                Chats
               </button>
             ) : inboxActive ? (
               'Chats'

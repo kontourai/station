@@ -56,8 +56,7 @@ function separator(orientation: 'vertical' | 'horizontal', label: string) {
 
 /** The folded inbox's strip on the Chat column, with or without a count. */
 function inboxEdgeMarkup(needsYou: number) {
-  const name =
-    needsYou > 0 ? `Show chat list, ${needsYou} need you` : 'Show chat list';
+  const name = needsYou > 0 ? `Show chats, ${needsYou} need you` : 'Show chats';
   const strip = renderToStaticMarkup(
     <Tooltip
       label={name}

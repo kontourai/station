@@ -860,7 +860,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   const refreshInbox = useCallback(
     async (recover: boolean) => {
       if (!requestAuthority?.isCurrent()) {
-        throw new Error('Chat list connection changed');
+        throw new Error('The Station connection changed');
       }
       if (recover) resyncOrchestrationEventStream(apiBase);
       await refreshListQueries(
@@ -4220,6 +4220,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                 {isMobile ? (
                   <ChatDockMobileHeader
                     inboxActive={mobileInboxShown}
+                    isCollapsedDragPreview={isCollapsedDragPreview}
                     hasConversation={Boolean(
                       activeChat || importedSessionId || showNewChatModal,
                     )}
@@ -4666,7 +4667,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     station#1797: the panel itself mounts only while
                     expanded — collapsed means collapsed, with no rail
                     duplicating the header's own expand/collapse toggle
-                    (the "Collapse/Expand chat list" row of the header's More
+                    (the "Show chats/Hide chats" row of the header's More
                     menu since #1536 F, the single control for this now). */}
                       {workspaceShown &&
                         desktopInboxAvailable &&
