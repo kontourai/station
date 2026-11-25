@@ -23,6 +23,7 @@ import {
   glyph,
   SidebarGlyph,
 } from '../components/icons/Glyph';
+import { ResponsiveDialogSurface } from '../components/ResponsiveDialogSurface';
 import {
   useApiBase,
   useHostRequestAuthorityScope,
@@ -297,7 +298,9 @@ export function FloatOverChatHost({
   const deviceSource = source?.kind === 'device' ? source : null;
   // The browser reads run to auto-float, or to follow a floated browser;
   // a floated device needs neither.
-  const browserReads = source === null ? autoFloat : source.kind === 'browser';
+  const narrow = useNarrowViewport();
+  const browserReads =
+    narrow || (source === null ? autoFloat : source.kind === 'browser');
   const hostScope = useHostRequestAuthorityScope();
   const { access, sessions } = useBrowserSessionReads(
     apiBase,
@@ -396,6 +399,24 @@ export function FloatOverChatHost({
   }, [deviceSource, deviceRows, deviceError, conversationKey]);
   const list = sessions.data?.list;
   const receivedAt = sessions.data?.receivedAt;
+  const mobileSessions =
+    narrow && access.isSuccess && sessions.isSuccess
+      ? (list ?? []).filter(
+          (session) =>
+            session.projectId === access.data.projectId &&
+            session.projectSlug === projectSlug &&
+            session.principalKey === access.data.principalKey &&
+            session.threadId !== undefined &&
+            threadIds.includes(session.threadId) &&
+            session.state === 'live' &&
+            Boolean(session.surfaceId),
+        )
+      : [];
+  const mobileSession = mobileSessions.reduce<BrowserSessionView | undefined>(
+    (latest, session) =>
+      !latest || session.updatedAt > latest.updatedAt ? session : latest,
+    undefined,
+  );
   // Every poll re-decides, even one whose list is unchanged: a hand-off's
   // grace period can run out between two identical reads.
   const polledAt = sessions.dataUpdatedAt;
@@ -417,7 +438,7 @@ export function FloatOverChatHost({
         openFloat(conversationKey, { ...source, surfaceId: current.surfaceId });
       return;
     }
-    if (!autoFloat || principalKey === null) return;
+    if (narrow || !autoFloat || principalKey === null) return;
     // Read the store, not this render's `source`: a person's float taken in
     // this same commit (the request effect above) must not be replaced by an
     // auto-float decided from the render before it.
@@ -450,6 +471,7 @@ export function FloatOverChatHost({
     list,
     source,
     autoFloat,
+    narrow,
     projectSlug,
     conversationKey,
     principalKey,
@@ -498,10 +520,25 @@ export function FloatOverChatHost({
         float
       />
       {noticeCard}
+      {mobileSession && (
+        <MobileBrowserHandoff
+          key={JSON.stringify([
+            apiBase,
+            hostScope?.authorityKey,
+            conversationKey,
+          ])}
+          candidate={mobileSession}
+          sessions={mobileSessions}
+          apiBase={apiBase}
+          authorityKey={hostScope?.authorityKey ?? ''}
+          transport={transport}
+        />
+      )}
       {browserCandidate && !shownInPane && !ownsBrowserView ? (
         <p role="status">Browser is shown in another view.</p>
       ) : null}
       {source &&
+      !(mobileSession && source.kind === 'browser') &&
       !shownInPane &&
       !deviceHandedOff &&
       (source.kind !== 'browser' || ownsBrowserView)
@@ -559,6 +596,65 @@ interface FloatLayoutMeasure {
   obstacles: FloatObstacles;
   /** Where the chat body sits inside the overlay's positioning ancestor. */
   offset: { left: number; top: number };
+}
+
+function MobileBrowserHandoff({
+  candidate,
+  sessions,
+  apiBase,
+  authorityKey,
+  transport,
+}: {
+  candidate: BrowserSessionView;
+  sessions: readonly BrowserSessionView[];
+  apiBase: string;
+  authorityKey: string;
+  transport: FloatFetch;
+}) {
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const selected = sessions.find(
+    (session) => session.browserSessionId === selectedId,
+  );
+  const onControlState = useCallback(() => {}, []);
+  const close = () => setSelectedId(null);
+
+  return (
+    <div className="float-over-chat__browser-handoff">
+      <Button onClick={() => setSelectedId(candidate.browserSessionId)}>
+        Open browser
+      </Button>
+      {selectedId && (
+        <ResponsiveDialogSurface
+          ariaLabel="Browser"
+          onClose={close}
+          overlayClassName="float-over-chat__browser-dialog-overlay"
+          panelClassName="float-over-chat__browser-dialog"
+          sheetGesture={false}
+        >
+          <div className="float-over-chat__browser-dialog-header">
+            <strong>{selected ? hostOf(selected.url) : 'Browser'}</strong>
+            <Button onClick={close}>Close browser</Button>
+          </div>
+          {selected ? (
+            <div className="float-over-chat__browser-dialog-view">
+              <BrowserSessionSurface
+                key={selected.surfaceId}
+                session={selected}
+                apiBase={apiBase}
+                authorityKey={authorityKey}
+                transport={transport}
+                agentActionsEnabled={false}
+                onControlState={onControlState}
+                openInPanel={null}
+              />
+            </div>
+          ) : (
+            <p role="status">This browser tab is no longer live.</p>
+          )}
+        </ResponsiveDialogSurface>
+      )}
+    </div>
+  );
 }
 
 function sameMeasure(a: FloatLayoutMeasure, b: FloatLayoutMeasure): boolean {

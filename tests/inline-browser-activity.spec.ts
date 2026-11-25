@@ -424,6 +424,31 @@ test('preview off keeps the ordinary transcript', async ({
   });
 });
 
+test('phone chat opens its live browser with the inline preview off', async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installFrameFixture(page, testInfo);
+  await setup(page, false);
+
+  const open = page.getByRole('button', { name: 'Open browser', exact: true });
+  await open.click();
+  const viewer = page.getByRole('dialog', { name: 'Browser', exact: true });
+  await expect(viewer.locator('.live-surface')).toHaveAttribute(
+    'data-codec',
+    'png',
+  );
+  await expect
+    .poll(async () => {
+      const bounds = await viewer.boundingBox();
+      return bounds && [Math.round(bounds.width), Math.round(bounds.height)];
+    })
+    .toEqual([390, 844]);
+  await viewer.getByRole('button', { name: 'Close browser' }).click();
+  await expect(viewer).toHaveCount(0);
+  await expect(open).toBeFocused();
+});
+
 for (const width of [390, 1440]) {
   for (const colorScheme of ['light', 'dark'] as const) {
     test(`inline browser activity renders at ${width} in ${colorScheme}`, async ({
