@@ -928,30 +928,25 @@ describe('when the chat re-reads its schedule', () => {
     const { agentScheduleRefreshKey } = await import(
       '../components/chat-dock/ChatDockBody'
     );
-    const running = [
-      { type: 'text' },
-      {
-        type: 'tool-invocation',
-        ...call,
-        state: 'running',
-      },
-    ];
-    const base = agentScheduleRefreshKey('turn-1', running);
-    // More text, another tool: same key.
+    const invocation = {
+      type: 'tool-invocation',
+      toolName: call.toolName,
+      state: 'running',
+      args: '',
+    };
+    const parts = [{ type: 'text' }, invocation];
+    const base = agentScheduleRefreshKey('turn-1', parts);
     expect(
       agentScheduleRefreshKey('turn-1', [
-        ...running,
+        ...parts,
         { type: 'text' },
         { type: 'tool-invocation', toolName: 'Bash', state: 'completed' },
       ]),
     ).toBe(base);
-    // The scheduling call finished: a new key.
-    expect(
-      agentScheduleRefreshKey('turn-1', [
-        running[0]!,
-        { ...running[1]!, state: 'completed' },
-      ]),
-    ).not.toBe(base);
+
+    invocation.args = call.args ?? '';
+    invocation.state = 'completed';
+    expect(agentScheduleRefreshKey('turn-1', parts)).not.toBe(base);
     // The turn ended.
     expect(agentScheduleRefreshKey(undefined, [])).not.toBe(base);
   });

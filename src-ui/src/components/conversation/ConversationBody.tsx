@@ -230,10 +230,10 @@ export function agentScheduleRefreshKey(
   const scheduled = (parts ?? []).filter(
     (part) =>
       part.type === 'tool-invocation' &&
-      mayHaveScheduled(part) &&
       part.state !== 'call' &&
       part.state !== 'running' &&
-      part.state !== 'partial-call',
+      part.state !== 'partial-call' &&
+      mayHaveScheduled(part),
   ).length;
   return `${openTurnId ?? 'idle'}:${scheduled}`;
 }
