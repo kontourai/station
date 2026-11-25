@@ -4748,6 +4748,19 @@ export class TaskGraphService {
           `Task cannot be dispatched from ${task.status}`,
         );
       }
+      if (
+        input.recurringAutomationTask &&
+        !input.recurringAutomationTask.authorize(
+          data.dispatches
+            .filter((dispatch) => dispatch.taskId === taskId)
+            .map((dispatch) => dispatch.sessionId),
+        )
+      ) {
+        throw new TaskDispatchAdmissionError(
+          'contended',
+          'A previous Task session is active',
+        );
+      }
       const dispatchIndex =
         data.dispatches.filter((dispatch) => dispatch.taskId === taskId)
           .length + 1;

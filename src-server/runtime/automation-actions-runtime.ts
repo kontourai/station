@@ -8,6 +8,7 @@ import {
 } from '@kontourai/station-contracts/automation';
 import { UNKNOWN_CLIENT_ORIGIN } from '@kontourai/station-contracts/client-origin';
 import { PROVIDER_SESSION_START_FAILED_CODE } from '@kontourai/station-contracts/provider';
+import { deriveThreadView } from '@kontourai/station-contracts/task-review';
 import { SessionStartRefusedError } from '../providers/adapter-shape.js';
 import {
   automationAmendmentMessage,
@@ -87,6 +88,7 @@ interface AutomationActionsOptions {
     | 'recordSessionBlocked'
     | 'recordAskWhereUndecided'
     | 'recordPersonTakeover'
+    | 'hasActiveTurn'
   >;
   eventStore: Pick<
     EventStore,
@@ -809,23 +811,19 @@ class AutomationActionsRuntime implements AutomationActions {
   ): Promise<void> {
     for (const observation of ledger.listTaskObservations()) {
       if (!this.enabled()) return;
+      const binding = ledger.intentForTask(observation.taskId);
       const task = this.options.taskGraph.readTaskView(observation.taskId);
-      const previous = ledger.intentForTask(
-        observation.taskId,
-        task?.sessionId,
-      );
+      const current = task?.sessionId
+        ? ledger.intentForTask(task.id, task.sessionId)
+        : undefined;
       const recoveryMatches =
-        observation.closedEpisodeId !== null &&
-        observation.closedEpisodeId !== undefined &&
-        previous?.episodeId === observation.closedEpisodeId;
-      if (
-        recoveryMatches &&
-        previous &&
-        ['pending', 'queued', 'running', 'indeterminate'].includes(
-          previous.state,
-        )
-      )
-        continue;
+        !!observation.closedEpisodeId &&
+        current?.episodeId === observation.closedEpisodeId;
+      const deferred =
+        !!observation.closedEpisodeId &&
+        binding?.episodeId === observation.closedEpisodeId &&
+        (binding.state === 'queued' || binding.state === 'running');
+      const previous = current ?? binding;
       const authorize = () => {
         const config = this.options.store.read();
         const rule = config.rules.find(
@@ -850,13 +848,14 @@ class AutomationActionsRuntime implements AutomationActions {
           priorTasks: ledger.listPriorEpisodeTasks(previous),
           authorize,
           ...(recoveryMatches &&
-          previous.state === 'completed' &&
-          previous.sessionId &&
-          previous.turnId &&
-          !previous.personTakeoverAt
+          !deferred &&
+          current?.state === 'completed' &&
+          current.sessionId &&
+          current.turnId &&
+          current.taskCreatedAt
             ? {
                 complete: {
-                  sessionId: previous.sessionId,
+                  sessionId: current.sessionId,
                   authorize: (sessionIds) =>
                     authorize() &&
                     this.options.store
@@ -867,21 +866,14 @@ class AutomationActionsRuntime implements AutomationActions {
                           rule.episode?.completeOnRecovery,
                       ) &&
                     !ledger.episode(observation.episodeKey) &&
-                    sessionIds.every((id) => {
-                      const sessionIntent = ledger.intentForTask(
-                        observation.taskId,
-                        id,
-                      );
-                      return sessionIntent && !sessionIntent.personTakeoverAt;
-                    }) &&
-                    this.recoveryHasNoDeclaredPullRequest(
+                    this.recoveryHasNoPendingSessions(
+                      ledger,
+                      current,
                       sessionIds,
-                      previous.sessionId!,
-                      previous.turnId!,
                     ) &&
                     !this.recoveryHasPendingReview(
                       observation.taskId,
-                      previous.taskCreatedAt!,
+                      current.taskCreatedAt!,
                     ),
                 },
               }
@@ -889,7 +881,11 @@ class AutomationActionsRuntime implements AutomationActions {
         });
       }
       if (!this.enabled()) return;
-      ledger.settleTaskObservation(observation.deliveryKey, observation.ruleId);
+      if (!deferred)
+        ledger.settleTaskObservation(
+          observation.deliveryKey,
+          observation.ruleId,
+        );
     }
   }
 
@@ -901,17 +897,42 @@ class AutomationActionsRuntime implements AutomationActions {
     return (
       this.options.eventStore.taskMemoryStore().listOpenQuestions(incarnation)
         .length > 0 ||
-      this.options.eventStore.taskReviewStore().listThreadEntries(incarnation)
-        .length > 0
+      this.options.eventStore
+        .taskReviewStore()
+        .listThreadEntries(incarnation)
+        .some(
+          (entry) =>
+            entry.status === 'unavailable' ||
+            deriveThreadView(entry.thread, { status: 'unavailable' })
+              .baseState !== 'resolved',
+        )
     );
   }
 
-  private recoveryHasNoDeclaredPullRequest(
-    sessionIds: string[],
-    sessionId: string,
-    turnId: string,
+  private recoveryHasNoPendingSessions(
+    ledger: AutomationLedger,
+    current: AutomationActionIntent,
+    allSessionIds: string[],
   ): boolean {
-    if (sessionIds.length === 0 || sessionIds.length > 20) return false;
+    const { taskId, sessionId, turnId } = current;
+    if (
+      !taskId ||
+      !sessionId ||
+      !turnId ||
+      allSessionIds.some((id) => this.options.orchestration.hasActiveTurn(id))
+    )
+      return false;
+    const sessionIds = allSessionIds.filter(
+      (id) => ledger.intentForTask(taskId, id)?.episodeId === current.episodeId,
+    );
+    if (
+      sessionIds.length === 0 ||
+      sessionIds.length > 20 ||
+      sessionIds.some(
+        (id) => ledger.intentForTask(taskId, id)?.personTakeoverAt,
+      )
+    )
+      return false;
     const facts = this.options.eventStore.readTurnDigestFacts(sessionIds, {
       turnLimit: 20,
     });
@@ -1053,7 +1074,8 @@ class AutomationActionsRuntime implements AutomationActions {
         ? this.options.taskGraph.readTaskView(recurringTaskId)
         : undefined;
       const previous = standingTask?.sessionId
-        ? ledger.intentForTask(standingTask.id, standingTask.sessionId)
+        ? (ledger.intentForTask(standingTask.id, standingTask.sessionId) ??
+          binding)
         : binding;
       if (
         recurringTaskId &&
@@ -1087,7 +1109,12 @@ class AutomationActionsRuntime implements AutomationActions {
           !previous ||
           !['completed', 'failed', 'stopped', 'refused'].includes(
             previous.state,
-          ))
+          ) ||
+          (binding &&
+            binding.intentId !== intent.intentId &&
+            !['completed', 'failed', 'stopped', 'refused'].includes(
+              binding.state,
+            )))
       ) {
         claim.release();
         return;
@@ -1163,6 +1190,10 @@ class AutomationActionsRuntime implements AutomationActions {
                   recurringAutomationTask: {
                     createdAt: standingTask.createdAt,
                     sessionId: standingTask.sessionId,
+                    authorize: (sessionIds) =>
+                      sessionIds.every(
+                        (id) => !this.options.orchestration.hasActiveTurn(id),
+                      ),
                   },
                 }
               : {}),

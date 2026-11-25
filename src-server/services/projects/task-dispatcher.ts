@@ -85,7 +85,11 @@ export type DispatchIntent = TaskDispatchInput & {
   readonly timeoutMs?: number;
   readonly monitor?: MonitorTaskDispatchIntent;
   /** Exact standing Task incarnation admitted by the Automation runtime. */
-  readonly recurringAutomationTask?: { createdAt: string; sessionId?: string };
+  readonly recurringAutomationTask?: {
+    createdAt: string;
+    sessionId?: string;
+    authorize: (sessionIds: string[]) => boolean;
+  };
 };
 
 /** A total outcome; legacy callers map non-dispatched outcomes at their boundary. */
