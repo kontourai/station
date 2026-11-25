@@ -1,0 +1,7 @@
+{
+  "revision": "2de3c01fdfc38e1c752a60fbc739369dbac5370c",
+
+  "notes": [
+    {"path":"docs/user/getting-started.md","note":"Rewrote the phone paragraph: Restore chat size returns a conversation to where it was before it went full screen (the bar it opened from, or the size it was left at) rather than shrinking it to a peek; added the sizes a dragged bar rests on and the closing flick. Checked against dockSnap.ts and useDockShellChrome.ts, and against the task-first-home phone journey at 375px and 412px.","inputs":["docs/user/getting-started.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}
