@@ -1020,7 +1020,9 @@ describe('AcpToolUpdateSupervisor — a failed call always states why', () => {
     supervisor.acceptUpdate({
       toolCallId: 'raw-failed',
       hasRawOutput: true,
-      rawOutput: { error: 'station_control_out_of_scope: Session is not bound' },
+      rawOutput: {
+        error: 'station_control_out_of_scope: Session is not bound',
+      },
       status: 'failed',
       hasStatus: true,
     });
