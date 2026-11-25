@@ -2253,7 +2253,6 @@ test.describe('Task-first Home (#332, mocked)', () => {
         expect((await dock.boundingBox())?.y ?? 0).toBeGreaterThanOrEqual(100);
         await attachView('phone chat at Tall');
 
-
         await dock.getByRole('button', { name: 'Full screen chat' }).click();
         await expect(dock).toHaveClass(/is-maximized/);
         await expect(composer).toHaveValue(draft);
