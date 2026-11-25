@@ -237,6 +237,11 @@ export interface ConversationMessage {
      */
     stationRestartContinuation?: true;
     /**
+     * A delegated Task's brief or an Automation's run (`stationTurnOrigin`):
+     * sent by a Station flow, not typed by the person.
+     */
+    stationOrigin?: 'delegation' | 'automation';
+    /**
      * An in-place engine rewind hid this turn from the engine
      * (`ACP_SESSION_REWOUND_CODE`). The row stays; it is shown as rewound.
      */

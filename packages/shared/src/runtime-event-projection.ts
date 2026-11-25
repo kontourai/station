@@ -22,7 +22,7 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { stationControlRefusalView } from '@kontourai/station-contracts/station-control-refusal';
 import type { TurnProvenanceEnvelope } from '@kontourai/station-contracts/turn-provenance';
-import { agentMessageInput } from './agent-message-frame.js';
+import { agentMessageInput, stationTurnOrigin } from './agent-message-frame.js';
 import {
   type ConversationMessage,
   isStationRestartContinuationTurn,
@@ -1133,6 +1133,11 @@ function createRuntimeMessageProjection(
           if (isStationMemoryContinuationTurn(ev)) {
             const row = messages[messages.length - 1]!;
             row.metadata = { ...row.metadata, stationMemoryContinuation: true };
+          }
+          const origin = stationTurnOrigin(ev);
+          if (origin) {
+            const row = messages[messages.length - 1]!;
+            row.metadata = { ...row.metadata, stationOrigin: origin };
           }
           if (isStationRestartContinuationTurn(ev)) {
             const row = messages[messages.length - 1]!;
