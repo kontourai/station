@@ -94,6 +94,10 @@
 </li>
 </ul>
 <p>See <a href="https://github.com/kontourai/station/blob/main/docs/decisions/automations-unify-schedules.md">the decision record</a> for the rules behind this behaviour.</p>
+<h2 id="keep-a-recurring-github-workflow-in-one-task">Keep a recurring GitHub workflow in one Task</h2>
+<p>With the <strong>GitHub automation Tasks</strong> feature preview enabled, a Station operator can choose a standing Task for a GitHub workflow rule. Pick an existing Task created by that rule for the same workflow and branch. Use <code>station automation rules</code> to find the rule and <code>station automation rule-update &lt;rule-id&gt; --file=&lt;path&gt;</code> to update it. Keep its existing rule fields and set <code>episode.recurringTaskId</code> to the Task ID in the rule file. The episode must already have a recovery matcher in <code>episode.closeOn</code>.</p>
+<p>Future episodes reuse that Task and start a fresh session under the existing attempt and rate limits. The Task Overview shows <strong>Workflow history</strong> with links to observed failures and the run that closed each episode. Open prior agent sessions from <strong>Workflow history</strong>. When the next run is recorded, <strong>Previous Tasks</strong> links earlier Tasks that Station can match to the same rule and episode key. Use the Task status menu to mark it <strong>Done</strong> after reviewing the outcome. A later failure can reopen it. New episodes wait while the standing Task is in review or blocked. Mark the Task <strong>Done</strong> when that work is resolved. Canceled Tasks cannot reopen.</p>
+<p>For triage rules where a green run is the completion criterion, also set <code>episode.completeOnRecovery</code> to <code>true</code>. Station can then move a Task from <strong>In progress</strong> or <strong>Review</strong> to <strong>Done</strong> after the episode closes and its agent completes, provided there is no newer episode, open Task question, review thread, or declared or kept pull request. Use manual completion when the rule also owns remediation or review.</p>
           </article>
         </div>
       </main>
