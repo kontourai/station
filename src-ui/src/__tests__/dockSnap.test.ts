@@ -20,17 +20,16 @@ import {
 const metrics = { viewportHeight: 1000, toolbarHeight: 50 };
 
 describe('dockSnap', () => {
-  test('cycle order is Collapsed → Half → Full → Collapsed', () => {
+  test('cycle order is Collapsed → Half → Tall → Full → Collapsed', () => {
     expect(nextDockSnap('collapsed')).toBe('half');
-    expect(nextDockSnap('half')).toBe('full');
+    expect(nextDockSnap('half')).toBe('tall');
+    expect(nextDockSnap('tall')).toBe('full');
     expect(nextDockSnap('full')).toBe('collapsed');
   });
 
   test('grow/shrink clamp at the ends', () => {
     expect(growDockSnap('full')).toBe('full');
-    expect(growDockSnap('half')).toBe('full');
     expect(shrinkDockSnap('collapsed')).toBe('collapsed');
-    expect(shrinkDockSnap('half')).toBe('collapsed');
   });
 
   test('default snap is Half', () => {
@@ -56,6 +55,26 @@ describe('dockSnap', () => {
     expect(dockSnapPixels('half', metrics)).toBe(450);
   });
 
+  test('tall resolves to ~75% of viewport, between Half and Full', () => {
+    expect(dockSnapPixels('tall', metrics)).toBe(750);
+  });
+
+  // A level is only reachable by drag while its band is wide enough to land
+  // in. On every phone height the three open levels stay at least 100px
+  // apart, so the 200px floor never folds Tall onto Half and the toolbar
+  // never folds Full onto Tall.
+  test.each([640, 667, 780, 812, 915])(
+    'keeps the open levels at least 100px apart on a %ipx-tall phone',
+    (viewportHeight) => {
+      const phone = { viewportHeight, toolbarHeight: 52, collapsedHeight: 53 };
+      const [half, tall, full] = (['half', 'tall', 'full'] as const).map(
+        (snap) => dockSnapPixels(snap, phone),
+      );
+      expect(tall - half).toBeGreaterThanOrEqual(100);
+      expect(full - tall).toBeGreaterThanOrEqual(100);
+    },
+  );
+
   test('full never exceeds viewport minus toolbar', () => {
     expect(dockSnapPixels('full', metrics)).toBe(950);
     expect(dockFullHeight(metrics)).toBe(950);
@@ -70,6 +89,7 @@ describe('dockSnap', () => {
   test('nearestDockSnap picks the closest discrete state', () => {
     expect(nearestDockSnap(40, metrics)).toBe('collapsed');
     expect(nearestDockSnap(440, metrics)).toBe('half');
+    expect(nearestDockSnap(700, metrics)).toBe('tall');
     expect(nearestDockSnap(900, metrics)).toBe('full');
   });
 
@@ -79,6 +99,7 @@ describe('dockSnap', () => {
         pixels: 80,
         deltaY: 120,
         velocityY: 0,
+        start: 'half',
         metrics,
       }),
     ).toBe('collapsed');
@@ -87,6 +108,7 @@ describe('dockSnap', () => {
         pixels: 900,
         deltaY: -120,
         velocityY: 0,
+        start: 'collapsed',
         metrics,
       }),
     ).toBe('full');
@@ -102,6 +124,7 @@ describe('dockSnap', () => {
         pixels: 500, // barely above the Half height (450) — stays Half
         deltaY: -40,
         velocityY: 0,
+        start: 'half',
         metrics,
       }),
     ).toBe('half');
@@ -110,17 +133,21 @@ describe('dockSnap', () => {
         pixels: 900, // released up near Full — becomes Full
         deltaY: -40,
         velocityY: 0,
+        start: 'tall',
         metrics,
       }),
     ).toBe('full');
+    // Dragged down from Full but released 250px above Half and 50px below
+    // Tall: it lands where the finger is, not back on Half.
     expect(
       resolveMobileDockSnap({
         pixels: 700,
         deltaY: 40,
         velocityY: 0,
+        start: 'full',
         metrics,
       }),
-    ).toBe('half');
+    ).toBe('tall');
   });
 
   test('mobile fling velocity wins even near the opposite snap', () => {
@@ -129,28 +156,32 @@ describe('dockSnap', () => {
         pixels: 440,
         deltaY: -8,
         velocityY: -(MOBILE_DOCK_FLING_VELOCITY + 0.1),
+        start: 'half',
         metrics,
       }),
     ).toBe('full');
+    // Released next to Full, but a downward fling leaves it — one level.
     expect(
       resolveMobileDockSnap({
         pixels: 900,
         deltaY: 8,
         velocityY: MOBILE_DOCK_FLING_VELOCITY + 0.1,
+        start: 'full',
         metrics,
       }),
-    ).toBe('half');
+    ).toBe('tall');
   });
 
   test('a slow drag ending near Half stays Half — no accidental dismissal', () => {
-    // At rest at release (no direction, no fling): the geometric-midpoint
-    // fallback, not the Collapsed band, decides — and 460 sits well above the
-    // Collapsed/Half midpoint (244) and below the Half/Full midpoint (700).
+    // At rest at release (no direction, no fling): the nearest level, not a
+    // direction, decides — and 460 sits well above the Collapsed/Half
+    // midpoint (244) and below the Half/Tall midpoint (600).
     expect(
       resolveMobileDockSnap({
         pixels: 460,
         deltaY: 0,
         velocityY: 0,
+        start: 'half',
         metrics,
       }),
     ).toBe('half');
@@ -159,12 +190,23 @@ describe('dockSnap', () => {
   test('a slow drag ending near Full stays Full', () => {
     expect(
       resolveMobileDockSnap({
-        pixels: 800,
+        pixels: 900,
         deltaY: 0,
         velocityY: 0,
+        start: 'full',
         metrics,
       }),
     ).toBe('full');
+    // 800 is nearer Tall (750) than Full (950).
+    expect(
+      resolveMobileDockSnap({
+        pixels: 800,
+        deltaY: 0,
+        velocityY: 0,
+        start: 'full',
+        metrics,
+      }),
+    ).toBe('tall');
   });
 
   test('a fast downward flick collapses from Half, skipping the Half snap entirely', () => {
@@ -173,6 +215,7 @@ describe('dockSnap', () => {
         pixels: 450, // sitting right at the Half pixel height
         deltaY: 40,
         velocityY: MOBILE_DOCK_COLLAPSE_FLING_VELOCITY + 0.1,
+        start: 'half',
         metrics,
       }),
     ).toBe('collapsed');
@@ -184,23 +227,55 @@ describe('dockSnap', () => {
         pixels: 900, // sitting right near the Full pixel height
         deltaY: 40,
         velocityY: MOBILE_DOCK_COLLAPSE_FLING_VELOCITY + 0.1,
+        start: 'full',
         metrics,
       }),
     ).toBe('collapsed');
   });
 
-  test('a moderate downward fling (below the collapse threshold) still only swaps to Half, not Collapsed', () => {
+  test('a moderate downward fling steps down one level and never collapses', () => {
+    const fling = MOBILE_DOCK_FLING_VELOCITY + 0.1;
+    expect(fling).toBeLessThan(MOBILE_DOCK_COLLAPSE_FLING_VELOCITY);
+
+    // Full → Tall: the level a conversation can still be read at.
     expect(
       resolveMobileDockSnap({
         pixels: 900,
         deltaY: 8,
-        velocityY: MOBILE_DOCK_FLING_VELOCITY + 0.1,
+        velocityY: fling,
+        start: 'full',
+        metrics,
+      }),
+    ).toBe('tall');
+    expect(
+      resolveMobileDockSnap({
+        pixels: 700,
+        deltaY: 8,
+        velocityY: fling,
+        start: 'tall',
         metrics,
       }),
     ).toBe('half');
-    expect(MOBILE_DOCK_FLING_VELOCITY + 0.1).toBeLessThan(
-      MOBILE_DOCK_COLLAPSE_FLING_VELOCITY,
-    );
+    // Half stays open, and the collapsed bar stays put: putting the dock
+    // away takes the decisive flick above.
+    expect(
+      resolveMobileDockSnap({
+        pixels: 400,
+        deltaY: 8,
+        velocityY: fling,
+        start: 'half',
+        metrics,
+      }),
+    ).toBe('half');
+    expect(
+      resolveMobileDockSnap({
+        pixels: 40,
+        deltaY: 20,
+        velocityY: fling,
+        start: 'collapsed',
+        metrics,
+      }),
+    ).toBe('collapsed');
   });
 
   // Real mobile geometry from the adversarial-review repro: viewport 800,
@@ -221,6 +296,7 @@ describe('dockSnap', () => {
         pixels: 150,
         deltaY: -100,
         velocityY: 0,
+        start: 'collapsed',
         metrics: reopenMetrics,
       }),
     ).toBe('half');
@@ -232,6 +308,7 @@ describe('dockSnap', () => {
         pixels: 150,
         deltaY: -50,
         velocityY: -1.0,
+        start: 'collapsed',
         metrics: reopenMetrics,
       }),
     ).toBe('full');
@@ -243,6 +320,7 @@ describe('dockSnap', () => {
         pixels: 150,
         deltaY: 100,
         velocityY: 0,
+        start: 'collapsed',
         metrics: reopenMetrics,
       }),
     ).toBe('collapsed');
@@ -251,7 +329,7 @@ describe('dockSnap', () => {
   // archive#795, as reported: phone 390x844, dock at Half (380px). Both a 60px and a
   // 200px upward drag used to land on Full (788px) — the chosen height was
   // ignored entirely.
-  test('the reported phone geometry: a small drag holds Half, a large one reaches Full', () => {
+  test('the reported phone geometry: a small drag holds Half, a large one reaches Tall, a full swipe Full', () => {
     const phone = {
       viewportHeight: 844,
       toolbarHeight: 56,
@@ -263,24 +341,28 @@ describe('dockSnap', () => {
         pixels: 440, // Half (380) + 60
         deltaY: -60,
         velocityY: 0,
+        start: 'half',
         metrics: phone,
       }),
     ).toBe('half');
 
+    // Half + 200 sits 53px from Tall (633) and 200px from Half.
     expect(
       resolveMobileDockSnap({
         pixels: 580, // Half + 200
         deltaY: -200,
         velocityY: 0,
+        start: 'half',
         metrics: phone,
       }),
-    ).toBe('half');
+    ).toBe('tall');
 
     expect(
       resolveMobileDockSnap({
-        pixels: 700, // past the Half/Full midpoint (584)
-        deltaY: -320,
+        pixels: 740, // past the Tall/Full midpoint (710)
+        deltaY: -360,
         velocityY: 0,
+        start: 'half',
         metrics: phone,
       }),
     ).toBe('full');
@@ -370,8 +452,24 @@ describe('snapAfterNavigationRestore (#869)', () => {
     expect(DEFAULT_DOCK_SNAP).not.toBe('full');
   });
 
+  // A Tall dock whose maximize ends from outside the shell must come back to
+  // Tall: the mobile snap-sync re-derives the height from this value, so
+  // defaulting to Half would shrink a dock the person had set to Tall.
+  test('steps a Full snap back to the level the dock was maximized from', () => {
+    expect(snapAfterNavigationRestore('full', 'tall')).toBe('tall');
+    expect(snapAfterNavigationRestore('full', 'half')).toBe('half');
+  });
+
+  test('returns a dock maximized from its bar to the default, never to closed', () => {
+    expect(snapAfterNavigationRestore('full', 'collapsed')).toBe(
+      DEFAULT_DOCK_SNAP,
+    );
+    expect(DEFAULT_DOCK_SNAP).not.toBe('collapsed');
+  });
+
   test('leaves an already-coherent snap alone', () => {
     expect(snapAfterNavigationRestore('half')).toBeNull();
+    expect(snapAfterNavigationRestore('tall')).toBeNull();
     expect(snapAfterNavigationRestore('collapsed')).toBeNull();
   });
 });

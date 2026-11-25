@@ -982,6 +982,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     dockSnap,
     dockHeight,
     applyDockSnap,
+    toggleDockMaximize,
+    restoreDockFromMaximized,
     restoreDockToDocked,
     onHeaderDragPointerDown,
     onHeaderDragClickCapture,
@@ -4331,10 +4333,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                         ? null
                         : {
                             maximized: isPaneOpen && isDockMaximized,
-                            onToggle: () =>
-                              applyDockSnap(
-                                isPaneOpen && isDockMaximized ? 'half' : 'full',
-                              ),
+                            onToggle: toggleDockMaximize,
                           }
                     }
                     // Shared creation action opens a draft without starting an engine.
@@ -4405,7 +4404,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       onCollapseDock: () => applyDockSnap('collapsed'),
                       // Mirrors the drag-to-full gesture for keyboard/agent callers.
                       onExpandDock: () => applyDockSnap('full'),
-                      onRestoreDock: () => applyDockSnap('half'),
+                      onRestoreDock: restoreDockFromMaximized,
                       isDockMaximized: isPaneMaximized,
                       dockControls: !isFullscreenPlacement,
                       // The region's other panes (#2046 2b): a coarse device has

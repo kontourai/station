@@ -124,6 +124,25 @@ gesture passes `sheetGesture={false}` (`RequestSheet` does, because its drag is
 hide-only). Only the handle is draggable: a drag that starts anywhere else in
 the sheet scrolls or activates what it started on.
 
+### Phone dock sizes
+
+A phone dock dragged by its bar rests on one of four levels, resolved in
+[`dockSnap.ts`](../../src-ui/src/components/chat-dock/dockSnap.ts): Collapsed
+(the bar), Half (45% of the viewport), Tall (75%) and Full (the viewport minus
+the toolbar). A slow release lands on the level nearest where it was released.
+A flick up opens Full, a moderate flick down moves down one level and never
+closes an open dock, and a fast flick down collapses it. The resize grip's
+arrow keys move one level for keyboards and assistive technology.
+
+**Full screen chat** and **Restore chat size** in the bar, the region bar's
+maximize control and the `dock.maximize` chord share one toggle
+([`useDockShellChrome.ts`](../../src-ui/src/hooks/useDockShellChrome.ts)).
+Restore returns the dock to where it last rested before it was maximized,
+however it was maximized: its bar, the level it rested on, or on a computer the
+exact height it was dragged to. A dock maximized from its bar goes back to the
+bar. A navigation restore is separate: it returns a maximized dock to its
+docked size and leaves it open.
+
 Every `ResponsiveDialogSurface` declares `layer="dialog"`, `"popover"` or
 `"system"`. [The token scale](../../src-ui/src/tokens.css) includes dock,
 anchored surface-popover, navigation, notification, toolbar-menu and palette

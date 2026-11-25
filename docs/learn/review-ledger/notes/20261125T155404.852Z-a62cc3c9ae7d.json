@@ -1,0 +1,7 @@
+{
+  "revision": "2de3c01fdfc38e1c752a60fbc739369dbac5370c",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Rewrote the phone bar's Full screen chat / Restore chat size paragraph against ChatDock.tsx (extentToggle onToggle is chrome.toggleDockMaximize; the overflow row's onRestoreDock is restoreDockFromMaximized): Restore returns the chat to where it rested, its bar or its size, and collapsing a chat that is not full screen stays on the header control. Linked the phone dock sizes section.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}

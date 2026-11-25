@@ -817,9 +817,12 @@ At the end of first-run setup, **Take the tour** and **Connect another device**
 are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step. If your organization's policy allows only this computer to connect, **Connect another device** is turned off and shows the policy's message, with a **Get help** link when the policy has one.
 
 On a phone, the dock starts at **Chats** unless you open a specific
-conversation. A conversation opens full screen; **Restore chat size** in the
-chat bar shrinks it to a peek and **Full screen chat** grows it back or opens it
-directly from the collapsed bar. The menu drawer lists places and Projects.
+conversation. A conversation opens full screen. **Restore chat size** in the
+chat bar returns it to where it was before: the bar it opened from, or the size
+you had left it at. **Full screen chat** grows it back or opens it directly
+from the collapsed bar. Drag the bar to resize it: it rests at about half the
+screen, about three quarters, or full screen, and a quick flick down closes it.
+The menu drawer lists places and Projects.
 The chat bar’s **Chat list** button returns to the work list; the chat title stays
 as context. Search opens from the magnifier. Your search, list position and
 unsent message stay in place when switching back to a conversation. Collapsing a conversation keeps its title in the bar. Tap the title to resume it.

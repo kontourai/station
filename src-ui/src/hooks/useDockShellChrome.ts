@@ -80,10 +80,6 @@ export interface DockShellChrome {
   dockWidth: number;
   setDockHeight: (value: number) => void;
   setDockWidth: (value: number) => void;
-  previousDockHeight: number;
-  setPreviousDockHeight: (value: number) => void;
-  previousDockOpen: boolean;
-  setPreviousDockOpen: (value: boolean) => void;
   isDragging: boolean;
   setIsDragging: (value: boolean) => void;
   dockSnap: DockSnap;
@@ -147,6 +143,20 @@ export interface DockShellChrome {
    */
   ownsMaximizeShortcut: boolean;
   applyDockSnap: (next: DockSnap) => void;
+  /**
+   * The maximize control and the `dock.maximize` chord, one implementation:
+   * Full while the dock is docked, otherwise back to where it last rested.
+   * That is wherever it was before it was maximized — a dragged height, a
+   * snap level, or closed — so a dock maximized from its bar goes back to the
+   * bar rather than to Half.
+   */
+  toggleDockMaximize: () => void;
+  /**
+   * The restoring half of `toggleDockMaximize`, for a caller that offers the
+   * action only while maximized: it restores unconditionally, so a stale flag
+   * cannot turn the press into a second maximize.
+   */
+  restoreDockFromMaximized: () => void;
   /**
    * Show or hide this shell's region — what the region bar's chevron presses,
    * and, since #2155, what the toolbar's toggle for the same region presses
@@ -437,8 +447,6 @@ export function useDockShellChrome({
     },
     [effectiveDockSlotPlacement, regionId, regionModel],
   );
-  const [previousDockHeight, setPreviousDockHeight] = useState(dockHeight);
-  const [previousDockOpen, setPreviousDockOpen] = useState(true);
   const [isDragging, setIsDraggingState] = useState(false);
   // `station.chatDock.snap` is Chat's key; other shells start from the default
   // and keep their snap in memory (see `applyDockSnap`).
@@ -454,6 +462,36 @@ export function useDockShellChrome({
     setSeededForChat(shellHoldsChat);
     if (shellHoldsChat) setDockSnap(readDockSnap());
   }
+  /**
+   * Where the dock last rested while NOT maximized: what Restore returns to.
+   * Kept from every docked commit rather than recorded by the controls that
+   * maximize, because a maximize also reaches this hook from paths that never
+   * call `applyDockSnap` — a phone `focusSession` opens the dock maximized
+   * through navigation, and the region model restores a maximized Chat.
+   */
+  const dockedRef = useRef({
+    snap: DEFAULT_DOCK_SNAP,
+    height: dockHeight,
+    open: readerIsDockOpen,
+  });
+  useEffect(() => {
+    // A Full snap without the flag is a maximize ending from outside the
+    // shell (reconciled below), not a place the dock rested.
+    if (effectiveIsDockMaximized || dockSnap === 'full') return;
+    const docked = dockedRef.current;
+    if (
+      docked.snap === (readerIsDockOpen ? dockSnap : 'collapsed') &&
+      docked.height === dockHeight &&
+      docked.open === readerIsDockOpen
+    )
+      return;
+    // A closed dock rests on Collapsed whatever snap value it still holds.
+    dockedRef.current = {
+      snap: readerIsDockOpen ? dockSnap : 'collapsed',
+      height: dockHeight,
+      open: readerIsDockOpen,
+    };
+  });
   const [liveDragHeight, setLiveDragHeight] = useState<number | null>(null);
   const isCollapsedDragPreview = !readerIsDockOpen && liveDragHeight !== null;
 
@@ -509,7 +547,6 @@ export function useDockShellChrome({
       if (next === 'collapsed') {
         setShellDockState(false, false);
       } else if (next === 'full') {
-        setPreviousDockHeight(dockHeight);
         setDockHeight(px);
         setShellDockState(true, true);
       } else {
@@ -520,13 +557,44 @@ export function useDockShellChrome({
     [
       toolbarHeight,
       collapsedHeight,
-      dockHeight,
       setDockHeight,
       setShellDockState,
       shellHoldsChat,
       visualViewport.height,
     ],
   );
+
+  const restoreDockFromMaximized = useCallback(() => {
+    const docked = dockedRef.current;
+    setDockSnap(docked.snap);
+    if (shellHoldsChat) writeDockSnap(docked.snap);
+    // A phone dock rests on levels, so its height is read from the level for
+    // the viewport it returns to; desktop keeps the exact height it was
+    // dragged to.
+    setDockHeight(
+      isMobile && docked.snap !== 'collapsed'
+        ? dockSnapPixels(docked.snap, {
+            viewportHeight: visualViewport.height,
+            toolbarHeight,
+            collapsedHeight,
+          })
+        : docked.height,
+    );
+    setShellDockState(docked.open, false);
+  }, [
+    collapsedHeight,
+    isMobile,
+    setDockHeight,
+    setShellDockState,
+    shellHoldsChat,
+    toolbarHeight,
+    visualViewport.height,
+  ]);
+
+  const toggleDockMaximize = useCallback(() => {
+    if (effectiveIsDockMaximized) restoreDockFromMaximized();
+    else applyDockSnap('full');
+  }, [applyDockSnap, effectiveIsDockMaximized, restoreDockFromMaximized]);
 
   // The chevron's own expression, named (#2155). `canMaximize` is inlined as
   // `shellOccupant !== null` because the returned `canMaximize` is derived at
@@ -561,7 +629,6 @@ export function useDockShellChrome({
   const commitDesktopBottomHeight = useCallback(
     (height: number) => {
       setDockHeight(height);
-      setPreviousDockHeight(height);
       setShellDockState(true, false);
     },
     [setDockHeight, setShellDockState],
@@ -629,18 +696,18 @@ export function useDockShellChrome({
   // commits both before the mirror effect runs). A non-chat region has no
   // navigation mirror and only its region to restore.
   const restoreDockToDocked = useCallback(() => {
-    const reconciled = snapAfterNavigationRestore(dockSnap);
+    const docked = dockedRef.current;
+    const reconciled = snapAfterNavigationRestore(dockSnap, docked.snap);
     if (reconciled) {
       setDockSnap(reconciled);
       if (shellHoldsChat) writeDockSnap(reconciled);
     }
-    setDockHeight(previousDockHeight);
+    setDockHeight(docked.height);
     if (shellHoldsChat) collapseMaximizedDock();
     if (regionModel && readerRegion)
       regionModel.setRegion(readerRegion, { maximized: false });
   }, [
     dockSnap,
-    previousDockHeight,
     setDockHeight,
     collapseMaximizedDock,
     readerRegion,
@@ -697,7 +764,10 @@ export function useDockShellChrome({
     wasDockMaximizedRef.current = effectiveIsDockMaximized;
     if (!publishesDockSlotClearance) return;
     if (!wasMaximized || effectiveIsDockMaximized) return;
-    const reconciled = snapAfterNavigationRestore(dockSnap);
+    const reconciled = snapAfterNavigationRestore(
+      dockSnap,
+      dockedRef.current.snap,
+    );
     if (!reconciled) return;
     setDockSnap(reconciled);
     if (shellHoldsChat) writeDockSnap(reconciled);
@@ -821,26 +891,7 @@ export function useDockShellChrome({
     'm',
     ['cmd'],
     'Maximize/restore dock',
-    useCallback(() => {
-      if (effectiveIsDockMaximized) {
-        setDockHeight(previousDockHeight);
-        setShellDockState(previousDockOpen, false);
-      } else {
-        setPreviousDockHeight(dockHeight);
-        setPreviousDockOpen(readerIsDockOpen);
-        setDockHeight(window.innerHeight - toolbarHeight);
-        setShellDockState(true, true);
-      }
-    }, [
-      effectiveIsDockMaximized,
-      dockHeight,
-      readerIsDockOpen,
-      previousDockHeight,
-      previousDockOpen,
-      setShellDockState,
-      setDockHeight,
-      toolbarHeight,
-    ]),
+    toggleDockMaximize,
     registersDockShortcuts,
     0,
     DOCK_WHEN,
@@ -854,10 +905,6 @@ export function useDockShellChrome({
     dockWidth,
     setDockHeight,
     setDockWidth,
-    previousDockHeight,
-    setPreviousDockHeight,
-    previousDockOpen,
-    setPreviousDockOpen,
     isDragging,
     setIsDragging,
     dockSnap,
@@ -921,6 +968,8 @@ export function useDockShellChrome({
     selectRegionPane,
     ownsMaximizeShortcut: registersDockShortcuts,
     applyDockSnap,
+    toggleDockMaximize,
+    restoreDockFromMaximized,
     setRegionOpen,
     commitDesktopBottomHeight,
     commitDockPlacement,

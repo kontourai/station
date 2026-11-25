@@ -1,0 +1,7 @@
+{
+  "revision": "2de3c01fdfc38e1c752a60fbc739369dbac5370c",
+
+  "notes": [
+    {"path":"docs/reference/api.md","note":"ChatDock.tsx changed only how the mobile header's extent toggle and the overflow Exit full screen row reach the dock chrome (toggleDockMaximize and restoreDockFromMaximized). No claim in this document depends on those lines; no edit.","inputs":["docs/reference/api.md","src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}
