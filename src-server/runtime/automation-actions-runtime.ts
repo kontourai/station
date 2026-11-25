@@ -822,7 +822,9 @@ class AutomationActionsRuntime implements AutomationActions {
       const deferred =
         !!observation.closedEpisodeId &&
         binding?.episodeId === observation.closedEpisodeId &&
-        (binding.state === 'queued' || binding.state === 'running');
+        (binding.state === 'pending' ||
+          binding.state === 'queued' ||
+          binding.state === 'running');
       const previous = current ?? binding;
       const authorize = () => {
         const config = this.options.store.read();
@@ -849,6 +851,7 @@ class AutomationActionsRuntime implements AutomationActions {
           authorize,
           ...(recoveryMatches &&
           !deferred &&
+          current?.intentId === binding?.intentId &&
           current?.state === 'completed' &&
           current.sessionId &&
           current.turnId &&
@@ -866,6 +869,8 @@ class AutomationActionsRuntime implements AutomationActions {
                           rule.episode?.completeOnRecovery,
                       ) &&
                     !ledger.episode(observation.episodeKey) &&
+                    ledger.intentForTask(observation.taskId)?.intentId ===
+                      current.intentId &&
                     this.recoveryHasNoPendingSessions(
                       ledger,
                       current,
@@ -922,15 +927,22 @@ class AutomationActionsRuntime implements AutomationActions {
       allSessionIds.some((id) => this.options.orchestration.hasActiveTurn(id))
     )
       return false;
-    const sessionIds = allSessionIds.filter(
-      (id) => ledger.intentForTask(taskId, id)?.episodeId === current.episodeId,
+    const dispatchIntents = allSessionIds.map((id) =>
+      ledger.intentForTask(taskId, id),
     );
+    const first = dispatchIntents.findIndex(
+      (intent) => intent?.episodeId === current.episodeId,
+    );
+    if (first < 0) return false;
+    const sessionIds = allSessionIds.slice(first);
     if (
-      sessionIds.length === 0 ||
       sessionIds.length > 20 ||
-      sessionIds.some(
-        (id) => ledger.intentForTask(taskId, id)?.personTakeoverAt,
-      )
+      dispatchIntents
+        .slice(first)
+        .some(
+          (intent) =>
+            intent?.episodeId !== current.episodeId || intent.personTakeoverAt,
+        )
     )
       return false;
     const facts = this.options.eventStore.readTurnDigestFacts(sessionIds, {
@@ -1073,10 +1085,11 @@ class AutomationActionsRuntime implements AutomationActions {
       const standingTask = recurringTaskId
         ? this.options.taskGraph.readTaskView(recurringTaskId)
         : undefined;
-      const previous = standingTask?.sessionId
-        ? (ledger.intentForTask(standingTask.id, standingTask.sessionId) ??
-          binding)
-        : binding;
+      const previous =
+        standingTask &&
+        ((standingTask.sessionId &&
+          ledger.intentForTask(standingTask.id, standingTask.sessionId)) ||
+          ledger.intentForTask(standingTask.id, undefined, intent.intentId));
       if (
         recurringTaskId &&
         (standingTask?.createdBy !== 'automation-rule' ||

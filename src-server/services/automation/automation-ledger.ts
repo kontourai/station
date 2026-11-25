@@ -428,6 +428,7 @@ export interface AutomationLedger {
   intentForTask(
     taskId: string,
     sessionId?: string,
+    excludeIntentId?: string,
   ): AutomationActionIntent | undefined;
   listActionIntents(): AutomationActionIntent[];
   /**
@@ -1392,17 +1393,23 @@ class SqliteAutomationLedger implements AutomationLedger {
   intentForTask(
     taskId: string,
     sessionId?: string,
+    excludeIntentId?: string,
   ): AutomationActionIntent | undefined {
     return this.read(() => {
       const row = this.db
         .prepare(
           `SELECT intent_id, state, body FROM automation_action_intents
             WHERE task_id = ? AND (? IS NULL OR json_extract(body, '$.sessionId') = ?)
+              AND (? IS NULL OR intent_id <> ?)
             ORDER BY created_ms DESC, rowid DESC LIMIT 1`,
         )
-        .get(taskId, sessionId ?? null, sessionId ?? null) as
-        | { intent_id: string; state: string; body: string }
-        | undefined;
+        .get(
+          taskId,
+          sessionId ?? null,
+          sessionId ?? null,
+          excludeIntentId ?? null,
+          excludeIntentId ?? null,
+        ) as { intent_id: string; state: string; body: string } | undefined;
       if (!row) return undefined;
       const decoded = decodeAutomationActionIntent(row.body);
       if (
