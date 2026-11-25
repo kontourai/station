@@ -28,6 +28,9 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-25T11:38:37Z | nightly-desktop | 0.2.0-nightly.20261125.1 | `7dc8216` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45595492829) |
+| 2026-11-25T11:38:37Z | nightly-android | 0.2.0-nightly.20261125.1 | `7dc8216` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45595492829) |
+| 2026-11-25T10:36:21Z | nightly-npm | 0.12.0-nightly.20261125.45595492829 | `7dc8216` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45595492829) |
 | 2026-11-25T02:02:58Z | nightly-desktop | 0.2.0-nightly.20261125 | `6e87001` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45523135847) |
 | 2026-11-25T02:02:58Z | nightly-android | 0.2.0-nightly.20261125 | `6e87001` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45523135847) |
 | 2026-11-25T01:13:15Z | nightly-npm | 0.12.0-nightly.20261125.45523135847 | `6e87001` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45523135847) |
@@ -558,6 +561,51 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-25T11:38:37Z · nightly-desktop · 0.2.0-nightly.20261125.1
+
+- Ship SHA: `7dc821617421098c34e1656b1ed3ed9a72496db4`
+- Artifact built at: `2026-11-25T10:36:02.536Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 45595492829)
+
+### Changelog
+
+Commits since `6e87001` ([full sha](https://github.com/kontourai/station/commit/6e8700142864c277d12995a0ddf4d8f2afa5c13c)):
+
+**Fixes**
+
+- [#5566](https://github.com/kontourai/station/pull/5566) fix(browser): open the conversation browser on phones
+
+## 2026-11-25T11:38:37Z · nightly-android · 0.2.0-nightly.20261125.1
+
+- Ship SHA: `7dc821617421098c34e1656b1ed3ed9a72496db4`
+- Artifact built at: `2026-11-25T10:34:42.281Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 45595492829)
+
+### Changelog
+
+Commits since `6e87001` ([full sha](https://github.com/kontourai/station/commit/6e8700142864c277d12995a0ddf4d8f2afa5c13c)):
+
+**Fixes**
+
+- [#5566](https://github.com/kontourai/station/pull/5566) fix(browser): open the conversation browser on phones
+
+## 2026-11-25T10:36:21Z · nightly-npm · 0.12.0-nightly.20261125.45595492829
+
+- Ship SHA: `7dc821617421098c34e1656b1ed3ed9a72496db4`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261125.45595492829 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `6e87001` ([full sha](https://github.com/kontourai/station/commit/6e8700142864c277d12995a0ddf4d8f2afa5c13c)):
+
+**Fixes**
+
+- [#5566](https://github.com/kontourai/station/pull/5566) fix(browser): open the conversation browser on phones
 
 ## 2026-11-25T02:02:58Z · nightly-desktop · 0.2.0-nightly.20261125
 
