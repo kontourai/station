@@ -195,7 +195,7 @@ import type { TaskDispatchAgentStart } from '../services/projects/task-dispatche
 import type { TaskRoomInvocationAdmission } from '../services/projects/task-room-work-module.js';
 import {
   WorktreeBaseRefError,
-  WorktreeProvisioningService,
+  type WorktreeProvisioningService,
 } from '../services/projects/worktree-provisioning-service.js';
 import {
   fetchRemoteStation,
@@ -5755,14 +5755,13 @@ export function isInboundDelegationPeer(
   return inboundDeviceKind === 'delegation';
 }
 
-const delegationWorktrees = new WorktreeProvisioningService();
-
 export async function delegateTask(
   input: DelegateTaskInput,
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
   readDelegationGrants?: () => readonly DelegationGrant[],
   operatorOnlyAgent?: (agentId: string) => Promise<boolean>,
+  delegationWorktrees?: WorktreeProvisioningService,
 ): Promise<DelegatedTaskHandle> {
   assertInheritedDelegationToolPolicy(input.delegation);
   input = snapshotTurnSubmissionFields(
@@ -6185,6 +6184,9 @@ export async function delegateTask(
   // conservative projection — it can only understate, never overstate,
   // and it never authorizes a resend.
   let attemptStartInvoked = false;
+  let provisionedWorktree:
+    | import('@kontourai/station-contracts/workspace-isolation').WorktreeSessionMetadata
+    | undefined;
   let attemptInitialTurnReturned = false;
   let attemptInitialTurnAccepted = false;
   const settleAttemptClaim = async (
@@ -6424,6 +6426,12 @@ export async function delegateTask(
                 workspace.cwd,
               );
               input.dispatchCwdAdmission?.recheck(workspace.cwd, 'session');
+              if (!delegationWorktrees || applicableGrant()?.id !== grant.id) {
+                throw new LocalStationRefusal(
+                  'delegation_grant_workspace_unavailable',
+                  'The grant or worktree service is no longer available to start this delegation.',
+                );
+              }
               return delegationWorktrees
                 .provision({
                   repoPath: workspace.cwd,
@@ -6451,6 +6459,7 @@ export async function delegateTask(
                 });
             })()
           : undefined;
+      provisionedWorktree = worktree ?? undefined;
       const resolvedCwd = worktree?.path ?? workspace?.cwd;
       const executionWorkspace =
         worktree && workspace?.kind === 'project'
@@ -7017,6 +7026,19 @@ export async function delegateTask(
       async (id) => orchestrationService.hasSessionStartRecord(id),
     );
   } catch (attemptError) {
+    if (provisionedWorktree && !attemptStartInvoked && delegationWorktrees) {
+      try {
+        await delegationWorktrees.cleanup({
+          metadata: { ...provisionedWorktree, cleanupPolicy: 'cleanup' },
+          terminalState: 'completed',
+        });
+      } catch (cleanupError) {
+        throw new AggregateError(
+          [attemptError, cleanupError],
+          'Delegation failed before session start, and Station could not remove its unused worktree.',
+        );
+      }
+    }
     // This local service's rejection must identify this exact command/thread;
     // unknown outcomes and another command's receipt cannot release these files.
     const failure = record(attemptError);

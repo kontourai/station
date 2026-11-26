@@ -1655,11 +1655,14 @@ export class WorktreeProvisioningService {
 
     const startedAt = performance.now();
     try {
-      const metadata = await this.createWorktree({
-        repoPath: request.repoPath,
-        ownerKey: request.threadId,
-        policy: validateWorktreePolicy(request.isolation.policy),
-      });
+      const policy = validateWorktreePolicy(request.isolation.policy);
+      const metadata = await this.inRepositoryQueue(request.repoPath, () =>
+        this.createWorktree({
+          repoPath: request.repoPath,
+          ownerKey: request.threadId,
+          policy,
+        }),
+      );
       worktreeProvisionTotal.add(1, {
         outcome: 'success',
         provider_kind: request.providerKind,

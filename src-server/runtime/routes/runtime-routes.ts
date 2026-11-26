@@ -980,6 +980,7 @@ import {
 import { createTaskGateEvaluationReferenceReadAdapter } from '../../services/projects/task-tool-result-reference-read-adapter.js';
 import { WorkItemProviderService } from '../../services/projects/work-item-provider-service.js';
 import type { WorktreeOutputSettlementService } from '../../services/projects/worktree-output-settlement-service.js';
+import type { WorktreeProvisioningService } from '../../services/projects/worktree-provisioning-service.js';
 import { declaredPullRequestsForConversation } from '../../services/pull-requests/conversation-declared-pull-requests.js';
 import { ConversationPullRequestLinkStore } from '../../services/pull-requests/conversation-pull-request-link-store.js';
 import { GitHubPullRequestProvider } from '../../services/pull-requests/github-pull-request-provider.js';
@@ -1410,6 +1411,7 @@ export interface ConfigureRuntimeRoutesContext {
    * boots). Absent or returning nothing: the routes answer unavailable.
    */
   worktreeOutputSettlements?: () => WorktreeOutputSettlementService | undefined;
+  worktreeProvisioning?: WorktreeProvisioningService;
   /** The Project board aggregate; composed here when absent. */
   workItemProviderService?: Pick<WorkItemProviderService, 'listWorkItems'>;
   orchestrationService: OrchestrationService;
@@ -8062,6 +8064,7 @@ export function configureRuntimeRoutes(
             const agent = await context.configLoader.loadAgent(agentId);
             return !agent.audience || agent.audience.kind === 'operator';
           },
+          context.worktreeProvisioning,
         ),
       ),
       taskRoomWork: {
