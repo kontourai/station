@@ -308,8 +308,8 @@ function RoutePublication({
   return (
     <div className="content-stack">
       <p className="settings__section-note">
-        App routes connect this device to a Station; approval pages use a separate
-        HTTPS origin.
+        App routes connect this device to a Station; approval pages use a
+        separate HTTPS origin.
       </p>
       <p role="status">
         <Badge value={PUBLICATION_STATUS[publication.status]} />
