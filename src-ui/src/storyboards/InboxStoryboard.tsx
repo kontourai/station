@@ -262,7 +262,7 @@ function InboxStoryboard() {
   const [phone, setPhone] = useState(false);
   const [light, setLight] = useState(false);
   return (
-    <main className="inbox-storyboard">
+    <>
       <h1>Inbox storyboard</h1>
       <div className="storyboard-toolbar">
         <Button
@@ -287,7 +287,7 @@ function InboxStoryboard() {
         <InboxStory proposed={false} phone={phone} />
         <InboxStory proposed phone={phone} />
       </div>
-    </main>
+    </>
   );
 }
 
