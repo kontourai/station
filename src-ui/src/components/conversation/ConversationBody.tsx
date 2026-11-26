@@ -114,6 +114,7 @@ import { describeStationFailure } from '../../utils/stationFailure';
 import { steerRefusalMessage } from '../../utils/steerTurn';
 import { turnToolsRunning } from '../../utils/turn-tools-running';
 import { requestsWaitingOnUser } from '../../utils/waiting-approvals';
+import { DelegationGrantPostureBadge } from '../../views/settings/DelegationGrantSettings';
 import { Button } from '../Button';
 import { ChatEmptyState } from '../chat/ChatEmptyState';
 import { durableMentionAuthority } from '../chat/composer-mentions';
@@ -2734,6 +2735,9 @@ function LiveConversationBody({
       />
       {/* #3157: the limited conversation's own banner, from the server's
           recovery projection; it re-reads with each snapshot update. */}
+      <DelegationGrantPostureBadge
+        sessionId={activeOrchestrationSession?.threadId}
+      />
       <UsageLimitBanner
         apiBase={apiBase}
         scope={mentionRequestScope}

@@ -3362,6 +3362,19 @@ Add or remove a tuple together with its actual handler and evidence; do not
 replace exact matching with wildcard vendor routing.
 
 
+## Delegation grants
+
+[DelegationGrantStore](../../src-server/security/confinement/delegation-grants.ts)
+stores operator choices and resolves the narrowest matching scope. The
+[configuration route](../../src-server/routes/system/delegation-grants.ts)
+requires a current operator principal. The
+[delegation executor](../../src-server/tools/station-control-delegation.ts)
+combines caller proof, resolved target, and verified workspace ownership
+before handing a grant to the session lifecycle. The
+[Codex profile owner](../../src-server/providers/adapters/codex-confinement.ts)
+bounds Git writes to the worktree's own metadata and branch namespace and
+keeps protected metadata read-only.
+
 ## JsonFileMutationAuthority
 
 **Purpose.** [json-file-storage](../../packages/shared/src/json-file-storage.ts)

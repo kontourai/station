@@ -26,6 +26,8 @@ export function createDelegationGrantRoutes(
   store: DelegationGrantStore,
   preview: FeaturePreviewSelector,
   isRequestPrincipalCurrent: (request: Request) => boolean,
+  childrenOf?: (grantId: string) => string[],
+  postureOf?: (sessionId: string) => unknown,
 ) {
   const app = new Hono();
 
@@ -54,7 +56,18 @@ export function createDelegationGrantRoutes(
     throw error;
   });
 
-  app.get('/', (c) => c.json({ success: true, data: store.list() }));
+  app.get('/', (c) =>
+    c.json({
+      success: true,
+      data: store.list().map((grant) => ({
+        ...grant,
+        children: childrenOf?.(grant.id) ?? [],
+      })),
+    }),
+  );
+  app.get('/sessions/:id', (c) =>
+    c.json({ success: true, data: postureOf?.(c.req.param('id')) ?? null }),
+  );
 
   app.post('/', async (c) => {
     const body = await readBoundedRequestBody(c.req.raw, 64 * 1024);

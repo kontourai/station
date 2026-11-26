@@ -156,6 +156,7 @@ export class DelegationGrantStore {
 export interface VerifiedDelegationGrantParent {
   sessionId: string;
   conversationId: string;
+  projectSlug?: string;
   credentialCurrent(): boolean;
 }
 

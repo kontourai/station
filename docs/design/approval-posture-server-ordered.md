@@ -762,6 +762,22 @@ A session spawned before this change has nothing recorded.
   read, the start fails, exactly as the credential-profile pin read beside it
   does. An unreadable default is not the same as no default.
 
+### Standing delegation grants
+
+The [delegation grants decision](../decisions/delegation-grants.md) authorizes
+an operator to grant named delegations confined coding access or full access.
+The local delegation route binds the initiating Station Control caller to its
+exact parent session. Target resolution matches the grant using the resolved
+Agent, model, and Project. A full-access parent must have its own attributed
+host stamp and an applied full-access mode. The inherited capability belongs
+to the child process and is not a new operator host stamp.
+
+The start boundary rechecks the selected grant before invoking the adapter.
+The turn boundary rechecks it before dispatch. After a full-access grant
+ends, the next turn uses the existing workspace re-confinement path. A
+confined Codex process whose Git profile grant ends requires a fresh session
+because its Git write rules were set when it spawned.
+
 ### 4.10 Confinement providers (#2494)
 
 The `host | workspace` stamp above records the starter's grant. It names no

@@ -117,6 +117,7 @@ import type {
 import {
   ACP_SESSION_STARTED_FRESH_CODE,
   CLIENT_TURN_IN_FLIGHT_CODE,
+  DELEGATION_GRANT_METADATA_KEY,
   DELEGATION_PROVENANCE_METADATA_KEY,
   FIRST_TURN_INSTRUCTIONS_COMPOSED_METADATA_KEY,
   isAcpFamilyEngine,
@@ -9759,6 +9760,20 @@ export class OrchestrationService {
             confinement,
             metadata: {
               ...startInput.metadata,
+              ...(delegationLaunch
+                ? {
+                    [DELEGATION_GRANT_METADATA_KEY]: {
+                      grantedVia: 'standing-delegation-grant',
+                      grantId: delegationLaunch.grant.id,
+                      access: inheritedHost ? 'full-access' : 'confined',
+                      scope: delegationLaunch.grant.scope.kind,
+                      worktree: delegationLaunch.grant.ownWorktree,
+                      egress: 'open',
+                      expiry: delegationLaunch.grant.expiry,
+                      grantor: delegationLaunch.grant.createdBy,
+                    },
+                  }
+                : {}),
               [STATION_CONFINEMENT_METADATA_KEY]: hostGranted
                 ? 'host'
                 : 'workspace',
@@ -16251,6 +16266,7 @@ export class OrchestrationService {
       this.nativeOutputGrants.retireTerminal(threadId, nativeTurnId);
     }
     this.stationControlPullRequests?.retireSession(threadId);
+    this.activeDelegationGrants.delete(threadId);
     this.sessionAdapters.delete(threadId);
     this.lastEngineActivityAt.delete(threadId);
     this.threadProviders.delete(threadId);
@@ -17478,6 +17494,31 @@ export class OrchestrationService {
    * `workspace`: the grant it recorded has been taken back. The operator's
    * stamps, and stamps with no recorded grantor, apply as written.
    */
+  delegationGrantPosture(threadId: string) {
+    const launch = this.activeDelegationGrants.get(threadId);
+    if (!launch || !this.delegationParentActive(threadId)) return null;
+    const { grant } = launch;
+    return {
+      grantId: grant.id,
+      scope: grant.scope.kind,
+      access: launch.current() ? grant.access : 'expired',
+      ownWorktree: grant.ownWorktree,
+      network: 'open' as const,
+      expiresAt:
+        grant.expiry.kind === 'duration'
+          ? grant.createdAt + grant.expiry.seconds * 1000
+          : null,
+    };
+  }
+
+  delegationGrantChildren(id: string): string[] {
+    return [...this.activeDelegationGrants].flatMap(([threadId, launch]) =>
+      launch.grant.id === id && this.delegationParentActive(threadId)
+        ? [threadId]
+        : [],
+    );
+  }
+
   delegationParentActive(threadId: string): boolean {
     const status = this.sessionReadModel.get(threadId)?.status;
     return (

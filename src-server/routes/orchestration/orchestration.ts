@@ -4905,7 +4905,7 @@ export function createOrchestrationRoutes(
       }
       const grantParent =
         caller?.principal?.elevationEligible &&
-        caller.assurance !== 'bearer-exposed' &&
+        caller.assurance === 'bound' &&
         caller.principal.id === userId &&
         connectedAccountOwnerIdForTurnAccount(caller.principal.id) &&
         !tenantExecutionContextForRequest(c.req.raw) &&
@@ -4920,6 +4920,8 @@ export function createOrchestrationRoutes(
           ? {
               sessionId: caller.sessionId,
               conversationId: delegation.parentConversationId,
+              projectSlug:
+                deps.stationControlDispatchScope?.ownProjectSlug(caller),
               credentialCurrent: () =>
                 deps.isRequestPrincipalCurrent?.(c.req.raw) === true,
             }

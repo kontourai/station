@@ -5026,6 +5026,8 @@ export function configureRuntimeRoutes(
         delegationGrants,
         delegationGrantsPreview,
         isRequestPrincipalCurrent,
+        (id) => context.orchestrationService.delegationGrantChildren(id),
+        (id) => context.orchestrationService.delegationGrantPosture(id),
       ),
     );
   }
@@ -8056,6 +8058,10 @@ export function configureRuntimeRoutes(
           context.orchestrationService,
           remoteStations,
           readDelegationGrants,
+          async (agentId) => {
+            const agent = await context.configLoader.loadAgent(agentId);
+            return !agent.audience || agent.audience.kind === 'operator';
+          },
         ),
       ),
       taskRoomWork: {

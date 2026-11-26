@@ -110,6 +110,24 @@ additional first-run, workspace, approval, contribution, and preview settings.
 | `knowledgeStores` | boolean | `false` | Whether a personal Station adds past conversations to Knowledge as the read-only `root:conversations` source. Read once at [startup](../../src-server/knowledge-store/conversation-root-bootstrap.ts), so a change applies after a restart. The conversations become searchable after a Knowledge reindex, which needs an embedding connection and the local operator. Turning it off does not remove the root, and the root cannot be deleted. Hosted Stations never register it. Settings → My knowledge store → Past conversations in Knowledge. |
 | `claudeArtifactsEnabled` | boolean | `false` | Turns on Claude Code's Artifact tool, which publishes a local HTML or Markdown file as a page on claude.ai. Read when each Claude session starts, so a running session keeps its value. [`claudeArtifactsSpawnEnv`](../../src-server/providers/adapters/claude-adapter.ts) sets `CLAUDE_CODE_ARTIFACT=1` when on and `CLAUDE_CODE_ARTIFACT=0` when off, overriding Station's own environment and the connection's `env`, so the setting decides. The engine offers the tool only to a claude.ai subscription login; API-key, Bedrock and Vertex sessions do not get it. A publish shows in chat as a link to its claude.ai page, taken from the tool's structured output and shown only for an `https://claude.ai` address. Settings → Agent runs → Claude Code artifacts. |
 
+### Delegation grants
+
+Enable **Delegation grants** in **Settings → Advanced → Feature previews**.
+The host runtime settings list grants and let the operator add or revoke them.
+Station stores them in `config/delegation-grants.json` in the instance home.
+The operator configuration endpoint is `/config/delegation-grants`. The
+general `PUT /config/app` route refuses writes to `delegationGrants`.
+
+A grant lists its Agents, models, and Projects. Project is the default scope.
+A matching parent conversation takes precedence over a Project grant, which
+takes precedence over a Station grant. An explicit allowlist is refused when
+the engine cannot enforce it. Codex supports open network through its own
+sandbox. For a delegated worktree, explicit additional Git paths are relative
+to the repository's common Git directory. Codex accepts existing directories
+for those writes.
+
+See the [delegation grants decision](../decisions/delegation-grants.md).
+
 ### nearby discovery
 
 `lanDiscoveryEnabled` is a Station boolean, default `false`, saved in

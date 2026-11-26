@@ -5759,6 +5759,7 @@ export async function delegateTask(
   orchestrationService?: OrchestrationService,
   remote?: RemoteStationForwarder,
   readDelegationGrants?: () => readonly DelegationGrant[],
+  operatorOnlyAgent?: (agentId: string) => Promise<boolean>,
 ): Promise<DelegatedTaskHandle> {
   assertInheritedDelegationToolPolicy(input.delegation);
   input = snapshotTurnSubmissionFields(
@@ -6382,12 +6383,21 @@ export async function delegateTask(
           },
           Date.now(),
         );
+        if (
+          grant?.scope.kind === 'project' &&
+          parent.projectSlug !== workspace.projectSlug
+        )
+          return undefined;
         return grant?.access === 'full-access' &&
           !orchestrationService.delegationParentHasFullAccess(parent.sessionId)
           ? undefined
           : grant;
       };
-      const grant = applicableGrant();
+      const selected = applicableGrant();
+      const grant =
+        selected && (await operatorOnlyAgent?.(resolved.agentId))
+          ? selected
+          : undefined;
       if (
         grant &&
         (resolved.provider !== 'codex' || grant.network.mode === 'allowlist')
