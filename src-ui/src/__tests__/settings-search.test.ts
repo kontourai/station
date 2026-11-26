@@ -37,7 +37,7 @@ describe('settings catalog search', () => {
       matchingSettingsRows('trustedConsentOrigin', {
         experimentalStationRoutesEnabled: true,
       }).map(({ id, scope }) => ({ id, scope })),
-    ).toEqual([{ id: 'station-routes', scope: 'mixed' }]);
+    ).toEqual([{ id: 'station-routes', scope: 'station' }]);
   });
 
   test('every catalog title finds its own exact row', () => {
