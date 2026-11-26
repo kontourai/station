@@ -102,16 +102,14 @@ export function useCheckoutPullRequestPages(
   state: CheckoutListState,
   cursors: readonly string[],
 ) {
+  const scopeKey = pullRequestContextQueryKey(
+    context.project,
+    context.thread,
+    context.workingDirectory,
+  ).slice(1);
   return useQueries({
     queries: cursors.map((cursor) => ({
-      queryKey: [
-        'checkout-pull-request-page',
-        context.project,
-        context.thread ?? '',
-        context.workingDirectory ?? '',
-        state,
-        cursor,
-      ],
+      queryKey: ['checkout-pull-request-page', ...scopeKey, state, cursor],
       queryFn: ({ signal }) =>
         request<PullRequestClientContext>(
           `${withContext('context', context)}&list=${state}&cursor=${encodeURIComponent(cursor)}`,

@@ -729,7 +729,7 @@ function CompactList({
         onClear={onClear}
       />
     ) : (
-      <Empty variant="compact" label="No pull requests" />
+      <Empty variant="compact" label="Pull requests will appear here" />
     );
   return LIST_GROUPS.map((group) => {
     const members = rows.filter((item) => item.group === group);

@@ -1137,7 +1137,7 @@ function ReviewOwner({
               <PullRequestHeadReviewSection
                 strip={feedback}
                 empty={
-                  <Empty variant="compact" label="No head review available" />
+                  <Empty variant="compact" label="Head review unavailable" />
                 }
               />
             ) : (
