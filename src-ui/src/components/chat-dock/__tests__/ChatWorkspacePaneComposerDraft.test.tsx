@@ -975,24 +975,36 @@ test.each([true, false])(
   },
 );
 
-test('mobile Back dismisses the top layer before returning the chat to Inbox', async () => {
-  dockProbe.mobile = true;
-  openChatA();
-  navigationStore.navigate('/', { chat: 'chat-a', dock: 'open' });
-  renderDockedPane();
-  await screen.findByRole('textbox', { name: 'Chat composer' });
-  const close = vi.fn();
-  const release = registerDialogHistory('mobile-reader-top-layer', close);
-  act(() => window.history.back());
-  await flushHistory();
-  expect(close).toHaveBeenCalledOnce();
-  expect(screen.queryByRole('region', { name: 'Chats' })).toBeNull();
-  expect(navigationStore.getSnapshot().activeChat).toBe('chat-a');
-  release();
-  act(() => window.history.back());
-  await screen.findByRole('region', { name: 'Chats' });
-  expect(navigationStore.getSnapshot().activeChat).toBeNull();
-});
+test.each(['back', 'navigate'] as const)(
+  'mobile Back respects child history after %s',
+  async (action) => {
+    dockProbe.mobile = true;
+    openChatA();
+    navigationStore.navigate('/', { chat: 'chat-a', dock: 'open' });
+    renderDockedPane();
+    await screen.findByRole('textbox', { name: 'Chat composer' });
+    const close = vi.fn();
+    const release = registerDialogHistory('mobile-reader-top-layer', close);
+    if (action === 'navigate') {
+      dockProbe.sessions.push(chatSession('chat-b'));
+      act(() =>
+        navigationStore.navigate('/', { chat: 'chat-b', dock: 'open' }),
+      );
+      await act(async () => {});
+      expect(navigationStore.getSnapshot().activeChat).toBe('chat-b');
+    } else {
+      act(() => window.history.back());
+      await flushHistory();
+      expect(navigationStore.getSnapshot().activeChat).toBe('chat-a');
+    }
+    expect(close).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('region', { name: 'Chats' })).toBeNull();
+    release();
+    act(() => window.history.back());
+    await screen.findByRole('region', { name: 'Chats' });
+    expect(navigationStore.getSnapshot().activeChat).toBeNull();
+  },
+);
 
 test('the phone’s task switcher covers the chat, so it stops counting as viewed (#4266)', async () => {
   dockProbe.mobile = true;

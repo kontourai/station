@@ -224,9 +224,14 @@ function handlePopState(event: PopStateEvent) {
 
   const top = entries.at(-1);
   if (!top || markerFromState(window.history.state) === top.id) return;
-  entries.pop();
-  markOrphaned(top.id);
-  top.close(event.isTrusted ? 'back' : 'navigation');
+  const closing = event.isTrusted ? [top] : [...entries].reverse();
+  for (const entry of closing) {
+    const index = entries.indexOf(entry);
+    if (index < 0) continue;
+    entries.splice(index, 1);
+    markOrphaned(entry.id);
+    entry.close(event.isTrusted ? 'back' : 'navigation');
+  }
 }
 
 function ensureListener() {
