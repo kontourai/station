@@ -284,7 +284,7 @@ describe('#2494: a start resolves its confinement before the engine is touched',
     );
   }
 
-  test('a standing full-access child cannot grant full access and re-confines on its next turn after revoke', async () => {
+  test('a standing full-access child cannot grant full access or send another turn after revoke', async () => {
     await start('operator-parent', 'codex', {
       operator: true,
       approvalMode: 'never',
@@ -326,11 +326,14 @@ describe('#2494: a start resolves its confinement before the engine is touched',
     expect(service.delegationParentHasFullAccess('standing-child')).toBe(false);
 
     revoked = true;
-    await service.dispatch({
-      type: 'sendTurn',
-      input: { threadId: 'standing-child', input: 'After revoke' },
-    });
-    expect(codex.turns.at(-1)?.confinement).toBe('workspace');
+    const sent = codex.turns.length;
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: { threadId: 'standing-child', input: 'After revoke' },
+      }),
+    ).rejects.toThrow('Delegation grant expired or was revoked');
+    expect(codex.turns).toHaveLength(sent);
   });
 
   /** The record the thread's latest persisted `session.started` carries. */

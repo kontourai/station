@@ -31,7 +31,8 @@ existing workspace floor.
 - Expiry defaults to the end of the parent session. The operator can choose a
   duration or keep the grant until revoked. Recheck standing authority before
   each new turn. Loss of authority, including loss of the parent device grant,
-  returns the child to workspace confinement before its next turn.
+  refuses further turns in the existing child. A new session starts under the
+  policy currently in force.
 
 ## Worktree and network
 

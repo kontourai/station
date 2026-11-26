@@ -10523,6 +10523,13 @@ export class OrchestrationService {
     threadId: string,
     dispatchOrigin?: TurnDispatchOrigin,
   ): void {
+    const delegationLaunch = this.activeDelegationGrants.get(threadId);
+    if (delegationLaunch && !delegationLaunch.current()) {
+      throw new SendTurnRefusedError(
+        'Delegation grant expired or was revoked. Start a new session to continue under the current policy.',
+        'conflict',
+      );
+    }
     assertInheritedDelegationToolPolicy(
       this.firstStartedMetadataOfThread(threadId)?.delegation,
     );
@@ -11743,19 +11750,6 @@ export class OrchestrationService {
                               turnInput,
                               context,
                             );
-                            const delegationLaunch =
-                              this.activeDelegationGrants.get(
-                                turnInput.threadId,
-                              );
-                            if (
-                              delegationLaunch &&
-                              !delegationLaunch.current() &&
-                              (delegationLaunch.grant.access === 'confined' ||
-                                turnInput.confinement === 'host')
-                            )
-                              throw new Error(
-                                'Delegation grant expired or was revoked. Start a new session to continue under the current policy.',
-                              );
                             internal?.beforeProviderSend?.(
                               turnInput.threadId,
                               turnInput.clientTurnId,

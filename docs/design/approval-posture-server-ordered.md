@@ -773,10 +773,10 @@ host stamp and an applied full-access mode. The inherited capability belongs
 to the child process and is not a new operator host stamp.
 
 The start boundary rechecks the selected grant before invoking the adapter.
-The turn boundary rechecks it before dispatch. After a full-access grant
-ends, the next turn uses the existing workspace re-confinement path. A
-confined Codex process whose Git profile grant ends requires a fresh session
-because its Git write rules were set when it spawned.
+Turn admission rechecks the grant before dispatch and at the provider
+boundary, including prepared-turn replay. When the grant ends, the existing
+child refuses further turns. Start a fresh session so Codex launches with the
+profile required by the current policy.
 
 ### 4.10 Confinement providers (#2494)
 

@@ -147,6 +147,7 @@ function GrantControls({ authority }: { authority: Authority }) {
       {grants.isError && (
         <ErrorState
           title="Unable to load delegation grants"
+          description={userFacingErrorMessage(grants.error)}
           action={<Button onClick={() => void grants.refetch()}>Retry</Button>}
         />
       )}
