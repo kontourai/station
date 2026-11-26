@@ -137,6 +137,10 @@ describe('coordination wakes through the inbox harness', () => {
         },
         prKey,
         identity,
+        {
+          sourceConversationId: 'release-source',
+          projectId: 'release-project',
+        },
       ),
     ).toBe('armed');
     const second = station({ root: first.root, birth: 'coordination-second' });

@@ -11,6 +11,7 @@ import { randomUUID } from 'node:crypto';
  * turn claim is) and its receipted steer.
  */
 import { join } from 'node:path';
+import { DatabaseSync } from 'node:sqlite';
 import type { InterruptTurnResult } from '@kontourai/station-contracts/orchestration';
 import { pullRequestFeedbackKey } from '@kontourai/station-contracts/pull-request-feedback';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
@@ -28,11 +29,13 @@ import { bindStationControlRequestAuthority } from '../../../security/station-co
 import {
   DelegationResultDelivery,
   type DelegationResultDeliveryPorts,
+  openDelegationRequests,
 } from '../../../services/orchestration/delegation-result-delivery.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../../services/orchestration/session-lifecycle-service.js';
+import { UntrustedContentLedger } from '../../../services/plugins/untrusted-content-policy.js';
 import {
   getInternalApiToken,
   INTERNAL_API_TOKEN_HEADER,
@@ -49,6 +52,7 @@ const makeTempDir = trackTempDirs();
 
 interface Harness {
   store: EventStore;
+  ledger: UntrustedContentLedger;
   bus: EventBus;
   delivery: DelegationResultDelivery;
   /** Every parent turn start the seam asked for, in order. */
@@ -66,6 +70,7 @@ interface Harness {
 
 /** The durable chat-turn claim, shared across a simulated restart. */
 const startedTurns = new Map<string, string>();
+let prAuthorized = true;
 let steerOutcome: 'steered' | 'unsupported-engine' = 'unsupported-engine';
 let holdStarts = false;
 /** A start the parent cleanly refuses (e.g. it has no Agent binding). */
@@ -76,6 +81,7 @@ let indeterminateStarts = 0;
 let retryDelays: number[] = [];
 /** A conversation's current Session, when it has moved on from its first. */
 const currentSessions = new Map<string, string>();
+const conversationAliases = new Map<string, string>();
 /** Sessions with captured-input history: never provably inputless. */
 const capturedInput = new Set<string>();
 /** Sessions whose turn the live coordinator holds before the log shows it. */
@@ -87,17 +93,20 @@ function harness(path: string): Harness {
   const bus = new EventBus();
   const starts: Harness['starts'] = [];
   const warn = vi.fn();
+  const ledger = new UntrustedContentLedger();
   const steers: Harness['steers'] = [];
   const ports: DelegationResultDeliveryPorts = {
     store: store.delegationResultStore(),
+    untrustedContentLedger: ledger,
+    mayReadPullRequestWatch: (_owner, binding) =>
+      prAuthorized && binding.sourceConversationId === 'release-source',
     requestEvents: (threadId) =>
-      store
-        .listEventsByMethods(threadId, ['request.opened'])
-        .flatMap(({ payload, sequence }) =>
-          payload.method === 'request.opened'
-            ? [{ event: payload, sequence }]
-            : [],
-        ),
+      openDelegationRequests(
+        store.listEventsByMethods(threadId, [
+          'request.opened',
+          'request.resolved',
+        ]),
+      ),
     foldEvents: (threadId) =>
       store
         .listEventsByMethods(threadId, ACTIVE_TURN_FOLD_METHODS)
@@ -120,7 +129,7 @@ function harness(path: string): Harness {
           method: stored.method,
           payload: stored.payload,
         })),
-    conversationOf: (threadId) => threadId,
+    conversationOf: (threadId) => conversationAliases.get(threadId) ?? threadId,
     currentSessionId: (conversationId) =>
       currentSessions.get(conversationId) ?? conversationId,
     coordinatorBusy: (threadId) => coordinatorBusy.has(threadId),
@@ -174,7 +183,7 @@ function harness(path: string): Harness {
   };
   const delivery = new DelegationResultDelivery(ports);
   delivery.start();
-  return { store, bus, delivery, starts, steers, warn };
+  return { store, bus, delivery, starts, steers, warn, ledger };
 }
 
 /** Persist, then publish, as the orchestration service does. */
@@ -424,9 +433,11 @@ describe('delegated task result delivery (#3158)', () => {
     }
     startedTurns.clear();
     currentSessions.clear();
+    conversationAliases.clear();
     coordinatorBusy.clear();
     capturedInput.clear();
     steerOutcome = 'unsupported-engine';
+    prAuthorized = true;
     holdStarts = false;
     refuseStarts = undefined;
     indeterminateStarts = 0;
@@ -797,17 +808,26 @@ describe('delegated task result delivery (#3158)', () => {
       ref: '72',
     };
     const prKey = pullRequestFeedbackKey(identity);
+    const watchOwner = {
+      childConversationId: 'pr-watch:notes-72',
+      parentConversationId: PARENT,
+      taskId: prKey,
+      actor: { userId: OWNER, attribution: 'verified-bound' as const },
+    };
     expect(
-      first.delivery.watchPullRequest(
-        {
-          childConversationId: 'pr-watch:notes-72',
-          parentConversationId: PARENT,
-          taskId: prKey,
-          actor: { userId: OWNER, attribution: 'verified-bound' },
-        },
-        prKey,
-        identity,
-      ),
+      first.delivery.watchPullRequest(watchOwner, prKey, identity, {
+        sourceConversationId: 'old-source',
+        projectId: 'release-project',
+      }),
+    ).toBe('armed');
+    expect(
+      first.delivery.cancelWatch(watchOwner.childConversationId, PARENT, OWNER),
+    ).toMatchObject({ cancelled: true });
+    expect(
+      first.delivery.watchPullRequest(watchOwner, prKey, identity, {
+        sourceConversationId: 'release-source',
+        projectId: 'release-project',
+      }),
     ).toBe('armed');
     emit(first, PARENT, 'turn.started', { turnId: 'parent-running' });
     const observation = {
@@ -827,6 +847,35 @@ describe('delegated task result delivery (#3158)', () => {
       reviews: [],
       observedAt: new Date().toISOString(),
     };
+    const sqlite = new DatabaseSync(path);
+    try {
+      const read = sqlite.prepare(
+        'SELECT authorization_json FROM delegation_result_pull_request_watches WHERE watch_id = ?',
+      );
+      const prior = read.get(
+        watchOwner.childConversationId,
+      )?.authorization_json;
+      expect(typeof prior).toBe('string');
+      const setAuthorization = sqlite.prepare(
+        'UPDATE delegation_result_pull_request_watches SET authorization_json = ? WHERE watch_id = ?',
+      );
+      setAuthorization.run(null, watchOwner.childConversationId);
+      first.delivery.observePullRequest(prKey, observation);
+      expect(first.delivery.watchedPullRequests()).toHaveLength(1);
+      expect(
+        first.store
+          .delegationResultStore()
+          .listForChild(watchOwner.childConversationId),
+      ).toHaveLength(0);
+      setAuthorization.run(prior ?? null, watchOwner.childConversationId);
+    } finally {
+      sqlite.close();
+    }
+    prAuthorized = false;
+    first.delivery.observePullRequest(prKey, observation);
+    expect(first.delivery.watchedPullRequests()).toHaveLength(1);
+    expect(first.starts).toHaveLength(0);
+    prAuthorized = true;
     first.delivery.observePullRequest(prKey, observation);
     await first.delivery.idle();
     expect(first.starts).toHaveLength(0);
@@ -842,6 +891,7 @@ describe('delegated task result delivery (#3158)', () => {
     expect(second.starts).toHaveLength(1);
     expect(second.starts[0]!.parentConversationId).toBe(PARENT);
     expect(second.starts[0]!.text).toContain('acme/notes #72 merged');
+    expect(await second.ledger.conversationHasRead(PARENT)).toBe(true);
   });
 
   test('a watched turn still wakes its sender if a newer turn ran before delivery resumed', async () => {
@@ -874,12 +924,62 @@ describe('delegated task result delivery (#3158)', () => {
     open.splice(open.indexOf(first), 1);
 
     const second = setup(path);
+    conversationAliases.set(CHILD, 'watched-child-conversation');
+    second.ledger.markConversation(
+      'watched-child-conversation',
+      Promise.resolve(true),
+    );
     await second.delivery.reconcile();
     await second.delivery.reconcile();
     expect(second.starts).toHaveLength(1);
     expect(second.starts[0]!.parentConversationId).toBe(PARENT);
     expect(second.starts[0]!.text).toContain('> watched response');
+    expect(await second.ledger.conversationHasRead(PARENT)).toBe(true);
   });
+
+  test.each(['before-reconcile', 'while-queued'] as const)(
+    'an approval resolved %s does not wake the parent',
+    async (when) => {
+      const h = setup();
+      await routes(h, PARENT, () => 'running').delegate();
+      const opened = {
+        requestId: 'resolved-approval',
+        requestType: 'approval',
+        title: 'Already answered',
+        createdAt: new Date().toISOString(),
+      };
+      if (when === 'while-queued') {
+        emit(h, PARENT, 'turn.started', { turnId: 'busy-parent' });
+        emit(h, CHILD, 'request.opened', opened);
+        await h.delivery.idle();
+        expect(
+          h.store.delegationResultStore().listForChild(CHILD),
+        ).toMatchObject([{ transition: 'needs_input', state: 'pending' }]);
+        emit(h, CHILD, 'request.resolved', {
+          requestId: opened.requestId,
+          decision: 'accept',
+        });
+        emit(h, PARENT, 'turn.completed', { turnId: 'busy-parent' });
+      } else {
+        const offline = { store: h.store, bus: new EventBus() };
+        emit(offline, CHILD, 'request.opened', opened);
+        emit(offline, CHILD, 'request.resolved', {
+          requestId: opened.requestId,
+          decision: 'accept',
+        });
+      }
+      await h.delivery.reconcile();
+      expect(h.starts).toHaveLength(0);
+      if (when === 'before-reconcile')
+        expect(
+          h.store.delegationResultStore().listForChild(CHILD),
+        ).toHaveLength(0);
+      else
+        expect(
+          h.store.delegationResultStore().listForChild(CHILD),
+        ).toMatchObject([{ transition: 'needs_input', state: 'refused' }]);
+    },
+  );
 
   test('a persisted approval wakes only the delegating parent once after restart', async () => {
     const path = join(

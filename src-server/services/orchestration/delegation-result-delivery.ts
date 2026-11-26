@@ -97,6 +97,7 @@ import {
 } from '@kontourai/station-contracts/principal';
 import type { PullRequestFeedbackObservation } from '@kontourai/station-contracts/pull-request-feedback';
 import type {
+  CanonicalRuntimeEvent,
   RequestOpenedEvent,
   SessionStateChangedEvent,
 } from '@kontourai/station-contracts/runtime-events';
@@ -871,10 +872,14 @@ export function createSqliteDelegationResultStore(
       owner: DelegationResultArm,
       prKey: string,
       identity: PullRequestLinkIdentity,
-      authorization?: PullRequestWatchAuthorization,
+      authorization: PullRequestWatchAuthorization,
     ) {
       return atomically(() => {
         const result = this.armNow(owner);
+        const binding = JSON.stringify({
+          ...authorization,
+          generation: randomUUID(),
+        });
         if (result === 'armed')
           db.prepare(
             `INSERT INTO delegation_result_pull_request_watches
@@ -883,22 +888,62 @@ export function createSqliteDelegationResultStore(
             owner.childConversationId,
             prKey,
             JSON.stringify(identity),
-            authorization ? JSON.stringify(authorization) : null,
+            binding,
           );
+        if (result === 'already-armed') {
+          const previous = readOwner(owner.childConversationId);
+          if (
+            previous?.parentConversationId === owner.parentConversationId &&
+            previous.actor.userId === owner.actor.userId &&
+            changes(
+              db
+                .prepare(
+                  `UPDATE delegation_result_pull_request_watches
+                 SET authorization_json = ?, status_json = NULL, closed = 0, cancelled = 0
+                 WHERE watch_id = ? AND pr_key = ? AND cancelled = 1`,
+                )
+                .run(binding, owner.childConversationId, prKey),
+            )
+          ) {
+            db.prepare(
+              `UPDATE delegation_result_owners
+               SET owner_attribution = ?, owner_principal_json = ? WHERE child_conversation_id = ?`,
+            ).run(
+              owner.actor.attribution,
+              owner.actor.principal
+                ? JSON.stringify(owner.actor.principal)
+                : null,
+              owner.childConversationId,
+            );
+            this.touchOwner(owner.childConversationId);
+            return 'armed';
+          }
+        }
         return result;
       });
     },
     pullRequestWatchAuthorization(
       watchId: string,
-    ): PullRequestWatchAuthorization | undefined {
+    ): (PullRequestWatchAuthorization & { generation?: string }) | undefined {
       const row = db
         .prepare(
           'SELECT authorization_json FROM delegation_result_pull_request_watches WHERE watch_id = ?',
         )
         .get(watchId) as { authorization_json: string | null } | undefined;
-      return row?.authorization_json
-        ? (JSON.parse(row.authorization_json) as PullRequestWatchAuthorization)
-        : undefined;
+      if (!row?.authorization_json) return undefined;
+      const value = JSON.parse(
+        row.authorization_json,
+      ) as Partial<PullRequestWatchAuthorization> & { generation?: string };
+      if (
+        typeof value.sourceConversationId !== 'string' ||
+        typeof value.projectId !== 'string'
+      )
+        return undefined;
+      return {
+        sourceConversationId: value.sourceConversationId,
+        projectId: value.projectId,
+        ...(value.generation ? { generation: value.generation } : {}),
+      };
     },
     isPullRequestWatch(watchId: string): boolean {
       return Boolean(
@@ -930,7 +975,7 @@ export function createSqliteDelegationResultStore(
       event: (
         prior: PullRequestWatchStatus | undefined,
         owner: DelegationResultOwner,
-      ) => void,
+      ) => boolean,
     ): string[] {
       return atomically(() => {
         const rows = db
@@ -945,7 +990,7 @@ export function createSqliteDelegationResultStore(
           const prior = row.status_json
             ? (JSON.parse(row.status_json) as PullRequestWatchStatus)
             : undefined;
-          event(prior, owner);
+          if (!event(prior, owner)) continue;
           db.prepare(
             `UPDATE delegation_result_pull_request_watches SET status_json = ?, closed = ?
              WHERE watch_id = ?`,
@@ -981,6 +1026,7 @@ export function createSqliteDelegationResultStore(
          LEFT JOIN delegation_result_session_watches sw ON sw.watch_id = owner.child_conversation_id
          LEFT JOIN delegation_result_pull_request_watches pr ON pr.watch_id = owner.child_conversation_id
          WHERE owner.owner_user_id = ? AND coalesce(sw.cancelled, 0) = 0 AND coalesce(pr.cancelled, 0) = 0
+           AND sw.pending_json IS NULL
            AND (? IS NULL OR owner.parent_conversation_id = ?)
          ORDER BY waiting DESC, owner.last_activity_at DESC`,
         )
@@ -1464,6 +1510,21 @@ export interface DelegationResultOutputEvent {
   readonly payload: unknown;
 }
 
+export function openDelegationRequests(
+  events: readonly { sequence: number; payload: CanonicalRuntimeEvent }[],
+): { sequence: number; event: RequestOpenedEvent }[] {
+  const open = new Map<
+    string,
+    { sequence: number; event: RequestOpenedEvent }
+  >();
+  for (const { sequence, payload } of events) {
+    if (payload.method === 'request.opened')
+      open.set(payload.requestId, { sequence, event: payload });
+    if (payload.method === 'request.resolved') open.delete(payload.requestId);
+  }
+  return [...open.values()];
+}
+
 export interface DelegationResultDeliveryPorts {
   /**
    * #4828: the untrusted-content ledger a delivered result carries a child's
@@ -1887,7 +1948,7 @@ export class DelegationResultDelivery {
     owner: DelegationResultArm,
     prKey: string,
     identity: PullRequestLinkIdentity,
-    authorization?: PullRequestWatchAuthorization,
+    authorization: PullRequestWatchAuthorization,
   ) {
     return this.ports.store.armPullRequestWatch(
       owner,
@@ -1933,10 +1994,13 @@ export class DelegationResultDelivery {
       prKey,
       status,
       (prior, owner) => {
-        if (!this.mayReadPullRequestWatch(owner)) return;
+        if (!this.mayReadPullRequestWatch(owner)) return false;
+        const generation = this.ports.store.pullRequestWatchAuthorization(
+          owner.childConversationId,
+        )?.generation;
         const identity = observation.identity;
         const record = (key: string, message: string, details?: string) => {
-          const transitionKey = `pull_request:${key}`;
+          const transitionKey = `pull_request:${generation ?? 'initial'}:${key}`;
           const childSessionId = this.ports.currentSessionId(
             owner.parentConversationId,
           );
@@ -1956,7 +2020,7 @@ export class DelegationResultDelivery {
         };
         if (status.state !== 'OPEN') {
           record(status.state, status.state === 'MERGED' ? 'merged' : 'closed');
-          return;
+          return true;
         }
         if (removal && prior && prior.removal !== removal.id)
           record(
@@ -1973,6 +2037,7 @@ export class DelegationResultDelivery {
             `checks:${status.head}:${required}:${observation.observedAt}`,
             `required checks ${required}`,
           );
+        return true;
       },
     );
     for (const watchId of watchIds) this.driveChild(watchId);
@@ -1985,20 +2050,26 @@ export class DelegationResultDelivery {
   ): boolean {
     const prefix = `needs-you:orchestration:${sessionId}:`;
     if (!itemKey.startsWith(prefix)) return false;
-    const owner = this.ports.store.owner(this.ports.conversationOf(sessionId));
-    if (owner?.parentConversationId !== parentConversationId) return false;
+    const watched = this.ports.store.watchesForSession(sessionId);
     const requestId = itemKey.slice(prefix.length);
-    return (
-      this.ports
-        .requestEvents?.(sessionId)
-        .some(
-          ({ event }) =>
-            event.requestId === requestId &&
-            this.ports.store.has(
-              owner.childConversationId,
-              `needs_input:${sessionId}:${event.eventId}`,
-            ),
-        ) === true
+    const request = this.ports
+      .requestEvents?.(sessionId)
+      .find(({ event }) => event.requestId === requestId);
+    if (!request) return false;
+    const transitionKey = `needs_input:${sessionId}:${request.event.eventId}`;
+    return [this.ports.conversationOf(sessionId), ...watched].some(
+      (id) =>
+        this.ports.store.owner(id)?.parentConversationId ===
+          parentConversationId &&
+        this.ports.store
+          .listForChild(id)
+          .some(
+            (row) =>
+              row.transitionKey === transitionKey &&
+              (row.state === 'pending' ||
+                row.state === 'claimed' ||
+                row.state === 'delivered'),
+          ),
     );
   }
 
@@ -2583,9 +2654,9 @@ export class DelegationResultDelivery {
     const authorization = this.ports.store.pullRequestWatchAuthorization(
       owner.childConversationId,
     );
-    return (
-      !authorization ||
-      this.ports.mayReadPullRequestWatch?.(owner, authorization) === true
+    return Boolean(
+      authorization &&
+        this.ports.mayReadPullRequestWatch?.(owner, authorization) === true,
     );
   }
 
@@ -2594,11 +2665,6 @@ export class DelegationResultDelivery {
     if (!this.canDeliverRow(row)) return;
     const owner = store.owner(row.childConversationId);
     if (!owner) return store.settle(row, 'refused', 'owner-missing');
-    if (
-      row.transition === 'pull_request' &&
-      !this.mayReadPullRequestWatch(owner)
-    )
-      return store.settle(row, 'refused', 'pull-request-watch-access-changed');
     let pinned: { branch: SessionDeliveryBranch; threadId: string } | undefined;
     if (row.state === 'pending') {
       if (!store.claim(row)) return;
@@ -2658,12 +2724,41 @@ export class DelegationResultDelivery {
     // before the result can reach its next turn.
     const ledger =
       this.ports.untrustedContentLedger ?? sharedUntrustedContentLedger;
-    if (
-      await ledger.conversationHasRead(
-        row.childConversationId,
+    const carryUntrusted =
+      row.transition === 'pull_request' ||
+      (await ledger.conversationHasRead(
+        this.ports.conversationOf(row.childSessionId),
         row.childSessionId,
-      )
+      ));
+    if (
+      row.transition === 'needs_input' &&
+      !this.ports
+        .requestEvents?.(row.childSessionId)
+        .some(
+          ({ event }) =>
+            row.transitionKey ===
+            `needs_input:${row.childSessionId}:${event.eventId}`,
+        )
     )
+      return store.settle(row, 'refused', 'resolved');
+    if (
+      row.transition === 'blocked' &&
+      !this.ports
+        .blockedEvents?.(row.childSessionId)
+        .some(
+          ({ event }) =>
+            row.transitionKey ===
+            `blocked:${row.childSessionId}:${event.eventId}`,
+        )
+    )
+      return store.settle(row, 'refused', 'resolved');
+
+    if (
+      row.transition === 'pull_request' &&
+      !this.mayReadPullRequestWatch(owner)
+    )
+      return store.settle(row, 'refused', 'pull-request-watch-access-changed');
+    if (carryUntrusted)
       for (const id of new Set([owner.parentConversationId, threadId]))
         ledger.markConversation(id, Promise.resolve(true));
     let delivery: Awaited<ReturnType<typeof deliverSessionMessage>>;

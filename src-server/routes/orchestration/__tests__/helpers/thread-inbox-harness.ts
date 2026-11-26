@@ -45,6 +45,7 @@ import { AttachmentStagingService } from '../../../../services/orchestration/att
 import {
   DELEGATION_RESULT_CLIENT_ORIGIN,
   DelegationResultDelivery,
+  openDelegationRequests,
 } from '../../../../services/orchestration/delegation-result-delivery.js';
 import { EventBus } from '../../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../../services/orchestration/event-store.js';
@@ -836,14 +837,14 @@ export function createInboxHarness() {
           store
             .listEventsByMethods(id, ACTIVE_TURN_FOLD_METHODS)
             .map(({ sequence, payload }) => ({ sequence, event: payload })),
+        mayReadPullRequestWatch: () => true,
         requestEvents: (id) =>
-          store
-            .listEventsByMethods(id, ['request.opened'])
-            .flatMap(({ sequence, payload }) =>
-              payload.method === 'request.opened'
-                ? [{ sequence, event: payload }]
-                : [],
-            ),
+          openDelegationRequests(
+            store.listEventsByMethods(id, [
+              'request.opened',
+              'request.resolved',
+            ]),
+          ),
         headSequence: (id) => store.readSessionInventoryHighWater(id),
         turnEvents: (id, turn, methods, limit, invocation) =>
           store

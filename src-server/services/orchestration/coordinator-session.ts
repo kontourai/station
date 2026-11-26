@@ -829,8 +829,9 @@ export class CoordinatorWakeDelivery {
       // #3158 already returns a delegated child's settled turn (any
       // outcome) to its parent; a child waiting on the person does not settle.
       if (
-        delegatedBy === designation.conversationId &&
-        (item.kind !== 'needs-you' ||
+        (item.kind !== 'needs-you' &&
+          delegatedBy === designation.conversationId) ||
+        (item.kind === 'needs-you' &&
           this.ports.handlesApprovalWake?.(
             designation.conversationId,
             item.sessionId,

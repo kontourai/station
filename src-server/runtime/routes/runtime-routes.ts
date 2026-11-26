@@ -894,6 +894,7 @@ import {
   createDelegationResultSteerPort,
   DELEGATION_RESULT_CLIENT_ORIGIN,
   DelegationResultDelivery,
+  openDelegationRequests,
 } from '../../services/orchestration/delegation-result-delivery.js';
 import type { EventBus } from '../../services/orchestration/event-bus.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
@@ -7376,23 +7377,29 @@ export function configureRuntimeRoutes(
         );
         return receipt?.outcome === 'started' ? receipt : undefined;
       },
-      blockedEvents: (threadId) =>
-        eventStore
-          .listEventsByMethods(threadId, ['session.state-changed'])
-          .flatMap(({ payload, sequence }) =>
-            payload.method === 'session.state-changed' &&
-            payload.sessionState === 'blocked'
-              ? [{ event: payload, sequence }]
-              : [],
-          ),
+      blockedEvents: (threadId) => {
+        const last = eventStore
+          .listEventsByMethods(threadId, [
+            'session.state-changed',
+            'turn.started',
+            'turn.completed',
+            'turn.aborted',
+            'runtime.error',
+            'session.exited',
+          ])
+          .at(-1);
+        return last?.payload.method === 'session.state-changed' &&
+          last.payload.sessionState === 'blocked'
+          ? [{ event: last.payload, sequence: last.sequence }]
+          : [];
+      },
       requestEvents: (threadId) =>
-        eventStore
-          .listEventsByMethods(threadId, ['request.opened'])
-          .flatMap(({ payload, sequence }) =>
-            payload.method === 'request.opened'
-              ? [{ event: payload, sequence }]
-              : [],
-          ),
+        openDelegationRequests(
+          eventStore.listEventsByMethods(threadId, [
+            'request.opened',
+            'request.resolved',
+          ]),
+        ),
       // Opt-in resolution: a delegation result reports the exact reply,
       // even one EventStore stored out of line (event-content-spill).
       turnEvents: (threadId, turnId, methods, limit, invocationId) =>
