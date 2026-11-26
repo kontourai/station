@@ -335,7 +335,8 @@ details[open] > .pull-request-review__summary .pull-request-review__caret {
 }
 
 .pull-request-review--preview [role="tablist"] {
-  overflow-x: auto;
+  flex-wrap: wrap;
+  overflow: visible;
 }
 
 .pull-request-review--preview [role="tab"] {

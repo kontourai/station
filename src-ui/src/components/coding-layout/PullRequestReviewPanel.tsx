@@ -970,6 +970,7 @@ function ReviewOwner({
             actions={mergeActions}
             label="Merge options"
             triggerText="Merge"
+            triggerClassName={redesigned ? '' : undefined}
             reserveGlyphColumn
           />
         )}
