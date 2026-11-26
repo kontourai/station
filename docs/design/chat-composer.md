@@ -629,7 +629,14 @@ in the dock.
 The shared New chat action remains directly reachable in mobile chrome and
 the desktop Inbox header. The phone Inbox is the dock's initial reader, not
 a modal reached through the title. Its explicit icon returns to the retained
-Inbox without unmounting the conversation. Completed answers expose an
+Inbox without unmounting the conversation. Browser Back also returns a phone
+reader to Inbox, including when a notification or direct link opened the chat.
+Child readers and dialogs keep their own Back step above that reader. A send
+finishing in the background updates its conversation without selecting it again.
+Moving between Inbox and its reader uses a short, interruptible entry transition;
+input and navigation do not wait for it. The existing **Appearance → Motion →
+Reduced** preference and the device's reduced-motion preference skip this motion.
+Completed answers expose an
 icon-only Branch action beside Copy, using the recorded turn's existing fork
 eligibility and execution identity. The timestamp stays on that action row. Child-work status says **Run finished**
 when its execution ends; its result remains separate and can report unfinished work.

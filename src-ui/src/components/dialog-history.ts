@@ -16,7 +16,7 @@ export interface DialogHistoryHost {
 
 interface DialogHistoryEntry {
   id: string;
-  close: () => void;
+  close: (reason: 'back' | 'navigation') => void;
   host: DialogHistoryHost | null;
   cleanupToken?: object;
   published: boolean;
@@ -177,7 +177,7 @@ function cancelInvalidPendingEntries() {
     if (entry.published || entry.cleanupToken) continue;
     if (entry.host?.removed || window.location.href !== entry.pushedUrl) {
       entries.splice(entries.indexOf(entry), 1);
-      entry.close();
+      entry.close('navigation');
     }
   }
 }
@@ -192,7 +192,7 @@ function flushPendingEntries() {
       for (const pending of [...entries]) {
         if (pending.published) continue;
         entries.splice(entries.indexOf(pending), 1);
-        if (!pending.cleanupToken) pending.close();
+        if (!pending.cleanupToken) pending.close('navigation');
       }
       throw error;
     }
@@ -226,7 +226,7 @@ function handlePopState(event: PopStateEvent) {
   if (!top || markerFromState(window.history.state) === top.id) return;
   entries.pop();
   markOrphaned(top.id);
-  top.close();
+  top.close(event.isTrusted ? 'back' : 'navigation');
 }
 
 function ensureListener() {
@@ -267,7 +267,7 @@ function ensureListener() {
  */
 export function registerDialogHistory(
   id: string,
-  close: () => void,
+  close: (reason: 'back' | 'navigation') => void,
   host: DialogHistoryHost | null = null,
   options: {
     /**
