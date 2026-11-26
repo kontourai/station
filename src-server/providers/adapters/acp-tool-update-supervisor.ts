@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type { EngineToolKind } from '@kontourai/station-contracts/runtime-events';
 import { stationControlToolName } from '@kontourai/station-contracts/station-control-refusal';
@@ -136,6 +137,7 @@ type AcpToolUpdate = {
 };
 
 type CallState = {
+  reportedStart?: true;
   name?: string;
   title?: string;
   proxiedMcpToolName?: string;
@@ -833,12 +835,17 @@ export class AcpToolUpdateSupervisor {
     // last valid one; an unchanged kind is not new metadata.
     const nextKind = update.hasKind ? engineToolKind(update.kind) : undefined;
     const kindChanged = nextKind !== undefined && nextKind !== call.kind;
-    const metadataChanged =
+    const hasMetadataUpdate =
       start ||
       update.hasName ||
       update.hasTitle ||
       kindChanged ||
       update.hasRawInput;
+    const previousIdentity =
+      call.reportedStart && hasMetadataUpdate
+        ? toolIdentity(update.toolCallId, call)
+        : undefined;
+    const previousInput = call.rawInput;
     if (update.hasName)
       call.name = typeof update.name === 'string' ? update.name : undefined;
     if (update.hasTitle)
@@ -945,7 +952,17 @@ export class AcpToolUpdateSupervisor {
         }
       }
     }
-    if (metadataChanged) this.emitStarted(update.toolCallId, call);
+    if (
+      hasMetadataUpdate &&
+      (!isDeepStrictEqual(
+        previousIdentity,
+        toolIdentity(update.toolCallId, call),
+      ) ||
+        !isDeepStrictEqual(previousInput, call.rawInput))
+    ) {
+      call.reportedStart = true;
+      this.emitStarted(update.toolCallId, call);
+    }
     if (terminal) {
       this.flushCall(call);
       this.complete(update.toolCallId, call, update.status ?? 'failed');

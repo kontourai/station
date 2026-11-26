@@ -361,6 +361,42 @@ describe('AcpToolUpdateSupervisor', () => {
     expect(events.at(-1)).not.toHaveProperty('output');
   });
 
+  test('publishes tool identity and input revisions without repeating identical start events', () => {
+    const { events, supervisor } = harness();
+    const metadata = {
+      toolCallId: 'redrawn',
+      name: 'lookup',
+      hasName: true,
+      title: 'Find a file',
+      hasTitle: true,
+      rawInput: { name: 'a.md', options: { recursive: true } },
+      hasRawInput: true,
+    };
+    supervisor.acceptStarted(metadata);
+    supervisor.acceptUpdate({
+      ...metadata,
+      rawInput: { options: { recursive: true }, name: 'a.md' },
+    });
+    supervisor.acceptUpdate({ ...metadata, title: 'Find another file' });
+    supervisor.acceptUpdate({
+      ...metadata,
+      rawInput: { name: 'b.md', options: { recursive: true } },
+    });
+    supervisor.acceptUpdate({
+      toolCallId: 'redrawn',
+      status: 'completed',
+      hasStatus: true,
+    });
+
+    expect(events.map((event) => event.method)).toEqual([
+      'tool.started',
+      'tool.started',
+      'tool.completed',
+    ]);
+    expect(events[0]).toMatchObject({ arguments: { name: 'a.md' } });
+    expect(events[1]).toMatchObject({ arguments: { name: 'b.md' } });
+  });
+
   test('preserves mixed content encounter order and excludes image bytes', () => {
     const { events, supervisor } = harness();
     supervisor.acceptStarted({ toolCallId: 'mixed' });
