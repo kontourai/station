@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { stageBundledRegistry } from './lib/bundled-registry.mjs';
 import { stageDesktopNodeRuntime } from './lib/desktop-node-runtime.mjs';
 import {
+  finalizeWindowsDesktopResourcePaths,
   stageDesktopServerBundle,
   stageDesktopServerRuntime,
   WINDOWS_DESKTOP_RUNTIME_RESOURCE_DIR,
@@ -22,4 +23,12 @@ const outputRoot = stageDesktopServerRuntime({
 stageBundledRegistry({ projectRoot, outputRoot });
 stageDesktopServerBundle(projectRoot, outputRoot);
 await stageDesktopNodeRuntime(projectRoot, outputRoot);
+if (process.platform === 'win32') {
+  const { maxInstallRootLength } = finalizeWindowsDesktopResourcePaths({
+    projectRoot,
+  });
+  console.log(
+    `Windows installer supports installation roots up to ${maxInstallRootLength} characters`,
+  );
+}
 console.log(`Staged desktop server runtime dependencies in ${outputRoot}`);

@@ -14,6 +14,11 @@ import { STATION_SERVER_EXTERNALS } from './scripts/lib/server-build-config.mjs'
 import { assertAsciiServerBundles } from './scripts/lib/server-bundle-ascii.mjs';
 import { assertNoBootDeniedStaticImports } from './scripts/lib/server-static-imports.mjs';
 
+const diagnostic = process.env.STATION_DESKTOP_BUILD_DIAGNOSTICS === '1';
+const diagnosticStartedAt = diagnostic ? performance.now() : 0;
+let bundleStarted = 0;
+let bundleCompleted = 0;
+
 // jsonc-parser exposes its CommonJS UMD entry as `main` and its fully
 // statically-importable implementation as `module`. esbuild's Node defaults
 // select `main`, then preserve the UMD entry's relative require('./impl/*')
@@ -37,7 +42,9 @@ const jsoncParserEsmEntry = resolvePackage.resolve(
 // supervisor metadata. This mirrors the
 // existing `globalThis.__STATION_CLI_BUNDLE__` precedent in
 // `packages/cli/esbuild.config.mjs`.
-const serverBuildIdentity = deriveServerBuildIdentity(process.cwd());
+const serverBuildIdentity = await buildPhase('build identity', () =>
+  deriveServerBuildIdentity(process.cwd()),
+);
 
 const buildBanner = [
   `globalThis.__STATION_SERVER_BUILD__ = ${JSON.stringify(serverBuildIdentity)};`,
@@ -66,19 +73,80 @@ const shared = {
 
 const serverDir = process.env.STATION_BUILD_SERVER_DIR || 'dist-server';
 
-await generateStationDocs({ check: true });
-mkdirSync(`${serverDir}/third-party/cedar`, { recursive: true });
-for (const name of ['LICENSE', 'NOTICE']) {
-  cpSync(
-    `packaging/licenses/cedar/${name}`,
-    `${serverDir}/third-party/cedar/${name}`,
+async function buildPhase(phase, action, work = {}) {
+  if (!diagnostic) return action();
+  const startedAt = performance.now();
+  const cpuStarted = process.cpuUsage();
+  console.error(
+    '[desktop-server build]',
+    JSON.stringify({
+      phase,
+      event: 'start',
+      elapsedMs: Math.round(startedAt - diagnosticStartedAt),
+      work,
+    }),
+  );
+  let failure;
+  try {
+    return await action();
+  } catch (error) {
+    failure = error;
+    throw error;
+  } finally {
+    console.error(
+      '[desktop-server build]',
+      JSON.stringify({
+        phase,
+        event: failure ? 'failed' : 'end',
+        elapsedMs: Math.round(performance.now() - diagnosticStartedAt),
+        durationMs: Math.round(performance.now() - startedAt),
+        parentCpuMicros: process.cpuUsage(cpuStarted),
+        parentCpuScope:
+          'process, including overlapping phases; excludes child processes',
+        work: { ...work, bundleStarted, bundleCompleted },
+        ...(failure
+          ? { error: { message: failure.message, code: failure.code } }
+          : {}),
+      }),
+    );
+  }
+}
+
+function buildServerBundle(options) {
+  if (!diagnostic) return esbuild.build(options);
+  bundleStarted += 1;
+  return buildPhase(
+    `bundle:${relative(serverDir, options.outfile)}`,
+    async () => {
+      const result = await esbuild.build(options);
+      bundleCompleted += 1;
+      return result;
+    },
+    { entryPoints: options.entryPoints.length },
   );
 }
 
-mkdirSync(`${serverDir}/third-party/media-tools`, { recursive: true });
-cpSync(
-  'packaging/licenses/media-tools/NOTICE',
-  `${serverDir}/third-party/media-tools/NOTICE`,
+await buildPhase('documentation validation', () =>
+  generateStationDocs({ check: true }),
+);
+await buildPhase(
+  'license copies',
+  () => {
+    mkdirSync(`${serverDir}/third-party/cedar`, { recursive: true });
+    for (const name of ['LICENSE', 'NOTICE']) {
+      cpSync(
+        `packaging/licenses/cedar/${name}`,
+        `${serverDir}/third-party/cedar/${name}`,
+      );
+    }
+
+    mkdirSync(`${serverDir}/third-party/media-tools`, { recursive: true });
+    cpSync(
+      'packaging/licenses/media-tools/NOTICE',
+      `${serverDir}/third-party/media-tools/NOTICE`,
+    );
+  },
+  { files: 3 },
 );
 
 // Bundles this build writes are checked; older files in serverDir are not.
@@ -86,7 +154,7 @@ const buildStartedMs = Date.now();
 // Bind the core to this build's emitted stdio entry, even if the installation
 // path later points to a different generation.
 const docsEntry = `${serverDir}/station-docs.js`;
-const docs = await esbuild.build({
+const docs = await buildServerBundle({
   ...shared,
   // The same bytes must run as a file or an in-memory ESM module.
   banner: { js: buildBanner },
@@ -121,19 +189,19 @@ const docsExecutable = {
 };
 
 await Promise.all([
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: ['./src-server/tools/cedar-policy-probe.ts'],
     outfile: `${serverDir}/cedar-policy-probe.js`,
   }),
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: [
       './src-server/services/secrets/telemetry-key-materialization-child.ts',
     ],
     outfile: `${serverDir}/telemetry-key-materialization-child.js`,
   }),
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: ['./src-server/index.ts'],
     define: { __STATION_DOCS_EXECUTABLE__: JSON.stringify(docsExecutable) },
@@ -142,24 +210,24 @@ await Promise.all([
   // The process supervisor holds listeners and hands them between core
   // generations. It is self-contained (Node built-ins only) and does not share
   // the server banner or externals: it must run with no node_modules beside it.
-  esbuild.build(
+  buildServerBundle(
     supervisorBuildOptions(`${serverDir}/${SUPERVISOR_BUNDLE_NAME}`),
   ),
   // The supervisor's workload host owns terminal PTYs across core
   // generations. It needs node-pty, so unlike the supervisor it runs beside
   // this build's node_modules; the supervisor starts the one beside the core
   // entry (WORKLOAD_HOST_BUNDLE_NAME in the supervisor protocol).
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: ['./src-server/tools/station-pty-host.ts'],
     outfile: `${serverDir}/station-pty-host.js`,
   }),
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: ['./src-server/tools/station-control-server.ts'],
     outfile: `${serverDir}/station-control.js`,
   }),
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: ['./src-server/tools/station-knowledge-server.ts'],
     outfile: `${serverDir}/station-knowledge.js`,
@@ -168,14 +236,14 @@ await Promise.all([
   // survive after the parent server process exits (that exit is what frees
   // the shared port for the new server to bind), so it has to be a real
   // separate process, spawned detached — never an in-process callback.
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: ['./src-server/tools/self-update-watchdog-runner.ts'],
     outfile: `${serverDir}/self-update-watchdog.js`,
   }),
   // Native desktop registry I/O intentionally goes through this bundled
   // caller, so it retains the shared module's locked, fail-closed semantics.
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: ['./src-server/tools/instance-registry-bridge.ts'],
     outfile: `${serverDir}/instance-registry-bridge.js`,
@@ -184,7 +252,7 @@ await Promise.all([
   // so `PRAGMA quick_check` in the server would stall the event loop for its
   // whole duration; this has to be a real separate process for the runtime to
   // stay responsive while it runs.
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: ['./src-server/tools/store-integrity-probe.ts'],
     outfile: `${serverDir}/store-integrity-probe.js`,
@@ -192,7 +260,7 @@ await Promise.all([
   // The bound-directory Adapter invokes this fixed helper by import-meta
   // relative path. Build it beside the server bundle so packaged execution
   // cannot accidentally depend on the source checkout.
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: [
       './src-server/services/agents/bound-directory-enumeration-helper.mjs',
@@ -202,14 +270,14 @@ await Promise.all([
   // Durable room SQLite is synchronous by Node's API and therefore lives in
   // its own owned worker. Emit the worker beside the server bundle so the
   // import.meta.url-relative production path is as explicit as the source path.
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: [
       './src-server/services/orchestration/project-task-room-history-worker.ts',
     ],
     outfile: `${serverDir}/project-task-room-history-worker.js`,
   }),
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: [
       './src-server/runtime/agents/durable-agent-checkpoint-worker.ts',
@@ -217,12 +285,12 @@ await Promise.all([
     outfile: `${serverDir}/durable-agent-checkpoint-worker.js`,
   }),
   // The fixed first-party Task reader uses the same relative packaged path.
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: ['./src-server/services/search/task-search-worker.ts'],
     outfile: `${serverDir}/task-search-worker.js`,
   }),
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: ['./src-server/services/search/transcript-search-worker.ts'],
     outfile: `${serverDir}/transcript-search-worker.js`,
@@ -230,14 +298,14 @@ await Promise.all([
   // A plugin draft build runs in its own disposable process (epic #2323 S3),
   // forked via an import.meta.url-relative path, so ship its entry beside
   // the server bundle like the workers above.
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: ['./src-server/services/plugins/plugin-draft-build-child.ts'],
     outfile: `${serverDir}/plugin-draft-build-child.js`,
   }),
   // #3406: attached-session discovery reads session folders in this helper
   // process, spawned via an import.meta.url-relative path like the one above.
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: [
       './src-server/services/orchestration/attached-session-path-child.ts',
@@ -247,7 +315,7 @@ await Promise.all([
   // The private document worker is loaded via import.meta.url at runtime too.
   // Ship it beside the history worker: source-only availability passes dev
   // tests while a packaged server otherwise fails its first room request.
-  esbuild.build({
+  buildServerBundle({
     ...shared,
     entryPoints: [
       './src-server/services/orchestration/project-task-room-working-state-worker.ts',
@@ -256,5 +324,11 @@ await Promise.all([
   }),
 ]);
 
-assertAsciiServerBundles(serverDir, { sinceMs: buildStartedMs });
-await assertNoBootDeniedStaticImports(`${serverDir}/command-station.js`);
+await buildPhase('ASCII validation', () =>
+  assertAsciiServerBundles(serverDir, { sinceMs: buildStartedMs }),
+);
+await buildPhase(
+  'static import validation',
+  () => assertNoBootDeniedStaticImports(`${serverDir}/command-station.js`),
+  { bundles: 1 },
+);

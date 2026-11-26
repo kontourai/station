@@ -20,7 +20,19 @@
 ; default); STATION_HOME is one channel runtime leaf beneath it. Neither lives
 ; here, and the packaged runtime treats $INSTDIR as read-only.
 
+!include "${__FILEDIR__}\..\dist-desktop-wix-resources\installer-path-budget.nsh"
+
 !macro NSIS_HOOK_PREINSTALL
+  Push $0
+  StrLen $0 "$INSTDIR"
+  ${If} $0 > ${STATION_WINDOWS_MAX_INSTALL_ROOT}
+    Pop $0
+    MessageBox MB_ICONSTOP|MB_OK "The installation folder is too long. Choose a shorter folder (at most ${STATION_WINDOWS_MAX_INSTALL_ROOT} characters), such as C:\Station, to keep Station's runtime files within Windows path limits. Runtime extraction has been stopped." /SD IDOK
+    SetErrorLevel 2
+    Quit
+  ${EndIf}
+  Pop $0
+
   ; Ask before destroying anything. The template's own running-app check runs
   ; AFTER this hook, so without this the resource directories would already be
   ; gone by the time the user is asked whether Station may be closed — and

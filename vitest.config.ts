@@ -109,6 +109,7 @@ export default defineConfig({
     exclude: [
       'tests/**',
       '**/node_modules/**',
+      'dist-desktop-wix-resources/**',
       'vendor/**',
       '.claude/**',
       '.station/**',
