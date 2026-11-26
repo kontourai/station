@@ -2601,9 +2601,10 @@ worktrees. The
 [turn-admission boundary](../../src-server/services/orchestration/orchestration-service.ts)
 refuses further turns when the standing grant ends. The
 [Codex profile owner](../../src-server/providers/adapters/codex-confinement.ts)
-defines the writable worktree metadata, shared object store, branch namespace,
-and operator-selected extra paths. Its read-only rules protect worktree
-metadata such as `config.worktree`.
+gives confined children private objects and refs, with the shared object
+store as a read-only alternate. It protects upstream reference snapshots and
+the grant signing key alongside worktree metadata such as `config.worktree`.
+Station preserves worktrees with private Git storage at session exit.
 
 ## SessionLifecycleModule
 

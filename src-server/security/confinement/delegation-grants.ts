@@ -199,6 +199,7 @@ export class DelegationGrantStore {
   }
 
   private authenticated(input: unknown) {
+    if (!this.key) throw new Error('Delegation grant signing key unavailable.');
     const entries = storedGrants.parse(input);
     const verified: Array<z.output<typeof signedGrant>> = [];
     for (const entry of entries) {

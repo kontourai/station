@@ -1,5 +1,12 @@
 import { existsSync, realpathSync } from 'node:fs';
-import { lstat, realpath } from 'node:fs/promises';
+import {
+  copyFile,
+  lstat,
+  mkdir,
+  realpath,
+  rename,
+  writeFile,
+} from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type {
   ConfinementPlan,
@@ -20,6 +27,7 @@ import {
   isHighRiskDelegationGitPath,
 } from '../../security/confinement/delegation-grants.js';
 import { discoverSeatbeltGitLayout } from '../../security/confinement/seatbelt.js';
+import { execGit } from '../../utils/git-exec.js';
 import { isCanonicalPathWithin } from '../../utils/path-containment.js';
 import { resolveHomeDir } from '../../utils/paths.js';
 import type {
@@ -53,8 +61,8 @@ export interface CodexSandboxEvidence {
 }
 
 /**
- * The ref and its lock must share a writable directory for Git's rename.
- * Provisioning reserves a branch namespace for each delegated worktree.
+ * Give this linked worktree private Git refs as well as private objects. A
+ * shared ref must never point at an object that only the child can read.
  */
 export async function codexDelegatedGitPlan(
   worktree: WorktreeSessionMetadata,
@@ -89,15 +97,8 @@ export async function codexDelegatedGitPlan(
     );
   }
 
-  const branchDir = dirname(worktree.branch);
   const extraPaths = extraGitWritePaths.map((path) => join(commonDir, path));
-  const writableDirectories = [
-    layout.gitDir,
-    join(commonDir, 'objects'),
-    join(commonDir, 'refs', 'heads', branchDir),
-    join(commonDir, 'logs', 'refs', 'heads', branchDir),
-    ...extraPaths,
-  ];
+  const writableDirectories = [layout.gitDir, ...extraPaths];
   for (const directory of new Set(writableDirectories)) {
     const stats = await lstat(directory);
     if (
@@ -112,6 +113,49 @@ export async function codexDelegatedGitPlan(
       );
     }
   }
+  const commonObjects = join(commonDir, 'objects');
+  const sharedConfig = join(commonDir, 'config');
+  const base = worktree.baseCommit;
+  if (
+    !base ||
+    !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(base) ||
+    (await realpath(commonObjects)) !== commonObjects ||
+    (await realpath(sharedConfig)) !== sharedConfig ||
+    existsSync(join(commonDir, 'reftable'))
+  )
+    throw new Error(
+      'Delegated coding requires a verified Git object store and file-based refs.',
+    );
+
+  const { stdout: remoteRefs } = await execGit(
+    [
+      '-C',
+      worktree.repoPath,
+      'for-each-ref',
+      '--format=%(objectname) %(refname)',
+      'refs/remotes',
+    ],
+    { timeout: 10_000, maxBuffer: 1024 * 1024 },
+  );
+  const privateCommon = join(layout.gitDir, 'station-private-common');
+  const privateObjects = join(privateCommon, 'objects');
+  const privateBranch = join(privateCommon, 'refs', 'heads', worktree.branch);
+  const privateRemotes = join(privateCommon, 'refs', 'remotes');
+  const privateAlternates = join(privateObjects, 'info', 'alternates');
+  const privateConfig = join(privateCommon, 'config');
+  const packedRefs = join(privateCommon, 'packed-refs');
+  await mkdir(privateCommon, { mode: 0o700 });
+  await mkdir(dirname(privateAlternates), { recursive: true });
+  await mkdir(dirname(privateBranch), { recursive: true });
+  await mkdir(privateRemotes);
+  await copyFile(sharedConfig, privateConfig);
+  await writeFile(privateBranch, `${base}\n`, { flag: 'wx' });
+  await writeFile(privateAlternates, `${commonObjects}\n`, { flag: 'wx' });
+  await writeFile(packedRefs, remoteRefs, { flag: 'wx' });
+  const pointer = join(layout.gitDir, 'commondir.station-new');
+  await writeFile(pointer, 'station-private-common\n', { flag: 'wx' });
+  await rename(pointer, join(layout.gitDir, 'commondir'));
+
   return {
     writableDirectories: [...new Set(writableDirectories)],
     readOnlyPaths: [
@@ -120,7 +164,11 @@ export async function codexDelegatedGitPlan(
       join(layout.gitDir, 'config'),
       join(layout.gitDir, 'config.worktree'),
       join(layout.gitDir, 'hooks'),
-      join(commonDir, 'objects', 'info'),
+      commonObjects,
+      privateAlternates,
+      privateConfig,
+      privateRemotes,
+      packedRefs,
     ],
     openNetwork,
   };

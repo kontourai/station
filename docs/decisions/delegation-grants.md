@@ -40,8 +40,13 @@ The child's own worktree is on by default. Station provisions it before
 starting the child, using the Project’s configured worktree base or the
 fetched default branch. If that ref cannot resolve to a commit, Station
 refuses the delegation before creating a branch or checkout. For confined
-coding work, the child receives the worktree's own Git directory and the
-minimum object and ref write paths needed to commit and push. The operator can
+coding work, Station gives the worktree private objects and refs. Its object
+store reads the repository's shared objects as a read-only alternate. The
+primary branch registration stays at the base commit. A child pushes its
+private branch directly to the forge. Station preserves these worktrees on
+session exit and refuses settlement because its existing settlement checks read
+the primary branch tip. Manage private output through Git in the child's
+checkout. The operator can
 configure additional Git write paths per Project. Extra paths cannot include
 the common object store or any worktree administration directory. Paths under
 refs, hooks, and shared Git configuration require separate operator

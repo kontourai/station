@@ -130,7 +130,10 @@ are relative to the repository's common Git directory. Codex requires those
 paths to exist. The object store and worktree administration directories are
 excluded from extra writes. Shared hooks, configuration, and refs require
 separate confirmation. Settings and the child posture identify high-risk
-writes when they apply.
+writes when they apply. Confined Codex worktrees commit to private objects
+and refs and read the common objects through a read-only alternate. Station
+preserves these worktrees after session exit. Manage their output through Git
+in the child checkout.
 
 Revocation and expiry block further turns in a child that used the grant.
 Start a new session to apply the current policy. An unreadable grant file

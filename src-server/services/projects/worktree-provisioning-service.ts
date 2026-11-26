@@ -1172,6 +1172,14 @@ export class WorktreeProvisioningService {
       };
     const { repository, worktree } = opened;
     try {
+      if (repository.commonDir !== worktree.commonDir) {
+        return {
+          kind: 'refused',
+          reason: 'unsafe-config',
+          detail:
+            'This delegated worktree has private Git storage. Use Git in its checkout to manage its output.',
+        };
+      }
       const head = await this.ownBranchTip(repository, metadata.branch);
       if (head.kind === 'missing') return head;
       if (head.kind === 'unsafe-config')

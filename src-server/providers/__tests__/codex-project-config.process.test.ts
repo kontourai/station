@@ -12,8 +12,10 @@
  */
 import { spawnSync } from 'node:child_process';
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
   realpathSync,
   writeFileSync,
@@ -127,6 +129,35 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
         );
         expect(added.status, added.stderr).toBe(0);
       }
+      const git = (cwd: string, args: string[], input?: string) => {
+        const result = spawnSync('git', args, {
+          cwd,
+          input,
+          windowsHide: true,
+          encoding: 'utf8',
+        });
+        expect(result.status, result.stderr).toBe(0);
+        return result.stdout.trim();
+      };
+      const baseCommit = git(repo, ['rev-parse', 'HEAD']);
+      const sharedObjects = join(repo, '.git', 'objects');
+      git(repo, ['repack', '-ad']);
+      const packName = readdirSync(join(sharedObjects, 'pack')).find((name) =>
+        name.endsWith('.pack'),
+      );
+      expect(packName).toBeDefined();
+      const pack = join(sharedObjects, 'pack', packName!);
+      const looseId = git(
+        repo,
+        ['hash-object', '-w', '--stdin'],
+        'shared loose object',
+      );
+      const loose = join(sharedObjects, looseId.slice(0, 2), looseId.slice(2));
+      chmodSync(loose, 0o600);
+      const looseBefore = readFileSync(loose);
+      const remote = join(worktree, 'test-forge.git');
+      git(worktree, ['init', '--bare', remote]);
+
       const plan = await codexDelegatedGitPlan(
         {
           mode: 'worktree',
@@ -134,6 +165,7 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
           path: worktree,
           branch,
           baseRef: 'HEAD',
+          baseCommit,
           cleanupPolicy: 'preserve',
           preserveOnFailure: true,
           createdAt: new Date().toISOString(),
@@ -185,6 +217,19 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
       ).not.toBe(0);
       expect(readFileSync(signingKey)).toEqual(keyBefore);
 
+      const removePack = run(['rm', '--', pack]);
+      expect(removePack.status, removePack.stderr).toBe(1);
+      expect(existsSync(pack)).toBe(true);
+      const overwriteLoose = run([
+        'sh',
+        '-ec',
+        'printf changed > "$1"',
+        'object-probe',
+        loose,
+      ]);
+      expect(overwriteLoose.status, overwriteLoose.stderr).not.toBe(0);
+      expect(readFileSync(loose)).toEqual(looseBefore);
+
       writeFileSync(join(worktree, 'child.txt'), 'child');
       const commit = run([
         'sh',
@@ -199,6 +244,18 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
       });
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toBe('child');
+      const push = run([
+        'git',
+        'push',
+        '--',
+        remote,
+        `HEAD:refs/heads/${branch}`,
+      ]);
+      expect(push.status, push.stderr).toBe(0);
+      expect(git(remote, ['show', `refs/heads/${branch}:child.txt`])).toBe(
+        'child',
+      );
+      expect(git(repo, ['rev-parse', `refs/heads/${branch}`])).toBe(baseCommit);
       const worktreeGit = spawnSync(
         'git',
         ['rev-parse', '--absolute-git-dir'],

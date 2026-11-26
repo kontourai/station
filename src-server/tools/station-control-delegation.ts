@@ -6467,6 +6467,9 @@ export async function delegateTask(
                     mode: 'worktree',
                     policy: {
                       ...workspace.workspaceIsolation.policy,
+                      ...(grant.access === 'confined'
+                        ? { cleanupOnCompletion: false }
+                        : {}),
                       branchPrefix: `station-delegation/${createHash('sha256').update(sessionId).digest('hex').slice(0, 32)}`,
                       baseRef:
                         workspace.workspaceIsolation.policy?.baseRef ??
