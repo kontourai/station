@@ -9,6 +9,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs';
 import { spawnSyncBounded } from '../lib/bounded-capture.mjs';
 import { buildWindowsOwnedGuard } from '../lib/windows-owned-guard-build.mjs';
 import { createWindowsOwnedProtocol } from '../lib/windows-owned-protocol.mjs';
@@ -27,6 +28,8 @@ vi.mock('node:fs', async (importOriginal) => {
   };
   return { ...actual, rmSync };
 });
+
+const makeTempDir = trackTempDirs();
 
 afterEach(() => {
   cleanupFailure = undefined;
@@ -129,7 +132,7 @@ test('launcher wires its settlement controller and rejects partial control EOF',
 
 describe('Windows owned guard build', () => {
   test('preserves compiler timeout details when private output cleanup also fails', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-guard-build-test-'));
+    const root = makeTempDir('station-guard-build-test-');
     const compilerFailure = Object.assign(new Error('compiler stalled'), {
       code: 'ETIMEDOUT',
     });
@@ -176,7 +179,7 @@ describe('Windows owned guard build', () => {
   test.skipIf(process.platform !== 'win32')(
     'reaps a timed-out real Windows compiler before removing its private output',
     () => {
-      const root = mkdtempSync(join(tmpdir(), 'station-guard-build-test-'));
+      const root = makeTempDir('station-guard-build-test-');
       let compilerPid = 0;
       let checkedExited = false;
       let failure: unknown;
@@ -220,7 +223,7 @@ describe('Windows owned guard build', () => {
   );
 
   test('refuses timed-out compiler output and removes its private directory', () => {
-    const root = mkdtempSync(join(tmpdir(), 'station-guard-build-test-'));
+    const root = makeTempDir('station-guard-build-test-');
     try {
       expect(() =>
         buildWindowsOwnedGuard({
