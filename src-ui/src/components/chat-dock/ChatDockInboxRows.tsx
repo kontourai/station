@@ -1409,6 +1409,7 @@ export function InboxTaskRow({
   now,
   facts,
   onActivate,
+  onOpenTaskQuestions,
   onSnoozeWake,
   done,
   isSnoozed,
@@ -1426,7 +1427,10 @@ export function InboxTaskRow({
   | 'onSnoozeWake'
   | 'done'
   | 'isSnoozed'
-> & { attention?: { reason: string; actions: ReactNode } }) {
+> & {
+  onOpenTaskQuestions?: (item: HomeWorkItem) => void;
+  attention?: { reason: string; actions: ReactNode };
+}) {
   const id = useId();
   const status = useObservedWorkStatus(item, now, facts);
   const actions = inboxRowActions({
@@ -1445,6 +1449,7 @@ export function InboxTaskRow({
       : undefined,
   });
   const menu = actions.length > 1;
+  const questionCount = facts?.taskOpenQuestionCount ?? 0;
   return (
     <div
       className={`chat-dock-inbox__row inbox-row inbox-row--card inbox-row--${chrome}${menu && !attention ? ' inbox-row--has-actions' : ''}${attention ? ' inbox-row--task-attention' : ''}`}
@@ -1470,6 +1475,15 @@ export function InboxTaskRow({
           {attention && <span className="inbox-row__task-kind">Task</span>}
         </InboxRowSummary>
       </button>
+      {onOpenTaskQuestions && questionCount > 0 && (
+        <div className="inbox-row__question-link">
+          <Button variant="secondary" onClick={() => onOpenTaskQuestions(item)}>
+            {questionCount === 1
+              ? 'Open question'
+              : `${questionCount} open questions`}
+          </Button>
+        </div>
+      )}
       {attention ? (
         <div className="inbox-row__task-attention-details">
           <p>{attention.reason}</p>
@@ -1556,6 +1570,7 @@ export interface InboxGroupListProps {
   /** Sheet chrome: each group label says how many ("Needs you · 2"). */
   showGroupCounts?: boolean;
   onActivate: (item: HomeWorkItem) => void;
+  onOpenTaskQuestions?: (item: HomeWorkItem) => void;
   actionsOnHold?: boolean;
   onSelectRow?: (item: HomeWorkItem) => void;
   onHoldRow?: (item: HomeWorkItem) => void;
@@ -1620,6 +1635,7 @@ export function InboxGroupList({
   collapsible,
   showGroupCounts = false,
   onActivate,
+  onOpenTaskQuestions,
   actionsOnHold = false,
   onSelectRow,
   onHoldRow,
@@ -1757,6 +1773,13 @@ export function InboxGroupList({
         now={now}
         facts={facts}
         onActivate={onActivate}
+        onOpenTaskQuestions={
+          group.id === 'needsYou' &&
+          !item.environmentId &&
+          facts?.hostDetails !== false
+            ? onOpenTaskQuestions
+            : undefined
+        }
         onSnoozeWake={group.id === 'dismissed' ? undefined : onSnoozeWake}
         isSnoozed={group.id === 'snoozed'}
         done={done}
