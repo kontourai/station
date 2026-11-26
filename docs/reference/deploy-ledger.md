@@ -28,6 +28,8 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-26T14:27:01Z | nightly-android | 0.2.0-nightly.20261126 | `43b37b0` | native cohort final receipt partial | [run](https://github.com/kontourai/station/actions/runs/45826539800) |
+| 2026-11-26T13:18:05Z | nightly-npm | 0.12.0-nightly.20261126.45826539800 | `43b37b0` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45826539800) |
 | 2026-11-25T21:13:39Z | nightly-desktop | 0.2.0-nightly.20261125.2 | `b197056` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45692650877) |
 | 2026-11-25T21:13:39Z | nightly-android | 0.2.0-nightly.20261125.2 | `b197056` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/45692650877) |
 | 2026-11-25T20:18:41Z | nightly-npm | 0.12.0-nightly.20261125.45692650877 | `b197056` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/45692650877) |
@@ -564,6 +566,66 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-26T14:27:01Z · nightly-android · 0.2.0-nightly.20261126
+
+- Ship SHA: `43b37b0b61932bcaff05d24bee7169de7424c142`
+- Artifact built at: `2026-11-26T13:15:50.525Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 45826539800)
+- Note: macos: NOT_VERIFIED (macos provider outcome unknown: unresolved:run:45826539800:desktop-state-absent:abandoned (the provider effect may already be live))
+- Note: windows: NOT_VERIFIED (windows provider outcome unknown: unresolved:run:45826539800:desktop-state-absent:abandoned (the provider effect may already be live))
+
+### Changelog
+
+Commits since `b197056` ([full sha](https://github.com/kontourai/station/commit/b1970563c7d38992c0aa1124ee2b21d7b52c317c)):
+
+**Features**
+
+- [#5591](https://github.com/kontourai/station/pull/5591) feat(chat): show linked pull request facts in Chats and Tasks
+- [#5571](https://github.com/kontourai/station/pull/5571) feat(ui): give Half a 380px floor on phones
+
+**Fixes**
+
+- [#5582](https://github.com/kontourai/station/pull/5582) fix(chat): reconcile completed tools in reconnect snapshots
+- [#5581](https://github.com/kontourai/station/pull/5581) fix(search): recover streamed ACP replies
+- [#5577](https://github.com/kontourai/station/pull/5577) fix(chat): restore an undelivered steer to the draft
+- [#5579](https://github.com/kontourai/station/pull/5579) fix(chat): release attachment staging after a busy send refusal
+- [#5575](https://github.com/kontourai/station/pull/5575) fix(chat): keep a pending row mounted across inbox admission
+- [#5574](https://github.com/kontourai/station/pull/5574) fix(chat): explain failed ACP tools, label delegated briefs, and hide an idle Steer/Queue picker
+- [#5578](https://github.com/kontourai/station/pull/5578) fix(acp): suppress identical tool start updates
+- [#5576](https://github.com/kontourai/station/pull/5576) fix(chat): explain the deadline for check-back approval
+- [#5573](https://github.com/kontourai/station/pull/5573) fix(chat): restore shared styling for composer approvals
+- [#5572](https://github.com/kontourai/station/pull/5572) fix(chat): reopen conversation links and unify the Chats dock
+
+## 2026-11-26T13:18:05Z · nightly-npm · 0.12.0-nightly.20261126.45826539800
+
+- Ship SHA: `43b37b0b61932bcaff05d24bee7169de7424c142`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.12.0-nightly.20261126.45826539800 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `b197056` ([full sha](https://github.com/kontourai/station/commit/b1970563c7d38992c0aa1124ee2b21d7b52c317c)):
+
+**Features**
+
+- [#5591](https://github.com/kontourai/station/pull/5591) feat(chat): show linked pull request facts in Chats and Tasks
+- [#5571](https://github.com/kontourai/station/pull/5571) feat(ui): give Half a 380px floor on phones
+
+**Fixes**
+
+- [#5582](https://github.com/kontourai/station/pull/5582) fix(chat): reconcile completed tools in reconnect snapshots
+- [#5581](https://github.com/kontourai/station/pull/5581) fix(search): recover streamed ACP replies
+- [#5577](https://github.com/kontourai/station/pull/5577) fix(chat): restore an undelivered steer to the draft
+- [#5579](https://github.com/kontourai/station/pull/5579) fix(chat): release attachment staging after a busy send refusal
+- [#5575](https://github.com/kontourai/station/pull/5575) fix(chat): keep a pending row mounted across inbox admission
+- [#5574](https://github.com/kontourai/station/pull/5574) fix(chat): explain failed ACP tools, label delegated briefs, and hide an idle Steer/Queue picker
+- [#5578](https://github.com/kontourai/station/pull/5578) fix(acp): suppress identical tool start updates
+- [#5576](https://github.com/kontourai/station/pull/5576) fix(chat): explain the deadline for check-back approval
+- [#5573](https://github.com/kontourai/station/pull/5573) fix(chat): restore shared styling for composer approvals
+- [#5572](https://github.com/kontourai/station/pull/5572) fix(chat): reopen conversation links and unify the Chats dock
 
 ## 2026-11-25T21:13:39Z · nightly-desktop · 0.2.0-nightly.20261125.2
 

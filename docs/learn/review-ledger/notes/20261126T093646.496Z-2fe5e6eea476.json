@@ -1,0 +1,23 @@
+{
+  "revision": "eab032cf19f8f218ff968d8261948cd14a6ae075",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"#5592 adds only the resting New chat draft in ChatDock (open dock, no chat, nothing opening): no route, API, config, placement, pane-relationship or connection contract changed. Checked each citing page's claims about the dock; only chat-composer.md and responsive-ui.md described the empty card and were updated.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"#5592 adds only the resting New chat draft in ChatDock (open dock, no chat, nothing opening): no route, API, config, placement, pane-relationship or connection contract changed. Checked each citing page's claims about the dock; only chat-composer.md and responsive-ui.md described the empty card and were updated.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/design/placement.md","note":"#5592 adds only the resting New chat draft in ChatDock (open dock, no chat, nothing opening): no route, API, config, placement, pane-relationship or connection contract changed. Checked each citing page's claims about the dock; only chat-composer.md and responsive-ui.md described the empty card and were updated.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"#5592 adds only the resting New chat draft in ChatDock (open dock, no chat, nothing opening): no route, API, config, placement, pane-relationship or connection contract changed. Checked each citing page's claims about the dock; only chat-composer.md and responsive-ui.md described the empty card and were updated.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/api.md","note":"#5592 adds only the resting New chat draft in ChatDock (open dock, no chat, nothing opening): no route, API, config, placement, pane-relationship or connection contract changed. Checked each citing page's claims about the dock; only chat-composer.md and responsive-ui.md described the empty card and were updated.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/reference/config.md","note":"#5592 adds only the resting New chat draft in ChatDock (open dock, no chat, nothing opening): no route, API, config, placement, pane-relationship or connection contract changed. Checked each citing page's claims about the dock; only chat-composer.md and responsive-ui.md described the empty card and were updated.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/concepts.md","note":"#5592 adds only the resting New chat draft in ChatDock (open dock, no chat, nothing opening): no route, API, config, placement, pane-relationship or connection contract changed. Checked each citing page's claims about the dock; only chat-composer.md and responsive-ui.md described the empty card and were updated.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/getting-started.md","note":"#5592 adds only the resting New chat draft in ChatDock (open dock, no chat, nothing opening): no route, API, config, placement, pane-relationship or connection contract changed. Checked each citing page's claims about the dock; only chat-composer.md and responsive-ui.md described the empty card and were updated.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]},
+
+    {"path":"docs/user/personal-boards.md","note":"#5592 adds only the resting New chat draft in ChatDock (open dock, no chat, nothing opening): no route, API, config, placement, pane-relationship or connection contract changed. Checked each citing page's claims about the dock; only chat-composer.md and responsive-ui.md described the empty card and were updated.","inputs":["src-ui/src/components/chat-dock/ChatDock.tsx"]}
+  ]
+}
