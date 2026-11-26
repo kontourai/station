@@ -1,0 +1,13 @@
+{
+  "revision": "4a945e2e50f16e6d0f126e7299d18b9b7227d77b",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Updated the transcript read and indexing section for ACP replies reconstructed from same-turn text deltas. Exact reads use the canonical ledger, retain owner checks, and share read-only worker custody. The focused integration checks live and upgraded indexes.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/transcript-search-queries.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Updated the exact message read contract to describe where ACP reply text is sourced. Kept the API shape, owner checks, pagination and source limits.","inputs":["docs/reference/sdk.md","src-server/services/orchestration/transcript-search-queries.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Checked the SDK integration guidance after the exact transcript read clarification. The endpoint, request scope, deployment prerequisites and response shape are unchanged.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The SDK reference now explains the source of replies for ACP. SDK API shape and contributor guidance remain accurate.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}
