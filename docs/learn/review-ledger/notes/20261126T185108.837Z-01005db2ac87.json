@@ -1,0 +1,7 @@
+{
+  "revision": "c36cc5635c315db4eb2d056d2117b766e80a72d1",
+
+  "notes": [
+    {"path":"docs/reference/contracts.md","note":"Re-checked after the follow-up fix to the read route: only the refusal explanation changed (a Project reason keeps the Project explanation); the ConversationReadPage shape and attribution are unchanged and nothing in the contracts package changed. Rest of the reference not re-reviewed.","inputs":["docs/reference/contracts.md"]}
+  ]
+}
