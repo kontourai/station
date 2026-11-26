@@ -437,6 +437,12 @@ export function QueuedMessages({
 
   function renderHeldRow(entry: ConversationInboxEntry) {
     const key = entry.clientTurnId;
+    const restoreEndedSteer =
+      key &&
+      entry.ownedByCaller &&
+      entry.kind === 'steer' &&
+      entry.state === 'refused' &&
+      entry.reasonCode === 'steer_turn_ended';
     const removable =
       key && ['queued', 'unconfirmed', 'refused'].includes(entry.state);
     const verb = entry.state === 'queued' ? 'Remove' : 'Dismiss';
@@ -495,16 +501,20 @@ export function QueuedMessages({
             <span className="queued-message__status">{entry.reason}</span>
           )}
         </div>
-        {entry.kind === 'steer' &&
-          entry.state === 'unconfirmed' &&
+        {(restoreEndedSteer ||
+          (entry.kind === 'steer' && entry.state === 'unconfirmed')) &&
           held?.onResend && (
             <Button
               variant="ghost"
               disabled={held.removing}
-              title="This may duplicate the original steer. Review the text before sending."
+              title={
+                restoreEndedSteer
+                  ? 'Restore the message to an empty draft'
+                  : 'This may duplicate the original steer. Review the text before sending.'
+              }
               onClick={() => held.onResend?.(entry)}
             >
-              Review and resend
+              {restoreEndedSteer ? 'Restore to draft' : 'Review and resend'}
             </Button>
           )}
 
