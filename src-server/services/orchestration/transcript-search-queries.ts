@@ -286,6 +286,20 @@ export function querySessionOwner(
   return typeof row?.user_id === 'string' ? row.user_id : undefined;
 }
 
+/** ACP completions can carry their reply only in preceding text deltas. */
+export const ACP_TRANSCRIPT_REPLY_SQL = `CASE WHEN e.provider = 'acp' THEN (
+  SELECT CASE WHEN sum(length(CAST(delta AS BLOB))) <= 131072
+              THEN group_concat(delta, '' ORDER BY sequence) END
+  FROM (
+    SELECT d.sequence, CASE WHEN json_valid(d.payload) THEN
+      CASE WHEN json_type(d.payload, '$.delta') = 'text' THEN json_extract(d.payload, '$.delta') END
+    END AS delta
+    FROM orchestration_events d INDEXED BY idx_events_thread_turn_sequence
+    WHERE d.thread_id = e.thread_id AND d.turn_id = e.turn_id AND d.sequence < e.sequence
+      AND d.method = 'content.text-delta'
+  )
+) END`;
+
 /** Canonical event content, not the search index. Bound every selected field in SQLite. */
 export function queryTranscriptMessagePage(
   db: TranscriptQueryDatabase,
@@ -333,7 +347,8 @@ export function queryTranscriptMessagePage(
     WHEN 'turn.started' THEN CASE WHEN ${spilled('$.prompt')} THEN ${spilledBody('$.prompt')}
       WHEN json_type(e.payload, '$.prompt') = 'text' THEN json_extract(e.payload, '$.prompt') END
     WHEN 'turn.completed' THEN CASE WHEN ${spilled('$.outputText')} THEN ${spilledBody('$.outputText')}
-      WHEN json_type(e.payload, '$.outputText') = 'text' THEN json_extract(e.payload, '$.outputText') END END END`;
+      WHEN json_type(e.payload, '$.outputText') = 'text' THEN json_extract(e.payload, '$.outputText')
+      ELSE ${ACP_TRANSCRIPT_REPLY_SQL} END END END`;
   const spilledRef = `CASE e.method
     WHEN 'turn.started' THEN CASE WHEN ${spilled('$.prompt')} THEN json_extract(e.payload, '$.prompt.ref') END
     WHEN 'turn.completed' THEN CASE WHEN ${spilled('$.outputText')} THEN json_extract(e.payload, '$.outputText.ref') END END`;

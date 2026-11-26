@@ -873,6 +873,9 @@ worker. The worker never constructs EventStore, migrates a database, or receives
 a branded SessionReadAuthority. Missing databases/schema and oversized read
 facts are unavailable, never empty/ownerless success. Candidate content is
 bounded before leaving SQLite; only excerpts/identities cross the worker port.
+For ACP completions without a final output field, the index and exact reader
+use the text deltas recorded before that completion in the same execution Session
+and turn. Existing indexes recover those replies in bounded backfill windows.
 The existing single SessionAuthorization applies the same personal/hosted/
 legacy policy with async cold owner lookups and positive-only caching. Its
 generation fence invalidates in-flight lookups on owner/tenant changes. Parent

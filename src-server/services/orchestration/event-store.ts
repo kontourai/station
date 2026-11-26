@@ -486,6 +486,7 @@ import {
   MAX_TOOL_RESULT_DESCRIPTOR_OUTPUT_BYTES,
 } from './thread-tool-result-adapter.js';
 import {
+  ACP_TRANSCRIPT_REPLY_SQL,
   cjkSearchTerms,
   messageOwnerScopeKey,
   messageTenantScopeKey,
@@ -19249,15 +19250,18 @@ export class EventStore {
     for (const projection of MESSAGE_SEARCH_PROJECTIONS) {
       if (this.backfillMessageSearchProjection(projection)) return true;
     }
-    return false;
+    return this.backfillMessageSearchProjection(undefined);
   }
 
   private backfillMessageSearchProjection(
-    projection: MessageSearchProjection,
+    projection: MessageSearchProjection | undefined,
   ): boolean {
+    // An existing cursor can already be past completions without outputText.
+    const backfillTable =
+      projection?.backfillTable ?? 'orchestration_message_search_acp_backfill';
     const cursor = this.db
       .prepare(
-        `SELECT last_global_sequence FROM ${projection.backfillTable}
+        `SELECT last_global_sequence FROM ${backfillTable}
          WHERE id = 1`,
       )
       .get() as { last_global_sequence: number } | undefined;
@@ -19287,7 +19291,13 @@ export class EventStore {
     this.db.exec('BEGIN IMMEDIATE');
     try {
       for (const event of events) {
+        if (
+          !projection &&
+          (event.provider !== 'acp' || event.method !== 'turn.completed')
+        )
+          continue;
         const payload = parseMessageSearchEvent(event.payload);
+        if (!projection && payload?.outputText !== undefined) continue;
         if (!payload) continue;
         this.projectMessageSearchEvent(
           {
@@ -19304,7 +19314,7 @@ export class EventStore {
       }
       this.db
         .prepare(
-          `INSERT INTO ${projection.backfillTable}
+          `INSERT INTO ${backfillTable}
             (id, last_global_sequence, updated_at)
            VALUES (1, ?, ?)
            ON CONFLICT(id) DO UPDATE SET
@@ -19372,8 +19382,21 @@ export class EventStore {
     };
     const prompt =
       event.method === 'turn.started' ? text(event.prompt) : undefined;
-    const reply =
+    let reply =
       event.method === 'turn.completed' ? text(event.outputText) : undefined;
+    if (
+      event.method === 'turn.completed' &&
+      event.provider === 'acp' &&
+      event.turnId &&
+      event.outputText === undefined
+    ) {
+      const row = this.db
+        .prepare(
+          `SELECT ${ACP_TRANSCRIPT_REPLY_SQL} AS reply FROM orchestration_events e WHERE e.id = ?`,
+        )
+        .get(event.eventId) as { reply: string | null } | undefined;
+      reply = row?.reply ?? undefined;
+    }
     const entry =
       prompt !== undefined
         ? { role: 'user' as const, content: capSearchText(prompt) }
