@@ -323,6 +323,43 @@ describe('Scroll to bottom', () => {
     },
   );
 
+  test.each(['End', 'PageDown', 'ArrowDown', ' '])(
+    'an external reader %j command reaches the tail without the glide pulling it back',
+    (key) => {
+      stubMotion(false);
+      const scroller = document.createElement('div');
+      document.body.append(scroller);
+      Object.defineProperties(scroller, {
+        clientHeight: { configurable: true, value: 400 },
+        scrollHeight: { configurable: true, value: 2_000 },
+      });
+      render(
+        <ChatMessageList
+          activeSession={session()}
+          fontSize={14}
+          showReasoning={false}
+          showToolDetails={false}
+          externalScrollContainerRef={{ current: scroller }}
+          renderOverride={(message) => <>{message.content}</>}
+        />,
+        { container: scroller },
+      );
+      deliverResize(scroller);
+      readerScrollsTo(scroller, 1_300);
+      advanceFrames(1_000);
+      fireEvent.click(scrollToBottomButton()!);
+      advanceFrames(160);
+      expect(scroller.scrollTop).toBeLessThan(1_600);
+      expect(scroller.scrollTop).toBeGreaterThan(1_560);
+      fireEvent.keyDown(scroller, { key });
+      expect(scroller.scrollTop).toBe(2_000);
+      advanceFrames(16);
+      expect(scroller.scrollTop).toBe(2_000);
+      advanceFrames(500);
+      expect(scroller.scrollTop).toBe(2_000);
+    },
+  );
+
   test('reduced motion lands at once', () => {
     stubMotion(true);
     const { scroller } = renderList();
