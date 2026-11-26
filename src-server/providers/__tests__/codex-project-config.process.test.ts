@@ -95,7 +95,7 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
       const extension = spawnSync(
         'git',
         ['config', 'extensions.worktreeConfig', 'true'],
-        { cwd: repo, encoding: 'utf8' },
+        { cwd: repo, encoding: 'utf8', windowsHide: true },
       );
       expect(extension.status, extension.stderr).toBe(0);
       const branch =
@@ -176,7 +176,7 @@ describe.skipIf(!codexBinary || process.platform !== 'linux')(
       const worktreeGit = spawnSync(
         'git',
         ['rev-parse', '--absolute-git-dir'],
-        { cwd: worktree, encoding: 'utf8' },
+        { cwd: worktree, encoding: 'utf8', windowsHide: true },
       );
       expect(worktreeGit.status, worktreeGit.stderr).toBe(0);
       const worktreeConfig = join(worktreeGit.stdout.trim(), 'config.worktree');

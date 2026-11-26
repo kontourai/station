@@ -44,8 +44,8 @@ import {
   DelegationGrantStore,
   delegationGrantSettingsSchema,
 } from '../../../security/confinement/delegation-grants.js';
-import { createLogger } from '../../../utils/logger.js';
 import { createSeatbeltConfinementProvider } from '../../../security/confinement/seatbelt.js';
+import { createLogger } from '../../../utils/logger.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
