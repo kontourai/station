@@ -778,6 +778,12 @@ boundary, including prepared-turn replay. When the grant ends, the existing
 child refuses further turns. Start a fresh session so Codex launches with the
 profile required by the current policy.
 
+Standing-grant records are authenticated with a per-home key. The confined
+Codex profile denies access to that key. For confined coding, Station keeps
+the child's objects and refs private and reads shared objects as a read-only
+alternate. The launch record carries the fact that shared Git writes were
+explicitly confirmed whenever they apply.
+
 ### 4.10 Confinement providers (#2494)
 
 The `host | workspace` stamp above records the starter's grant. It names no
