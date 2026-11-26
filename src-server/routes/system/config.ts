@@ -330,6 +330,7 @@ export function createConfigRoutes(
   terminalHistoryLocationProblem?: (
     directory: string,
   ) => Promise<string | null>,
+  readDelegationGrants?: (request: Request) => readonly unknown[] | undefined,
 ) {
   const app = new Hono();
   const logLevelEdits = new LogLevelEditService(configLoader);
@@ -481,10 +482,12 @@ export function createConfigRoutes(
             ? 'COMSPEC'
             : 'SHELL';
       }
+      const delegationGrants = readDelegationGrants?.(c.req.raw);
       return c.json({
         success: true,
         data: {
           ...projectPublicAppConfig(config),
+          ...(delegationGrants?.length ? { delegationGrants } : {}),
           lanDiscoveryStatus: lanDiscoveryFor(configLoader).snapshot(),
           ...(frameOrigin ? { mcpUiFrameOrigin: frameOrigin } : {}),
           ...(pluginFrameOrigin ? { pluginFrameOrigin } : {}),

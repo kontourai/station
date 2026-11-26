@@ -102,6 +102,7 @@ export type DelegationGrant = z.output<typeof storedGrant>;
 
 export class DelegationGrantStore {
   private readonly path: string;
+  private readonly auditedExpirations = new Set<string>();
   private readonly io = { maxBytes: 256 * 1024, label: 'Delegation grants' };
 
   constructor(
@@ -112,7 +113,21 @@ export class DelegationGrantStore {
   }
 
   list(): readonly DelegationGrant[] {
-    return storedGrants.parse(readJsonFile<unknown>(this.path, [], this.io));
+    const now = Date.now();
+    return storedGrants
+      .parse(readJsonFile<unknown>(this.path, [], this.io))
+      .filter((grant) => {
+        if (
+          grant.expiry.kind !== 'duration' ||
+          now < grant.createdAt + grant.expiry.seconds * 1000
+        )
+          return true;
+        if (!this.auditedExpirations.has(grant.id)) {
+          this.auditedExpirations.add(grant.id);
+          this.logger.info('Delegation grant expired', { grantId: grant.id });
+        }
+        return false;
+      });
   }
 
   async create(

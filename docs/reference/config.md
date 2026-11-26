@@ -117,6 +117,8 @@ The host runtime settings list grants and let the operator add or revoke them.
 Station stores them in `config/delegation-grants.json` in the instance home.
 The operator configuration endpoint is `/config/delegation-grants`. The
 general `PUT /config/app` route refuses writes to `delegationGrants`.
+`station config` includes active grants for the operator. A bound Agent's
+`get_config` read lists the grants visible in its Project and conversation.
 
 A grant lists its Agents, models, and Projects. Project is the default scope.
 A matching parent conversation takes precedence over a Project grant, which

@@ -12825,6 +12825,40 @@ export function configureRuntimeRoutes(
             context.configLoader.getProjectHomeDir(),
           ),
         ).problem(directory),
+      (request) => {
+        if (!readDelegationGrants || !isRequestPrincipalCurrent(request))
+          return undefined;
+        if (isOperatorInPersonNotAgent(request))
+          return readDelegationGrants().map((grant) => ({
+            ...grant,
+            children: context.orchestrationService.delegationGrantChildren(
+              grant.id,
+            ),
+          }));
+        const caller = resolveStationControlCallerForRequest(
+          request,
+          resolveStationControlCallerRecord,
+        );
+        const project =
+          caller?.assurance === 'bound'
+            ? stationControlDispatchScope.ownProjectSlug(caller)
+            : undefined;
+        if (!project || !caller) return undefined;
+        return readDelegationGrants()
+          .filter(
+            (grant) =>
+              grant.projects.includes(project) &&
+              (grant.scope.kind !== 'conversation' ||
+                grant.scope.conversationId === caller.conversationId),
+          )
+          .map((grant) => ({
+            ...grant,
+            projects: [project],
+            extraGitWritePaths: {
+              [project]: grant.extraGitWritePaths[project] ?? [],
+            },
+          }));
+      },
     ),
   );
   context.app.route(
