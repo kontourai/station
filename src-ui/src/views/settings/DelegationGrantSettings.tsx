@@ -175,7 +175,11 @@ function GrantControls({ authority }: { authority: Authority }) {
             <dd>{grant.projects.join(', ') || 'None'}</dd>
             <dt>Network</dt>
             <dd>
-              {grant.network.mode}
+              {grant.network.mode === 'default'
+                ? "Open (Codex can't enforce an allowlist)"
+                : grant.network.mode === 'open'
+                  ? 'Open'
+                  : 'Allowlist'}
               {grant.network.allowedHosts?.length
                 ? ` · ${grant.network.allowedHosts.join(', ')}`
                 : ''}
