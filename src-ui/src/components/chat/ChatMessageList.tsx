@@ -1768,6 +1768,7 @@ function ChatMessageListComponent({
           keyStep > 0 &&
           distance <= keyStep
         ) {
+          cancelScrollToBottom();
           event.preventDefault?.();
           tailIntentRef.current = true;
           isUserScrolledUpRef.current = false;

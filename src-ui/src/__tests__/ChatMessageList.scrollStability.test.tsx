@@ -355,6 +355,10 @@ describe('Scroll to bottom', () => {
       expect(scroller.scrollTop).toBe(2_000);
       advanceFrames(16);
       expect(scroller.scrollTop).toBe(2_000);
+      advanceFrames(16);
+      expect(scroller.scrollTop).toBe(2_000);
+      advanceFrames(16);
+      expect(scroller.scrollTop).toBe(2_000);
       advanceFrames(500);
       expect(scroller.scrollTop).toBe(2_000);
     },
