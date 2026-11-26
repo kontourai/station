@@ -216,6 +216,16 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   **Regenerate** and **Edit and resend** fork before a message with that
   message's Agent, so they open no picker while it can run; the same dialog
   appears only when that fork fails or the Agent cannot run.
+- **No empty pane.** An open dock with no chat in its pane shows this draft
+  itself, ready to type, instead of an empty "No chat open" card (#5592).
+  Nothing is created until it is sent. That draft keeps the dock's size (a
+  phone half sheet stays a half sheet), and dismissing it folds the dock to
+  its toolbar, since there is no chat behind it to return to. A plain New
+  chat makes it an ordinary draft. A chat that was picked but could not be
+  opened keeps its recovery prompt in its place. The card remains only while
+  no Agent can start a chat, and then says so
+  ([`ChatDock`](../../src-ui/src/components/chat-dock/ChatDock.tsx),
+  [`ChatDockContentArea`](../../src-ui/src/components/chat-dock/ChatDockContentArea.tsx)).
 - **Leaving.** Escape, Back or **Cancel return** dismisses the
   draft and hands back its text; on a phone this restores the dock size the
   draft replaced. Start closes it as started before

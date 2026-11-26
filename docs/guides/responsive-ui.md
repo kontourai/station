@@ -309,7 +309,9 @@ opens the saved conversation list.
 Project choice belongs to the start composer on phone and desktop; the dock
 header has no project picker, including while empty or showing Chats. Chat creation shares [NewChatAction](../../src-ui/src/components/NewChatAction.tsx)
 across the desktop inbox, the collapsed dock bar (icon only) and
-the open, empty dock. The mobile bar composes the same conversation-plus glyph
+the open dock while no Agent can start a chat. An open dock with no chat
+otherwise shows the start composer itself, ready to type
+([no empty pane](../design/chat-composer.md)). The mobile bar composes the same conversation-plus glyph
 with its toolbar button styles. Both forms retain a 44px minimum target and
 an accessible name. It opens the start composer, in the dock as a draft in the
 dock body (full screen on a phone). New-chat and running-chat controls share
