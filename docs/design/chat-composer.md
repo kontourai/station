@@ -1746,7 +1746,7 @@ work, with Settled at the bottom by default. With no shelf expanded they stack
 from the top of the list. A collapsed shelf still lists the row of the chat on
 screen, so the open chat is never hidden from the inbox. Shelf menus offer Move up and
 Move down; that order is saved on this device within expanded and collapsed
-shelves. The inbox header is one line: search, the
+shelves. The inbox header groups search, the
 work scope picker (its "Show work" label kept for assistive technology), and
 New chat. Work the scope hides that needs the person is a count badge on the
 picker, which shows all work (2026-11-16); the phone keeps its "Show all"
@@ -1759,6 +1759,13 @@ The inbox list has no list-level overflow menu (each row has its own ⋯): a
 failed read offers Retry, disabled while the re-read runs. Full-size cards in the desktop and mobile Inbox share the title and project
 column. Status and one time align on the right. Hover or keyboard focus exposes
 the desktop row's ⋯ menu. A touch row keeps the agent named beside its mark.
+
+With the Pull request agent feedback preview enabled, the inbox also shows
+linked pull request chips and observed worktree diff counts. The PR chip opens
+the selected pull request beside Chat. If several are linked, it opens a chooser.
+The pull request picker below search and scope filters or sorts Chats by observed state.
+Filtering includes only matching observations. Closing a PR opened from a row
+returns focus to that row.
 Mark done offers a
 transient Undo toast, which **Undo last action** (⌘Z / Ctrl+Z, rebindable)
 also reaches while the toast is shown. Native editor and terminal undo retain

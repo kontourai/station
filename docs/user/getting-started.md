@@ -633,6 +633,12 @@ holds the Project's context. To change where new Agent work starts, open the
 workspace controls under Files & connections. A local folder is execution
 configuration rather than the Project's identity.
 
+With the **Pull request agent feedback** preview on, Chats shows a chip
+for known linked pull requests. Select it to open a pull request beside Chat.
+Use the pull request status picker to find chats with failing checks, awaiting
+review, ready to land or merged pull requests. Task headers and the Project's
+Tasks section summarize their linked and kept pull requests.
+
 The Project conversation list shows its channels and Task rooms. If one of those
 lists is temporarily unavailable, retry that list from the Project page.
 

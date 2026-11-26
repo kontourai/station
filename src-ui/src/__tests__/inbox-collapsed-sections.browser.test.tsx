@@ -6,8 +6,8 @@ import { scrollBrowserFixture } from './scroll-browser-fixture';
 
 // The production desktop inbox list with every section collapsed and the
 // open chat in one of them, as in the owner's screenshot.
-const fixture = `
-import React from 'react';
+const inboxFixture = `
+import React, {useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
 import {InboxGroupList} from './src-ui/src/components/chat-dock/ChatDockInboxRows';
@@ -23,7 +23,7 @@ const session = (threadId, displayTitle) => ({
   updatedAt: '2026-09-30T10:00:15.000Z',
   lifecycleState: 'idle', hasActiveTurn: false, conversationActivity: undefined,
   // Last: the fold fixture carries its own thread id and title.
-  threadId, displayTitle,
+  threadId, displayTitle, conversationId: threadId,
 });
 const items = buildOrchestrationItems([
   session('T1', 'Is this machine getting overwhelmed?'),
@@ -36,6 +36,9 @@ const groups = [
   {id: 'open', label: 'Open', items: [items[1], items[0]]},
   {id: 'external', label: 'Third-party', items: [items[3]]},
 ];
+`;
+
+const fixture = `${inboxFixture}
 createRoot(document.getElementById('root')).render(
   <QueryClientProvider client={new QueryClient()}>
     <div className="chat-dock-inbox" style={{height: '100vh', background: 'var(--bg-primary)', color: 'var(--text-primary)'}}>
@@ -106,3 +109,114 @@ test('collapsed inbox sections stack from the top and keep the open chat visible
     await browser.close();
   }
 }, 120_000);
+
+const linkedPullRequestFixture = `${inboxFixture}
+import {ConnectionsProvider} from '@kontourai/station-connect';
+const link = {
+  conversationId: items[0].conversationId,
+  source: 'explicit',
+  provider: 'github',
+  host: 'github.com',
+  repository: { owner: 'kontourai', name: 'station' },
+  ref: '5582',
+  observedAt: '2026-09-30T10:01:00.000Z',
+  status: {
+    state: 'current',
+    title: 'Tighten the pull request snapshot',
+    pullRequestState: 'OPEN',
+    checks: 'failing',
+    isDraft: false,
+  },
+};
+function App() {
+  const [received, setReceived] = useState(false);
+  globalThis.receivePullRequest = () => setReceived(true);
+  const workFacts = received
+    ? new Map([[items[0].id, { pullRequests: [link] }]])
+    : undefined;
+  return <div className="chat-dock-inbox" style={{height: '100vh', background: 'var(--bg-primary)', color: 'var(--text-primary)'}}>
+    <InboxGroupList groups={[{ id: 'open', label: 'Open', items: [items[0]] }]}
+      idPrefix="fixture" now={NOW} activeChatSessionId={null}
+      workFacts={workFacts} onActivate={() => {}} onSnoozeWake={() => {}} />
+  </div>;
+}
+createRoot(document.getElementById('root')).render(
+  <QueryClientProvider client={new QueryClient()}>
+    <ConnectionsProvider defaultUrl={location.origin}><App/></ConnectionsProvider>
+  </QueryClientProvider>
+);
+`;
+
+test.each([
+  ['desktop', { width: 1280, height: 800 }],
+  ['phone-width', { width: 390, height: 844 }],
+] as const)(
+  'linked pull request facts preserve inbox row height at %s',
+  async (size, viewport) => {
+    const { browser, page, errors } = await scrollBrowserFixture(
+      linkedPullRequestFixture,
+    );
+    try {
+      await page.setViewportSize(viewport);
+      await page.addStyleTag({
+        content: resolveCssImports(
+          resolve(import.meta.dirname, '../index.css'),
+        ),
+      });
+      const out = resolve('.kontourai/shell-chrome');
+      mkdirSync(out, { recursive: true });
+      const row = page.getByTestId('inbox-row');
+      const chip = row.getByRole('button', {
+        name: 'Open pull request #5582 · Failing',
+      });
+      await row.waitFor();
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      expect(await chip.count()).toBe(0);
+      const before = await row.evaluate(
+        (element) => element.getBoundingClientRect().height,
+      );
+      expect(before).toBeGreaterThan(0);
+
+      await page.evaluate(() =>
+        (
+          globalThis as unknown as { receivePullRequest(): void }
+        ).receivePullRequest(),
+      );
+      await chip.waitFor({ timeout: 5000 }).catch(async (error) => {
+        throw new Error(
+          JSON.stringify({
+            errors,
+            body: await page.locator('body').innerText(),
+          }),
+          { cause: error },
+        );
+      });
+      expect(
+        await row.evaluate((element) => element.getBoundingClientRect().height),
+      ).toBe(before);
+
+      for (const theme of ['light', 'dark']) {
+        await page.evaluate((value) => {
+          document.documentElement.dataset.theme = value;
+        }, theme);
+        await page.screenshot({
+          path: `${out}/linked-pr-chip-${size}-${theme}.png`,
+        });
+        await row.getByRole('button', { name: /^Is this machine/ }).hover();
+        const details = page.getByText('Tighten the pull request snapshot', {
+          exact: true,
+        });
+        await details.waitFor({ timeout: 10000 });
+        await page.screenshot({
+          path: `${out}/linked-pr-hover-${size}-${theme}.png`,
+        });
+        await page.mouse.move(viewport.width - 1, viewport.height - 1);
+        await details.waitFor({ state: 'hidden', timeout: 10000 });
+      }
+      expect(errors).toEqual([]);
+    } finally {
+      await browser.close();
+    }
+  },
+  120_000,
+);

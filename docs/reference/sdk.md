@@ -5076,8 +5076,9 @@ content, while retaining the observed HTTP status (usually 200).
   and keeps the last answer when a refresh fails. A host that answers a plain
   404 (one older than this read) resolves to `null`, and the board then
   claims nothing about pull requests; a 404 with `request_principal_changed`
-  (lost standing) is an error. Only the board enables it; the list view
-  claims nothing about pull requests. `useMergePullRequestMutation`
+  (lost standing) is an error. The board enables the Project-wide read. A
+  Task header passes `{ taskId }` to the hook to read just that Task. The
+  list view does not read pull request facts. `useMergePullRequestMutation`
   invalidates every Project's facts query, so a merge through Station moves
   its card on the next read.
 - `createTask` and `createTaskReference` accept an optional `requestScope`

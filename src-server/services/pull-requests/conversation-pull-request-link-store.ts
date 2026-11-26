@@ -115,6 +115,17 @@ export class ConversationPullRequestLinkStore {
     return structuredClone(document.conversations[conversationId] ?? []);
   }
 
+  listMany(
+    conversationIds: readonly string[],
+  ): ReadonlyMap<string, ConversationPullRequestLink[]> {
+    const document = validateDocument(this.store.read());
+    return new Map(
+      conversationIds
+        .filter((id) => TEXT.test(id))
+        .map((id) => [id, structuredClone(document.conversations[id] ?? [])]),
+    );
+  }
+
   async link(
     conversationId: string,
     identity: PullRequestLinkIdentity,

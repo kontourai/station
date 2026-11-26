@@ -1,3 +1,4 @@
+import type { ConversationListItem } from '@kontourai/station-contracts/orchestration';
 import { ownedWorkUnknownReasons } from '@kontourai/station-contracts/session-attention';
 import { taskAwaitsAnswer } from '@kontourai/station-contracts/task-memory';
 import type {
@@ -78,6 +79,8 @@ export interface WorkActivity {
 }
 
 export interface WorkFacts {
+  pullRequests?: ConversationListItem['pullRequests'];
+  observedWorkspace?: ConversationListItem['observedWorkspace'];
   chatBinding?: ChatStationBindingV1;
   /** Host-only detail reads and controls must not borrow a bound receiver ID. */
   hostDetails?: boolean;
@@ -203,6 +206,7 @@ function chatAttentionKind(chat: ChatUIState): WorkAttentionKind | undefined {
 
 interface WorkFactSources {
   items: readonly HomeWorkItem[];
+  inventoryById?: ReadonlyMap<string, ConversationListItem>;
   chats?: Readonly<Record<string, ChatUIState>>;
   sessions?: readonly OrchestrationSessionSummary[];
   tasks?: readonly TaskListRecord[];
@@ -222,6 +226,7 @@ interface WorkFactSources {
  */
 export function buildWorkFacts({
   items,
+  inventoryById,
   chats = {},
   sessions = [],
   tasks = [],
@@ -398,6 +403,13 @@ export function buildWorkFacts({
             )
           : undefined);
       if (activity) entry.activity = activity;
+    }
+    if (entry.hostDetails !== false && !item.environmentId) {
+      const conversation = inventoryById?.get(item.id);
+      if (conversation?.pullRequests?.length)
+        entry.pullRequests = conversation.pullRequests;
+      if (conversation?.observedWorkspace)
+        entry.observedWorkspace = conversation.observedWorkspace;
     }
     if (Object.keys(entry).length > 0) facts.set(item.id, entry);
   }
