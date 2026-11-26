@@ -119,7 +119,10 @@ export const delegationGrantSettingsSchema = z
       !Object.values(grant.extraGitWritePaths)
         .flat()
         .some(isHighRiskDelegationGitPath),
-    'High-risk Git writes require separate operator confirmation',
+    {
+      path: ['highRiskGitWritesConfirmed'],
+      message: 'High-risk Git writes require separate operator confirmation',
+    },
   );
 
 export type DelegationGrantSettings = z.output<

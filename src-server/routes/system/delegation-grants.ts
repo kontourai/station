@@ -103,12 +103,16 @@ export function createDelegationGrantRoutes(
     }
     const settings = delegationGrantSettingsSchema.safeParse(input);
     if (!settings.success) {
+      const needsConfirmation = settings.error.issues.some(
+        ({ code, path }) =>
+          code === 'custom' && path[0] === 'highRiskGitWritesConfirmed',
+      );
       return c.json(
         {
           success: false,
-          error:
-            settings.error.issues[0]?.message ??
-            'Invalid delegation grant settings.',
+          error: needsConfirmation
+            ? 'High-risk Git writes require separate operator confirmation.'
+            : 'Invalid delegation grant settings.',
         },
         400,
       );
