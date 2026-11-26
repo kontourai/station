@@ -24,6 +24,7 @@ import { errorText } from '../../utils/errorText';
 import { relativeTimeAgoFromIso } from '../../utils/relativeTime';
 import { projectOverviewGroups } from './project-overview-model';
 import { useProjectOverviewPreview } from './projectOverviewPreview';
+import { ProjectPullRequestRollup } from './TaskPullRequestRollup';
 import { TASK_TONE } from './taskStatusPresentation';
 import { useTaskBoardModel } from './useTaskBoardModel';
 import './ProjectOverviewSection.css';
@@ -250,6 +251,7 @@ function ProjectOverviewGroups({
         >
           Tasks
         </span>
+        <ProjectPullRequestRollup entries={board.pullRequests.entries} />
         {board.pullRequests.failed && (
           <Button onClick={() => board.pullRequests.refetch()}>
             Retry PR status

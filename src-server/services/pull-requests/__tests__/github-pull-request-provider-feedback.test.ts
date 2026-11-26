@@ -154,6 +154,37 @@ describe('GitHub feedback observation', () => {
     ]);
   });
 
+  it('keeps check and review feedback when the host does not support merge queue fields', async () => {
+    const answer = JSON.parse(recorded);
+    answer.data.repository.pullRequest.title = 'Fix the unit test';
+    const { github, calls } = provider(async (args) => {
+      if (args.includes(`query=${GITHUB_FEEDBACK_QUERY}`))
+        return { stdout: JSON.stringify(answer) };
+      throw Object.assign(new Error('Unsupported GraphQL field'), {
+        stderr:
+          "gh: Field 'isInMergeQueue' doesn't exist on type 'PullRequest'",
+      });
+    });
+    const result = await github.getFeedbackObservation(
+      { ...CONTEXT, host: 'github.enterprise.test' },
+      '42',
+    );
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.join(' ')).not.toContain('isInMergeQueue');
+    expect(result).toMatchObject({
+      state: 'observed',
+      observation: {
+        snapshot: { title: 'Fix the unit test', landing: undefined },
+        checks: expect.arrayContaining([
+          expect.objectContaining({ conclusion: 'FAILURE' }),
+        ]),
+        reviews: expect.arrayContaining([
+          expect.objectContaining({ id: '7001' }),
+        ]),
+      },
+    });
+  });
+
   it('a merged pull request reads MERGED; a missing one is not-found', async () => {
     const merged = JSON.parse(recorded);
     merged.data.repository.pullRequest.state = 'MERGED';

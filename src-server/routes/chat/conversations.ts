@@ -3189,6 +3189,17 @@ export function createGlobalConversationRoutes(
     ReadMarkerService,
     'acknowledgeConversation' | 'conversationReadStates'
   >,
+  pullRequestsFor?: (
+    request: Request,
+    items: readonly ConversationListItem[],
+  ) => ReadonlyMap<string, NonNullable<ConversationListItem['pullRequests']>>,
+  observeWorkspaces?: (
+    request: Request,
+    items: readonly ConversationListItem[],
+  ) => ReadonlyMap<
+    string,
+    NonNullable<ConversationListItem['observedWorkspace']>
+  >,
 ) {
   const app = new Hono();
   const authorityFor =
@@ -3379,11 +3390,17 @@ export function createGlobalConversationRoutes(
           }),
         );
       }
+      const pullRequests = pullRequestsFor?.(c.req.raw, page.items);
+      const workspaces = observeWorkspaces?.(c.req.raw, page.items);
       const data = page.items.map((item) => {
         const acknowledgedAt = acknowledgements?.get(item.id);
         const readState = readStates?.get(item.id);
+        const links = pullRequests?.get(item.id);
+        const observedWorkspace = workspaces?.get(item.id);
         return {
           ...item,
+          ...(links?.length ? { pullRequests: links } : {}),
+          ...(observedWorkspace ? { observedWorkspace } : {}),
           ...(acknowledgedAt ? { acknowledgedAt } : {}),
           ...(readState ? { readState } : {}),
         };

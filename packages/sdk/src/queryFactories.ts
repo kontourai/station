@@ -308,8 +308,12 @@ export const taskQueries = {
     queryKey: ['task-claim', taskId],
     staleTime: 10 * 1000,
   }),
-  pullRequestFacts: (projectId: string) => ({
-    queryKey: ['task-pull-request-facts', projectId],
+  pullRequestFacts: (projectId: string, taskId?: string) => ({
+    queryKey: [
+      'task-pull-request-facts',
+      projectId,
+      ...(taskId ? [taskId] : []),
+    ],
     staleTime: 60 * 1000,
   }),
 };

@@ -1002,7 +1002,8 @@ id is not projected.
 
 `GET /api/tasks/pull-request-facts?projectId=` answers
 `{observedAt, tasks: {[taskId]: {taskCreatedAt, pullRequests, partial?}}}`
-for the Project's live Tasks (not done or canceled). Each entry lists the
+for the Project's live Tasks (not done or canceled). Pass `taskId` to
+restrict the read to one Task in that Project. Each entry lists the
 pull requests kept on that Task whose declaring session the requester may
 read, each read from its provider at its exact identity:
 `status: {state: "current", pullRequestState, title, draft?, reviewDecision?,

@@ -167,8 +167,8 @@ function useHomeWorkData(): HomeWorkData {
     tasks.data,
   ]);
   const factSources = useMemo(
-    () => ({ tasks: tasks.data ?? [], remoteEnvironments }),
-    [remoteEnvironments, tasks.data],
+    () => ({ tasks: tasks.data ?? [], remoteEnvironments, inventoryById }),
+    [remoteEnvironments, tasks.data, inventoryById],
   );
   const workFacts = useWorkFacts(workItems, sessions.data ?? [], factSources);
   const workLoading =
