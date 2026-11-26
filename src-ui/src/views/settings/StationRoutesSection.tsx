@@ -308,9 +308,8 @@ function RoutePublication({
   return (
     <div className="content-stack">
       <p className="settings__section-note">
-        App routes connect this device to Station. The approval HTTPS route is a
-        separate trusted origin for approval pages; publishing it does not grant
-        access or configure HTTPS.
+        App routes connect this device to Station; approval pages use a separate
+        HTTPS origin.
       </p>
       <p role="status">
         <Badge value={PUBLICATION_STATUS[publication.status]} />
@@ -322,7 +321,7 @@ function RoutePublication({
       <div>
         <p>Published app origins</p>
         {publication.appOrigins.length === 0 ? (
-          <p className="station-routes__meta">No app origins published.</p>
+          <p className="station-routes__meta">None published</p>
         ) : (
           publication.appOrigins.map((appOrigin) => (
             <p key={appOrigin} className="station-routes__meta">
@@ -332,12 +331,16 @@ function RoutePublication({
         )}
       </div>
       {publication.status === 'unavailable' && (
-        <p className="settings__section-note">
-          If Tailscale is missing, install and sign in to Tailscale on the
-          Station host. Manually configure an HTTPS mapping to this Station with
-          Tailscale Serve or your HTTPS proxy, then refresh these routes. Saving
-          an origin here does not create that mapping.
-        </p>
+        <details>
+          <summary>Set up HTTPS</summary>
+          <p className="settings__section-note">
+            Install and sign in to Tailscale on the Station host if needed.
+          </p>
+          <p className="settings__section-note">
+            Manually configure an HTTPS mapping with Tailscale Serve or your
+            HTTPS proxy, then refresh.
+          </p>
+        </details>
       )}
       <form
         className="content-stack"
@@ -392,8 +395,14 @@ function RoutePublication({
             className="settings__section-note"
           >
             Use an exact HTTPS DNS origin with no path, credentials, query, or
-            fragment. Existing STATION_TRUSTED_CONSENT_ORIGIN configurations
-            remain supported as a fallback when this setting is absent.
+            fragment.
+          </p>
+          <p className="settings__section-note">
+            STATION_TRUSTED_CONSENT_ORIGIN remains a fallback when this setting
+            is absent.
+          </p>
+          <p className="settings__section-note">
+            Publishing an origin does not grant access or configure HTTPS.
           </p>
         </details>
         {invalid && (
