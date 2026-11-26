@@ -2,10 +2,7 @@ import type {
   ConversationPullRequestLinkObservation,
   PullRequestLinkIdentity,
 } from '@kontourai/station-contracts/conversation-pull-request-links';
-import type {
-  PullRequest,
-  PullRequestResult,
-} from '@kontourai/station-contracts/pull-request-provider';
+import type { PullRequest } from '@kontourai/station-contracts/pull-request-provider';
 import {
   useCheckoutPullRequestPages,
   usePullRequestContextQuery,
@@ -155,9 +152,7 @@ function useCheckoutPullRequests(
     context,
     identity,
     query,
-    result:
-      bundled ??
-      (fallback.data as PullRequestResult<PullRequest[]> | undefined),
+    result: bundled ?? fallback.data,
     lastKnown:
       !!bundled?.available &&
       (!context.isFetchedAfterMount || context.isFetching || !!context.error),
@@ -264,7 +259,8 @@ export function PullRequestsPanel({
     lastPage && !lastPage.isFetching && !pageResults.at(-1)?.available;
   const chatLinks = useConversationPullRequestLinks(activeChat ?? '');
 
-  if (context.isLoading) return <ListSkeleton compact={compact} />;
+  if (context.isLoading || (context.isPending && !context.data))
+    return <ListSkeleton compact={compact} />;
   if (context.error && !lastKnown) {
     return (
       <Note
@@ -512,25 +508,25 @@ export function PullRequestsPanel({
               : [pullRequest.author.login]
           }
           trailing={
-            compact && (
-              <>
-                {stats && (
-                  <span>
-                    <span className="sr-only">
-                      {plural(stats.additions, 'addition')},{' '}
-                      {plural(stats.deletions, 'deletion')},{' '}
-                      {plural(stats.files, 'file')}
-                    </span>
-                    <span aria-hidden="true">
-                      +{stats.additions} −{stats.deletions} · {stats.files}{' '}
-                      files
-                    </span>
-                  </span>
-                )}
-                {pullRequest.updatedAt && (
-                  <RelativeTime iso={pullRequest.updatedAt} now={now} />
-                )}
-              </>
+            compact &&
+            pullRequest.updatedAt && (
+              <RelativeTime iso={pullRequest.updatedAt} now={now} />
+            )
+          }
+          stats={
+            compact &&
+            stats && (
+              <span className="pull-request-row__stats">
+                <span className="sr-only">
+                  {plural(stats.additions, 'addition')},{' '}
+                  {plural(stats.deletions, 'deletion')},{' '}
+                  {plural(stats.files, 'file')}
+                </span>
+                <span aria-hidden="true">
+                  +{stats.additions} −{stats.deletions} ·{' '}
+                  {plural(stats.files, 'file')}
+                </span>
+              </span>
             )
           }
           current={!compact && current}

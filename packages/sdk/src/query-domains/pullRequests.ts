@@ -112,9 +112,10 @@ export function useCheckoutPullRequestPages(
         state,
         cursor,
       ],
-      queryFn: () =>
+      queryFn: ({ signal }) =>
         request<PullRequestClientContext>(
           `${withContext('context', context)}&list=${state}&cursor=${encodeURIComponent(cursor)}`,
+          { signal },
         ),
       staleTime: 20_000,
     })),
@@ -127,7 +128,7 @@ export function usePullRequestsQuery(
   repo: string,
   context: PullRequestResolvingContext,
   query?: PullRequestListQuery,
-  config?: QueryConfig<any>,
+  config?: QueryConfig<PullRequestResult<PullRequest[]>>,
 ) {
   return useApiQuery(
     [
@@ -135,7 +136,7 @@ export function usePullRequestsQuery(
       query?.state ?? 'ALL',
     ],
     () =>
-      request<any>(
+      request<PullRequestResult<PullRequest[]>>(
         withContext(
           `${encodeURIComponent(provider)}/${encodeURIComponent(host)}/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`,
           context,

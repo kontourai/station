@@ -31,6 +31,7 @@ export function PullRequestRow({
   meta = [],
   trailing,
   compactState,
+  stats,
   onOpen,
   openRef,
   openLabel,
@@ -49,6 +50,7 @@ export function PullRequestRow({
   /** The time, at the end of the meta line. */
   trailing?: ReactNode;
   compactState?: string;
+  stats?: ReactNode;
   /** Opens the review. Without it the title is text, not a button. */
   onOpen?: () => void;
   /** The open button, for a list that returns focus to it. */
@@ -82,6 +84,9 @@ export function PullRequestRow({
           ? PullRequestClosedGlyph
           : PullRequestGlyph;
   const titleText = <span className="pull-request-row__title">{title}</span>;
+  const badges = chips.map((chip) => (
+    <PullRequestChip key={chip.label} {...chip} />
+  ));
   const body = (
     <>
       {state ? (
@@ -107,9 +112,7 @@ export function PullRequestRow({
         {!state && reference !== title && (
           <span className="pull-request-row__reference">{reference}</span>
         )}
-        {chips.map((chip) => (
-          <PullRequestChip key={chip.label} {...chip} />
-        ))}
+        {!state && badges}
         {current && (
           <span className="pull-request-row__current">current branch</span>
         )}
@@ -118,6 +121,12 @@ export function PullRequestRow({
         ))}
         {trailing}
       </span>
+      {state && (
+        <span className="pull-request-row__facts">
+          {badges}
+          {stats}
+        </span>
+      )}
     </>
   );
   return (
@@ -132,7 +141,7 @@ export function PullRequestRow({
           ref={openRef}
           type="button"
           className="pull-request-row__open"
-          aria-label={openLabel ?? title}
+          aria-label={openLabel ?? (state ? `${title}, ${state.label}` : title)}
           onClick={onOpen}
         >
           {body}

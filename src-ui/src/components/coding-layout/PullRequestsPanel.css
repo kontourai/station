@@ -161,7 +161,7 @@
 }
 
 .pull-requests-panel--preview {
-  --pull-request-row-height: calc(2 * var(--k-space-8));
+  --pull-request-row-height: calc(2 * var(--k-space-6) + var(--k-space-2));
 }
 
 .pull-requests-panel--preview .skeleton-list {
